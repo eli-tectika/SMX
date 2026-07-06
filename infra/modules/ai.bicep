@@ -57,12 +57,8 @@ resource search 'Microsoft.Search/searchServices@2024-06-01-preview' = {
     networkRuleSet: {
       ipRules: ipRules
     }
-    disableLocalAuth: false
-    authOptions: {
-      aadOrApiKey: {
-        aadAuthFailureMode: 'http403'
-      }
-    }
+    // Keyless (Entra-only): no authOptions, local auth off. RBAC grants access.
+    disableLocalAuth: true
     semanticSearch: 'standard'
   }
 }
