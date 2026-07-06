@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SMX Marker System — Mockups 2: Journey Screens</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+<style>
+:root{
+  --text-primary:#18191b;--text-secondary:#55575c;--text-muted:#8b8d93;
+  --border:#e6e7e9;--border-strong:#d0d2d6;--radius:8px;
+  --surface-1:#eef0f2;--surface-2:#f8f9fa;
+  --bg-accent:#e9f0fe;--text-accent:#1b56d6;--border-accent:#accbf6;
+  --bg-success:#e8f4e4;--text-success:#2c6a1d;--border-success:#b7ddac;
+  --bg-danger:#fbeaea;--text-danger:#a52a2a;--border-danger:#eebfbf;
+  --bg-warning:#fdf2e0;--text-warning:#8a5910;--border-warning:#edd6a4;
+  --bg-pro:#eeecfb;--text-pro:#463cae;--border-pro:#c6bff1;
+}
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--text-primary);background:#fbfbfc;margin:0;padding:28px;line-height:1.4}
+.wrap{max-width:760px;margin:0 auto}
+h1{font-size:20px;margin:0 0 4px}.lead{color:var(--text-secondary);font-size:13px;margin:0 0 24px}
+.screen{border:1px solid var(--border);border-radius:14px;padding:20px;margin:0 0 26px;background:#fff}
+.cap{font-size:12px;color:var(--text-muted);margin:0 0 14px;border-bottom:1px solid var(--border);padding-bottom:8px}
+.cap b{color:var(--text-secondary);font-weight:600;font-size:14px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.mx{width:100%;table-layout:fixed;border-collapse:collapse}
+.mx th{font-size:11px;color:var(--text-muted);font-weight:400;padding:6px 4px;text-align:left;border-bottom:0.5px solid var(--border)}
+.mx td{font-size:13px;padding:8px 4px;text-align:left;border-bottom:0.5px solid var(--border);vertical-align:top}
+.mx.center td{text-align:center}
+.chip{display:inline-flex;align-items:center;justify-content:center;width:26px;height:24px;border-radius:6px;font-size:13px;font-weight:500}
+.v{background:var(--bg-success);color:var(--text-success)}.l{background:var(--bg-pro);color:var(--text-pro)}.x{background:var(--bg-danger);color:var(--text-danger)}
+.mut{opacity:.45}
+.seg{border:0.5px solid var(--border-strong);background:transparent;font-size:12px;padding:5px 11px;border-radius:var(--radius);color:var(--text-secondary)}
+.cmp{border:0.5px solid var(--border-strong);background:transparent;font-size:12px;padding:5px 12px;border-radius:var(--radius)}
+.cite{font-size:11px;color:var(--text-muted);display:inline-flex;align-items:center;gap:3px}
+.tl{font-size:11px;color:var(--text-muted);margin:14px 0 6px}
+.lab{font-size:11px;color:var(--text-muted);margin:12px 0 3px}
+.kv{font-size:13px}.kl{font-size:11px;color:var(--text-muted)}
+.tag{display:inline-block;font-size:11px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:5px;padding:1px 7px;margin:0 3px 3px 0;color:var(--text-secondary)}
+.prop{font-size:10px;color:var(--text-warning);margin-left:4px}
+.obq{color:var(--text-accent);font-weight:500}.obb{color:var(--text-secondary)}
+.qr{font-size:12px;border:0.5px solid var(--border-strong);background:transparent;border-radius:16px;padding:4px 12px;margin:0 4px 0 0;color:var(--text-secondary)}
+.pl{background:var(--surface-2);border:0.5px solid var(--border);border-radius:12px;padding:11px 12px}
+.ec{display:inline-block;background:var(--bg-success);color:var(--text-success);font-size:12px;padding:1px 7px;border-radius:5px;margin:2px 3px 0 0}
+.ecl{display:inline-block;background:var(--bg-pro);color:var(--text-pro);font-size:12px;padding:1px 7px;border-radius:5px;margin:2px 3px 0 0}
+.qc{display:inline-block;font-size:11px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:5px;padding:2px 8px;margin:0 4px 4px 0;color:var(--text-secondary)}
+.tb{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:5px;font-size:12px;font-weight:600}
+.tA{background:var(--bg-success);color:var(--text-success)}.tB{background:var(--bg-warning);color:var(--text-warning)}.tC{background:var(--surface-2);color:var(--text-muted)}
+.cand{border-bottom:0.5px solid var(--border);padding:10px 0}
+.fit{display:inline-block;font-size:11px;color:var(--text-secondary);background:var(--surface-2);border-radius:5px;padding:1px 7px;margin:0 4px 0 0}
+.frm{display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0;color:var(--text-secondary)}
+.ev{display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:0.5px solid var(--border)}
+.evt{flex:1;font-size:13px}.pass{color:var(--text-success)}.warnc{color:var(--text-warning)}.failc{color:var(--text-danger)}
+.code{border:0.5px solid var(--border);border-radius:10px;padding:11px 13px;margin:0 0 10px}
+.mchip{display:inline-flex;align-items:center;gap:5px;font-size:12px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:6px;padding:2px 8px;margin:0 5px 0 0}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.ck{color:var(--text-success);font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>SMX Taggant-Selection System — UX Mockups</h1>
+<p class="lead">File 2 of 3 · The seven per-project journey screens (spec §4).</p>
+
+<section class="screen">
+<div class="cap"><b>4.1 Intake &amp; scoping</b> &nbsp;·&nbsp; agent parses the client questionnaire into a scaffold; operator confirms; components proposed</div>
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin:0 0 12px">
+  <div><div style="font-size:15px;font-weight:500">New project · intake &amp; scoping</div><div style="font-size:12px;color:var(--text-muted)"><i class="ti ti-bulb" aria-hidden="true"></i> 3 learned conclusions from similar clear-PET cosmetic work</div></div>
+  <span style="font-size:12px;color:var(--text-accent)"><i class="ti ti-sparkles" aria-hidden="true"></i> agent interviewing</span>
+</div>
+<div style="display:flex;gap:22px;flex-wrap:wrap;padding:4px 0 2px">
+  <div><div class="kl">client</div><div class="kv">LVMH</div></div>
+  <div><div class="kl">product</div><div class="kv">MUFE clear bottle</div></div>
+  <div><div class="kl">industry</div><div class="kv">cosmetics</div></div>
+  <div><div class="kl">target markets</div><div class="kv"><span class="tag">EU</span><span class="tag">US</span><span class="tag">Japan</span><span class="tag" style="color:var(--text-accent)">+ add</span></div></div>
+</div>
+<div class="lab">components — each runs its own track</div>
+<table class="mx"><colgroup><col style="width:16%"><col style="width:26%"><col style="width:24%"><col style="width:18%"><col style="width:16%"></colgroup>
+<thead><tr><th>component</th><th>material</th><th>application</th><th>objective</th><th>sample</th></tr></thead>
+<tbody>
+<tr><td style="font-weight:500">Bottle</td><td>PET, clear</td><td>primary packaging</td><td class="obb">brand</td><td style="color:var(--text-success)"><i class="ti ti-check" aria-hidden="true"></i> in hand</td></tr>
+<tr><td style="font-weight:500">Label</td><td>BOPP film <span class="prop">proposed</span></td><td>label</td><td class="obb">brand</td><td style="color:var(--text-success)"><i class="ti ti-check" aria-hidden="true"></i> in hand</td></tr>
+<tr><td style="font-weight:500">Lid</td><td>PP</td><td>closure</td><td class="obb">brand</td><td style="color:var(--text-success)"><i class="ti ti-check" aria-hidden="true"></i> in hand</td></tr>
+<tr><td style="font-weight:500">Liquid</td><td>cosmetic emulsion</td><td>skin-contact cosmetic</td><td class="obq">quantification</td><td style="color:var(--text-success)"><i class="ti ti-check" aria-hidden="true"></i> in hand</td></tr>
+</tbody></table>
+<div class="lab">regulatory scope — derived, confirmed by R.E. before the gate</div>
+<div style="font-size:12px;color:var(--text-secondary);margin:0 0 6px">element gate · product-wide<div style="margin-top:4px"><span class="tag">REACH XVII</span><span class="tag">RoHS</span><span class="tag">PPWR</span><span class="tag">SVHC</span><span class="tag">Prop 65</span><span class="tag">client list ✓</span></div></div>
+<div style="font-size:12px;color:var(--text-secondary)">application · per component<div style="margin-top:4px;line-height:1.9"><span style="color:var(--text-muted)">liquid →</span> <span class="tag">EU Cosmetics 1223/2009</span><span class="tag">FDA FD&amp;C</span><span class="tag">Japan PMD Act</span><br><span style="color:var(--text-muted)">bottle · label · lid →</span> <span class="tag">PPWR packaging</span><span class="tag">US / JP packaging</span></div></div>
+<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:16px 0 0;padding:10px 12px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:10px">
+  <span style="font-size:12px;color:var(--text-secondary)"><i class="ti ti-file-check" style="color:var(--text-success)" aria-hidden="true"></i> final product + technical docs uploaded</span>
+  <span style="font-size:12px;color:var(--text-success);margin-left:auto"><i class="ti ti-circle-check" aria-hidden="true"></i> background mode: confirmed (measured)</span>
+</div>
+<div style="margin:16px 0 0;padding:12px 14px;border:0.5px solid var(--border-accent);background:var(--bg-accent);border-radius:10px">
+  <div style="font-size:13px;color:var(--text-accent);margin:0 0 8px"><i class="ti ti-sparkles" aria-hidden="true"></i> The liquid is skin-contact, so I set its objective to quantification — confirm?</div>
+  <div><button class="qr" style="border-color:var(--border-accent);color:var(--text-accent)">quantification</button><button class="qr">brand only</button><span style="font-size:11px;color:var(--text-muted);margin-left:6px">1 field proposed · 1 open question</span></div>
+</div>
+</section>
+
+<section class="screen">
+<div class="cap"><b>4.2 Background analysis</b> &nbsp;·&nbsp; per-component X/L/V verdicts; element-gate row lock; per-component pools</div>
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:0 0 14px">
+  <div><div style="font-size:15px;font-weight:500">MUFE clear bottle · background analysis</div><div style="font-size:12px;color:var(--text-secondary)">4 components, scored independently</div></div>
+  <div style="display:flex;align-items:center;gap:14px">
+    <div style="display:inline-flex;border:0.5px solid var(--border-strong);border-radius:var(--radius);overflow:hidden"><button class="seg" style="border:none;color:var(--text-secondary)">Brand</button><button class="seg" style="border:none;border-left:0.5px solid var(--border-strong);background:var(--bg-accent);color:var(--text-accent)">Quantification</button></div>
+    <span style="font-size:12px;color:var(--text-success)"><i class="ti ti-circle-check" aria-hidden="true"></i> confirmed</span>
+  </div>
+</div>
+<table class="mx center"><colgroup><col style="width:18%"><col style="width:13%"><col style="width:13%"><col style="width:13%"><col style="width:13%"><col style="width:30%"></colgroup>
+<thead><tr><th style="text-align:left">element</th><th>bottle</th><th>sticker</th><th>lid</th><th>liquid</th><th style="text-align:left">element status</th></tr></thead>
+<tbody>
+<tr><td style="text-align:left"><span style="font-weight:500">Y</span> <span style="color:var(--text-muted);font-size:11px">Kα</span></td><td><span class="chip v">V</span></td><td><span class="chip v">V</span></td><td><span class="chip v">V</span></td><td><span class="chip v">V</span></td><td style="text-align:left;color:var(--text-secondary)"><i class="ti ti-check" style="color:var(--text-success)" aria-hidden="true"></i> accepted</td></tr>
+<tr><td style="text-align:left"><span style="font-weight:500">Zr</span> <span style="color:var(--text-muted);font-size:11px">Kα</span></td><td><span class="chip v">V</span></td><td><span class="chip v">V</span></td><td><span class="chip v">V</span></td><td><span class="chip v">V</span></td><td style="text-align:left;color:var(--text-secondary)"><i class="ti ti-check" style="color:var(--text-success)" aria-hidden="true"></i> accepted</td></tr>
+<tr><td style="text-align:left"><span style="font-weight:500">Gd</span> <span style="color:var(--text-muted);font-size:11px">Lα</span></td><td><span class="chip v">V</span></td><td><span class="chip v">V</span></td><td><span class="chip v">V</span></td><td><span class="chip v">V</span></td><td style="text-align:left;color:var(--text-secondary)"><i class="ti ti-point" style="color:var(--text-warning)" aria-hidden="true"></i> needs review</td></tr>
+<tr><td style="text-align:left"><span style="font-weight:500">Sc</span> <span style="color:var(--text-muted);font-size:11px">Kα</span></td><td><span class="chip v">V</span></td><td><span class="chip l">L</span></td><td><span class="chip l">L</span></td><td><span class="chip v">V</span></td><td style="text-align:left;color:var(--text-secondary)"><i class="ti ti-point" style="color:var(--text-warning)" aria-hidden="true"></i> needs review</td></tr>
+<tr><td style="text-align:left"><span style="font-weight:500">La</span> <span style="color:var(--text-muted);font-size:11px">Lα</span></td><td><span class="chip l">L</span></td><td><span class="chip l">L</span></td><td><span class="chip l">L</span></td><td><span class="chip l">L</span></td><td style="text-align:left;color:var(--text-secondary)"><i class="ti ti-point" style="color:var(--text-warning)" aria-hidden="true"></i> needs review</td></tr>
+<tr style="background:var(--surface-1)"><td style="text-align:left"><span style="font-weight:500">Ba</span> <span style="color:var(--text-muted);font-size:11px">Lα</span></td><td><span class="chip v">V</span></td><td><span class="chip x">X</span></td><td><span class="chip l">L</span></td><td><span class="chip l">L</span></td><td style="text-align:left;color:var(--text-secondary)"><i class="ti ti-point" style="color:var(--text-warning)" aria-hidden="true"></i> bottle candidate · out on sticker</td></tr>
+<tr><td style="text-align:left"><span style="font-weight:500">Cu</span> <span style="color:var(--text-muted);font-size:11px">Kα</span></td><td><span class="chip x">X</span></td><td><span class="chip x">X</span></td><td><span class="chip x">X</span></td><td><span class="chip x">X</span></td><td style="text-align:left;color:var(--text-muted)">present in all — excluded</td></tr>
+<tr class="mut"><td style="text-align:left"><span style="font-weight:500">Pb</span> <span style="color:var(--text-muted);font-size:11px">Lα</span></td><td><span class="chip v">V</span></td><td><span class="chip v">V</span></td><td><span class="chip v">V</span></td><td><span class="chip v">V</span></td><td style="text-align:left;color:var(--text-danger);opacity:1"><i class="ti ti-lock" aria-hidden="true"></i> element gate — REACH XVII · PPWR</td></tr>
+</tbody></table>
+<div style="font-size:12px;color:var(--text-muted);margin:7px 2px 0"><i class="ti ti-lock" aria-hidden="true"></i> Pb is spectrally clean on every component but banned at element level, so it's out everywhere.</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:18px 0 0">
+  <div class="pl"><div style="font-weight:500;font-size:13px;margin:0 0 6px">Bottle</div><div style="font-size:11px;color:var(--text-muted)">strong</div><div><span class="ec">Y</span><span class="ec">Zr</span><span class="ec">Gd</span><span class="ec">Sc</span><span class="ec">Ba</span></div><div style="font-size:11px;color:var(--text-muted);margin-top:4px">conditional <span class="ecl">La</span></div></div>
+  <div class="pl"><div style="font-weight:500;font-size:13px;margin:0 0 6px">Sticker</div><div style="font-size:11px;color:var(--text-muted)">strong</div><div><span class="ec">Y</span><span class="ec">Zr</span><span class="ec">Gd</span></div><div style="font-size:11px;color:var(--text-muted);margin-top:4px">conditional <span class="ecl">La</span><span class="ecl">Sc</span></div></div>
+  <div class="pl"><div style="font-weight:500;font-size:13px;margin:0 0 6px">Lid</div><div style="font-size:11px;color:var(--text-muted)">strong</div><div><span class="ec">Y</span><span class="ec">Zr</span><span class="ec">Gd</span></div><div style="font-size:11px;color:var(--text-muted);margin-top:4px">conditional <span class="ecl">La</span><span class="ecl">Sc</span><span class="ecl">Ba</span></div></div>
+  <div class="pl"><div style="font-weight:500;font-size:13px;margin:0 0 6px">Liquid</div><div style="font-size:11px;color:var(--text-muted)">strong</div><div><span class="ec">Y</span><span class="ec">Zr</span><span class="ec">Gd</span><span class="ec">Sc</span></div><div style="font-size:11px;color:var(--text-muted);margin-top:4px">conditional <span class="ecl">La</span><span class="ecl">Ba</span></div></div>
+</div>
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin:14px 2px 0;font-size:12px;color:var(--text-secondary)">
+  <span><span class="chip v" style="width:20px;height:18px;vertical-align:-4px">V</span> clean — usable</span>
+  <span><span class="chip l" style="width:20px;height:18px;vertical-align:-4px">L</span> weak — conditional</span>
+  <span><span class="chip x" style="width:20px;height:18px;vertical-align:-4px">X</span> present — avoid</span>
+  <span><i class="ti ti-lock" style="color:var(--text-danger)" aria-hidden="true"></i> element gate — banned for all</span>
+</div>
+</section>
+
+<section class="screen">
+<div class="cap"><b>4.3 Discovery &amp; AI-screening</b> &nbsp;·&nbsp; form variants, A/B/C tiers with rationale &amp; sources</div>
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin:0 0 12px"><div style="font-size:15px;font-weight:500">Discovery &amp; AI-screening</div><span style="font-size:12px;color:var(--text-accent)"><i class="ti ti-sparkles" aria-hidden="true"></i> agent screening</span></div>
+<div style="display:flex;gap:8px;margin:0 0 12px"><button class="cmp">Bottle</button><button class="cmp">Label</button><button class="cmp">Lid</button><button class="cmp" style="background:var(--bg-accent);color:var(--text-accent);border-color:var(--border-accent)">Liquid · quantification</button></div>
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:10px;padding:10px 12px;margin:0 0 16px"><div style="font-size:11px;color:var(--text-muted);margin:0 0 5px">discovery query — built from intake + background <span style="color:var(--text-accent);margin-left:6px">refine</span></div><span class="qc">emulsion-compatible carboxylates</span><span class="qc">low XRF background</span><span class="qc">EU Cosmetics compliant</span><span class="qc">quantification-grade signal</span><span class="qc">catalog-available</span></div>
+<div class="tl">A · strong shortlist</div>
+<div class="cand">
+  <div style="display:flex;align-items:center;gap:8px;margin:0 0 6px"><span class="tb tA">A</span><span style="font-weight:500;font-size:14px">Yttrium</span><span style="font-size:12px;color:var(--text-secondary)">— Y 2-ethylhexanoate <span style="color:var(--text-muted)">(preferred form)</span></span><span style="margin-left:auto;font-size:11px;color:var(--text-success)">confidence high</span></div>
+  <div style="margin:0 0 8px"><span class="fit">emulsion-dispersible</span><span class="fit">stable</span><span class="fit">low impact</span><span class="fit">clean XRF · V on liquid</span></div>
+  <div style="font-size:11px;color:var(--text-muted);margin:0 0 2px">forms found</div>
+  <div class="frm"><i class="ti ti-circle-check" style="color:var(--text-success)" aria-hidden="true"></i>Y 2-ethylhexanoate · CAS 136-25-4 · ~12% Y · liquid <span class="cite" style="margin-left:auto">Sigma-Aldrich <i class="ti ti-external-link" aria-hidden="true"></i></span></div>
+  <div class="frm"><i class="ti ti-circle" style="color:var(--text-muted)" aria-hidden="true"></i>Y neodecanoate · ~15% Y <span class="cite" style="margin-left:auto">Strem <i class="ti ti-external-link" aria-hidden="true"></i></span></div>
+  <div class="frm"><i class="ti ti-circle" style="color:var(--text-muted)" aria-hidden="true"></i>Y octoate <span class="cite" style="margin-left:auto">American Elements <i class="ti ti-external-link" aria-hidden="true"></i></span></div>
+  <div style="font-size:12px;color:var(--text-secondary);margin:8px 0 8px"><span style="color:var(--text-muted)">why A · </span>clean XRF on the liquid (V), no cosmetics restriction, 3 catalog sources, negligible impact at 5–15 ppm — strong for a quantification marker.</div>
+  <div><button class="seg">move to B</button> <button class="seg">exclude</button> <span style="font-size:11px;color:var(--text-muted);margin-left:4px">re-tiering goes through the agent with a reason &amp; is saved as a learned conclusion</span></div>
+</div>
+<div class="cand" style="display:flex;align-items:center;gap:8px"><span class="tb tA">A</span><span style="font-weight:500;font-size:14px">Gadolinium</span><span style="font-size:12px;color:var(--text-secondary)">— Gd neodecanoate</span><span style="font-size:11px;color:var(--text-secondary);margin-left:6px">clean XRF · cosmetics-ok · 2 sources</span><i class="ti ti-chevron-down" style="margin-left:auto;color:var(--text-muted)" aria-hidden="true"></i></div>
+<div class="tl">B · needs validation</div>
+<div class="cand" style="display:flex;align-items:center;gap:8px"><span class="tb tB">B</span><span style="font-weight:500;font-size:14px">Lanthanum</span><span style="font-size:12px;color:var(--text-secondary)">— La neodecanoate</span><span style="font-size:11px;color:var(--text-secondary);margin-left:6px">excellent signal · limited cosmetic-use history → needs stability test</span><i class="ti ti-chevron-down" style="margin-left:auto;color:var(--text-muted)" aria-hidden="true"></i></div>
+<div class="tl">C · excluded</div>
+<div class="cand" style="display:flex;align-items:center;gap:8px;padding:8px 0"><span class="tb tC">C</span><span style="font-weight:500;font-size:13px">Zirconium</span><span style="font-size:11px;color:var(--text-warning);margin-left:6px">regulated — EU Cosmetics Annex III restricts Zr in the liquid</span></div>
+<div style="display:flex;align-items:center;gap:8px;padding:8px 0"><span class="tb tC">C</span><span style="font-weight:500;font-size:13px">Barium</span><span style="font-size:11px;color:var(--text-muted);margin-left:6px">hazard (soluble Ba) + conditional background on the liquid</span></div>
+</section>
+
+<section class="screen">
+<div class="cap"><b>4.4 Regulatory gate</b> &nbsp;·&nbsp; hard gate · element gate + per-component application + hazard, all cited · locked until reviewed</div>
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:0 0 14px">
+  <div><div style="font-size:15px;font-weight:500">Regulatory approval gate</div><div style="font-size:12px;color:var(--text-secondary)">records: R.E. determination</div></div>
+  <div style="display:flex;align-items:center;gap:14px"><span style="font-size:12px;color:var(--text-secondary)"><i class="ti ti-refresh" aria-hidden="true"></i> corpus synced May 2026</span><span style="font-size:12px;color:var(--text-warning)"><i class="ti ti-lock" aria-hidden="true"></i> 1 item needs review</span></div>
+</div>
+<table class="mx"><colgroup><col style="width:30%"><col style="width:14%"><col style="width:13%"><col style="width:14%"><col style="width:29%"></colgroup>
+<thead><tr><th>substance</th><th>serves</th><th>element gate</th><th>application</th><th>conclusion · review</th></tr></thead>
+<tbody>
+<tr><td><span style="font-weight:500">Y 2-ethylhexanoate</span><br><span style="color:var(--text-muted);font-size:11px">CAS 136-25-4 · Y</span></td><td style="color:var(--text-secondary)">liquid, bottle</td><td class="pass"><i class="ti ti-check" aria-hidden="true"></i> pass</td><td class="pass"><i class="ti ti-check" aria-hidden="true"></i> pass</td><td><span class="pass">recommended</span> <span style="color:var(--text-muted)">· <i class="ti ti-check" aria-hidden="true"></i> reviewed</span></td></tr>
+<tr style="background:var(--surface-1)"><td><span style="font-weight:500">Zr neodecanoate</span><br><span style="color:var(--text-muted);font-size:11px">CAS 39049-04-2 · Zr</span></td><td style="color:var(--text-secondary)">bottle, lid, liquid</td><td class="pass"><i class="ti ti-check" aria-hidden="true"></i> pass</td><td class="warnc"><i class="ti ti-alert-triangle" aria-hidden="true"></i> flag · liquid</td><td><span class="warnc">bottle, lid only</span> <span style="color:var(--text-muted)">· reviewing</span></td></tr>
+<tr><td><span style="font-weight:500">Gd neodecanoate</span><br><span style="color:var(--text-muted);font-size:11px">Gd · all components</span></td><td class="pass"><i class="ti ti-check" aria-hidden="true"></i> pass</td><td class="pass"><i class="ti ti-check" aria-hidden="true"></i> pass</td><td class="pass"><i class="ti ti-check" aria-hidden="true"></i> pass</td><td><span style="color:var(--text-secondary)">none found</span> <span style="color:var(--text-warning)">· low confidence</span> <span style="color:var(--text-muted)">· <i class="ti ti-point" style="color:var(--text-warning)" aria-hidden="true"></i> needs review</span></td></tr>
+<tr><td><span style="font-weight:500">Ba 2-ethylhexanoate</span><br><span style="color:var(--text-muted);font-size:11px">Ba · bottle</span></td><td class="pass"><i class="ti ti-check" aria-hidden="true"></i> pass</td><td class="pass"><i class="ti ti-check" aria-hidden="true"></i> pass</td><td><span class="failc">not recommended</span> <span style="color:var(--text-muted)">· hazard · <i class="ti ti-flag" aria-hidden="true"></i></span></td></tr>
+</tbody></table>
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:12px;padding:14px 16px;margin:16px 0 0">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 4px"><span style="font-weight:500;font-size:14px">Zirconium neodecanoate</span><span style="font-size:12px;color:var(--text-muted)">CAS 39049-04-2 · serves bottle, lid, liquid</span><span style="margin-left:auto;font-size:12px;color:var(--text-warning)">agent: recommend for bottle, lid · exclude from liquid</span></div>
+  <div class="lab">element gate — product-wide</div>
+  <div class="ev"><i class="ti ti-check pass" aria-hidden="true"></i><div class="evt">REACH Annex XVII — no restriction entry</div><span class="cite">EUR-Lex 1907/2006 · May 2026 <i class="ti ti-external-link" aria-hidden="true"></i></span></div>
+  <div class="ev"><i class="ti ti-check pass" aria-hidden="true"></i><div class="evt">SVHC candidate list — not listed</div><span class="cite">ECHA · May 2026 <i class="ti ti-external-link" aria-hidden="true"></i></span></div>
+  <div class="ev"><i class="ti ti-check pass" aria-hidden="true"></i><div class="evt">PPWR heavy-metal cap — not Pb/Cd/Hg/Cr(VI)</div><span class="cite">EU 2025/40 · May 2026 <i class="ti ti-external-link" aria-hidden="true"></i></span></div>
+  <div class="ev"><i class="ti ti-check pass" aria-hidden="true"></i><div class="evt">Prop 65 — not listed</div><span class="cite">OEHHA · May 2026 <i class="ti ti-external-link" aria-hidden="true"></i></span></div>
+  <div class="ev"><i class="ti ti-check pass" aria-hidden="true"></i><div class="evt">Client restricted list (LVMH) — not listed</div><span class="cite">client doc v4 <i class="ti ti-external-link" aria-hidden="true"></i></span></div>
+  <div class="lab">application checks — per component</div>
+  <div class="ev"><i class="ti ti-check pass" aria-hidden="true"></i><div class="evt">Bottle · lid — PPWR packaging, within limits</div><span class="cite">EU 2025/40 · May 2026 <i class="ti ti-external-link" aria-hidden="true"></i></span></div>
+  <div class="ev"><i class="ti ti-alert-triangle warnc" aria-hidden="true"></i><div class="evt"><span class="warnc">Liquid</span> — EU Cosmetics Annex III restricts zirconium in cosmetic products → exclude from liquid</div><span class="cite">EC 1223/2009 · May 2026 <i class="ti ti-external-link" aria-hidden="true"></i></span></div>
+  <div class="lab">hazard — CLP / SDS</div>
+  <div class="ev" style="border-bottom:none"><i class="ti ti-info-circle" style="color:var(--text-secondary)" aria-hidden="true"></i><div class="evt">H226 flammable (solvent carrier) · CMR none · endocrine none</div><span class="cite">supplier SDS <i class="ti ti-external-link" aria-hidden="true"></i></span></div>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 0;padding-top:12px;border-top:0.5px solid var(--border)"><button class="seg"><i class="ti ti-eye" aria-hidden="true"></i> mark evidence reviewed</button><button class="seg pass" style="border-color:var(--border-success)">recommend (bottle, lid)</button><button class="seg">reject</button><span style="font-size:12px;color:var(--text-muted);margin-left:4px">operator records the R.E. determination · reason required on reject</span></div>
+</div>
+<div style="background:var(--bg-warning);border:0.5px solid var(--border-warning);border-radius:12px;padding:14px 16px;margin:16px 0 0;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+  <i class="ti ti-lock" style="font-size:20px;color:var(--text-warning)" aria-hidden="true"></i>
+  <div style="flex:1;min-width:200px"><div style="font-weight:500;font-size:13px;color:var(--text-warning)">Gate locked — approve the compliant set</div><div style="font-size:12px;color:var(--text-warning)">3 of 4 reviewed · Gd flagged low confidence — needs review before the gate can arm</div></div>
+  <button class="seg" style="opacity:.55">approve compliant set</button>
+</div>
+</section>
+
+<section class="screen">
+<div class="cap"><b>4.5 Dosing &amp; codes</b> &nbsp;·&nbsp; per-component ppm windows (floor from device+background) + agent-proposed codes</div>
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin:0 0 12px"><div style="font-size:15px;font-weight:500">Dosing &amp; codes</div><span style="font-size:12px;color:var(--text-accent)"><i class="ti ti-sparkles" aria-hidden="true"></i> agent proposed</span></div>
+<div style="display:flex;gap:8px;margin:0 0 6px"><button class="cmp">Bottle</button><button class="cmp">Label</button><button class="cmp">Lid</button><button class="cmp" style="background:var(--bg-accent);color:var(--text-accent);border-color:var(--border-accent)">Liquid · quantification</button></div>
+<div class="tl">ppm windows — floor from device + measured background, upper from regulation or formulation impact</div>
+<svg width="100%" viewBox="0 0 640 208" role="img" aria-label="ppm windows for Y, Gd and La on the liquid">
+  <g stroke="var(--border)" stroke-width="0.5"><line x1="90" y1="30" x2="90" y2="170"/><line x1="178" y1="30" x2="178" y2="170"/><line x1="266" y1="30" x2="266" y2="170"/><line x1="355" y1="30" x2="355" y2="170"/><line x1="443" y1="30" x2="443" y2="170"/><line x1="531" y1="30" x2="531" y2="170"/><line x1="620" y1="30" x2="620" y2="170"/></g>
+  <line x1="90" y1="170" x2="620" y2="170" stroke="var(--border-strong)" stroke-width="0.5"/>
+  <g font-size="10" fill="var(--text-muted)" text-anchor="middle"><text x="90" y="184">0</text><text x="178" y="184">10</text><text x="266" y="184">20</text><text x="355" y="184">30</text><text x="443" y="184">40</text><text x="531" y="184">50</text><text x="620" y="184">60</text><text x="355" y="200">ppm (element)</text></g>
+  <text x="40" y="57" font-size="13" font-weight="500" fill="var(--text-primary)">Y</text><rect x="54" y="47" width="15" height="13" rx="3" fill="var(--bg-success)"/><text x="61.5" y="57" font-size="10" font-weight="600" fill="var(--text-success)" text-anchor="middle">A</text>
+  <rect x="90" y="45" width="530" height="18" rx="3" fill="var(--surface-2)"/><rect x="116" y="45" width="415" height="18" fill="var(--bg-success)"/><rect x="160" y="45" width="36" height="18" fill="var(--text-accent)"/>
+  <line x1="116" y1="41" x2="116" y2="67" stroke="var(--text-secondary)" stroke-width="1"/><line x1="531" y1="41" x2="531" y2="67" stroke="var(--text-muted)" stroke-width="1" stroke-dasharray="3 2"/>
+  <text x="178" y="41" font-size="10" fill="var(--text-accent)" text-anchor="middle">8–12</text><text x="112" y="76" font-size="9" fill="var(--text-muted)" text-anchor="end">floor 3</text><text x="535" y="58" font-size="10" fill="var(--text-muted)">~50</text>
+  <text x="40" y="103" font-size="13" font-weight="500" fill="var(--text-primary)">Gd</text><rect x="54" y="93" width="15" height="13" rx="3" fill="var(--bg-success)"/><text x="61.5" y="103" font-size="10" font-weight="600" fill="var(--text-success)" text-anchor="middle">A</text>
+  <rect x="90" y="91" width="530" height="18" rx="3" fill="var(--surface-2)"/><rect x="125" y="91" width="363" height="18" fill="var(--bg-success)"/><rect x="143" y="91" width="35" height="18" fill="var(--text-accent)"/>
+  <line x1="125" y1="87" x2="125" y2="113" stroke="var(--text-secondary)" stroke-width="1"/><line x1="488" y1="87" x2="488" y2="113" stroke="var(--text-muted)" stroke-width="1" stroke-dasharray="3 2"/>
+  <text x="160" y="87" font-size="10" fill="var(--text-accent)" text-anchor="middle">6–10</text><text x="121" y="122" font-size="9" fill="var(--text-muted)" text-anchor="end">floor 4</text><text x="492" y="104" font-size="10" fill="var(--text-muted)">~45</text>
+  <text x="40" y="149" font-size="13" font-weight="500" fill="var(--text-primary)">La</text><rect x="54" y="139" width="15" height="13" rx="3" fill="var(--bg-warning)"/><text x="61.5" y="149" font-size="10" font-weight="600" fill="var(--text-warning)" text-anchor="middle">B</text>
+  <rect x="90" y="137" width="530" height="18" rx="3" fill="var(--surface-2)"/><rect x="134" y="137" width="309" height="18" fill="var(--bg-success)"/><rect x="160" y="137" width="54" height="18" fill="var(--text-accent)"/>
+  <line x1="134" y1="133" x2="134" y2="159" stroke="var(--text-secondary)" stroke-width="1"/><line x1="443" y1="133" x2="443" y2="159" stroke="var(--text-muted)" stroke-width="1" stroke-dasharray="3 2"/>
+  <text x="187" y="133" font-size="10" fill="var(--text-accent)" text-anchor="middle">8–14</text><text x="130" y="168" font-size="9" fill="var(--text-muted)" text-anchor="end">floor 5</text><text x="447" y="150" font-size="10" fill="var(--text-muted)">~40</text>
+</svg>
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin:2px 2px 0;font-size:11px;color:var(--text-secondary)">
+  <span><span style="display:inline-block;width:14px;height:9px;background:var(--bg-success);vertical-align:-1px;border-radius:2px"></span> usable window</span>
+  <span><span style="display:inline-block;width:14px;height:9px;background:var(--text-accent);vertical-align:-1px;border-radius:2px"></span> recommended</span>
+  <span>solid = detection floor · dashed = upper bound</span>
+</div>
+<div style="font-size:11px;color:var(--text-muted);margin:8px 2px 0"><i class="ti ti-info-circle" aria-hidden="true"></i> floors: device Niton XL5 + measured liquid background · uppers: formulation-impact estimate (no cosmetic ppm cap for lanthanides) · <span style="color:var(--text-warning)">La upper is lower-confidence (Tier B)</span></div>
+<div class="tl">codes — per component, agent-proposed</div>
+<div class="code">
+  <div style="display:flex;align-items:center;gap:10px;margin:0 0 8px"><span style="font-weight:500">L-1 · dual</span><span style="font-size:11px;color:var(--text-muted)">forensic ratio signature</span><span style="margin-left:auto;font-size:12px;color:var(--text-secondary)">Y : Gd = 1.67 : 1</span></div>
+  <div><span class="mchip"><span class="dot" style="background:var(--text-accent)"></span>Y 2-EH · 10 ppm</span><span class="mchip"><span class="dot" style="background:var(--text-success)"></span>Gd neodecanoate · 6 ppm</span></div>
+  <div style="font-size:11px;color:var(--text-muted);margin-top:7px">order · 500 L batch: Y 5.0 g + Gd 3.0 g (element) → ~42 g Y 2-EH, ~35 g Gd neodecanoate at listed loadings</div>
+</div>
+<div class="code">
+  <div style="display:flex;align-items:center;gap:10px;margin:0 0 8px"><span style="font-weight:500">L-2 · triple</span><span style="font-size:11px;color:var(--text-muted)">higher-uniqueness signature</span><span style="margin-left:auto;font-size:12px;color:var(--text-secondary)">Y : Gd : La = 10 : 6 : 4</span></div>
+  <div><span class="mchip"><span class="dot" style="background:var(--text-accent)"></span>Y 10 ppm</span><span class="mchip"><span class="dot" style="background:var(--text-success)"></span>Gd 6 ppm</span><span class="mchip"><span class="dot" style="background:var(--text-warning)"></span>La 4 ppm</span></div>
+  <div style="font-size:11px;color:var(--text-warning);margin-top:7px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> includes La (Tier B) — carries the pending stability validation</div>
+</div>
+<div style="font-size:11px;color:var(--text-muted);margin:6px 2px 0">Codes finalize in a PL / VP / physics review (soft check) · to change a dose or code, tell the agent why — it re-proposes and updates its conclusions.</div>
+</section>
+
+<section class="screen">
+<div class="cap"><b>4.6 Cost &amp; availability</b> &nbsp;·&nbsp; per-molecule supplier audit · off-the-shelf only · supply-risk flags</div>
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin:0 0 4px"><div style="font-size:15px;font-weight:500">Cost &amp; availability</div><span style="font-size:12px;color:var(--text-accent)"><i class="ti ti-sparkles" aria-hidden="true"></i> agent audited 6 catalogs · off-the-shelf only</span></div>
+<table class="mx"><colgroup><col style="width:27%"><col style="width:17%"><col style="width:24%"><col style="width:14%"><col style="width:18%"></colgroup>
+<thead><tr><th>substance</th><th>grade / form</th><th>preferred supplier · price</th><th>lead time</th><th>availability</th></tr></thead>
+<tbody>
+<tr><td style="font-weight:500">Y 2-ethylhexanoate<br><span style="color:var(--text-muted);font-size:11px">CAS 136-25-4</span></td><td>~12% Y · liquid</td><td>Sigma-Aldrich · $85/100 g</td><td>1–2 wk</td><td style="color:var(--text-success)"><i class="ti ti-check" aria-hidden="true"></i> in stock · 3 suppliers</td></tr>
+<tr><td style="font-weight:500">Gd neodecanoate</td><td>~15% Gd</td><td>Strem · $120/100 g</td><td>2–3 wk</td><td style="color:var(--text-success)"><i class="ti ti-check" aria-hidden="true"></i> in stock · 2 suppliers</td></tr>
+<tr><td style="font-weight:500">La neodecanoate<br><span style="color:var(--text-warning);font-size:11px">Tier B</span></td><td>~16% La</td><td>American Elements · $95/100 g</td><td>3–4 wk</td><td style="color:var(--text-warning)"><i class="ti ti-alert-triangle" aria-hidden="true"></i> single source</td></tr>
+</tbody></table>
+<div style="font-size:11px;color:var(--text-muted);margin:8px 2px 0">Supply-risk surfaces here — La is single-source, which weighs against the triple code. Each figure links to the catalog listing it came from.</div>
+</section>
+
+<section class="screen">
+<div class="cap"><b>4.7 Decision matrix + VP gate</b> &nbsp;·&nbsp; per-component final codes, full traceability, VP R&amp;D final approval</div>
+<div style="font-size:15px;font-weight:500;margin:0 0 4px">Decision matrix</div>
+<table class="mx"><colgroup><col style="width:15%"><col style="width:24%"><col style="width:22%"><col style="width:25%"><col style="width:14%"></colgroup>
+<thead><tr><th>component</th><th>final code</th><th>recommended ppm</th><th>clears</th><th>trace</th></tr></thead>
+<tbody>
+<tr><td style="font-weight:500">Bottle</td><td>Zr + Gd</td><td>Zr 12 · Gd 8</td><td><span class="ck"><i class="ti ti-check" aria-hidden="true"></i></span> XRF · compat · reg · supply</td><td style="color:var(--text-accent);font-size:12px">view →</td></tr>
+<tr><td style="font-weight:500">Label</td><td>Y + Gd</td><td>Y 10 · Gd 6</td><td><span class="ck"><i class="ti ti-check" aria-hidden="true"></i></span> XRF · compat · reg · supply</td><td style="color:var(--text-accent);font-size:12px">view →</td></tr>
+<tr><td style="font-weight:500">Lid</td><td>Y + Gd</td><td>Y 10 · Gd 6</td><td><span class="ck"><i class="ti ti-check" aria-hidden="true"></i></span> XRF · compat · reg · supply</td><td style="color:var(--text-accent);font-size:12px">view →</td></tr>
+<tr><td style="font-weight:500">Liquid</td><td>Y + Gd <span style="color:var(--text-muted);font-size:11px">(L-1)</span></td><td>Y 10 · Gd 6</td><td><span class="ck"><i class="ti ti-check" aria-hidden="true"></i></span> XRF · compat · reg · supply</td><td style="color:var(--text-accent);font-size:12px">view →</td></tr>
+</tbody></table>
+<div style="font-size:11px;color:var(--text-muted);margin:8px 2px 14px">Each row's <span style="color:var(--text-accent)">view</span> opens the full rationale — the X/L/V verdicts, the cited regulatory clearances, the ppm basis, and the supplier — so the choice is traceable end-to-end.</div>
+<div style="background:var(--bg-warning);border:0.5px solid var(--border-warning);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+  <i class="ti ti-lock" style="font-size:20px;color:var(--text-warning)" aria-hidden="true"></i>
+  <div style="flex:1;min-width:200px"><div style="font-weight:500;font-size:13px;color:var(--text-warning)">VP R&amp;D final approval</div><div style="font-size:12px;color:var(--text-warning)">Regulatory gate cleared · 4 component codes selected · operator records the VP determination — releases procurement, writes codes to the marker library, saves learned conclusions</div></div>
+  <button class="seg" style="border-color:var(--border-warning);color:var(--text-warning)">approve &amp; close project</button>
+</div>
+</section>
+
+</div>
+</body>
+</html>

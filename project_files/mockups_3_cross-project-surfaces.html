@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SMX Marker System — Mockups 3: Cross-Project Surfaces</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+<style>
+:root{
+  --text-primary:#18191b;--text-secondary:#55575c;--text-muted:#8b8d93;
+  --border:#e6e7e9;--border-strong:#d0d2d6;--radius:8px;
+  --surface-1:#eef0f2;--surface-2:#f8f9fa;
+  --bg-accent:#e9f0fe;--text-accent:#1b56d6;--border-accent:#accbf6;
+  --bg-success:#e8f4e4;--text-success:#2c6a1d;--border-success:#b7ddac;
+  --bg-danger:#fbeaea;--text-danger:#a52a2a;--border-danger:#eebfbf;
+  --bg-warning:#fdf2e0;--text-warning:#8a5910;--border-warning:#edd6a4;
+  --bg-pro:#eeecfb;--text-pro:#463cae;--border-pro:#c6bff1;
+}
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--text-primary);background:#fbfbfc;margin:0;padding:28px;line-height:1.4}
+.wrap{max-width:760px;margin:0 auto}
+h1{font-size:20px;margin:0 0 4px}.lead{color:var(--text-secondary);font-size:13px;margin:0 0 24px}
+.screen{border:1px solid var(--border);border-radius:14px;padding:20px;margin:0 0 26px;background:#fff}
+.cap{font-size:12px;color:var(--text-muted);margin:0 0 14px;border-bottom:1px solid var(--border);padding-bottom:8px}
+.cap b{color:var(--text-secondary);font-weight:600;font-size:14px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.mx{width:100%;table-layout:fixed;border-collapse:collapse}
+.mx th{font-size:11px;color:var(--text-muted);font-weight:400;padding:6px 4px;text-align:left;border-bottom:0.5px solid var(--border)}
+.mx td{font-size:13px;padding:9px 4px;text-align:left;border-bottom:0.5px solid var(--border);vertical-align:top}
+.search{display:flex;align-items:center;gap:8px;border:0.5px solid var(--border-strong);border-radius:var(--radius);padding:7px 10px;margin:0 0 10px}
+.fc{font-size:11px;border:0.5px solid var(--border-strong);border-radius:14px;padding:3px 10px;color:var(--text-secondary);margin:0 5px 0 0}
+.item{display:flex;gap:10px;padding:11px 0;border-bottom:0.5px solid var(--border)}
+.ty{font-size:10px;border-radius:5px;padding:1px 7px;white-space:nowrap;height:fit-content;margin-top:2px}
+.ty-material{background:var(--bg-accent);color:var(--text-accent)}
+.ty-xrf{background:var(--bg-success);color:var(--text-success)}
+.ty-reg{background:var(--bg-warning);color:var(--text-warning)}
+.meta{font-size:11px;color:var(--text-muted);margin-top:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>SMX Taggant-Selection System — UX Mockups</h1>
+<p class="lead">File 3 of 3 · The three cross-project surfaces on the app-level nav (spec §6).</p>
+
+<section class="screen">
+<div class="cap"><b>Marker Library</b> &nbsp;·&nbsp; approved codes from completed projects · searchable · reuse count · read at intake</div>
+<div style="font-size:15px;font-weight:500;margin:0 0 10px">Marker library</div>
+<div class="search"><i class="ti ti-search" style="color:var(--text-muted)" aria-hidden="true"></i><span style="font-size:12px;color:var(--text-muted);flex:1">search by element, material, or use-case…</span></div>
+<div style="margin:0 0 12px"><span class="fc" style="border-color:var(--border-accent);color:var(--text-accent)">cosmetics</span><span class="fc">packaging</span><span class="fc">automotive</span><span class="fc">lanthanides</span></div>
+<table class="mx"><colgroup><col style="width:15%"><col style="width:25%"><col style="width:26%"><col style="width:19%"><col style="width:15%"></colgroup>
+<thead><tr><th>code</th><th>composition</th><th>validated for</th><th>source</th><th>status</th></tr></thead>
+<tbody>
+<tr><td style="font-weight:500">Y + Gd</td><td>Y 2-EH 10 · Gd neo 6 <span style="color:var(--text-muted);font-size:11px">(1.67:1)</span></td><td>cosmetic emulsion · skin-contact</td><td>MUFE clear bottle</td><td style="color:var(--text-success)"><i class="ti ti-check" aria-hidden="true"></i> approved</td></tr>
+<tr><td style="font-weight:500">Zr + Gd</td><td>Zr 12 · Gd 8</td><td>PET · primary packaging</td><td>MUFE clear bottle</td><td style="color:var(--text-success)"><i class="ti ti-check" aria-hidden="true"></i> approved</td></tr>
+<tr><td style="font-weight:500">Y + Yb</td><td>Y 10 · Yb 5 <span style="color:var(--text-muted);font-size:11px">(2:1)</span></td><td>engine oil · automotive PCMO</td><td>Shell PCMO</td><td style="color:var(--text-success)"><i class="ti ti-check" aria-hidden="true"></i> reused 3×</td></tr>
+<tr><td style="font-weight:500">La + Ce</td><td>La 12 · Ce 8</td><td>polymer coating · industrial</td><td>Tracer-114</td><td style="color:var(--text-success)"><i class="ti ti-check" aria-hidden="true"></i> reused 1×</td></tr>
+</tbody></table>
+<div style="font-size:11px;color:var(--text-muted);margin:8px 2px 0">At a new intake the agent searches here first — a clear-PET cosmetic bottle surfaces the top two rows as reuse candidates.</div>
+</section>
+
+<section class="screen">
+<div class="cap"><b>Learned Conclusions</b> &nbsp;·&nbsp; material / XRF / regulatory findings · scoped · traceable · read at intake &amp; discovery</div>
+<div style="font-size:15px;font-weight:500;margin:0 0 10px">Learned conclusions</div>
+<div class="search"><i class="ti ti-search" style="color:var(--text-muted)" aria-hidden="true"></i><span style="font-size:12px;color:var(--text-muted);flex:1">search findings…</span></div>
+<div class="item"><span class="ty ty-xrf">XRF</span><div><div style="font-size:13px">Lanthanides (Y, Gd, La) show clean background in cosmetic emulsions and clear PET.</div><div class="meta">scope: cosmetic liquid, PET · from 3 projects · high confidence</div></div></div>
+<div class="item"><span class="ty ty-xrf">XRF</span><div><div style="font-size:13px">Ba conflicts with Ti-heavy printed labels — Ba Lα overlaps Ti Kα at ~4.5 keV.</div><div class="meta">scope: printed labels · from 2 projects · high confidence</div></div></div>
+<div class="item"><span class="ty ty-material">material</span><div><div style="font-size:13px">Y 2-ethylhexanoate tiers A for skin-contact emulsions — dispersible, low impact at 5–15 ppm.</div><div class="meta">scope: cosmetic liquid · from 2 projects · medium-high</div></div></div>
+<div class="item"><span class="ty ty-reg">regulatory</span><div><div style="font-size:13px">Zr is restricted in cosmetic liquids (EU Cosmetics Annex III) — usable only in packaging components.</div><div class="meta">scope: cosmetic liquid · R.E. decision · MUFE clear bottle</div></div></div>
+<div class="item" style="border-bottom:none"><span class="ty ty-reg">regulatory</span><div><div style="font-size:13px">Gd has no formal restriction; emerging environmental attention only — cleared for cosmetic packaging.</div><div class="meta">scope: cosmetics · R.E. judgment · MUFE · Jun 2026</div></div></div>
+<div style="font-size:11px;color:var(--text-muted);margin:10px 2px 0">The bottom two came straight from R.E. gate decisions — routing every change through the agent-with-a-reason is exactly what fills this surface.</div>
+</section>
+
+<section class="screen">
+<div class="cap"><b>MSDS Registry</b> &nbsp;·&nbsp; managed safety sheets · version &amp; status · gates procurement until current &amp; reviewed</div>
+<div style="font-size:15px;font-weight:500;margin:0 0 10px">MSDS registry</div>
+<div class="search"><i class="ti ti-search" style="color:var(--text-muted)" aria-hidden="true"></i><span style="font-size:12px;color:var(--text-muted);flex:1">search substance or supplier…</span></div>
+<table class="mx"><colgroup><col style="width:28%"><col style="width:20%"><col style="width:17%"><col style="width:20%"><col style="width:15%"></colgroup>
+<thead><tr><th>substance</th><th>supplier</th><th>version · date</th><th>status</th><th>linked</th></tr></thead>
+<tbody>
+<tr><td style="font-weight:500">Y 2-ethylhexanoate</td><td>Sigma-Aldrich</td><td>v3 · Jan 2026</td><td style="color:var(--text-success)"><i class="ti ti-check" aria-hidden="true"></i> current · reviewed</td><td style="color:var(--text-secondary)">2 projects</td></tr>
+<tr><td style="font-weight:500">Gd neodecanoate</td><td>Strem</td><td>v2 · 2024</td><td style="color:var(--text-warning)"><i class="ti ti-clock" aria-hidden="true"></i> re-review due</td><td style="color:var(--text-secondary)">1 project</td></tr>
+<tr><td style="font-weight:500">La neodecanoate</td><td>American Elements</td><td>—</td><td style="color:var(--text-danger)"><i class="ti ti-alert-triangle" aria-hidden="true"></i> pending upload</td><td style="color:var(--text-secondary)">MUFE</td></tr>
+</tbody></table>
+<div style="background:var(--bg-danger);border:0.5px solid var(--border-danger);border-radius:10px;padding:11px 13px;margin:14px 0 0;display:flex;align-items:center;gap:10px">
+  <i class="ti ti-lock" style="font-size:17px;color:var(--text-danger)" aria-hidden="true"></i>
+  <span style="font-size:12px;color:var(--text-danger)">La neodecanoate has no current MSDS — its order stays blocked until one is uploaded and reviewed.</span>
+</div>
+</section>
+
+</div>
+</body>
+</html>
