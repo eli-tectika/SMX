@@ -18,6 +18,16 @@
 
 ---
 
+## Amendment (quota-driven, applied during execution)
+
+Before deploying, a quota check on the target subscription (`az cognitiveservices usage list -l swedencentral`) found:
+- **`text-embedding-3-large` (Standard): limit 350, used 0** → deployable.
+- **`gpt-4o` — every SKU (Standard/GlobalStandard/DataZone): limit 0** → **no quota**; deploying it would exceed quota.
+
+So `ai.bicep` (Task 3) and `main.bicep` (Task 5) were amended: a **`deployGpt4o` boolean (default `false`)** gates the gpt-4o deployment, and model capacities default to **1** (minimal). The Foundry account still deploys, so `gpt-4o` can be switched on later via `--parameters deployGpt4o=true` once quota is granted — no rework. The code blocks below reflect these amendments. Everything else deploys unchanged.
+
+---
+
 ## Task 0: Prerequisites
 
 **Files:** none.
@@ -302,11 +312,14 @@ param uamiPrincipalId string
 @description('Azure AI Search SKU (basic for dev, standard=S1 for prod).')
 param searchSku string = 'basic'
 
-@description('gpt-4o deployment capacity (thousands of TPM).')
-param gpt4oCapacity int = 10
+@description('Deploy the gpt-4o chat model. Requires Standard gpt-4o quota; OFF by default because MPN/dev subscriptions often have 0 quota. Flip on once quota is granted.')
+param deployGpt4o bool = false
 
-@description('text-embedding-3-large deployment capacity (thousands of TPM).')
-param embeddingCapacity int = 10
+@description('gpt-4o deployment capacity (thousands of TPM). Kept minimal.')
+param gpt4oCapacity int = 1
+
+@description('text-embedding-3-large deployment capacity (thousands of TPM). Kept minimal.')
+param embeddingCapacity int = 1
 
 var searchName = 'srch-${namePrefix}-${env}-${uniqueSuffix}'
 var foundryName = 'aif-${namePrefix}-${env}-${uniqueSuffix}'
@@ -397,8 +410,8 @@ resource foundryRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   }
 }
 
-// Deployments on one account must be serialized (concurrent creates conflict).
-resource gpt4o 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+// gpt-4o (reasoning) — gated on quota; OFF by default.
+resource gpt4o 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = if (deployGpt4o) {
   parent: foundry
   name: 'gpt-4o'
   sku: {
@@ -764,6 +777,9 @@ param publicNetworkAccess string = 'Enabled'
 @description('Cosmos SQL database name.')
 param cosmosDatabaseName string = 'smx'
 
+@description('Deploy the gpt-4o chat model (requires Standard gpt-4o quota; OFF by default).')
+param deployGpt4o bool = false
+
 @description('Extra tags merged onto every resource.')
 param tags object = {}
 
@@ -900,6 +916,7 @@ module ai 'modules/ai.bicep' = {
     publicNetworkAccess: publicNetworkAccess
     uamiPrincipalId: security.outputs.uamiPrincipalId
     searchSku: searchSku
+    deployGpt4o: deployGpt4o
   }
 }
 
@@ -1093,7 +1110,7 @@ az cognitiveservices account deployment list -g $RG -n "$(az cognitiveservices a
 az keyvault list -g $RG --query "[].name" -o tsv
 az identity list -g $RG --query "[].name" -o tsv
 ```
-Expected: a storage account with `hns=True`; a Cosmos account; a Search service (`basic`); an `AIServices` account; deployments `gpt-4o` and `text-embedding-3-large`; a Key Vault; a `id-smx-dev-swc` identity.
+Expected: a storage account with `hns=True`; a Cosmos account; a Search service (`basic`); an `AIServices` account; the `text-embedding-3-large` deployment (and `gpt-4o` only when `deployGpt4o=true` — off by default, see the Amendment); a Key Vault; a `id-smx-dev-swc` identity.
 
 - [ ] **Step 4: Verify private endpoints + RBAC**
 
