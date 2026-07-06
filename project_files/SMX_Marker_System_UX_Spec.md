@@ -95,7 +95,7 @@ Order: **Intake → Background → Discovery → Regulatory gate → Dosing & co
 - **Approvals recorded per substance × component.**
 - **Anti-rubber-stamping:** recommend sits beside "mark evidence reviewed"; reject requires a reason; the gate stays **locked** until the agent's low-confidence items are reviewed.
 - **The operator records the R.E.'s determination** (and reason). R.E. judgments are written back as **learned conclusions.**
-- **Corpus freshness is out of scope** — a separate system keeps the corpus current.
+- **Corpus freshness is owned by SMX** — a monthly **Regulatory Sync** keeps the corpus current from a curated registry of official regulator sources (ECHA, EUR-Lex, OEHHA, FDA, …), not open web search; every verdict cites its source + `corpus sync date`. Corpus *content* still originates from the official regulators — SMX curates, indexes, and gates it, it does not author regulation. (Infra design §15; implemented in Plan 3.)
 - Clears the compliant set to the VP gate; does **not** open procurement.
 - **Pause:** *awaiting R.E. determination* — the operator takes the compliance package (agent-generated) to the R.E. offline and enters the ruling.
 

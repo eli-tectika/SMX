@@ -36,6 +36,8 @@ running a public placeholder image**; real images swap in later via a redeploy s
 | 4 | Region | **Single default region = `swedencentral`** for all services, both envs, exposed as an overridable parameter. No runtime probing. (Confirmed: Sweden Central supports AI Search with AI enrichment/AZ/semantic ranker, and Foundry `gpt-4o` + `text-embedding-3-large`, plus ACA/Cosmos/ADLS/Gateway/Functions/ACR/Key Vault.) |
 | 5 | IaC structure | **Modular hand-written Bicep + bash/az-CLI scripts.** No AVM registry dependency at deploy time; no `azd`. Matches "bicep and scripts" and maximizes maintainability/transparency. |
 | 6 | App Gateway placement | **Gateway resource in each env's RG; gateway subnet in the hub VNet.** Keeps env teardown atomic while preserving the "gateway sits in the hub network" topology. |
+| 7 | Corpus maintenance | **In scope — SMX owns corpus freshness** via the monthly Regulatory Sync, sourcing from a **curated registry of official regulators** (not open web search). Overrides the earlier "separate system" assumption (§13, UX spec §4.4). Detailed in §15. |
+| 8 | Regulatory Sync host | **Function App (Durable Functions), not Logic App.** The work is document fetch/parse/chunk/hash/embed/push — real code — and the human review gate belongs in the SMX app, not an email/Teams connector. Same isolated Functions subnet, managed identity, and observability as the Search Proxy. Detailed in §15. |
 
 ### Region availability sources
 - Azure AI Search supported regions — https://learn.microsoft.com/en-us/azure/search/search-region-support
@@ -115,7 +117,7 @@ Per the HLD scaling table:
 | Cosmos DB (NoSQL) | Silver/Gold medallion | Serverless | Serverless (autoscale if needed) |
 | ADLS Gen2 | Bronze medallion | Standard (HNS on) | Standard (HNS on) |
 | AI Foundry | `gpt-4o` (reasoning) + `text-embedding-3-large` (vectorization), Responses API only | Standard deployments | Standard deployments |
-| Functions | Search Proxy + monthly Regulatory Sync timer | Flex/Consumption + VNet integration | Premium + VNet integration |
+| Functions | Search Proxy + monthly Regulatory Sync (Durable, timer) | Flex/Consumption + VNet integration | Premium + VNet integration |
 | Log Analytics + App Insights | Centralized observability / distributed tracing | Shared (hub) | Shared (hub) |
 
 **Service cuts (from the HLD), honored here:**
@@ -200,13 +202,83 @@ placeholder app answers through the App Gateway and private DNS resolves the end
 - CI/CD pipeline (GitHub Actions) — the scripts are the interface; a pipeline is an easy later addition.
 - Application code and its data-schema bootstrap (Cosmos containers, Search index) — owned by the app.
 - Subscription/billing creation — the operator provisions the empty subscription; the scripts do the rest.
-- Corpus-freshness / regulatory-content maintenance — a separate system (per the UX spec).
+- ~~Corpus-freshness / regulatory-content maintenance — a separate system~~ — **now in scope** (Decision 7);
+  the Regulatory Sync owns it. See §15. *(The UX spec §4.4 still reads "out of scope" and should be reconciled.)*
 
 ---
 
 ## 14. Open items to revisit during implementation
 
-- Exact Functions hosting plan (Flex Consumption vs Premium) that best supports VNet integration + the timer
-  trigger in Sweden Central, per current availability.
+- Exact Functions **hosting plan** (Flex Consumption vs Premium) for the Regulatory Sync + Search Proxy — the
+  Function App host is decided (Decision 8, §15); only the plan tier remains, per Sweden Central availability.
+  Leaning Flex Consumption (dev) → Premium (prod, if always-warm Search Proxy is wanted).
 - Whether a minimal smoke-test Search index / Cosmos container is worth creating now vs. deferring entirely.
 - Address-space plan (hub + spoke CIDRs) and subnet sizing, including the App Gateway dedicated subnet.
+- **Corpus review gate placement** (§15): surfaced in the SMX app as an operator/R.E.-signed step; whether it is a
+  hard gate in prod and soft in dev, and the exact diff artifact handed to the R.E.
+- **Official-source access** per regulator (§15): which sources expose an API/bulk dataset (ECHA, OEHHA) vs.
+  require structured scraping — this drives Regulatory Sync complexity.
+
+---
+
+## 15. Regulatory corpus maintenance (Regulatory Sync)
+
+**Scope change (overrides §13 and UX spec §4.4).** The regulatory **corpus** is the body of official
+regulation the Compliance agent screens against (REACH Annex XVII, RoHS, PPWR, SVHC, Prop 65, EU Cosmetics,
+FDA/Japan regimes, migration/SML, CLP/SDS, plus per-client restricted lists — UX spec §1.2). It was previously
+assumed to be kept current by a separate external system. **Decision: SMX owns corpus freshness.** SMX does not
+*author* regulation — it **curates, fetches, indexes, and gates** official regulatory text, and every verdict
+still cites its source + `corpus sync date`.
+
+**Correctness guardrail — curated sources, never open web search.** For a system whose whole point is that a
+wrong verdict causes real-world harm, freeform "let the model search the internet" is the wrong tool: it can
+admit non-authoritative or stale content as ground truth. Instead the Sync pulls from a **maintained registry
+of official sources**, one entry per regulation, preferring an official API/bulk dataset over HTML scraping:
+
+| Regulation | Official source |
+|---|---|
+| REACH / SVHC / Annex XVII | ECHA (datasets/API) |
+| EU legislation (RoHS, PPWR, Cosmetics) | EUR-Lex |
+| Prop 65 | OEHHA official list |
+| FDA regimes | eCFR / FDA |
+| CLP / C&L | ECHA C&L Inventory |
+
+The web is used only to **fetch the official document**, never to decide what the rule is. Open-ended search
+stays confined to candidate **Discovery** (a different agent), not regulation.
+
+**Host — Function App with Durable Functions (Decision 8).** The Sync is a monthly **timer trigger**; the
+per-document work (fetch → hash → parse → chunk → embed → push) is real code the runtime does natively; Durable
+orchestration handles fan-out per document and the "wait for external event" of the review gate. This keeps it
+co-located with the **Search Proxy** in the same isolated Functions subnet, on the same workload managed
+identity and App Insights tracing. A Logic App was rejected: its custom-transformation story is weak and its
+built-in email/Teams approval is off-pattern (see the review gate below).
+
+**Pipeline (medallion-aligned):**
+```
+[registry of official sources]  ← maintained config, not "the internet"
+        │  Regulatory Sync (Durable, monthly), fetch egress via the controlled path
+        ▼
+BRONZE (ADLS)   raw official artifact, immutable, + {source_url, official_date, fetch_ts, sha256}
+        │
+   [change detection by sha256 vs. last run → only changed docs proceed]
+        ▼
+SILVER          normalized + parsed + chunked, structured citation per chunk
+        ▼
+   ⏸ review gate: corpus diff surfaced in the SMX app for R.E. sign-off before it goes live
+        ▼
+GOLD            embed (text-embedding-3-large) → push to Azure AI Search (private, push-based)
+                each chunk carries source + official_date + sync_date
+```
+
+**Networking.** Outbound fetch uses the **controlled egress** (the Search Proxy Function / Functions-subnet
+NAT) — the Sync never opens a new public egress. The push to AI Search and the Bronze writes go over the
+**private endpoints** using the workload UAMI (keyless), reusing the Plan 2 RBAC.
+
+**Review gate — in the app, not a connector.** Consistent with every other SMX gate (operator-signed records,
+never voice- or email-committed), a corpus update is not promoted to the live index until its **diff** ("3 SVHC
+entries changed, 1 added") is surfaced in the SMX app and the R.E.'s determination is recorded by the operator.
+This is why Durable Functions (external-event wait) fits and a Logic App approval connector does not.
+
+**Boundary.** The Foundry `gpt-4o` reasoning model is **not** part of the Sync's ground truth — the Sync only
+fetches/structures/embeds authoritative documents; the model reasons over retrieved chunks at query time.
+Implementation lands in **Plan 3** (Functions), on top of the AI Search + embedding deployment from Plan 2.
