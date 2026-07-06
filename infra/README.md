@@ -4,9 +4,10 @@ Bicep + scripts that deploy SMX into a fresh, empty Azure subscription.
 Region default: **Sweden Central** (`swedencentral`). See the design spec at
 `../docs/superpowers/specs/2026-07-06-azure-infra-deployment-design.md`.
 
-This is delivered in layers: **Plan 1 — Foundation & Networking** (this layer:
-hub + spoke VNets, private DNS zones, Log Analytics/App Insights), then Data/AI,
-then Compute/Gateway.
+This is delivered in layers: **Plan 1 — Foundation & Networking** (hub + spoke
+VNets, private DNS zones, Log Analytics/App Insights) and **Plan 2 — Data, AI &
+Private Endpoints** (ADLS Gen2, Cosmos, AI Search, AI Foundry, Key Vault, managed
+identity + RBAC, private endpoints), then Compute/Gateway.
 
 ## Prerequisites
 
@@ -28,6 +29,26 @@ then Compute/Gateway.
 
 `prod` is deployed the same way (`./scripts/deploy.sh prod`); the hub is shared
 and created once.
+
+The `gpt-4o` model deployment is **off by default** (`deployGpt4o=false`) because
+dev/MPN subscriptions often have zero Standard `gpt-4o` quota. `text-embedding-3-large`
+deploys at minimal capacity. Once you have `gpt-4o` quota, enable it:
+
+```bash
+./scripts/deploy.sh dev --parameters deployGpt4o=true    # (or edit env/dev.bicepparam)
+```
+
+## Harden (lock down to private endpoints)
+
+After a deploy, switch all data/AI services to private-endpoint-only access:
+
+```bash
+./scripts/harden.sh dev      # disables public network access + local/key auth
+```
+
+Deploy provisions services with public access + the deployer IP allowlisted (so
+provisioning works); `harden.sh` then removes public access. Re-running
+`deploy.sh` re-opens public access, so re-run `harden.sh` after any redeploy.
 
 ## Tear down
 
