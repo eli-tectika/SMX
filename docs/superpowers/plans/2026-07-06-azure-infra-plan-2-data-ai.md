@@ -347,12 +347,8 @@ resource search 'Microsoft.Search/searchServices@2024-06-01-preview' = {
     networkRuleSet: {
       ipRules: ipRules
     }
-    disableLocalAuth: false
-    authOptions: {
-      aadOrApiKey: {
-        aadAuthFailureMode: 'http403'
-      }
-    }
+    // Keyless (Entra-only): no authOptions, local auth off. RBAC grants access.
+    disableLocalAuth: true
     semanticSearch: 'standard'
   }
 }
@@ -1020,9 +1016,10 @@ update_ids "$(az storage account list -g "$ENV_RG" --query '[].id' -o tsv)" \
 update_ids "$(az cosmosdb list -g "$ENV_RG" --query '[].id' -o tsv)" \
   --set properties.publicNetworkAccess=Disabled properties.disableLocalAuth=true
 
-# Azure AI Search: no public access, Entra-only (note: lowercase value for this RP)
+# Azure AI Search: no public access (lowercase value for this RP). Local auth is
+# already disabled at creation in ai.bicep; it can't be toggled here while authOptions is set.
 update_ids "$(az search service list -g "$ENV_RG" --query '[].id' -o tsv)" \
-  --set properties.publicNetworkAccess=disabled properties.disableLocalAuth=true
+  --set properties.publicNetworkAccess=disabled
 
 # AI Foundry (Cognitive Services): no public access, Entra-only
 update_ids "$(az cognitiveservices account list -g "$ENV_RG" --query '[].id' -o tsv)" \
