@@ -13,9 +13,18 @@ param location string = 'swedencentral'
 @description('Short region token used in resource names.')
 param regionShort string = 'swc'
 
-@description('Public IP of the deploying machine, allowlisted during deployment. Reserved for Plan 2 (data/AI firewalls); the deploy/preflight scripts already pass it.')
-#disable-next-line no-unused-params
+@description('Public IP of the deploying machine, allowlisted on service firewalls during deployment.')
 param deployerIpAddress string = ''
+
+@allowed(['Enabled', 'Disabled'])
+@description('Public network access for data/AI services at deploy time. harden.sh flips these to Disabled post-deploy.')
+param publicNetworkAccess string = 'Enabled'
+
+@description('Cosmos SQL database name.')
+param cosmosDatabaseName string = 'smx'
+
+@description('Deploy the gpt-4o chat model (requires Standard gpt-4o quota; OFF by default).')
+param deployGpt4o bool = false
 
 @description('Extra tags merged onto every resource.')
 param tags object = {}
@@ -32,6 +41,20 @@ var spokeCidr = env == 'prod' ? '10.2.0.0/20' : '10.1.0.0/20'
 var acaSubnetCidr = env == 'prod' ? '10.2.0.0/23' : '10.1.0.0/23'
 var functionsSubnetCidr = env == 'prod' ? '10.2.2.0/24' : '10.1.2.0/24'
 var peSubnetCidr = env == 'prod' ? '10.2.3.0/24' : '10.1.3.0/24'
+
+var searchSku = env == 'prod' ? 'standard' : 'basic'
+
+// Private DNS zones live in the hub RG (created in Plan 1). At subscription scope,
+// resourceId needs the 4-arg form (subscriptionId, resourceGroup, type, name).
+var subId = subscription().subscriptionId
+var dnsZoneBlob = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZones', 'privatelink.blob.core.windows.net')
+var dnsZoneDfs = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZones', 'privatelink.dfs.core.windows.net')
+var dnsZoneCosmos = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZones', 'privatelink.documents.azure.com')
+var dnsZoneSearch = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZones', 'privatelink.search.windows.net')
+var dnsZoneOpenai = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZones', 'privatelink.openai.azure.com')
+var dnsZoneCognitive = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZones', 'privatelink.cognitiveservices.azure.com')
+var dnsZoneServicesAi = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZones', 'privatelink.services.ai.azure.com')
+var dnsZoneVault = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZones', 'privatelink.vaultcore.azure.net')
 
 resource hubRg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: hubRgName
@@ -93,8 +116,90 @@ module dnsLinks 'modules/dnsLinks.bicep' = {
   }
 }
 
+// ---------------- Plan 2: security, data, AI, private endpoints ----------------
+
+module security 'modules/security.bicep' = {
+  name: 'security-${env}'
+  scope: envRg
+  params: {
+    namePrefix: namePrefix
+    env: env
+    regionShort: regionShort
+    location: location
+    tags: envTags
+    uniqueSuffix: uniqueSuffix
+    deployerIpAddress: deployerIpAddress
+    publicNetworkAccess: publicNetworkAccess
+  }
+}
+
+module data 'modules/data.bicep' = {
+  name: 'data-${env}'
+  scope: envRg
+  params: {
+    namePrefix: namePrefix
+    env: env
+    location: location
+    tags: envTags
+    uniqueSuffix: uniqueSuffix
+    deployerIpAddress: deployerIpAddress
+    publicNetworkAccess: publicNetworkAccess
+    uamiPrincipalId: security.outputs.uamiPrincipalId
+    cosmosDatabaseName: cosmosDatabaseName
+  }
+}
+
+module ai 'modules/ai.bicep' = {
+  name: 'ai-${env}'
+  scope: envRg
+  params: {
+    namePrefix: namePrefix
+    env: env
+    location: location
+    tags: envTags
+    uniqueSuffix: uniqueSuffix
+    deployerIpAddress: deployerIpAddress
+    publicNetworkAccess: publicNetworkAccess
+    uamiPrincipalId: security.outputs.uamiPrincipalId
+    searchSku: searchSku
+    deployGpt4o: deployGpt4o
+  }
+}
+
+module privateEndpoints 'modules/privateendpoints.bicep' = {
+  name: 'pe-${env}'
+  scope: envRg
+  params: {
+    namePrefix: namePrefix
+    env: env
+    regionShort: regionShort
+    location: location
+    tags: envTags
+    peSubnetId: spoke.outputs.peSubnetId
+    storageId: data.outputs.storageId
+    cosmosId: data.outputs.cosmosId
+    searchId: ai.outputs.searchId
+    foundryId: ai.outputs.foundryId
+    keyVaultId: security.outputs.keyVaultId
+    dnsZoneBlob: dnsZoneBlob
+    dnsZoneDfs: dnsZoneDfs
+    dnsZoneCosmos: dnsZoneCosmos
+    dnsZoneSearch: dnsZoneSearch
+    dnsZoneOpenai: dnsZoneOpenai
+    dnsZoneCognitive: dnsZoneCognitive
+    dnsZoneServicesAi: dnsZoneServicesAi
+    dnsZoneVault: dnsZoneVault
+  }
+}
+
 output hubResourceGroup string = hubRg.name
 output envResourceGroup string = envRg.name
 output uniqueSuffix string = uniqueSuffix
 output hubVnetId string = hub.outputs.vnetId
 output spokeVnetId string = spoke.outputs.vnetId
+output uamiClientId string = security.outputs.uamiClientId
+output keyVaultName string = security.outputs.keyVaultName
+output storageName string = data.outputs.storageName
+output cosmosName string = data.outputs.cosmosName
+output searchName string = ai.outputs.searchName
+output foundryEndpoint string = ai.outputs.foundryEndpoint
