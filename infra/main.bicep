@@ -26,6 +26,9 @@ param cosmosDatabaseName string = 'smx'
 @description('Deploy the gpt-4o chat model (requires Standard gpt-4o quota; OFF by default).')
 param deployGpt4o bool = false
 
+@description('Entra app-registration client id for Function App Easy Auth. Empty = auth OFF (first deploy); configure-auth.sh fills it in.')
+param authClientId string = ''
+
 @description('Extra tags merged onto every resource.')
 param tags object = {}
 
@@ -250,6 +253,12 @@ module functions 'modules/functions.bicep' = {
     appInsightsConnectionString: hub.outputs.appInsightsConnectionString
     publicNetworkAccess: publicNetworkAccess
     deployerIpAddress: deployerIpAddress
+    cosmosAccountEndpoint: 'https://${data.outputs.cosmosName}.documents.azure.com:443/'
+    cosmosDatabaseName: cosmosDatabaseName
+    bronzeAccountName: data.outputs.storageName
+    searchEndpoint: 'https://${ai.outputs.searchName}.search.windows.net'
+    foundryEndpoint: ai.outputs.foundryEndpoint
+    authClientId: authClientId
   }
 }
 
