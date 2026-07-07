@@ -23,6 +23,9 @@ param peSubnetCidr string
 @description('Resource ID of the hub VNet to peer with.')
 param hubVnetId string
 
+@description('Functions subnet delegation (Microsoft.Web/serverFarms = Elastic Premium; Microsoft.App/environments = Flex Consumption).')
+param functionsDelegation string = 'Microsoft.Web/serverFarms'
+
 resource nsgAca 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: 'nsg-${namePrefix}-${env}-aca-${regionShort}'
   location: location
@@ -50,6 +53,37 @@ resource nsgPe 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   }
 }
 
+// Controlled egress for the Functions subnet (the single outbound path for the
+// Regulatory Sync's official-source fetches; see design spec §15).
+resource natPip 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
+  name: 'pip-${namePrefix}-${env}-nat-${regionShort}'
+  location: location
+  tags: tags
+  sku: {
+    name: 'Standard'
+  }
+  properties: {
+    publicIPAllocationMethod: 'Static'
+  }
+}
+
+resource natGateway 'Microsoft.Network/natGateways@2024-05-01' = {
+  name: 'nat-${namePrefix}-${env}-${regionShort}'
+  location: location
+  tags: tags
+  sku: {
+    name: 'Standard'
+  }
+  properties: {
+    publicIpAddresses: [
+      {
+        id: natPip.id
+      }
+    ]
+    idleTimeoutInMinutes: 4
+  }
+}
+
 resource spokeVnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   name: 'vnet-${namePrefix}-${env}-${regionShort}'
   location: location
@@ -66,18 +100,34 @@ resource spokeVnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           networkSecurityGroup: {
             id: nsgAca.id
           }
+          delegations: [
+            {
+              name: 'aca'
+              properties: {
+                serviceName: 'Microsoft.App/environments'
+              }
+            }
+          ]
         }
       }
       {
-        // Subnet delegation is intentionally deferred to Plan 2, when the Functions
-        // hosting plan is chosen: Flex Consumption needs 'Microsoft.App/environments',
-        // Elastic Premium needs 'Microsoft.Web/serverFarms'.
         name: 'snet-functions'
         properties: {
           addressPrefix: functionsSubnetCidr
           networkSecurityGroup: {
             id: nsgFunctions.id
           }
+          natGateway: {
+            id: natGateway.id
+          }
+          delegations: [
+            {
+              name: 'functions'
+              properties: {
+                serviceName: functionsDelegation
+              }
+            }
+          ]
         }
       }
       {

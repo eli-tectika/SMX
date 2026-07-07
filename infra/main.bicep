@@ -192,6 +192,69 @@ module privateEndpoints 'modules/privateendpoints.bicep' = {
   }
 }
 
+// ---------------- Plan 3: compute, functions, gateway ----------------
+
+module acr 'modules/acr.bicep' = {
+  name: 'acr-${env}'
+  scope: envRg
+  params: {
+    namePrefix: namePrefix
+    env: env
+    location: location
+    tags: envTags
+    uniqueSuffix: uniqueSuffix
+    acrSku: env == 'prod' ? 'Premium' : 'Standard'
+    uamiPrincipalId: security.outputs.uamiPrincipalId
+  }
+}
+
+module compute 'modules/compute.bicep' = {
+  name: 'compute-${env}'
+  scope: envRg
+  params: {
+    namePrefix: namePrefix
+    env: env
+    regionShort: regionShort
+    location: location
+    tags: envTags
+    acaSubnetId: spoke.outputs.acaSubnetId
+    uamiId: security.outputs.uamiId
+    includeDedicatedProfile: env == 'prod'
+  }
+}
+
+module functions 'modules/functions.bicep' = {
+  name: 'functions-${env}'
+  scope: envRg
+  params: {
+    namePrefix: namePrefix
+    env: env
+    regionShort: regionShort
+    location: location
+    tags: envTags
+    uniqueSuffix: uniqueSuffix
+    functionsSubnetId: spoke.outputs.functionsSubnetId
+    workloadUamiId: security.outputs.uamiId
+    appInsightsConnectionString: hub.outputs.appInsightsConnectionString
+  }
+}
+
+module gateway 'modules/gateway.bicep' = {
+  name: 'gateway-${env}'
+  scope: envRg
+  params: {
+    namePrefix: namePrefix
+    env: env
+    regionShort: regionShort
+    location: location
+    tags: envTags
+    agwSubnetId: '${hub.outputs.vnetId}/subnets/snet-agw-${env}'
+    acaStaticIp: compute.outputs.envStaticIp
+    frontendFqdn: compute.outputs.frontendFqdn
+    gatewaySku: env == 'prod' ? 'WAF_v2' : 'Standard_v2'
+  }
+}
+
 output hubResourceGroup string = hubRg.name
 output envResourceGroup string = envRg.name
 output uniqueSuffix string = uniqueSuffix
@@ -203,3 +266,8 @@ output storageName string = data.outputs.storageName
 output cosmosName string = data.outputs.cosmosName
 output searchName string = ai.outputs.searchName
 output foundryEndpoint string = ai.outputs.foundryEndpoint
+output acrLoginServer string = acr.outputs.acrLoginServer
+output frontendFqdn string = compute.outputs.frontendFqdn
+output gatewayPublicIp string = gateway.outputs.gatewayPublicIp
+output searchProxyAppName string = functions.outputs.searchProxyAppName
+output regSyncAppName string = functions.outputs.regSyncAppName

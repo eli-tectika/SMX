@@ -27,7 +27,7 @@ Plans 1–2 were proven against live Azure (`az deployment … what-if`/`validat
 | A | Placeholder images | Public MCR images (`mcr.microsoft.com/k8se/quickstart:latest` for ACA; empty Function App). No ACR push needed to stand up; `swap-images.sh` swaps real images later. |
 | B | ACA environment | **Workload-profiles**, **internal** ingress (VNet-integrated). Dev = `Consumption` profile; Prod adds a `D4` dedicated profile. Requires `snet-aca` delegated to `Microsoft.App/environments`. |
 | C | ACA apps | Three apps: `frontend` (external-facing via gateway), `backend` (internal), `orchestrator` (internal). Each uses the workload **user-assigned identity** for ACR pull + data/AI access (keyless, reusing Plan 2 RBAC). |
-| D | Functions host | **One Function App** hosting the **Search Proxy** (HTTP, controlled egress) + **Regulatory Sync** (Durable, monthly timer), per Decision 8/§15. Dedicated runtime storage account (also the Durable task-hub backend). Dev = **Flex Consumption**; Prod = **Elastic Premium (EP1)** if an always-warm proxy is wanted. `snet-functions` delegated per plan type. |
+| D | Functions host | **Two Function Apps with separate managed identities (security separation).** (1) **Search Proxy** (HTTP, public egress, higher attack surface) → a **dedicated identity with zero data-plane RBAC**; (2) **Regulatory Sync** (Durable, monthly timer) → the **workload identity** carrying corpus-write RBAC (Storage Blob Data Contributor, Search Index Data Contributor, Foundry OpenAI User). Splitting them means a compromise of the internet-facing proxy **cannot** touch the regulatory corpus. Each app has its own runtime storage; they share one plan. Scaffolded on **Elastic Premium (EP1)**; **Flex Consumption** is the deploy-time dev option. `snet-functions` delegation matches the plan. |
 | E | Controlled egress | A **NAT Gateway** + static public IP on `snet-functions` — the single controlled outbound path for the Sync's official-source fetches (§15). This is the only public *egress*; App Gateway is the only public *ingress*. |
 | F | App Gateway | v2, public IP, HTTP:80 listener (HTTPS/cert deferred until a domain exists), backend = ACA env **internal static IP** with the frontend app's FQDN as host header + health probe. Dev = `Standard_v2`; Prod = `WAF_v2` (prevention). |
 | G | ACA env default-domain DNS | Add private DNS zone `privatelink.azurecontainerapps.io` (or the env default domain) linked to the gateway's VNet so App Gateway resolves the internal app FQDN. |
@@ -82,11 +82,10 @@ modules/
 ### `functions.bicep`  *(richest — deploy-validate carefully)*
 - **Runtime storage**: `Microsoft.Storage/storageAccounts` `stfn<prefix><env><suffix>` (also the Durable task-hub backend), private, keyless where possible.
 - **Plan**: `Microsoft.Web/serverfarms` — Flex Consumption (`sku: { tier:'FlexConsumption', name:'FC1' }`) for dev, or Elastic Premium (`EP1`) for prod.
-- **Function App**: `Microsoft.Web/sites@2023-12-01` kind `functionapp,linux`:
-  - `identity: UserAssigned` (the workload UAMI — reuses Plan 2 RBAC: Storage Blob Data Contributor for Bronze, Search Index Data Contributor for the Gold push).
-  - VNet integration on `snet-functions`; `WEBSITE_CONTENTOVERVNET`/route-all as needed.
-  - App Insights connection (from observability).
-  - Hosts both functions (deployed later as code): `search-proxy` (HTTP) + `regulatory-sync` (Durable + monthly timer). Infra creates the **shell**; code is published via `swap-images.sh`/func publish.
+- **Two Function Apps** (`Microsoft.Web/sites@2023-12-01`, `functionapp,linux`), VNet-integrated on `snet-functions`, App Insights wired — **separate identities for security isolation**:
+  - **Search Proxy** (`func-…-searchproxy-…`) → a **dedicated minimal identity** (`id-…-searchproxy-…`) with **no** data-plane RBAC (public egress, least privilege).
+  - **Regulatory Sync** (`func-…-regsync-…`, Durable + monthly timer) → the **workload UAMI** carrying corpus-write RBAC (Bronze write, Gold push, embeddings).
+  - Each app has its **own** runtime storage; one shared EP1 plan. Infra creates the **shells**; function code is published later.
 - **Controlled egress**: `Microsoft.Network/natGateways` + `Microsoft.Network/publicIPAddresses`, associated to `snet-functions` — the single outbound path for §15 official-source fetches.
 - Outputs: `functionAppName`, `functionAppId`, `natPublicIp`.
 

@@ -15,6 +15,9 @@ param functionsSubnetCidr string = '10.0.1.0/26'
 param peSubnetCidr string = '10.0.1.64/26'
 param acaSubnetCidr string = '10.0.2.0/23'
 
+@description('Functions subnet delegation (Microsoft.Web/serverFarms = Elastic Premium; Microsoft.App/environments = Flex Consumption).')
+param functionsDelegation string = 'Microsoft.Web/serverFarms'
+
 var privateDnsZoneNames = [
   'privatelink.blob.core.windows.net' // 0
   'privatelink.dfs.core.windows.net' // 1
@@ -55,6 +58,37 @@ resource nsgPe 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   }
 }
 
+// Controlled egress for the Functions subnet (single outbound path for the
+// Regulatory Sync's official-source fetches; see design spec §15).
+resource natPip 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
+  name: 'pip-${namePrefix}-${env}-nat-${regionShort}'
+  location: location
+  tags: tags
+  sku: {
+    name: 'Standard'
+  }
+  properties: {
+    publicIPAllocationMethod: 'Static'
+  }
+}
+
+resource natGateway 'Microsoft.Network/natGateways@2024-05-01' = {
+  name: 'nat-${namePrefix}-${env}-${regionShort}'
+  location: location
+  tags: tags
+  sku: {
+    name: 'Standard'
+  }
+  properties: {
+    publicIpAddresses: [
+      {
+        id: natPip.id
+      }
+    ]
+    idleTimeoutInMinutes: 4
+  }
+}
+
 resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   name: 'vnet-${namePrefix}-${env}-${regionShort}'
   location: location
@@ -77,16 +111,34 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           networkSecurityGroup: {
             id: nsgAca.id
           }
+          delegations: [
+            {
+              name: 'aca'
+              properties: {
+                serviceName: 'Microsoft.App/environments'
+              }
+            }
+          ]
         }
       }
       {
-        // Delegation deferred to the compute stage (Flex Consumption vs Elastic Premium).
         name: 'snet-functions'
         properties: {
           addressPrefix: functionsSubnetCidr
           networkSecurityGroup: {
             id: nsgFunctions.id
           }
+          natGateway: {
+            id: natGateway.id
+          }
+          delegations: [
+            {
+              name: 'functions'
+              properties: {
+                serviceName: functionsDelegation
+              }
+            }
+          ]
         }
       }
       {
