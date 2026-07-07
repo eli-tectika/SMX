@@ -40,6 +40,25 @@ param instanceMemoryMB int = 2048
 @description('Max scale-out instances per app.')
 param maxInstanceCount int = 40
 
+@description('Corpus endpoints for the SDS subsystem (fed from data/ai module outputs).')
+param cosmosAccountEndpoint string = ''
+param cosmosDatabaseName string = 'smx'
+param bronzeAccountName string = ''
+param searchEndpoint string = ''
+param foundryEndpoint string = ''
+param embeddingDeployment string = 'text-embedding-3-large'
+
+@description('SDS sweep knobs.')
+param sdsSweepCron string = '0 0 3 * * 1' // weekly, Monday 03:00 UTC
+param sdsRetryCap int = 3
+param sdsFetchTimeoutSeconds int = 30
+param sdsRevisionRecheckDays int = 90
+param sdsDryRun bool = false
+param sdsSearchIndex string = 'sds-index'
+
+@description('Entra app-registration client id for Easy Auth. Empty = auth stays OFF (first deploy).')
+param authClientId string = ''
+
 // --- Security separation: the public-egress Search Proxy and the corpus-writing
 // Regulatory Sync are SEPARATE apps with SEPARATE identities, so a compromise of the
 // exposed proxy cannot touch the regulatory corpus. Both reach their runtime storage
@@ -260,8 +279,52 @@ resource regSyncApp 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'AzureWebJobsStorage__accountName', value: rsStorage.name }
         { name: 'AzureWebJobsStorage__credential', value: 'managedidentity' }
         { name: 'AzureWebJobsStorage__clientId', value: workloadUamiClientId }
+        { name: 'COSMOS_ACCOUNT_ENDPOINT', value: cosmosAccountEndpoint }
+        { name: 'COSMOS_DATABASE', value: cosmosDatabaseName }
+        { name: 'SDS_MASTER_CONTAINER', value: 'sds-master-list' }
+        { name: 'SDS_REGISTRY_CONTAINER', value: 'sds-registry' }
+        { name: 'BRONZE_ACCOUNT_NAME', value: bronzeAccountName }
+        { name: 'BRONZE_FILESYSTEM', value: 'bronze' }
+        { name: 'SEARCH_ENDPOINT', value: searchEndpoint }
+        { name: 'SDS_SEARCH_INDEX', value: sdsSearchIndex }
+        { name: 'FOUNDRY_ENDPOINT', value: foundryEndpoint }
+        { name: 'EMBEDDING_DEPLOYMENT', value: embeddingDeployment }
+        { name: 'WORKLOAD_UAMI_CLIENT_ID', value: workloadUamiClientId }
+        { name: 'SDS_SWEEP_CRON', value: sdsSweepCron }
+        { name: 'SDS_RETRY_CAP', value: string(sdsRetryCap) }
+        { name: 'SDS_FETCH_TIMEOUT_SECONDS', value: string(sdsFetchTimeoutSeconds) }
+        { name: 'SDS_REVISION_RECHECK_DAYS', value: string(sdsRevisionRecheckDays) }
+        { name: 'SDS_DRY_RUN', value: string(sdsDryRun) }
+        { name: 'SDS_ALLOWLIST_PATH', value: 'Sds/Config/suppliers.allowlist.json' }
       ]
     }
+  }
+}
+
+// Entra ID (App Service Auth v2). Gated on authClientId so the first deploy (empty) succeeds;
+// configure-auth.sh creates the app registration then redeploys with its clientId to enforce auth.
+resource regSyncAuth 'Microsoft.Web/sites/config@2024-04-01' = if (!empty(authClientId)) {
+  parent: regSyncApp
+  name: 'authsettingsV2'
+  properties: {
+    platform: { enabled: true }
+    globalValidation: {
+      requireAuthentication: true
+      unauthenticatedClientAction: 'Return401'
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        enabled: true
+        registration: {
+          openIdIssuer: 'https://login.microsoftonline.com/${subscription().tenantId}/v2.0'
+          clientId: authClientId
+        }
+        validation: {
+          allowedAudiences: [ 'api://${authClientId}' ]
+        }
+      }
+    }
+    login: { tokenStore: { enabled: false } }
   }
 }
 
