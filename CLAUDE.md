@@ -98,3 +98,16 @@ containing **Bicep** templates and scripts that deploy the **entire** system int
 subscription**. Treat infra as a first-class, always-current part of the codebase — when the application or
 its Azure footprint changes, update `infra/` in the same change. This folder does not exist yet; creating it
 is expected work.
+
+## Application code
+
+The first application code now lives under `src/` (this is no longer a pure-infra repo).
+
+- **SDS Library functions** (`src/Smx.Functions`, .NET 8 isolated worker; deployed into the `regsync`
+  Function App) — a project-independent SDS gathering/indexing subsystem. Design + plan:
+  [`docs/superpowers/specs/2026-07-07-sds-library-subsystem-design.md`](docs/superpowers/specs/2026-07-07-sds-library-subsystem-design.md),
+  [`docs/superpowers/plans/2026-07-07-sds-library-subsystem.md`](docs/superpowers/plans/2026-07-07-sds-library-subsystem.md).
+  - Build: `dotnet build src/Smx.Functions.sln`
+  - Test: `dotnet test src/Smx.Functions.sln`  (the test project sets `RollForward=Major` so it runs on a
+    newer runtime when the net8.0 runtime is absent)
+  - Publish to Azure: `infra/scripts/publish-functions.sh <env>`, then `infra/scripts/configure-auth.sh <env>`.

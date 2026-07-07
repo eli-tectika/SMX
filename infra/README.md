@@ -72,3 +72,28 @@ NAME_PREFIX=acme REGION_SHORT=weu LOCATION=westeurope ./scripts/deploy.sh dev
 
 Per-environment values (tags, cost center) live in `env/dev.bicepparam` and
 `env/prod.bicepparam`.
+
+## SDS Library subsystem (functions code)
+
+The SDS pre-seed library runs as .NET 8 isolated functions inside the **regsync** Function App
+(`src/Smx.Functions`, folded in per the SDS design spec). Provision → ship code → turn on auth → lock down:
+
+```bash
+./scripts/deploy.sh dev            # provisions the app shell + SDS containers/index settings
+./scripts/publish-functions.sh dev # builds + zip-deploys the SDS function code
+./scripts/configure-auth.sh dev    # creates the Entra app registration + enforces Easy Auth
+./scripts/harden.sh dev            # private-endpoint-only
+```
+
+**Leak posture (enforced in code, not just topology):**
+- **Single egress path** — one `IEgressClient` (NAT egress + curated allowlist) is the only outbound
+  HTTP, injected *only* into the timer sweep (`SdsSweep`).
+- **No on-demand fetch** — the retrieval/agent/self-heal paths cannot fetch. A miss enqueues the
+  (element, form) via `AppendToMasterList` and parks until the next scheduled sweep; operator upload is the
+  manual fallback. There is deliberately no "fetch now" tool.
+- **Scheduled-bulk-only** — the sweep processes the whole due set on wall-clock cadence, so no request
+  maps to a project.
+
+**Configure cadence + allowlist:** the `SDS_SWEEP_CRON` app setting; edit the ordered
+`src/Smx.Functions/Sds/Config/suppliers.allowlist.json` (git-reviewed). Run the sweep without real egress
+by setting `SDS_DRY_RUN=true`.
