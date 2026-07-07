@@ -65,6 +65,17 @@ resource storageRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   }
 }
 
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+  parent: storage
+  name: 'default'
+}
+
+// Bronze medallion filesystem — raw SDS PDFs land under the sds/<cas>/<supplier>/<rev>.pdf prefix.
+resource bronzeContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobService
+  name: 'bronze'
+}
+
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
   name: cosmosName
   location: location
@@ -114,7 +125,34 @@ resource cosmosDataRole 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignment
   }
 }
 
+// SDS master list — one row per (element, form); idempotent upsert keyed on id.
+resource sdsMasterList 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  parent: cosmosDb
+  name: 'sds-master-list'
+  properties: {
+    resource: {
+      id: 'sds-master-list'
+      partitionKey: { paths: [ '/element' ], kind: 'Hash' }
+    }
+  }
+}
+
+// SDS registry — one row per gathered SDS; partitioned by CAS.
+resource sdsRegistry 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  parent: cosmosDb
+  name: 'sds-registry'
+  properties: {
+    resource: {
+      id: 'sds-registry'
+      partitionKey: { paths: [ '/cas' ], kind: 'Hash' }
+    }
+  }
+}
+
 output storageId string = storage.id
 output storageName string = storage.name
 output cosmosId string = cosmos.id
 output cosmosName string = cosmos.name
+output bronzeFilesystem string = bronzeContainer.name
+output sdsMasterListContainer string = sdsMasterList.name
+output sdsRegistryContainer string = sdsRegistry.name
