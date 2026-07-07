@@ -243,6 +243,11 @@ resource regSyncApp 'Microsoft.Web/sites@2024-04-01' = {
   location: location
   tags: tags
   kind: 'functionapp,linux'
+  // Serialize VNet integration: two apps integrating into the same subnet
+  // concurrently race on the ServiceAssociationLink lease. Wait for the proxy app.
+  dependsOn: [
+    searchProxyApp
+  ]
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: { '${workloadUamiId}': {} }
