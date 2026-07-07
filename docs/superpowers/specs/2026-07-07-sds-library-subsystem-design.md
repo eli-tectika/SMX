@@ -49,6 +49,8 @@ is the design driver — every deviation must be defensible).
 | D6 | Sweep host | **Plain `TimerTrigger`** (not Durable). | Brief §4 says "timer-triggered." The saturating due-set is small; Durable is available in the app (reg-sync uses it) if fan-out is ever needed. |
 | D7 | Cosmos partition keys | `sds-master-list` → **`/element`**; `sds-registry` → **`/cas`**. | See §4. Both keys are always-present and bound query cost for the deterministic ops. |
 | D8 | Supplier allowlist | A **single git-versioned JSON file** in the app; path overridable via app setting. | Brief §5 wants a "single editable config artifact." Git-versioned + reviewed-by-PR fits a correctness/security-critical allowlist better than a mutable setting. |
+| D9 | HTTP auth | **Entra ID (App Service Authentication "Easy Auth" v2) required** on all HTTP triggers: `requireAuthentication=true`, `unauthenticatedClientAction=Return401`, AAD identity provider. | Replaces the earlier network-isolation-only option (per operator requirement). The ACA orchestrator calls with its managed-identity token (audience = the app's Entra registration); the platform validates the token before function code runs, and functions may additionally authorize on the caller's app/oid claim. Entra **app registrations are not ARM resources** (same class of limit as the Search index), so the registration is created by a script step and its `clientId` threaded into the Bicep `authsettingsV2`. |
+| D10 | Source-resolution model | **Per-supplier resolution *strategies*** behind one `ISourceStrategy` interface — not a single CAS URL template. | Research (Appendix A) shows manufacturers key SDS by **catalog/product number, not CAS**, and expose no public API; a flat `{cas}` template only works for some aggregators/resellers. We build the strategy abstraction + one or two concrete strategies now; supplier-specific strategies are added later as needed. |
 
 ---
 
@@ -184,9 +186,21 @@ A single reusable path so both entry points behave identically:
 5. **Ensure index** exists (idempotent) and **push** chunks.
 6. **Upsert** the `sds-registry` pointer with the chunk ids and `indexed: true`.
 
-**Source resolver (`SourceResolver`):** reads the ordered allowlist (§8). Each entry is
-`{ supplier, domain, priority, urlTemplate }`; given (element, form, CAS) it substitutes placeholders and
-yields candidate URLs in fixed priority order. The sweep takes the first that fetches-and-validates.
+**Source resolver (`SourceResolver`):** reads the ordered allowlist (§8) and, for each entry, invokes that
+supplier's **`ISourceStrategy`** to produce candidate SDS URL(s) for the given (element, form, CAS). The
+sweep tries entries in fixed priority order and takes the first that fetches-and-validates. Two strategy
+shapes exist (see Appendix A for why one template is not enough):
+
+- **`CasTemplateStrategy`** — a direct `{cas}`-substituted URL. Works only for sources that key SDS by CAS
+  (aggregators/some vendors).
+- **`ProductLookupStrategy`** — a deterministic **two-step** resolve: query the supplier's search endpoint
+  by CAS to obtain the brand + catalog/product number, then build the SDS PDF URL from a per-supplier
+  template (e.g. Sigma-Aldrich `…/sds/{brand}/{productNumber}`). This is what the primary manufacturers
+  require.
+
+We ship the `ISourceStrategy` abstraction + at least one concrete strategy now; adding a specific
+supplier later is a new strategy + an allowlist entry, no pipeline change. Every strategy is deterministic
+(no freeform search) and confined to allowlisted domains.
 
 ---
 
@@ -209,18 +223,29 @@ sweep cover it + operator upload as fallback" is the *entire* self-heal.
 ## 8. Supplier allowlist (single config artifact)
 
 `src/Smx.Functions/Sds/Config/suppliers.allowlist.json` — an **ordered** array, git-versioned and
-reviewed by PR. Path overridable via `SDS_ALLOWLIST_PATH`.
+reviewed by PR. Path overridable via `SDS_ALLOWLIST_PATH`. Each entry names its resolution **strategy**
+(§6) and that strategy's parameters:
 
 ```jsonc
 [
-  { "supplier": "Sigma-Aldrich", "domain": "sigmaaldrich.com", "priority": 10, "urlTemplate": "https://www.sigmaaldrich.com/.../sds?cas={cas}" },
-  { "supplier": "Strem",         "domain": "strem.com",        "priority": 20, "urlTemplate": "https://www.strem.com/.../{cas}.pdf" }
-  // specialty vendors follow, higher priority number = lower precedence
+  {
+    "supplier": "Sigma-Aldrich", "domain": "sigmaaldrich.com", "priority": 10,
+    "strategy": "productLookup",                 // CAS -> (brand, productNumber) -> PDF
+    "sdsUrlTemplate": "https://www.sigmaaldrich.com/US/en/sds/{brand}/{productNumber}"
+  },
+  {
+    "supplier": "ChemBlink", "domain": "chemblink.com", "priority": 90,
+    "strategy": "casTemplate",                   // reseller/aggregator: keyed directly by CAS
+    "sdsUrlTemplate": "https://www.chemblink.com/MSDS/MSDSFiles/{cas}.pdf"
+  }
+  // higher priority number = lower precedence; manufacturers first, aggregators last
 ]
 ```
 
 The `domain` list is also the validator's source-domain allowlist. Manufacturer entries carry lower
-priority numbers (tried first) than resellers.
+priority numbers (tried first) than resellers/aggregators (the validator prefers manufacturer sources).
+The exact per-supplier endpoint details are content to refine over time (Appendix A) — the schema is
+strategy-driven so a new supplier is a data edit + (if a new shape) one strategy class.
 
 ---
 
@@ -243,9 +268,13 @@ Thin state ops the agent's tools call. **None fetch.**
   content, or **not-present**.
 - `GetSdsStatus(element, form | cas)` — is it `pending` / `fetched` / `awaiting_operator`?
 
-HTTP auth: `authLevel: Anonymous` protected by **network isolation** (private endpoint only; public
-access disabled by `harden.sh`), reachable only from the VNet (the ACA orchestrator). Entra Easy Auth is
-an optional future hardening.
+HTTP auth (all four HTTP triggers + operator upload): **Entra ID required** via App Service Authentication
+("Easy Auth" v2) on the Function App — `requireAuthentication=true`, `unauthenticatedClientAction=Return401`,
+AAD identity provider. The platform validates the bearer token *before* function code runs; functions set
+`authLevel: Anonymous` (the Functions host key is bypassed — Easy Auth is the gate) and may additionally
+authorize on the validated caller claim (the ACA orchestrator's app/oid). This is layered on top of the
+network isolation (private endpoint, public access disabled by `harden.sh`), not instead of it. The
+`SdsSweep` timer trigger is not HTTP and is unaffected.
 
 Deciding *which* elements are relevant to a project lives in the agent layer and is **out of scope**.
 
@@ -265,8 +294,17 @@ Deciding *which* elements are relevant to a project lives in the agent layer and
   `SDS_REGISTRY_CONTAINER`, `BRONZE_ACCOUNT_NAME`, `BRONZE_FILESYSTEM`, `SEARCH_ENDPOINT`,
   `FOUNDRY_ENDPOINT`, `EMBEDDING_DEPLOYMENT`, `WORKLOAD_UAMI_CLIENT_ID`. New params-with-defaults for the
   knobs; endpoints threaded from existing `data`/`ai`/`security` module outputs.
+- **`functions.bicep`** — add an **`authsettingsV2`** child config on `regSyncApp` (Easy Auth v2, AAD,
+  `requireAuthentication=true`, `unauthenticatedClientAction=Return401`), gated on a new
+  `authClientId` param (empty default → auth stays off so the *first* deploy succeeds, mirroring the
+  `deployGpt4o` gating pattern). Once the Entra app registration exists, the deploy passes its `clientId`
+  and auth is enforced.
 - **`main.bicep` (both variants)** — pass the endpoint outputs (cosmos, storage/bronze, search, foundry,
-  uami client id) into the `functions` module. No new modules, no private-endpoint changes.
+  uami client id) and `authClientId` into the `functions` module. No new modules, no private-endpoint changes.
+- **`scripts/configure-auth.sh <env>`** (both variants) — create/ensure the Entra **app registration** for
+  the regsync app (`az ad app create`), then re-apply the deployment (or `az webapp auth` update) with its
+  `clientId`. Entra app objects are Graph resources, **not ARM** — so this is a script step, consistent
+  with how the repo handles other non-ARM provisioning (Search index, model deployments).
 - **No change** to `privateendpoints.bicep`, `security.bicep`, `ai.bicep`, `harden.sh` (already globs
   `az functionapp list`).
 
@@ -303,7 +341,10 @@ src/
         SdsSearchClient.cs             # EnsureIndexAsync + push
         PdfTextExtractor.cs            # PdfPig adapter
       Sourcing/
-        SourceResolver.cs              # ordered allowlist → candidate URLs
+        SourceResolver.cs              # walks the ordered allowlist, invokes each entry's strategy
+        ISourceStrategy.cs             # (element, form, cas, entry) → candidate URL(s)
+        CasTemplateStrategy.cs         # direct {cas} substitution (aggregators)
+        ProductLookupStrategy.cs       # CAS → (brand, productNumber) → SDS PDF URL (manufacturers)
         IEgressClient.cs
         NatEgressClient.cs             # HttpClient via subnet NAT; allowlist + timeout + size cap
         DryRunEgressClient.cs          # fixtures, no network
@@ -326,7 +367,9 @@ src/
 
 ## 13. Tests (xUnit) — the deterministic, leak-relevant logic
 
-- **SourceResolver ordering** — candidates emitted in strict priority order; first-hit wins.
+- **SourceResolver ordering + strategies** — candidates emitted in strict priority order (manufacturers
+  before aggregators), first-hit wins; `CasTemplateStrategy` substitutes CAS correctly and
+  `ProductLookupStrategy` maps a CAS→(brand, productNumber)→URL deterministically (search step mocked).
 - **SdsValidator** — GHS 16-section detection (accept a real SDS, reject a non-SDS PDF), CAS match
   (accept matching, reject mismatched), source-domain check (reject off-allowlist).
 - **GhsChunker** — a known SDS text splits into the expected sections with correct section tags.
@@ -345,9 +388,12 @@ calls are not unit-tested.
 ## 14. Deployment, scripts & docs
 
 - **`scripts/publish-functions.sh <env>`** (both variants) — build + keyless zip-deploy the
-  `Smx.Functions` project to the regsync app (`az functionapp deployment source config-zip`, Entra auth).
-  This is the repo's first function-code publish tooling; `deploy.sh` provisions the shell, `publish-
-  functions.sh` ships the code, `harden.sh` locks it private.
+  `Smx.Functions` project to the regsync app (`az functionapp deployment source config-zip`).
+  This is the repo's first function-code publish tooling.
+- **`scripts/configure-auth.sh <env>`** (both variants) — ensure the Entra app registration and enforce
+  Easy Auth on the regsync app (D9). Non-ARM, so scripted.
+- Script order for this subsystem: `deploy.sh` provisions the shell → `publish-functions.sh` ships the
+  code → `configure-auth.sh` turns on Entra auth → `harden.sh` locks it private.
 - **README** — a section on how the leak posture is enforced in code (single egress client, no on-demand
   fetch, scheduled-bulk-only) and how to configure cadence + allowlist.
 - **`CLAUDE.md`** — document the new stack commands (`dotnet build` / `dotnet test` under `src/`).
@@ -366,13 +412,59 @@ calls are not unit-tested.
 
 ## 16. Definition of done
 
-- Bicep: the two Cosmos containers + `bronze` filesystem in `data.bicep`, the SDS app settings on the
-  regsync app in `functions.bicep`, and the endpoint wiring in `main.bicep` — **mirrored in both
-  variants**, `az bicep build` clean.
+- Bicep: the two Cosmos containers + `bronze` filesystem in `data.bicep`, the SDS app settings +
+  `authsettingsV2` (Entra) on the regsync app in `functions.bicep`, and the endpoint/`authClientId` wiring
+  in `main.bicep` — **mirrored in both variants**, `az bicep build` clean.
 - Code: `Smx.Functions` with `SdsSweep` (timer), `OperatorUpload` + the three agent ops (HTTP), the shared
-  ingestion pipeline, and the shared modules (source resolver, egress client, validator, GHS chunker,
-  embedder, search client, master-list repo, registry repo).
+  ingestion pipeline, and the shared modules (source resolver + strategies, egress client, validator, GHS
+  chunker, embedder, search client, master-list repo, registry repo).
 - The leak invariant is structurally enforced: `IEgressClient` is injected only into `SdsSweep`; no other
   code path can fetch; there is no "fetch now" tool.
+- Entra ID auth enforced on all HTTP triggers (Easy Auth v2), provisioned via `configure-auth.sh`.
 - xUnit tests (§13) pass, including the dry-run sweep with no real egress.
-- `publish-functions.sh` + README leak-posture/config section + `CLAUDE.md` stack commands.
+- `publish-functions.sh` + `configure-auth.sh` + README leak-posture/config section + `CLAUDE.md` stack
+  commands.
+
+---
+
+## Appendix A: Supplier SDS sourcing — research findings (2026-07-07)
+
+Short web research into how supplier SDS documents are actually retrieved, to ground the source-resolver
+model (D10). Endpoint specifics are expected to drift; the *shape* of the problem is what's load-bearing.
+
+**1. Manufacturers key SDS by catalog/product number, not CAS.** A bare `{cas}` URL template does not
+resolve a manufacturer SDS. Observed patterns:
+- **Sigma-Aldrich / Merck** — deterministic once you have the brand + product number:
+  `https://www.sigmaaldrich.com/US/en/sds/{brand}/{productNumber}` (e.g. `/sds/sigald/329460`,
+  `/sds/aldrich/a6283`). Brands include `sigald`, `aldrich`, `sial`, `mm`, etc. Reaching it needs a prior
+  CAS→(brand, productNumber) lookup, and the site is behind bot protection (Akamai) so headless fetches
+  are unreliable.
+- **Thermo Fisher / Fisher Scientific** — `https://assets.thermofisher.com/TFS-Assets/LPD/SDS/{sku}_EN.pdf`
+  (and `-NA_EN`), plus a `document-connect` / `DirectWebViewer` viewer keyed by SKU/catalog number.
+- **VWR / Avantor** — `https://media.vwr.com/stibo/search/sds{docId}_..._en.pdf` and
+  `https://us.vwr.com/assetsvc/asset/en_US/id/{assetId}/contents`, keyed by an internal document/asset id.
+
+**2. No public bulk / official API** from the major manufacturers — web search interfaces only. There is
+no authoritative aggregator equivalent to ECHA-for-regulation here.
+
+**3. Sources that accept a bare CAS are mostly aggregators/resellers** — ChemBlink, ChemicalSafety.com,
+TCI, Fluorochem — which the open-source `find_sds` tool targets. These fit `CasTemplateStrategy` but rank
+below manufacturers (validator prefers manufacturer sources; §6).
+
+**Implications baked into the design:**
+- The resolver is **strategy-based** (D10): `ProductLookupStrategy` (two-step, manufacturers) +
+  `CasTemplateStrategy` (aggregators). New suppliers = a data edit and, at most, one new strategy class.
+- Bot protection + the absence of clean per-CAS manufacturer URLs is exactly why the **next-supplier
+  fall-through**, the **retry cap → `awaiting_operator`**, and the **operator-upload fallback** (§7, §9)
+  are load-bearing, not decorative.
+- "If we need something specific later, we add it": the concrete per-supplier search endpoints (e.g.
+  Sigma's CAS→product-number search) are intentionally deferred — the abstraction is in place so adding
+  one is localized.
+
+Sources: [Sigma-Aldrich SDS search](https://www.sigmaaldrich.com/US/en/search/sds) ·
+[Sigma SDS URL example `/sds/sigald/329460`](https://www.sigmaaldrich.com/US/en/sds/sigald/329460) ·
+[Fisher — Finding Safety Data Sheets](https://www.fishersci.com/us/en/customer-help-support/customer-support-search-browse/finding-safety-data-sheets.html) ·
+[Thermo document-connect example](https://www.thermofisher.com/document-connect/document-connect.html) ·
+[VWR SDS asset example](https://us.vwr.com/assetsvc/asset/en_US/id/16159491/contents) ·
+[find_sds (CAS→SDS tool)](https://github.com/khoivan88/find_sds) ·
+[ChemicalSafety free SDS search](https://chemicalsafety.com/sds-search/).
