@@ -1,0 +1,14 @@
+[
+  {
+    "supplier": "Sigma-Aldrich", "domain": "sigmaaldrich.com", "priority": 10,
+    "strategy": "productLookup",
+    "searchUrlTemplate": "https://www.sigmaaldrich.com/US/en/search/{cas}?focus=products&type=cas_number",
+    "productNumberRegex": "/sds/(?<brand>[a-z]+)/(?<productNumber>[a-z0-9]+)",
+    "sdsUrlTemplate": "https://www.sigmaaldrich.com/US/en/sds/{brand}/{productNumber}"
+  },
+  {
+    "supplier": "ChemBlink", "domain": "chemblink.com", "priority": 90,
+    "strategy": "casTemplate",
+    "sdsUrlTemplate": "https://www.chemblink.com/MSDS/MSDSFiles/{cas}.pdf"
+  }
+]
