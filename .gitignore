@@ -1,0 +1,8 @@
+# .NET build output
+bin/
+obj/
+*.user
+
+# Compiled ARM output from `az bicep build`
+infra/**/main.json
+infra/**/modules/*.json
