@@ -9,6 +9,11 @@ VNets, private DNS zones, Log Analytics/App Insights) and **Plan 2 — Data, AI 
 Private Endpoints** (ADLS Gen2, Cosmos, AI Search, AI Foundry, Key Vault, managed
 identity + RBAC, private endpoints), then Compute/Gateway.
 
+> **Variants.** This folder is the **subscription-scoped** version (creates its own
+> resource groups; hub/spoke; dev + prod). If you only have **Owner on a single
+> resource group** (not the subscription), use the **resource-group-scoped** variant in
+> [`single-rg/`](single-rg/) instead — it deploys everything flat into one RG.
+
 ## Prerequisites
 
 - Azure CLI (`az`) with Bicep (`az bicep install`).
