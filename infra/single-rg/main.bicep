@@ -122,6 +122,13 @@ module privateEndpoints 'modules/privateendpoints.bicep' = {
     dnsZoneCognitive: network.outputs.dnsZoneCognitive
     dnsZoneServicesAi: network.outputs.dnsZoneServicesAi
     dnsZoneVault: network.outputs.dnsZoneVault
+    spStorageId: functions.outputs.spStorageId
+    rsStorageId: functions.outputs.rsStorageId
+    searchProxyAppId: functions.outputs.searchProxyAppId
+    regSyncAppId: functions.outputs.regSyncAppId
+    dnsZoneQueue: network.outputs.dnsZoneQueue
+    dnsZoneTable: network.outputs.dnsZoneTable
+    dnsZoneSites: network.outputs.dnsZoneSites
   }
 }
 
@@ -165,7 +172,11 @@ module functions 'modules/functions.bicep' = {
     uniqueSuffix: uniqueSuffix
     functionsSubnetId: network.outputs.functionsSubnetId
     workloadUamiId: security.outputs.uamiId
+    workloadUamiClientId: security.outputs.uamiClientId
+    workloadUamiPrincipalId: security.outputs.uamiPrincipalId
     appInsightsConnectionString: observability.outputs.appInsightsConnectionString
+    publicNetworkAccess: publicNetworkAccess
+    deployerIpAddress: deployerIpAddress
   }
 }
 

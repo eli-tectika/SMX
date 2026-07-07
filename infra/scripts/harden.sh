@@ -39,5 +39,11 @@ update_ids "$(az cognitiveservices account list -g "$ENV_RG" --query '[].id' -o 
 update_ids "$(az keyvault list -g "$ENV_RG" --query '[].id' -o tsv)" \
   --set properties.publicNetworkAccess=Disabled properties.networkAcls.defaultAction=Deny
 
-log "Hardening complete — storage, Cosmos, Search, Foundry, and Key Vault are private-endpoint only."
+# Function Apps (Search Proxy + Regulatory Sync): no public inbound. Runtime storage is
+# already keyless + private-endpoint (functions.bicep), so the storage lockdown above is safe;
+# the apps reach it and each other over the VNet / private endpoints.
+update_ids "$(az functionapp list -g "$ENV_RG" --query '[].id' -o tsv)" \
+  --set properties.publicNetworkAccess=Disabled
+
+log "Hardening complete — storage, Cosmos, Search, Foundry, Key Vault, and Functions are private-endpoint only."
 warn "Re-running deploy.sh re-enables public access (Bicep default); re-run harden.sh after any redeploy."

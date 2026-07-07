@@ -24,6 +24,8 @@ var privateDnsZoneNames = [
   'privatelink.azurecr.io'
   'privatelink.vaultcore.azure.net'
   'privatelink.azurewebsites.net'
+  'privatelink.queue.core.windows.net'
+  'privatelink.table.core.windows.net'
 ]
 
 resource hubVnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {

@@ -55,6 +55,9 @@ var dnsZoneOpenai = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZo
 var dnsZoneCognitive = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZones', 'privatelink.cognitiveservices.azure.com')
 var dnsZoneServicesAi = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZones', 'privatelink.services.ai.azure.com')
 var dnsZoneVault = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZones', 'privatelink.vaultcore.azure.net')
+var dnsZoneQueue = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZones', 'privatelink.queue.core.windows.net')
+var dnsZoneTable = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZones', 'privatelink.table.core.windows.net')
+var dnsZoneSites = resourceId(subId, hubRgName, 'Microsoft.Network/privateDnsZones', 'privatelink.azurewebsites.net')
 
 resource hubRg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: hubRgName
@@ -189,6 +192,13 @@ module privateEndpoints 'modules/privateendpoints.bicep' = {
     dnsZoneCognitive: dnsZoneCognitive
     dnsZoneServicesAi: dnsZoneServicesAi
     dnsZoneVault: dnsZoneVault
+    spStorageId: functions.outputs.spStorageId
+    rsStorageId: functions.outputs.rsStorageId
+    searchProxyAppId: functions.outputs.searchProxyAppId
+    regSyncAppId: functions.outputs.regSyncAppId
+    dnsZoneQueue: dnsZoneQueue
+    dnsZoneTable: dnsZoneTable
+    dnsZoneSites: dnsZoneSites
   }
 }
 
@@ -235,7 +245,11 @@ module functions 'modules/functions.bicep' = {
     uniqueSuffix: uniqueSuffix
     functionsSubnetId: spoke.outputs.functionsSubnetId
     workloadUamiId: security.outputs.uamiId
+    workloadUamiClientId: security.outputs.uamiClientId
+    workloadUamiPrincipalId: security.outputs.uamiPrincipalId
     appInsightsConnectionString: hub.outputs.appInsightsConnectionString
+    publicNetworkAccess: publicNetworkAccess
+    deployerIpAddress: deployerIpAddress
   }
 }
 

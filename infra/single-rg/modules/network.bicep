@@ -15,8 +15,8 @@ param functionsSubnetCidr string = '10.0.1.0/26'
 param peSubnetCidr string = '10.0.1.64/26'
 param acaSubnetCidr string = '10.0.2.0/23'
 
-@description('Functions subnet delegation (Microsoft.Web/serverFarms = Elastic Premium; Microsoft.App/environments = Flex Consumption).')
-param functionsDelegation string = 'Microsoft.Web/serverFarms'
+@description('Functions subnet delegation (Microsoft.App/environments = Flex Consumption; Microsoft.Web/serverFarms = Elastic Premium).')
+param functionsDelegation string = 'Microsoft.App/environments'
 
 var privateDnsZoneNames = [
   'privatelink.blob.core.windows.net' // 0
@@ -29,6 +29,8 @@ var privateDnsZoneNames = [
   'privatelink.azurecr.io' // 7
   'privatelink.vaultcore.azure.net' // 8
   'privatelink.azurewebsites.net' // 9
+  'privatelink.queue.core.windows.net' // 10
+  'privatelink.table.core.windows.net' // 11
 ]
 
 resource nsgAca 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
@@ -185,3 +187,6 @@ output dnsZoneOpenai string = dnsZones[4].id
 output dnsZoneCognitive string = dnsZones[5].id
 output dnsZoneServicesAi string = dnsZones[6].id
 output dnsZoneVault string = dnsZones[8].id
+output dnsZoneSites string = dnsZones[9].id
+output dnsZoneQueue string = dnsZones[10].id
+output dnsZoneTable string = dnsZones[11].id

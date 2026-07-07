@@ -117,7 +117,7 @@ Per the HLD scaling table:
 | Cosmos DB (NoSQL) | Silver/Gold medallion | Serverless | Serverless (autoscale if needed) |
 | ADLS Gen2 | Bronze medallion | Standard (HNS on) | Standard (HNS on) |
 | AI Foundry | `gpt-4o` (reasoning) + `text-embedding-3-large` (vectorization), Responses API only | Standard deployments | Standard deployments |
-| Functions | Search Proxy + monthly Regulatory Sync (Durable, timer) | Flex/Consumption + VNet integration | Premium + VNet integration |
+| Functions | Search Proxy + monthly Regulatory Sync (Durable, timer) | Flex Consumption + VNet integration | Flex Consumption + VNet integration |
 | Log Analytics + App Insights | Centralized observability / distributed tracing | Shared (hub) | Shared (hub) |
 
 **Service cuts (from the HLD), honored here:**
@@ -209,9 +209,11 @@ placeholder app answers through the App Gateway and private DNS resolves the end
 
 ## 14. Open items to revisit during implementation
 
-- Exact Functions **hosting plan** (Flex Consumption vs Premium) for the Regulatory Sync + Search Proxy — the
-  Function App host is decided (Decision 8, §15); only the plan tier remains, per Sweden Central availability.
-  Leaning Flex Consumption (dev) → Premium (prod, if always-warm Search Proxy is wanted).
+- Functions **hosting plan is decided: Flex Consumption (FC1), both envs** (Search Proxy always-ready=1;
+  Regulatory Sync scale-to-zero). Elastic Premium was rejected — its key-based content share can't be made
+  keyless, and the estate is keyless/private-by-default. Flex is confirmed available in Sweden Central and
+  supports VNet integration, Durable Functions, and .NET 8 isolated. Re-confirm at deploy with
+  `az functionapp list-flexconsumption-locations`.
 - Whether a minimal smoke-test Search index / Cosmos container is worth creating now vs. deferring entirely.
 - Address-space plan (hub + spoke CIDRs) and subnet sizing, including the App Gateway dedicated subnet.
 - **Corpus review gate placement** (§15): surfaced in the SMX app as an operator/R.E.-signed step; whether it is a

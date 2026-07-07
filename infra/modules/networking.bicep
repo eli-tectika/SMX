@@ -23,8 +23,8 @@ param peSubnetCidr string
 @description('Resource ID of the hub VNet to peer with.')
 param hubVnetId string
 
-@description('Functions subnet delegation (Microsoft.Web/serverFarms = Elastic Premium; Microsoft.App/environments = Flex Consumption).')
-param functionsDelegation string = 'Microsoft.Web/serverFarms'
+@description('Functions subnet delegation (Microsoft.App/environments = Flex Consumption; Microsoft.Web/serverFarms = Elastic Premium).')
+param functionsDelegation string = 'Microsoft.App/environments'
 
 resource nsgAca 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: 'nsg-${namePrefix}-${env}-aca-${regionShort}'
