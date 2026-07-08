@@ -21,7 +21,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Smx.Domain\Smx.Domain.csproj" />
     <ProjectReference Include="..\Smx.Backend\Smx.Backend.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryRecordStore.cs" Link="Fakes/InMemoryRecordStore.cs" />
   </ItemGroup>
 
 </Project>

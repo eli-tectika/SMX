@@ -20,7 +20,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Smx.Domain\Smx.Domain.csproj" />
     <ProjectReference Include="..\Smx.Orchestrator\Smx.Orchestrator.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryRecordStore.cs" Link="Fakes/InMemoryRecordStore.cs" />
   </ItemGroup>
 
 </Project>
