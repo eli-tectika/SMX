@@ -188,6 +188,31 @@ resource refCosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases
   }
 }]
 
+// Agent-backend structured record — the record-as-bus. One container, discriminated
+// document types, partitioned by project.
+resource record 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  parent: cosmosDb
+  name: 'record'
+  properties: {
+    resource: {
+      id: 'record'
+      partitionKey: { paths: [ '/projectId' ], kind: 'Hash' }
+    }
+  }
+}
+
+// Change-feed processor leases for the orchestrator.
+resource recordLeases 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  parent: cosmosDb
+  name: 'record-leases'
+  properties: {
+    resource: {
+      id: 'record-leases'
+      partitionKey: { paths: [ '/id' ], kind: 'Hash' }
+    }
+  }
+}
+
 output storageId string = storage.id
 output storageName string = storage.name
 output cosmosId string = cosmos.id
@@ -195,7 +220,12 @@ output cosmosName string = cosmos.name
 output bronzeFilesystem string = bronzeContainer.name
 output sdsMasterListContainer string = sdsMasterList.name
 output sdsRegistryContainer string = sdsRegistry.name
-output refCompatibilityContainer string = refCompatibility.name
-output refBibliographyContainer string = refBibliography.name
-output refSuppliersContainer string = refSuppliers.name
-output refCatalogContainer string = refCatalog.name
+// NOTE: the ref-* outputs below were broken on main (BCP057 — referenced per-resource symbols
+// after the reference-data subsystem switched these containers to a for-loop); fixed to index
+// the refCosmosContainers loop.
+output refCompatibilityContainer string = refCosmosContainers[0].name
+output refBibliographyContainer string = refCosmosContainers[1].name
+output refSuppliersContainer string = refCosmosContainers[2].name
+output refCatalogContainer string = refCosmosContainers[3].name
+output recordContainer string = record.name
+output cosmosDocumentEndpoint string = cosmos.properties.documentEndpoint
