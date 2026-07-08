@@ -16,8 +16,10 @@ DATASET_VERSION="${DATASET_VERSION:-2026-07}"
 require_cmd az
 require_cmd curl
 
-STORAGE="$(az storage account list -g "${RG}" --query '[0].name' -o tsv)"
-[ -n "${STORAGE}" ] || die "No storage account found in ${RG}"
+# The env RG holds three storage accounts (bronze medallion + two Flex-Consumption app storages);
+# the bronze account is the only one with hierarchical namespace, so select it deterministically.
+STORAGE="$(az storage account list -g "${RG}" --query "[?isHnsEnabled].name | [0]" -o tsv)"
+[ -n "${STORAGE}" ] || die "No HNS (bronze) storage account found in ${RG}"
 
 log "Uploading reference workbooks to bronze (${STORAGE}) ..."
 az storage blob upload --account-name "${STORAGE}" --auth-mode login -c bronze \
