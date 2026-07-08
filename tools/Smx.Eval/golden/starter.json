@@ -1,0 +1,24 @@
+[
+  {
+    "name": "starter-eu-bottle-liquid",
+    "projectPayload": {
+      "client": "Golden", "product": "EU shampoo bottle",
+      "components": [
+        { "id": "bottle", "material": "HDPE", "application": "packaging", "markets": ["EU"], "objective": "brand" },
+        { "id": "liquid", "material": "aqueous surfactant", "application": "cosmetic", "markets": ["EU"], "objective": "brand" }
+      ],
+      "substances": [
+        { "element": "Cd", "form": "sulfide", "cas": "1306-23-6" },
+        { "element": "Pb", "form": "2-ethylhexanoate", "cas": "301-08-6" },
+        { "element": "Zr", "form": "neodecanoate", "cas": "39049-04-2" }
+      ],
+      "clientRestrictedList": []
+    },
+    "expected": [
+      { "cas": "1306-23-6", "componentId": "bottle", "expected": "Fail", "track": "reasoning" },
+      { "cas": "1306-23-6", "componentId": "liquid", "expected": "Fail", "track": "reasoning" },
+      { "cas": "301-08-6",  "componentId": "bottle", "expected": "Fail", "track": "reasoning" },
+      { "cas": "301-08-6",  "componentId": "liquid", "expected": "Fail", "track": "reasoning" }
+    ]
+  }
+]
