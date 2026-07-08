@@ -139,3 +139,17 @@ The first application code now lives under `src/` (this is no longer a pure-infr
   - Deferred follow-ons: the XRF Lines mapper, the Compatibility Matrix rollup and Element×Form coverage
     matrix, the supplementary supplier lists, RD7 class/pair expansion, and a few unresolved source citation
     tokens (e.g. a rule whose `Key Ref(s)` cell is literally `-`).
+- **Agent backend** (`src/Smx.Backend.sln`: `Smx.Domain`, `Smx.Infrastructure`, `Smx.Backend` API,
+  `Smx.Orchestrator` agent host; deployed as the `backend` + `orchestrator` Container Apps) — the SMX
+  reasoning layer: self-managed **Microsoft Agent Framework** agents on **Claude Opus 4.7** (Foundry,
+  Anthropic-native endpoint) with RAG tools over the three AI Search indexes + the deterministic `ref-*`
+  Cosmos lookups, **record-as-bus** in the Cosmos `record` container (change-feed dispatch), and Excel-style
+  compatibility-matrix output. Design + plan:
+  [`docs/superpowers/specs/2026-07-08-agent-backend-design.md`](docs/superpowers/specs/2026-07-08-agent-backend-design.md),
+  [`docs/superpowers/plans/2026-07-08-agent-backend.md`](docs/superpowers/plans/2026-07-08-agent-backend.md).
+  - Build: `dotnet build src/Smx.Backend.sln` · Test: `dotnet test src/Smx.Backend.sln`
+    (`Smx.Backend.Tests` targets `net10.0` — its net8 TestHost is incompatible with the STJ that ships in the
+    only-installed net10 runtime; every other project is `net8.0` + `RollForward=Major`).
+  - Images: `infra/scripts/build-images.sh <env>` (cloud build via `az acr build`).
+  - Eval: `dotnet run --project tools/Smx.Eval -- <api-base-url>` (per-track agreement + false-pass harm
+    metric; non-zero exit on any false-pass).
