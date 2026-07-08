@@ -119,6 +119,9 @@ var host = new HostBuilder()
         services.AddSingleton<IRegParser, OehhaProp65Parser>();
         services.AddSingleton<IRegParser, GenericCsvParser>();
         services.AddSingleton<IRegParser, EcfrParser>();
+        // --- EurLex additions ---
+        services.AddSingleton<IRegParser, EurLexHtmlParser>();
+        // --- end EurLex ---
         services.AddSingleton<RegParserRegistry>();
 
         // The sync pipeline (testable core RunSyncAsync) — consumed by the RegSync timer + ReviewDecisionHttp.

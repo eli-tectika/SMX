@@ -7,5 +7,7 @@ namespace Smx.Functions.Reg.Sourcing;
 // any non-success / disallowed host.
 public interface IRegEgress
 {
-    Task<EgressResult?> FetchAsync(Uri url, CancellationToken ct);
+    // Optional per-request headers (applied to the outbound HttpRequestMessage, never to a shared client)
+    // carry source-specific content negotiation such as EUR-Lex Cellar's Accept/Accept-Language.
+    Task<EgressResult?> FetchAsync(Uri url, IReadOnlyDictionary<string, string>? headers, CancellationToken ct);
 }

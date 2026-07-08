@@ -9,7 +9,10 @@ namespace Smx.Functions.Reg.Domain;
 public sealed record RegSource(
     string SourceId, string Regulation, string Authority, string AccessMethod, string Domain,
     string Parser, bool Enabled, int Version, IReadOnlyList<RegDoc> Documents, string? Id = null,
-    IReadOnlyDictionary<string, string>? ParserConfig = null, string? Cadence = null);
+    IReadOnlyDictionary<string, string>? ParserConfig = null, string? Cadence = null,
+    // Optional per-source request headers (e.g. EUR-Lex Cellar content negotiation:
+    // Accept: application/xhtml+xml, Accept-Language: eng) applied per-request by the egress client.
+    IReadOnlyDictionary<string, string>? Headers = null);
 
 public sealed record RegDoc(string DocId, string Url, string? Title);
 

@@ -47,76 +47,104 @@
     "regulation": "REACH Annex XVII (Restrictions)",
     "authority": "ECHA / EUR-Lex",
     "accessMethod": "document",
-    "domain": "eur-lex.europa.eu",
-    "parser": "EurLexParser",
+    "domain": "publications.europa.eu",
+    "parser": "EurLexHtmlParser",
     "enabled": false,
     "version": 1,
     "cadence": "monthly",
+    "headers": {
+      "Accept": "application/xhtml+xml",
+      "Accept-Language": "eng"
+    },
+    "parserConfig": {
+      "annex": "XVII"
+    },
     "documents": [
       {
-        "docId": "celex-02006R1907",
-        "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A02006R1907",
-        "title": "Regulation (EC) 1907/2006 (REACH) consolidated — Annex XVII"
+        "docId": "celex-32006R1907",
+        "url": "http://publications.europa.eu/resource/celex/32006R1907",
+        "title": "Regulation (EC) 1907/2006 (REACH) base act — Annex XVII (Restrictions)"
       }
     ],
-    "_note": "SCAFFOLD — enabled:false. Requires a EUR-Lex Cellar/Formex parser (article/annex segmentation of consolidated CELEX 02006R1907). Confirm the machine-readable retrieval (Cellar SPARQL/REST or Formex XML) and build a validated EurLexParser before enabling. No EurLexParser exists yet."
+    "_note": "WIRED, enabled:false. EurLexHtmlParser now exists and is tested against real Cellar OJ XHTML. Enabling is BLOCKED for correctness: the only machine-reachable Cellar endpoint serves the BASE act only (CELEX 32006R1907), which OMITS the many later Annex XVII amendments — an incomplete restricted-substances list. Enabling requires a CONSOLIDATED source (solve the eur-lex.europa.eu JS-challenge fetch for consolidated HTML, or an ECHA data feed); only then flip enabled:true."
   },
   {
     "sourceId": "clp-annex-vi",
     "regulation": "CLP Annex VI (Harmonised Classifications)",
     "authority": "ECHA / EUR-Lex",
     "accessMethod": "document",
-    "domain": "eur-lex.europa.eu",
-    "parser": "EurLexParser",
+    "domain": "publications.europa.eu",
+    "parser": "EurLexHtmlParser",
     "enabled": false,
     "version": 1,
     "cadence": "monthly",
+    "headers": {
+      "Accept": "application/xhtml+xml",
+      "Accept-Language": "eng"
+    },
+    "parserConfig": {
+      "annex": "VI"
+    },
     "documents": [
       {
-        "docId": "celex-02008R1272",
-        "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A02008R1272",
-        "title": "Regulation (EC) 1272/2008 (CLP) consolidated — Annex VI"
+        "docId": "celex-32008R1272",
+        "url": "http://publications.europa.eu/resource/celex/32008R1272",
+        "title": "Regulation (EC) 1272/2008 (CLP) base act — Annex VI (Harmonised Classifications)"
       }
     ],
-    "_note": "SCAFFOLD — enabled:false. Requires the EUR-Lex parser (CELEX 02008R1272, Annex VI Table 3 harmonised-classification rows). Confirm the machine-readable table source and build a validated parser before enabling."
+    "_note": "WIRED, enabled:false. EurLexHtmlParser now exists and is tested against real Cellar OJ XHTML. Enabling is BLOCKED for correctness: the only machine-reachable Cellar endpoint serves the BASE act only (CELEX 32008R1272), which OMITS every later Annex VI ATP update (harmonised classifications are added/changed by adaptations to technical progress) — an incomplete classification table. Enabling requires a CONSOLIDATED source (solve the eur-lex.europa.eu JS-challenge fetch for consolidated HTML, or an ECHA data feed); only then flip enabled:true."
   },
   {
     "sourceId": "eu-pops",
     "regulation": "EU POPs Regulation (EU) 2019/1021",
     "authority": "EUR-Lex",
     "accessMethod": "document",
-    "domain": "eur-lex.europa.eu",
-    "parser": "EurLexParser",
+    "domain": "publications.europa.eu",
+    "parser": "EurLexHtmlParser",
     "enabled": false,
     "version": 1,
     "cadence": "monthly",
+    "headers": {
+      "Accept": "application/xhtml+xml",
+      "Accept-Language": "eng"
+    },
+    "parserConfig": {
+      "annex": "I"
+    },
     "documents": [
       {
-        "docId": "celex-02019R1021",
-        "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A02019R1021",
-        "title": "Regulation (EU) 2019/1021 (POPs) consolidated — Annexes I–IV"
+        "docId": "celex-32019R1021",
+        "url": "http://publications.europa.eu/resource/celex/32019R1021",
+        "title": "Regulation (EU) 2019/1021 (POPs) base act — Annex I (Prohibited substances)"
       }
     ],
-    "_note": "SCAFFOLD — enabled:false. Requires the EUR-Lex parser (CELEX 02019R1021, Annex I/II substance entries). Confirm the machine-readable source and build a validated parser before enabling."
+    "_note": "WIRED, enabled:false. EurLexHtmlParser now exists and is tested against real Cellar OJ XHTML (this act's Annex I is the validation fixture — Aldrin 309-00-2, Chlordane 57-74-9). Enabling is BLOCKED for correctness: the only machine-reachable Cellar endpoint serves the BASE act only (CELEX 32019R1021), which OMITS later amendments adding/updating POPs entries — an incomplete prohibited-substances list. Enabling requires a CONSOLIDATED source (solve the eur-lex.europa.eu JS-challenge fetch for consolidated HTML, or an ECHA data feed); only then flip enabled:true."
   },
   {
     "sourceId": "eu-rohs",
-    "regulation": "EU RoHS Directive 2011/65/EU (Exemptions)",
+    "regulation": "EU RoHS Directive 2011/65/EU (Restricted substances)",
     "authority": "EUR-Lex",
     "accessMethod": "document",
-    "domain": "eur-lex.europa.eu",
-    "parser": "EurLexParser",
+    "domain": "publications.europa.eu",
+    "parser": "EurLexHtmlParser",
     "enabled": false,
     "version": 1,
     "cadence": "monthly",
+    "headers": {
+      "Accept": "application/xhtml+xml",
+      "Accept-Language": "eng"
+    },
+    "parserConfig": {
+      "annex": "II"
+    },
     "documents": [
       {
-        "docId": "celex-02011L0065",
-        "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A02011L0065",
-        "title": "Directive 2011/65/EU (RoHS) consolidated — Annexes III & IV exemptions"
+        "docId": "celex-32011L0065",
+        "url": "http://publications.europa.eu/resource/celex/32011L0065",
+        "title": "Directive 2011/65/EU (RoHS) base act — Annex II (Restricted substances)"
       }
     ],
-    "_note": "SCAFFOLD — enabled:false. Requires the EUR-Lex parser (CELEX 02011L0065, Annex III/IV exemption entries with expiry dates). Confirm the machine-readable source and build a validated parser before enabling."
+    "_note": "WIRED, enabled:false. EurLexHtmlParser now exists and is tested against real Cellar OJ XHTML. Enabling is BLOCKED for correctness: the only machine-reachable Cellar endpoint serves the BASE act only (CELEX 32011L0065), and its Annex II OMITS the four phthalates (DEHP, BBP, DBP, DIBP) added by Delegated Directive (EU) 2015/863 — the base Annex II lists the six original substances by name with no CAS entries, so enabling here would screen against an incomplete restriction list. Enabling requires a CONSOLIDATED source (solve the eur-lex.europa.eu JS-challenge fetch for consolidated HTML, or an ECHA data feed); only then flip enabled:true."
   },
   {
     "sourceId": "ecfr-fda-food-contact",

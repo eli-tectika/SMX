@@ -22,7 +22,7 @@ public sealed class RegNatEgressClient : IRegEgress
         _http.Timeout = TimeSpan.FromSeconds(opts.FetchTimeoutSeconds);
     }
 
-    public async Task<EgressResult?> FetchAsync(Uri url, CancellationToken ct)
+    public async Task<EgressResult?> FetchAsync(Uri url, IReadOnlyDictionary<string, string>? headers, CancellationToken ct)
     {
         var host = url.Host.ToLowerInvariant();
         if (!_allowlistDomains.Any(d => host == d || host.EndsWith("." + d)))
@@ -35,7 +35,12 @@ public sealed class RegNatEgressClient : IRegEgress
         {
             try
             {
-                using var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+                // Per-request headers (not on the shared HttpClient, which is reused across sources).
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                if (headers is not null)
+                    foreach (var (k, v) in headers)
+                        req.Headers.TryAddWithoutValidation(k, v);
+                using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
                 // Retry only transient server-side failures; 4xx is a permanent registry/URL error — don't retry.
                 if ((int)resp.StatusCode >= 500 && attempt < attempts)
                 {

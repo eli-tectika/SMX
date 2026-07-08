@@ -29,7 +29,7 @@ public sealed class BronzeIngestor
     public async Task<BronzeOutcome> FetchAndStageAsync(
         RegSource source, RegDoc doc, IRegEgress egress, string runId, string fetchTs, CancellationToken ct)
     {
-        var fetched = await egress.FetchAsync(new Uri(doc.Url), ct);
+        var fetched = await egress.FetchAsync(new Uri(doc.Url), source.Headers, ct);
         if (fetched is null)
             return new BronzeOutcome(DocResult.Error, doc.DocId, source.SourceId, null, null, null);
 

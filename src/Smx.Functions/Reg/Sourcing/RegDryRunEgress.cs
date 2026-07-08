@@ -11,5 +11,6 @@ public sealed class RegDryRunEgress : IRegEgress
     public static RegDryRunEgress Default(byte[] canned, string contentType = "text/csv")
         => new(url => new EgressResult(canned, contentType, url));
 
-    public Task<EgressResult?> FetchAsync(Uri url, CancellationToken ct) => Task.FromResult(_responder(url));
+    public Task<EgressResult?> FetchAsync(Uri url, IReadOnlyDictionary<string, string>? headers, CancellationToken ct)
+        => Task.FromResult(_responder(url));
 }
