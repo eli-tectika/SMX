@@ -1,0 +1,2123 @@
+[
+  {
+    "id": "G1",
+    "refId": "G1",
+    "title": "Okamoto \u0026 Massalski, The Au-Cr system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1985",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02880403",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Cr"
+    ],
+    "whatItEstablishes": "Au-Cr binary; terminal fcc solubility \u002B ordered phases",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G2",
+    "refId": "G2",
+    "title": "Okamoto et al., The Au-Co system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1985",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02869509",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Co"
+    ],
+    "whatItEstablishes": "Au-Co eutectic, large solid miscibility gap",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G3",
+    "refId": "G3",
+    "title": "J.F. Smith, The Au-V system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1981",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02868289",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "V"
+    ],
+    "whatItEstablishes": "Au-V; intermediate compounds, limited terminal solubility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G4",
+    "refId": "G4",
+    "title": "Okamoto \u0026 Massalski, The Au-Sb system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1984",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02868954",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Sb"
+    ],
+    "whatItEstablishes": "Au-Sb eutectic, AuSb2, very low Sb solubility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G5",
+    "refId": "G5",
+    "title": "H. Okamoto, Au-In",
+    "source": "J. Phase Equilib. Diffusion",
+    "year": "2004",
+    "type": "Phase-diagram",
+    "doi": "10.1007/s11669-004-0029-5",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "In"
+    ],
+    "whatItEstablishes": "Au-In; intermetallics \u002B appreciable terminal fcc solubility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G6",
+    "refId": "G6",
+    "title": "Okamoto \u0026 Massalski, The Au-Te system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1984",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02868955",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Te"
+    ],
+    "whatItEstablishes": "Au-Te eutectic, AuTe2, negligible solubility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G7",
+    "refId": "G7",
+    "title": "Massalski et al., The Au-Mo system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1986",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02867807",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Mo"
+    ],
+    "whatItEstablishes": "Au-Mo near-immiscible, large miscibility gaps",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G8",
+    "refId": "G8",
+    "title": "Okamoto \u0026 Massalski, The Au-Nb system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1985",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02869225",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Nb"
+    ],
+    "whatItEstablishes": "Au-Nb; Nb3Au (A15), limited solubility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G9",
+    "refId": "G9",
+    "title": "J.L. Murray, The Au-Ti system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1983",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02868667",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Ti"
+    ],
+    "whatItEstablishes": "Au-Ti; Au4Ti/AuTi intermetallics, modest solubility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G10",
+    "refId": "G10",
+    "title": "Okamoto \u0026 Massalski, The Au-Hf system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1984",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02872954",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Hf"
+    ],
+    "whatItEstablishes": "Au-Hf; intermetallics, restricted solubility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G11",
+    "refId": "G11",
+    "title": "Massalski \u0026 Okamoto, The Au-Mn system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1985",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02869510",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Mn"
+    ],
+    "whatItEstablishes": "Au-Mn extensive solid solubility \u002B ordered phases",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G12",
+    "refId": "G12",
+    "title": "Okamoto \u0026 Massalski, The Au-W system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1985",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02869226",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "W"
+    ],
+    "whatItEstablishes": "Au-W essentially immiscible, no compounds",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G13",
+    "refId": "G13",
+    "title": "Okamoto \u0026 Massalski, The Au-Re system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1984",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02872959",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Re"
+    ],
+    "whatItEstablishes": "Au-Re near-complete immiscibility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G14",
+    "refId": "G14",
+    "title": "Okamoto \u0026 Massalski, The Au-Ta system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1985",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02880525",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Ta"
+    ],
+    "whatItEstablishes": "Au-Ta limited solubility, Ta3Au-type compounds",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G15",
+    "refId": "G15",
+    "title": "H. Okamoto, Au-Zr",
+    "source": "J. Phase Equilibria",
+    "year": "1999",
+    "type": "Phase-diagram",
+    "doi": "10.1007/s11669-999-0002-4",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Zr"
+    ],
+    "whatItEstablishes": "Au-Zr intermetallics, modest terminal solubility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G16",
+    "refId": "G16",
+    "title": "Okamoto et al., The Au-Cu system",
+    "source": "J. Phase Equilibria",
+    "year": "1987",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02893155",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Cu"
+    ],
+    "whatItEstablishes": "REFERENCE: complete fcc solution \u002B AuCu/Au3Cu order",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G17",
+    "refId": "G17",
+    "title": "Okamoto \u0026 Massalski, The Ag-Au system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1983",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02880317",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Ag"
+    ],
+    "whatItEstablishes": "REFERENCE: complete fcc solubility (isomorphous)",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G18",
+    "refId": "G18",
+    "title": "Okamoto \u0026 Massalski, The Au-Pd system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1985",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02880404",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Pd"
+    ],
+    "whatItEstablishes": "REFERENCE: complete fcc solubility (isomorphous)",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G19",
+    "refId": "G19",
+    "title": "Okamoto \u0026 Massalski, The Au-Si system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1983",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02884878",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Si"
+    ],
+    "whatItEstablishes": "Au-Si eutectic ~363C; near-zero mutual solubility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G20",
+    "refId": "G20",
+    "title": "Okamoto \u0026 Massalski, The Au-Ge system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1984",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02868323",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Ge"
+    ],
+    "whatItEstablishes": "Au-Ge eutectic ~361C; negligible solid solubility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G21",
+    "refId": "G21",
+    "title": "H. Okamoto, Au-Ga",
+    "source": "J. Phase Equilib. Diffusion",
+    "year": "2013",
+    "type": "Phase-diagram",
+    "doi": "10.1007/s11669-012-0178-x",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Ga"
+    ],
+    "whatItEstablishes": "Au-Ga intermetallics; limited terminal solubility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G22",
+    "refId": "G22",
+    "title": "Okamoto \u0026 Massalski, The Au-Sn system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1984",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02872904",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Sn"
+    ],
+    "whatItEstablishes": "Au-Sn (AuSn...AuSn4); Au-rich eutectic; solder system",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G23",
+    "refId": "G23",
+    "title": "Okamoto \u0026 Massalski, The Au-Bi system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1983",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02868093",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Bi"
+    ],
+    "whatItEstablishes": "Au-Bi eutectic, Au2Bi; very low Bi solubility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G24",
+    "refId": "G24",
+    "title": "H. Okamoto, Au-Nd",
+    "source": "J. Phase Equilib. Diffusion",
+    "year": "2007",
+    "type": "Phase-diagram",
+    "doi": "10.1007/s11669-007-9148-0",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Nd"
+    ],
+    "whatItEstablishes": "Au-Nd intermetallics; negligible terminal solubility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G25",
+    "refId": "G25",
+    "title": "H. Okamoto, Au-Pr",
+    "source": "J. Phase Equilib. Diffusion",
+    "year": "2007",
+    "type": "Phase-diagram",
+    "doi": "10.1007/s11669-007-9129-3",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Pr"
+    ],
+    "whatItEstablishes": "Au-Pr line compounds; negligible solubility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G26",
+    "refId": "G26",
+    "title": "Au Binary Alloy Phase Diagrams",
+    "source": "ASM Handbook Vol.3",
+    "year": "2016",
+    "type": "Handbook/DB",
+    "doi": "10.31399/asm.hb.v03.a0006146",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "All",
+      "Au-X"
+    ],
+    "whatItEstablishes": "Consolidated Au-X binaries \u002B crystallography; gap-filler for RE/Sr/Al/Sc",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G27",
+    "refId": "G27",
+    "title": "La Binary Alloy Phase Diagrams",
+    "source": "ASM Handbook Vol.3",
+    "year": "2016",
+    "type": "Handbook/DB",
+    "doi": "10.31399/asm.hb.v03.a0006173",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "La"
+    ],
+    "whatItEstablishes": "Au-La phase relations (line compounds, no terminal solubility)",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G28",
+    "refId": "G28",
+    "title": "Mae, What the Darken-Gurry Plot Means About Solubility",
+    "source": "Metall. Mater. Trans. A",
+    "year": "2016",
+    "type": "Methodology",
+    "doi": "10.1007/s11661-016-3730-1",
+    "dimension": "Substrate solubility",
+    "substrate": "General",
+    "elements": [
+      "size\u002BEN"
+    ],
+    "whatItEstablishes": "Darken-Gurry ellipse predicts terminal solubility (size \u002B electronegativity)",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G29",
+    "refId": "G29",
+    "title": "Miracle \u0026 Senkov, Critical Review of High Entropy Alloys",
+    "source": "Acta Materialia",
+    "year": "2017",
+    "type": "Review",
+    "doi": "10.1016/j.actamat.2016.08.081",
+    "dimension": "Substrate solubility",
+    "substrate": "General",
+    "elements": [
+      "HR",
+      "rules"
+    ],
+    "whatItEstablishes": "Modern assessment of Hume-Rothery size/EN/VEC rules \u0026 limits",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G30",
+    "refId": "G30",
+    "title": "Pei et al., ML prediction of solid-solution formation",
+    "source": "npj Comput. Materials",
+    "year": "2020",
+    "type": "Methodology",
+    "doi": "10.1038/s41524-020-0308-7",
+    "dimension": "Substrate solubility",
+    "substrate": "General",
+    "elements": [
+      "predictors"
+    ],
+    "whatItEstablishes": "ML predictors beyond classical Hume-Rothery rules",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "G31",
+    "refId": "G31",
+    "title": "Elliott \u0026 Shunk, The Au-Ga system",
+    "source": "Bull. Alloy Phase Diagrams",
+    "year": "1981",
+    "type": "Phase-diagram",
+    "doi": "10.1007/BF02868293",
+    "dimension": "Substrate solubility",
+    "substrate": "Gold",
+    "elements": [
+      "Ga"
+    ],
+    "whatItEstablishes": "Earlier Au-Ga assessment (corroborates G21)",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "O1",
+    "refId": "O1",
+    "title": "Multielement determination of used/unused lubricating oils by ICP-AES",
+    "source": "ASTM D5185",
+    "year": "2018",
+    "type": "Standard",
+    "doi": "store.astm.org/d5185-18.html",
+    "dimension": "Detection / background",
+    "substrate": "Oil",
+    "elements": [
+      "22",
+      "elements"
+    ],
+    "whatItEstablishes": "Primary ICP method; defines additive/wear/contaminant panel incl. Ti/V/Mn",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "O2",
+    "refId": "O2",
+    "title": "Additive elements in lubricating oils by ICP-AES",
+    "source": "ASTM D4951",
+    "year": "2019",
+    "type": "Standard",
+    "doi": "ASTM D4951",
+    "dimension": "Detection / background",
+    "substrate": "Oil",
+    "elements": [
+      "Ba",
+      "B",
+      "Ca",
+      "Cu",
+      "Mg",
+      "Mo",
+      "P",
+      "S",
+      "Zn"
+    ],
+    "whatItEstablishes": "Additive-element panel (Mo measured natively = FM background)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O3",
+    "refId": "O3",
+    "title": "Ca,Cl,Cu,Mg,P,S,Zn in oils by WDXRF",
+    "source": "ASTM D6443",
+    "year": "2019",
+    "type": "Standard",
+    "doi": "ASTM D6443",
+    "dimension": "Detection",
+    "substrate": "Oil",
+    "elements": [
+      "Ca",
+      "Cl",
+      "Cu",
+      "Mg",
+      "P",
+      "S",
+      "Zn"
+    ],
+    "whatItEstablishes": "WDXRF quantitation incl. S/P/Cl (P/S accounting)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O4",
+    "refId": "O4",
+    "title": "Additive elements in oils by EDXRF",
+    "source": "ASTM D7751",
+    "year": "2021",
+    "type": "Standard",
+    "doi": "store.astm.org/d7751-16r21.html",
+    "dimension": "Detection",
+    "substrate": "Oil",
+    "elements": [
+      "Mg",
+      "P",
+      "S",
+      "Cl",
+      "Ca",
+      "Zn",
+      "Mo"
+    ],
+    "whatItEstablishes": "EDXRF method - matches SMX XRF readout architecture",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "O5",
+    "refId": "O5",
+    "title": "Ba,Ca,Mg,Zn in unused oils by AAS",
+    "source": "ASTM D4628",
+    "year": "2023",
+    "type": "Standard",
+    "doi": "ASTM D4628",
+    "dimension": "Detection",
+    "substrate": "Oil",
+    "elements": [
+      "Ba",
+      "Ca",
+      "Mg",
+      "Zn"
+    ],
+    "whatItEstablishes": "Working range ~10 ppm-1% confirms 5-50 ppm dosing detectable",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O6",
+    "refId": "O6",
+    "title": "Sulfated ash from lubricating oils and additives",
+    "source": "ASTM D874",
+    "year": "2023",
+    "type": "Standard",
+    "doi": "astm.org/d0874-23.html",
+    "dimension": "Regulatory (SAPS)",
+    "substrate": "Oil",
+    "elements": [
+      "ash-forming",
+      "metals"
+    ],
+    "whatItEstablishes": "Defines sulfated ash (SA in SAPS) - core constraint for metal markers",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "O7",
+    "refId": "O7",
+    "title": "Engine Oil Licensing \u0026 Certification System",
+    "source": "API 1509 (22nd-23rd ed.)",
+    "year": "2023",
+    "type": "Standard",
+    "doi": "api.org",
+    "dimension": "Regulatory",
+    "substrate": "Oil",
+    "elements": [
+      "markers"
+    ],
+    "whatItEstablishes": "Explicitly permits performance-neutral markers; conformance audits",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "O8",
+    "refId": "O8",
+    "title": "Base Oil Interchangeability Guidelines (Groups I-V)",
+    "source": "API 1509 Annex E",
+    "year": "2015",
+    "type": "Standard",
+    "doi": "api.org",
+    "dimension": "Substrate context",
+    "substrate": "Base oil",
+    "elements": [
+      "S",
+      "saturates"
+    ],
+    "whatItEstablishes": "Base-oil group chemistry context (marker solubility, native S)",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "O9",
+    "refId": "O9",
+    "title": "ACEA Oil Sequences - Light-duty 2021 Rev.1",
+    "source": "ACEA",
+    "year": "2022",
+    "type": "Standard",
+    "doi": "acea.auto",
+    "dimension": "Regulatory (SAPS)",
+    "substrate": "Oil",
+    "elements": [
+      "ash",
+      "P",
+      "S"
+    ],
+    "whatItEstablishes": "Low/mid-SAPS caps (C1/C4 ash \u003C=0.5%; C2/C3 \u003C=0.8%)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O10",
+    "refId": "O10",
+    "title": "API SQ / ILSAC GF-7 sulphated-ash debate",
+    "source": "Fuels \u0026 Lubes (F\u0026L Asia)",
+    "year": "2024",
+    "type": "Industry",
+    "doi": "fuelsandlubes.com",
+    "dimension": "Regulatory (SAPS)",
+    "substrate": "Oil",
+    "elements": [
+      "ash"
+    ],
+    "whatItEstablishes": "GF-7/API SQ introduces 0.9% max sulfated ash (D874)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O11",
+    "refId": "O11",
+    "title": "ILSAC GF-6 chemical limits (P 0.06-0.08%, S caps, Noack)",
+    "source": "ILSAC / oilspecifications.org",
+    "year": "2020",
+    "type": "Standard",
+    "doi": "oilspecifications.org/ilsac.php",
+    "dimension": "Regulatory",
+    "substrate": "Oil",
+    "elements": [
+      "P",
+      "S",
+      "Noack"
+    ],
+    "whatItEstablishes": "P window \u0026 S caps constrain P/S-bearing ligands (markers are P/S-free)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O12",
+    "refId": "O12",
+    "title": "Oil-soluble colloidal additives",
+    "source": "Curr. Opin. Colloid Interface Sci.",
+    "year": "2000",
+    "type": "Review",
+    "doi": "10.1016/S1359-0294(00)00066-2",
+    "dimension": "Additive interaction",
+    "substrate": "Oil",
+    "elements": [
+      "Ca",
+      "Mg"
+    ],
+    "whatItEstablishes": "Overbased detergents neutralize carboxylic acids -\u003E may sequester carboxylate markers",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "O13",
+    "refId": "O13",
+    "title": "Titanium-containing lubricating oil composition",
+    "source": "US Patent 7,776,800 B2",
+    "year": "2010",
+    "type": "Patent",
+    "doi": "patents.google.com/patent/US7776800B2",
+    "dimension": "Solubility / background",
+    "substrate": "Oil",
+    "elements": [
+      "Ti"
+    ],
+    "whatItEstablishes": "Ti neodecanoate as FM/AW 10-1500 ppm; Ti is an established additive (background)",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "O14",
+    "refId": "O14",
+    "title": "Ti / Zr neodecanoate product \u0026 CAS data",
+    "source": "Alfa Chemistry / ChemicalBook",
+    "year": "-",
+    "type": "Supplier",
+    "doi": "alfa-chemistry.com",
+    "dimension": "Solubility",
+    "substrate": "Oil",
+    "elements": [
+      "Ti",
+      "Zr"
+    ],
+    "whatItEstablishes": "Commercial oil-soluble Ti-neodecanoate (~6.7% Ti) \u0026 Zr-neodecanoate (~14% Zr)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O15",
+    "refId": "O15",
+    "title": "Molybdenum Octoate 15.5%",
+    "source": "Shepherd Chemical",
+    "year": "-",
+    "type": "Supplier",
+    "doi": "shepchem.com",
+    "dimension": "Solubility / background",
+    "substrate": "Oil",
+    "elements": [
+      "Mo"
+    ],
+    "whatItEstablishes": "Hydrocarbon-soluble Mo octoate (FM/AO) - heavy native Mo background",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "O16",
+    "refId": "O16",
+    "title": "Oil-soluble Mo multifunctional FM additives",
+    "source": "US Patent 6,103,674",
+    "year": "2000",
+    "type": "Patent",
+    "doi": "US6103674",
+    "dimension": "Background",
+    "substrate": "Oil",
+    "elements": [
+      "Mo"
+    ],
+    "whatItEstablishes": "Mo naphthenate/octoate/2-EH are established FM - reinforces Mo confound",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O17",
+    "refId": "O17",
+    "title": "Tribological performance of organic molybdenum",
+    "source": "PMC8191977",
+    "year": "2021",
+    "type": "Journal",
+    "doi": "pmc.ncbi.nlm.nih.gov/articles/PMC8191977",
+    "dimension": "Additive interaction",
+    "substrate": "Oil",
+    "elements": [
+      "Mo"
+    ],
+    "whatItEstablishes": "MoDTC FM/MoS2 film; Mo-marker indistinguishable from FM Mo",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O18",
+    "refId": "O18",
+    "title": "Synergistic MoDTC \u002B ZDTP tribofilm behaviour",
+    "source": "arXiv 0704.0338",
+    "year": "2007",
+    "type": "Preprint",
+    "doi": "arxiv.org/abs/0704.0338",
+    "dimension": "Additive interaction",
+    "substrate": "Oil",
+    "elements": [
+      "Mo",
+      "Zn",
+      "P",
+      "S"
+    ],
+    "whatItEstablishes": "Mo co-reacts with ZDDP (MoS2 \u002B phosphate) - reactive-marker caution",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O19",
+    "refId": "O19",
+    "title": "Mechanism of ZDDP Antiwear Film Formation",
+    "source": "Tribology Letters",
+    "year": "2016",
+    "type": "Journal",
+    "doi": "10.1007/s11249-016-0706-7",
+    "dimension": "Additive interaction",
+    "substrate": "Oil",
+    "elements": [
+      "Zn",
+      "P",
+      "S"
+    ],
+    "whatItEstablishes": "ZDDP phosphate-glass tribofilm; reactive metals can co-deposit",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O20",
+    "refId": "O20",
+    "title": "Engine oil additive effects on TWC \u0026 O2 sensors",
+    "source": "SAE 940746",
+    "year": "1994",
+    "type": "Conference",
+    "doi": "saemobilus.sae.org/content/940746",
+    "dimension": "Catalyst poisoning",
+    "substrate": "Oil/exhaust",
+    "elements": [
+      "P",
+      "Zn",
+      "Ca",
+      "Mg"
+    ],
+    "whatItEstablishes": "Oil-derived P poisons TWC/O2 sensor; Ca/Mg mitigate - poisoning framework",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "O21",
+    "refId": "O21",
+    "title": "Effects of oil phosphorus on TWC deactivation",
+    "source": "Applied Catalysis",
+    "year": "2000",
+    "type": "Journal",
+    "doi": "sciencedirect.com (S0166983400818424)",
+    "dimension": "Catalyst poisoning",
+    "substrate": "Oil/exhaust",
+    "elements": [
+      "P",
+      "Zn"
+    ],
+    "whatItEstablishes": "Quantifies P loss of washcoat area/OSC - poisoning reference",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O22",
+    "refId": "O22",
+    "title": "Deactivation of P-poisoned diesel oxidation catalysts",
+    "source": "Catal. Sci. Technol. (RSC)",
+    "year": "2020",
+    "type": "Journal",
+    "doi": "10.1039/D0CY00589D",
+    "dimension": "Catalyst poisoning",
+    "substrate": "Oil/exhaust",
+    "elements": [
+      "P"
+    ],
+    "whatItEstablishes": "Mechanistic P-poisoning of DOC - extends to diesel aftertreatment",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O23",
+    "refId": "O23",
+    "title": "Substituent effects on volatility of metal beta-diketonates",
+    "source": "Adv. Mater. Optics Electron.",
+    "year": "2000",
+    "type": "Journal",
+    "doi": "10.1002/1099-0712(200005/10)10:3/5\u003C223::AID-AMO411\u003E3.0.CO;2-M",
+    "dimension": "Thermal stability",
+    "substrate": "Organometallic",
+    "elements": [
+      "Zr",
+      "Cr",
+      "Fe",
+      "Co",
+      "Sc",
+      "Al",
+      "Ga",
+      "Cu"
+    ],
+    "whatItEstablishes": "TGA sublimation enthalpies; TMHD vs acac volatility (Zr/Co)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O24",
+    "refId": "O24",
+    "title": "Thermal stability \u0026 sublimation of metal beta-diketonates",
+    "source": "J. Chem. Eng. Data",
+    "year": "2009",
+    "type": "Journal",
+    "doi": "10.1021/je9001653",
+    "dimension": "Thermal stability",
+    "substrate": "Organometallic",
+    "elements": [
+      "V",
+      "Cu",
+      "Zn",
+      "Tm",
+      "Dy"
+    ],
+    "whatItEstablishes": "Sublimation pressures \u002B stability for V and RE (Tm,Dy) acac",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "O25",
+    "refId": "O25",
+    "title": "Thermal stability \u0026 sublimation of metal acetylacetonates",
+    "source": "Surf. Coat. Technol.",
+    "year": "2007",
+    "type": "Journal",
+    "doi": "10.1016/j.surfcoat.2007.04.083",
+    "dimension": "Thermal stability",
+    "substrate": "Organometallic",
+    "elements": [
+      "Al",
+      "Cr",
+      "Fe",
+      "Mn",
+      "Ni"
+    ],
+    "whatItEstablishes": "TGA: Mn/Fe/Ni acac decompose at evaporator T; Cr/Al stable",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O26",
+    "refId": "O26",
+    "title": "Thermal decomposition of vanadyl acetylacetonate",
+    "source": "Inorganic Materials",
+    "year": "2015",
+    "type": "Journal",
+    "doi": "10.1134/S0020168515090150",
+    "dimension": "Thermal stability",
+    "substrate": "Organometallic",
+    "elements": [
+      "V"
+    ],
+    "whatItEstablishes": "VO(acac)2 decomposes ~400C -\u003E V2O5 (vs engine hot-zone temps)",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "O27",
+    "refId": "O27",
+    "title": "Three yttrium organometallics for YSZ by PE-CVD",
+    "source": "Ceramics International",
+    "year": "2020",
+    "type": "Journal",
+    "doi": "osti.gov/biblio/1760141",
+    "dimension": "Thermal stability",
+    "substrate": "Organometallic",
+    "elements": [
+      "Y"
+    ],
+    "whatItEstablishes": "Y(TMHD)3 sublimes 92C; Y(acac)3 non-subliming (more retained)",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "O28",
+    "refId": "O28",
+    "title": "Metallic soaps / oil drying agents (carboxylate solubility)",
+    "source": "MDPI Inorganics 4(2):11 \u002B refs",
+    "year": "2016",
+    "type": "Review",
+    "doi": "mdpi.com/2304-6740/4/2/11",
+    "dimension": "Solubility",
+    "substrate": "Oil/solvent",
+    "elements": [
+      "Co",
+      "Mn",
+      "Fe",
+      "Zr",
+      "Ca"
+    ],
+    "whatItEstablishes": "Metal carboxylates (2-EH/neodecanoate/naphthenate) oil-soluble, water-insoluble; chain-length rationale",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O29",
+    "refId": "O29",
+    "title": "Two oil-soluble organic titanium compounds (AW/EP)",
+    "source": "J. Spectroscopy (Hindawi)",
+    "year": "2018",
+    "type": "Journal",
+    "doi": "hindawi.com/journals/jspec/2018/2576896",
+    "dimension": "Solubility",
+    "substrate": "Oil",
+    "elements": [
+      "Ti"
+    ],
+    "whatItEstablishes": "Additional Ti-organometallic precedent (S/N-containing variants)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O30",
+    "refId": "O30",
+    "title": "Transformation of CeO2 nanoparticles from a diesel fuel additive",
+    "source": "Environ. Sci. Technol.",
+    "year": "2017",
+    "type": "Journal",
+    "doi": "10.1021/acs.est.6b03173",
+    "dimension": "Fate / catalyst",
+    "substrate": "Fuel/exhaust",
+    "elements": [
+      "Ce"
+    ],
+    "whatItEstablishes": "Ceria fuel-borne catalyst transforms in combustion, persists in exhaust",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "O31",
+    "refId": "O31",
+    "title": "MMT (methylcyclopentadienyl Mn tricarbonyl) review",
+    "source": "ICCT",
+    "year": "-",
+    "type": "Report",
+    "doi": "theicct.org",
+    "dimension": "Catalyst poisoning",
+    "substrate": "Fuel/exhaust",
+    "elements": [
+      "Mn"
+    ],
+    "whatItEstablishes": "MMT -\u003E Mn3O4 particulates degrade emission-control systems",
+    "verification": "verified-search"
+  },
+  {
+    "id": "O32",
+    "refId": "O32",
+    "title": "Oil-soluble WS2 nanosheets \u0026 tribology",
+    "source": "Tribology International",
+    "year": "2019",
+    "type": "Journal",
+    "doi": "sciencedirect.com (S0301679X19301318)",
+    "dimension": "Solubility",
+    "substrate": "Oil",
+    "elements": [
+      "W"
+    ],
+    "whatItEstablishes": "W delivered as WS2/nanosheet (no simple W-carboxylate) - availability gap",
+    "verification": "verified-search"
+  },
+  {
+    "id": "P1",
+    "refId": "P1",
+    "title": "Effect of TiO2 pigment type on UV degradation of coatings",
+    "source": "J. Coatings Technol. Res.",
+    "year": "2010",
+    "type": "Journal",
+    "doi": "10.1007/s11998-009-9216-y",
+    "dimension": "Process / UV",
+    "substrate": "Coating",
+    "elements": [
+      "TiO2"
+    ],
+    "whatItEstablishes": "Anatase/uncoated TiO2 photodegrades binder; coated rutile is safe",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P2",
+    "refId": "P2",
+    "title": "Polyimide/CeO2 nanocomposites - thermal \u0026 mechanical",
+    "source": "Polymers (MDPI)",
+    "year": "2020",
+    "type": "Journal",
+    "doi": "10.3390/polym12091952",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer",
+    "elements": [
+      "CeO2"
+    ],
+    "whatItEstablishes": "CeO2 survives polyimide processing; raises performance",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P3",
+    "refId": "P3",
+    "title": "Polyolefin/ZnO composites by melt processing",
+    "source": "Molecules (MDPI)",
+    "year": "2019",
+    "type": "Journal",
+    "doi": "10.3390/molecules24132432",
+    "dimension": "Process / dispersion",
+    "substrate": "Polymer",
+    "elements": [
+      "ZnO"
+    ],
+    "whatItEstablishes": "Oxide nanopowder melt-compounded into HDPE/PP (masterbatch route)",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P4",
+    "refId": "P4",
+    "title": "ZnO crystallite size effect in PP nanocomposites",
+    "source": "Composites Part B",
+    "year": "2015",
+    "type": "Journal",
+    "doi": "10.1016/j.compositesb.2013.08.010",
+    "dimension": "Process / dispersion",
+    "substrate": "Polymer",
+    "elements": [
+      "ZnO"
+    ],
+    "whatItEstablishes": "Oxide particle size governs dispersion/flow/thermal stability",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P5",
+    "refId": "P5",
+    "title": "ZrO2 nanoparticles in polycarbonate",
+    "source": "European Polymer J.",
+    "year": "2013",
+    "type": "Journal",
+    "doi": "10.1016/j.eurpolymj.2013.04.019",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer",
+    "elements": [
+      "ZrO2"
+    ],
+    "whatItEstablishes": "ZrO2 survives PC melt; affects degradation kinetics",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P6",
+    "refId": "P6",
+    "title": "Nanofillers as thermal stabilizers in LDPE",
+    "source": "Polym. Degrad. Stab.",
+    "year": "2009",
+    "type": "Journal",
+    "doi": "10.1016/j.polymdegradstab.2008.10.011",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer",
+    "elements": [
+      "oxide",
+      "nanofillers"
+    ],
+    "whatItEstablishes": "Some oxides stabilize, others catalyze degradation - choice matters",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P7",
+    "refId": "P7",
+    "title": "Polyimide/Bi2O3 composites",
+    "source": "Heliyon",
+    "year": "2019",
+    "type": "Journal",
+    "doi": "10.1016/j.heliyon.2019.e01703",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer",
+    "elements": [
+      "Bi2O3"
+    ],
+    "whatItEstablishes": "High Bi2O3 loadings raise composite thermal stability",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P8",
+    "refId": "P8",
+    "title": "Bi2O3 micro/nano in epoxy - thermal/mechanical",
+    "source": "Appl. Radiat. Isot.",
+    "year": "2021",
+    "type": "Journal",
+    "doi": "10.1016/j.apradiso.2021.109780",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer/coating",
+    "elements": [
+      "Bi2O3"
+    ],
+    "whatItEstablishes": "Bi2O3 well-tolerated, improves thermal stability in epoxy",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P9",
+    "refId": "P9",
+    "title": "Sb2O3/SnO2 in flexible PVC films",
+    "source": "J. Appl. Polym. Sci.",
+    "year": "2024",
+    "type": "Journal",
+    "doi": "10.1002/app.56045",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer (PVC)",
+    "elements": [
+      "Sb2O3",
+      "SnO2"
+    ],
+    "whatItEstablishes": "Sb2O3/SnO2 oxides disperse \u0026 are processing-stable in PVC",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P10",
+    "refId": "P10",
+    "title": "Cerium molybdenum oxides as benign pigments",
+    "source": "Dyes and Pigments",
+    "year": "2007",
+    "type": "Journal",
+    "doi": "10.1016/j.dyepig.2006.07.021",
+    "dimension": "Process / UV",
+    "substrate": "Coating/pigment",
+    "elements": [
+      "Ce",
+      "Mo"
+    ],
+    "whatItEstablishes": "RE-oxide pigments: high thermal/chemical stability, good dispersibility",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P11",
+    "refId": "P11",
+    "title": "Mixed rare-earth oxides as benign pigments",
+    "source": "Dyes and Pigments",
+    "year": "2008",
+    "type": "Journal",
+    "doi": "10.1016/j.dyepig.2006.08.036",
+    "dimension": "Process / UV",
+    "substrate": "Coating/pigment",
+    "elements": [
+      "RE",
+      "oxides"
+    ],
+    "whatItEstablishes": "RE-oxide pigments heat/light/weather/solvent/chemical resistant",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P12",
+    "refId": "P12",
+    "title": "Colored cool colorants based on RE metal ions",
+    "source": "Solar Energy Mater. Solar Cells",
+    "year": "2008",
+    "type": "Journal",
+    "doi": "10.1016/j.solmat.2008.06.008",
+    "dimension": "Process / UV",
+    "substrate": "Coating",
+    "elements": [
+      "RE",
+      "oxides"
+    ],
+    "whatItEstablishes": "RE-oxide colorants weather/UV-stable, high NIR reflectance",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P13",
+    "refId": "P13",
+    "title": "Doped RE oxides for benign reddish-yellow pigments",
+    "source": "Chemistry Letters",
+    "year": "2008",
+    "type": "Journal",
+    "doi": "10.1246/cl.2008.902",
+    "dimension": "Process / UV",
+    "substrate": "Coating",
+    "elements": [
+      "Ce",
+      "Pr"
+    ],
+    "whatItEstablishes": "Doped RE oxides thermally/chemically stable pigments",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P14",
+    "refId": "P14",
+    "title": "CeO2 nanoparticles in nitrile-rubber adhesive (silane mod.)",
+    "source": "ACS Omega",
+    "year": "2022",
+    "type": "Journal",
+    "doi": "10.1021/acsomega.2c05092",
+    "dimension": "Process / dispersion",
+    "substrate": "Coating/polymer",
+    "elements": [
+      "CeO2"
+    ],
+    "whatItEstablishes": "Silane surface modification disperses CeO2 / prevents agglomeration",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P15",
+    "refId": "P15",
+    "title": "CeO2-doped cellulose acetate films (DoE optimization)",
+    "source": "J. Mater. Res. Technol.",
+    "year": "2025",
+    "type": "Journal",
+    "doi": "10.1016/j.jmrt.2025.01.224",
+    "dimension": "Process / dispersion",
+    "substrate": "Polymer (cellulosic)",
+    "elements": [
+      "CeO2"
+    ],
+    "whatItEstablishes": "CeO2 incorporated/optimized in cellulose-derived film",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P16",
+    "refId": "P16",
+    "title": "Natural dyeing of cotton using RE salts as mordant",
+    "source": "Pigment \u0026 Resin Technol.",
+    "year": "2023",
+    "type": "Journal",
+    "doi": "10.1108/PRT-05-2023-0037",
+    "dimension": "Textile fastness",
+    "substrate": "Textile (cotton)",
+    "elements": [
+      "RE",
+      "salts"
+    ],
+    "whatItEstablishes": "RE salts effective mordants at ~1/10 alum dose; improve fastness",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P17",
+    "refId": "P17",
+    "title": "Rare-earth ions as antibacterial agents for wool/cotton",
+    "source": "Chemical Papers",
+    "year": "2022",
+    "type": "Journal",
+    "doi": "10.1007/s11696-021-01999-9",
+    "dimension": "Textile fastness",
+    "substrate": "Textile",
+    "elements": [
+      "RE",
+      "(Ce3\u002B)"
+    ],
+    "whatItEstablishes": "RE3\u002B adsorbs to cellulose -OH; wash-durable to 50 cycles",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P18",
+    "refId": "P18",
+    "title": "Rare-earth marking on anti-counterfeiting waterless dyeing",
+    "source": "AATCC J. Research",
+    "year": "2024",
+    "type": "Journal",
+    "doi": "10.1177/24723444231206855",
+    "dimension": "Textile marking",
+    "substrate": "Textile (dyeing)",
+    "elements": [
+      "RE"
+    ],
+    "whatItEstablishes": "Closest analog: RE covert markers in dyeing, read by ICP-OES; survives dyeing",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P19",
+    "refId": "P19",
+    "title": "RE pretreatment improves reactive dye on banana fiber",
+    "source": "Molecules (MDPI)",
+    "year": "2025",
+    "type": "Journal",
+    "doi": "10.3390/molecules30010176",
+    "dimension": "Textile fastness",
+    "substrate": "Textile (cellulosic)",
+    "elements": [
+      "RE"
+    ],
+    "whatItEstablishes": "RE complexes improve reactive-dye fixation (\u002B~1 grade), cut salt 70%",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P20",
+    "refId": "P20",
+    "title": "Thermal Decomposition of Metal Nitrates in Air and H2",
+    "source": "J. Phys. Chem. B",
+    "year": "2003",
+    "type": "Journal",
+    "doi": "10.1021/jp026961c",
+    "dimension": "Process / thermal",
+    "substrate": "Marker form",
+    "elements": [
+      "nitrates"
+    ],
+    "whatItEstablishes": "Metal nitrates decompose to oxides via hydroxy-nitrate, release NO2",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "P21",
+    "refId": "P21",
+    "title": "Rutile TiO2 in plastic masterbatch (color stability)",
+    "source": "Industry / trade",
+    "year": "2024",
+    "type": "Trade",
+    "doi": "titanmastech.com",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer (masterbatch)",
+    "elements": [
+      "TiO2"
+    ],
+    "whatItEstablishes": "Rutile TiO2 inert, processes ~280-300C without decomposition (corroborating)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "P22",
+    "refId": "P22",
+    "title": "Formation \u0026 thermal decomposition of RE carbonates",
+    "source": "J. Materials Science",
+    "year": "-",
+    "type": "Journal",
+    "doi": "10.1007/BF00553839",
+    "dimension": "Process / thermal",
+    "substrate": "Marker form",
+    "elements": [
+      "RE",
+      "carbonates"
+    ],
+    "whatItEstablishes": "RE carbonates decompose stepwise (Ln2(CO3)3 -\u003E Ln2O2CO3 -\u003E Ln2O3)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "P23",
+    "refId": "P23",
+    "title": "Thermal decomposition of cerium oxalate",
+    "source": "J. Thermal Anal. Calorim.",
+    "year": "-",
+    "type": "Journal",
+    "doi": "10.1007/BF01932788",
+    "dimension": "Process / thermal",
+    "substrate": "Marker form",
+    "elements": [
+      "Ce",
+      "oxalate"
+    ],
+    "whatItEstablishes": "Cerous oxalate -\u003E ceria in two steps (~130C dehydr.; ~360C decomp.)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "P24",
+    "refId": "P24",
+    "title": "Thermal decomposition of cerium(III) nitrate hydrate",
+    "source": "OSTI.gov record",
+    "year": "-",
+    "type": "Report",
+    "doi": "osti.gov/biblio/4040438",
+    "dimension": "Process / thermal",
+    "substrate": "Marker form",
+    "elements": [
+      "Ce",
+      "nitrate"
+    ],
+    "whatItEstablishes": "Ce(III) nitrate decomposes ~190-300C -\u003E oxide",
+    "verification": "verified-search"
+  },
+  {
+    "id": "X1",
+    "refId": "X1",
+    "title": "NIST X-Ray Transition Energies (SRD 128); Deslattes et al.",
+    "source": "NIST PML / Rev. Mod. Phys. 75,35",
+    "year": "2003",
+    "type": "DB / journal",
+    "doi": "10.1103/RevModPhys.75.35",
+    "dimension": "Detection (XRF)",
+    "substrate": "-",
+    "elements": [
+      "Z=10-100"
+    ],
+    "whatItEstablishes": "SI-traceable transition energies (Ka1=KL3, La1=L3M5) with uncertainties",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "X2",
+    "refId": "X2",
+    "title": "X-Ray Data Booklet, Table 1-2 (principal emission lines)",
+    "source": "LBNL Center for X-ray Optics",
+    "year": "2009",
+    "type": "Handbook/table",
+    "doi": "xdb.lbl.gov/Section1/Table_1-2.pdf",
+    "dimension": "Detection (XRF)",
+    "substrate": "-",
+    "elements": [
+      "Z=3-95"
+    ],
+    "whatItEstablishes": "Working line-energy table used for the marker palette \u0026 overlaps",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "X3",
+    "refId": "X3",
+    "title": "J.A. Bearden, X-Ray Wavelengths",
+    "source": "Rev. Mod. Phys. 39,78",
+    "year": "1967",
+    "type": "Journal (eval.)",
+    "doi": "10.1103/RevModPhys.39.78",
+    "dimension": "Detection (XRF)",
+    "substrate": "-",
+    "elements": [
+      "All",
+      "elements"
+    ],
+    "whatItEstablishes": "Original evaluated wavelength/energy data underlying Table 1-2",
+    "verification": "verified-search"
+  },
+  {
+    "id": "X4",
+    "refId": "X4",
+    "title": "xraylib - library for X-ray-matter interactions",
+    "source": "Schoonjans et al. / GitHub",
+    "year": "2011",
+    "type": "Software DB",
+    "doi": "10.1016/j.sab.2011.09.011",
+    "dimension": "Detection (XRF)",
+    "substrate": "-",
+    "elements": [
+      "All",
+      "elements"
+    ],
+    "whatItEstablishes": "Programmatic line energies/edges/yields for code compatibility checks",
+    "verification": "verified-search"
+  },
+  {
+    "id": "X5",
+    "refId": "X5",
+    "title": "XrayDB - X-ray reference data (SQLite)",
+    "source": "xraypy / GitHub",
+    "year": "2025",
+    "type": "Software DB",
+    "doi": "github.com/xraypy/XrayDB",
+    "dimension": "Detection (XRF)",
+    "substrate": "-",
+    "elements": [
+      "Z\u003C=98"
+    ],
+    "whatItEstablishes": "SQLite/Python DB implementing ELAM line energies",
+    "verification": "verified-search"
+  },
+  {
+    "id": "X6",
+    "refId": "X6",
+    "title": "Elam, Ravel \u0026 Sieber, atomic database for X-ray calc.",
+    "source": "Radiat. Phys. Chem. 63,121",
+    "year": "2002",
+    "type": "Journal (DB)",
+    "doi": "10.1016/S0969-806X(01)00227-4",
+    "dimension": "Detection (XRF)",
+    "substrate": "-",
+    "elements": [
+      "All",
+      "elements"
+    ],
+    "whatItEstablishes": "The ELAM compiled database (lines/yields) behind X4/X5",
+    "verification": "verified-search"
+  },
+  {
+    "id": "X7",
+    "refId": "X7",
+    "title": "Handbook of X-Ray Spectrometry, 2nd ed.",
+    "source": "Van Grieken \u0026 Markowicz (eds.)",
+    "year": "2002",
+    "type": "Handbook",
+    "doi": "ISBN 0-8247-0600-5",
+    "dimension": "Detection (XRF)",
+    "substrate": "-",
+    "elements": [
+      "All",
+      "elements"
+    ],
+    "whatItEstablishes": "Detection-limit theory \u002B spectral-overlap correction (EDXRF/WDXRF)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "X8",
+    "refId": "X8",
+    "title": "Guide for Elemental Analysis by WDXRF",
+    "source": "ASTM E1621-22",
+    "year": "2022",
+    "type": "Standard",
+    "doi": "store.astm.org/e1621-21.html",
+    "dimension": "Detection (XRF)",
+    "substrate": "Metals/ceramics",
+    "elements": [
+      "-"
+    ],
+    "whatItEstablishes": "Method validation: detection limits, line-overlap handling (WDXRF)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "X9",
+    "refId": "X9",
+    "title": "Chemical analysis of refractories by XRF (fused bead)",
+    "source": "ISO 12677:2011",
+    "year": "2011",
+    "type": "Standard",
+    "doi": "iso.org/standard/51445.html",
+    "dimension": "Detection (XRF)",
+    "substrate": "Oxides/ceramics",
+    "elements": [
+      "-"
+    ],
+    "whatItEstablishes": "Fused-bead WDXRF protocol; matrix/overlap caveats",
+    "verification": "verified-search"
+  },
+  {
+    "id": "X10",
+    "refId": "X10",
+    "title": "High-energy interference-free K-line synchrotron XRF of REEs",
+    "source": "Metallomics 15, mfad050",
+    "year": "2023",
+    "type": "Journal",
+    "doi": "academic.oup.com/metallomics/article/15/9/mfad050",
+    "dimension": "Detection (XRF)",
+    "substrate": "-",
+    "elements": [
+      "Y",
+      "La",
+      "Ce",
+      "Pr",
+      "Nd"
+    ],
+    "whatItEstablishes": "Documents REE L vs 3d-metal Ka overlap (4.5-8.7 keV); K-line workaround",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "I1",
+    "refId": "I1",
+    "title": "A Table of Polyatomic Interferences in ICP-MS (May \u0026 Wiedmeyer)",
+    "source": "Atomic Spectroscopy 19(5)",
+    "year": "1998",
+    "type": "Journal",
+    "doi": "PerkinElmer hosted PDF",
+    "dimension": "Detection (ICP)",
+    "substrate": "-",
+    "elements": [
+      "all",
+      "masses"
+    ],
+    "whatItEstablishes": "Canonical polyatomic \u002B oxide interference table (cited by EPA 6020)",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "I2",
+    "refId": "I2",
+    "title": "ICP-MS Lanthanide Interference Corrections (Hollocher)",
+    "source": "Union College courseware",
+    "year": "-",
+    "type": "Method",
+    "doi": "muse.union.edu/hollochk/.../ree-corrections",
+    "dimension": "Detection (ICP)",
+    "substrate": "-",
+    "elements": [
+      "La-Lu",
+      "Ba"
+    ],
+    "whatItEstablishes": "Working MO\u002B/M\u002B \u0026 MOH\u002B/M\u002B correction scheme (CeO,PrO,BaO)",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "I3",
+    "refId": "I3",
+    "title": "Spectral interferences of Sc,Y,REE in Ce/Nd/La matrices by ICP-AES (I)",
+    "source": "Spectrochim. Acta B 47",
+    "year": "1992",
+    "type": "Journal",
+    "doi": "10.1016/0584-8547(92)80148-a",
+    "dimension": "Detection (ICP-OES)",
+    "substrate": "-",
+    "elements": [
+      "Sc",
+      "Y",
+      "REE"
+    ],
+    "whatItEstablishes": "Ce/Nd matrices give heavy line\u002Bwing interference; La cleaner",
+    "verification": "verified-search"
+  },
+  {
+    "id": "I4",
+    "refId": "I4",
+    "title": "Spectral interferences ... Lu and Y matrices (IV)",
+    "source": "Spectrochim. Acta B 53",
+    "year": "1998",
+    "type": "Journal",
+    "doi": "10.1016/s0584-8547(98)00199-2",
+    "dimension": "Detection (ICP-OES)",
+    "substrate": "-",
+    "elements": [
+      "Lu",
+      "Y"
+    ],
+    "whatItEstablishes": "OES line-overlap mapping for Lu/Y; line-selection guidance",
+    "verification": "verified-search"
+  },
+  {
+    "id": "I5",
+    "refId": "I5",
+    "title": "Spectral interferences ... Ytterbium (VI)",
+    "source": "Spectrochim. Acta B 57",
+    "year": "2002",
+    "type": "Journal",
+    "doi": "10.1016/s0584-8547(02)00064-2",
+    "dimension": "Detection (ICP-OES)",
+    "substrate": "-",
+    "elements": [
+      "Yb"
+    ],
+    "whatItEstablishes": "Yb-matrix line-overlap mapping; least-interfered lines",
+    "verification": "verified-search"
+  },
+  {
+    "id": "I6",
+    "refId": "I6",
+    "title": "Determination of REEs by ICP-MS/MS with N2O reaction gas (Zhu)",
+    "source": "Frontiers in Chemistry",
+    "year": "2022",
+    "type": "Journal",
+    "doi": "10.3389/fchem.2022.912938",
+    "dimension": "Detection (ICP-MS)",
+    "substrate": "-",
+    "elements": [
+      "La-Lu",
+      "Ba"
+    ],
+    "whatItEstablishes": "N2O mass-shift removes BaO on Eu \u0026 LaO on Gd without math correction",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "I7",
+    "refId": "I7",
+    "title": "ICP-Mass Spectrometry (SW-846)",
+    "source": "EPA Method 6020B",
+    "year": "2014",
+    "type": "Regulatory method",
+    "doi": "epa.gov (6020b.pdf)",
+    "dimension": "Detection (ICP-MS)",
+    "substrate": "-",
+    "elements": [
+      "all",
+      "6020",
+      "analytes"
+    ],
+    "whatItEstablishes": "Isobaric/molecular interference framework; ArCl \u0026 oxide corrections",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "I8",
+    "refId": "I8",
+    "title": "ICP-OES (SW-846)",
+    "source": "EPA Method 6010D",
+    "year": "2018",
+    "type": "Regulatory method",
+    "doi": "epa.gov/hw-sw846 (6010d)",
+    "dimension": "Detection (ICP-OES)",
+    "substrate": "-",
+    "elements": [
+      "multi-element"
+    ],
+    "whatItEstablishes": "Requires inter-element correction (IEC) \u0026 interference-check solutions",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "I9",
+    "refId": "I9",
+    "title": "Multielement determination of oils by ICP-AES",
+    "source": "ASTM D5185",
+    "year": "2018",
+    "type": "Standard",
+    "doi": "store.astm.org/d5185-18.html",
+    "dimension": "Detection (ICP-OES)",
+    "substrate": "Oil",
+    "elements": [
+      "Al",
+      "Si",
+      "Ti",
+      "V",
+      "Cr",
+      "Mn",
+      "Mo",
+      "Sn"
+    ],
+    "whatItEstablishes": "ICP-OES protocol/wavelengths for oil-matrix marker quantification",
+    "verification": "verified-search"
+  },
+  {
+    "id": "I10",
+    "refId": "I10",
+    "title": "Application of ICP-MS (water) - selected elements",
+    "source": "ISO 17294-2:2023",
+    "year": "2023",
+    "type": "Standard",
+    "doi": "iso.org/standard/82245.html",
+    "dimension": "Detection (ICP-MS)",
+    "substrate": "-",
+    "elements": [
+      "~70",
+      "incl.",
+      "all",
+      "RE"
+    ],
+    "whatItEstablishes": "Reference ICP-MS method; analyte list ~ entire SMX palette; flags RE oxide overlap",
+    "verification": "verified-search"
+  },
+  {
+    "id": "I11",
+    "refId": "I11",
+    "title": "Reaction data for 70 elements (O2/NH3/H2) ICP-QQQ",
+    "source": "Agilent TN 8800 (5991-4585EN)",
+    "year": "2014",
+    "type": "Vendor note",
+    "doi": "agilent.com",
+    "dimension": "Detection (ICP-MS)",
+    "substrate": "-",
+    "elements": [
+      "70",
+      "elements",
+      "incl.",
+      "RE"
+    ],
+    "whatItEstablishes": "Reaction-cell chemistry data underpinning interference removal",
+    "verification": "verified-search"
+  },
+  {
+    "id": "I12",
+    "refId": "I12",
+    "title": "Oxide interference correction on Sc \u0026 REE by ICP-MS (An et al.)",
+    "source": "J. Earth Science (Springer)",
+    "year": "2019",
+    "type": "Journal",
+    "doi": "10.1007/s12583-019-0898-5",
+    "dimension": "Detection (ICP-MS)",
+    "substrate": "-",
+    "elements": [
+      "Sc",
+      "La-Lu"
+    ],
+    "whatItEstablishes": "Practical LREE-oxide -\u003E MREE/HREE correction via oxide-ratio monitoring",
+    "verification": "verified-search"
+  },
+  {
+    "id": "REG1",
+    "refId": "REG1",
+    "title": "Plastic materials \u0026 articles intended to contact food",
+    "source": "EU Regulation 10/2011",
+    "year": "2011",
+    "type": "Regulation",
+    "doi": "eur-lex.europa.eu/eli/reg/2011/10",
+    "dimension": "Regulatory",
+    "substrate": "Polymer (food)",
+    "elements": [
+      "all",
+      "metals",
+      "(SML)"
+    ],
+    "whatItEstablishes": "Base food-contact regime: positive list \u002B Specific Migration Limits",
+    "verification": "verified-search"
+  },
+  {
+    "id": "REG2",
+    "refId": "REG2",
+    "title": "Amending 10/2011 (Annex II metals table)",
+    "source": "EU Regulation 2020/1245",
+    "year": "2020",
+    "type": "Amendment",
+    "doi": "eur-lex.europa.eu/eli/reg/2020/1245",
+    "dimension": "Regulatory",
+    "substrate": "Polymer (food)",
+    "elements": [
+      "Al",
+      "Sb",
+      "Ba",
+      "Co",
+      "Mn",
+      "Ni",
+      "La-group..."
+    ],
+    "whatItEstablishes": "Adds/updates SMLs for ~24 elements incl. lanthanide-group 0.05 mg/kg",
+    "verification": "verified-fetched"
+  },
+  {
+    "id": "REG3",
+    "refId": "REG3",
+    "title": "RoHS 2 \u002B Annex II (Delegated Dir. 2015/863)",
+    "source": "Directive 2011/65/EU",
+    "year": "2011",
+    "type": "Directive",
+    "doi": "eur-lex.europa.eu/eli/dir/2011/65",
+    "dimension": "Regulatory",
+    "substrate": "Electronics",
+    "elements": [
+      "Pb",
+      "Hg",
+      "Cd",
+      "Cr(VI)\u002Bphthalates"
+    ],
+    "whatItEstablishes": "10 restricted substances - NONE are SMX markers",
+    "verification": "verified-search"
+  },
+  {
+    "id": "REG4",
+    "refId": "REG4",
+    "title": "Conditions of restriction (consolidated)",
+    "source": "REACH Annex XVII (ECHA)",
+    "year": "current",
+    "type": "Restriction list",
+    "doi": "echa.europa.eu/substances-restricted-under-reach",
+    "dimension": "Regulatory",
+    "substrate": "All",
+    "elements": [
+      "As",
+      "Cd",
+      "Ni",
+      "Cr(VI)",
+      "Pb"
+    ],
+    "whatItEstablishes": "Restriction entries; Ni (27) \u0026 Cr(VI) (47) most relevant",
+    "verification": "verified-search"
+  },
+  {
+    "id": "REG5",
+    "refId": "REG5",
+    "title": "Nickel release (jewelry/skin)",
+    "source": "REACH Annex XVII Entry 27",
+    "year": "current",
+    "type": "Restriction",
+    "doi": "echa.europa.eu",
+    "dimension": "Regulatory",
+    "substrate": "Textile/jewelry (skin)",
+    "elements": [
+      "Ni"
+    ],
+    "whatItEstablishes": "0.5 ug/cm2/wk skin; 0.2 piercing - sensitizer benchmark",
+    "verification": "verified-search"
+  },
+  {
+    "id": "REG6",
+    "refId": "REG6",
+    "title": "Cobalt dichloride substance info (SVHC)",
+    "source": "ECHA Candidate List",
+    "year": "2008",
+    "type": "SVHC",
+    "doi": "echa.europa.eu/substance-information/.../100.028.718",
+    "dimension": "Regulatory",
+    "substrate": "All",
+    "elements": [
+      "Co"
+    ],
+    "whatItEstablishes": "Cobalt compounds = SVHC (carcinogenic \u002B reprotoxic)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "REG7",
+    "refId": "REG7",
+    "title": "Standard 100 Annex 4 (extractable heavy metals)",
+    "source": "OEKO-TEX",
+    "year": "2025",
+    "type": "Standard",
+    "doi": "oeko-tex.com",
+    "dimension": "Regulatory",
+    "substrate": "Textile (skin)",
+    "elements": [
+      "Sb",
+      "Co",
+      "Ni",
+      "Cr",
+      "Cu",
+      "Pb",
+      "As"
+    ],
+    "whatItEstablishes": "Extractable-metal limits by product class (Co 1.0 Class I; Sb ~30)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "REG8",
+    "refId": "REG8",
+    "title": "API SP / ILSAC GF-6 / ACEA SAPS",
+    "source": "API / ILSAC / ACEA",
+    "year": "2022",
+    "type": "Industry spec",
+    "doi": "api.org",
+    "dimension": "Regulatory",
+    "substrate": "Oil",
+    "elements": [
+      "S",
+      "P",
+      "sulfated",
+      "ash"
+    ],
+    "whatItEstablishes": "De-facto chemical limits: low-SAPS ash \u003C=0.8%, P \u003C=0.08%, S \u003C=0.3%",
+    "verification": "verified-search"
+  },
+  {
+    "id": "REG9",
+    "refId": "REG9",
+    "title": "Toxicological Profiles (Sb,Mn,V,Ba,Sr,Co)",
+    "source": "ATSDR / CDC",
+    "year": "2019-25",
+    "type": "Tox profile",
+    "doi": "atsdr.cdc.gov/toxprofiles",
+    "dimension": "Toxicology",
+    "substrate": "All",
+    "elements": [
+      "Sb",
+      "Mn",
+      "V",
+      "Ba",
+      "Sr",
+      "Co"
+    ],
+    "whatItEstablishes": "MRLs \u002B adverse-effect reviews (Mn neuro; V respiratory)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "REG10",
+    "refId": "REG10",
+    "title": "Pocket Guide - Tellurium / Bismuth telluride",
+    "source": "NIOSH / CDC",
+    "year": "current",
+    "type": "OEL guide",
+    "doi": "cdc.gov/niosh/npg",
+    "dimension": "Toxicology",
+    "substrate": "Occupational",
+    "elements": [
+      "Te",
+      "Bi"
+    ],
+    "whatItEstablishes": "Te REL/PEL 0.1 mg/m3; Bi2Te3 10 mg/m3",
+    "verification": "verified-search"
+  },
+  {
+    "id": "REG11",
+    "refId": "REG11",
+    "title": "Registered-substance dossiers (DNELs)",
+    "source": "ECHA",
+    "year": "current",
+    "type": "REACH dossier",
+    "doi": "echa.europa.eu/information-on-chemicals",
+    "dimension": "Toxicology",
+    "substrate": "All",
+    "elements": [
+      "Ce",
+      "La",
+      "RE",
+      "refractory"
+    ],
+    "whatItEstablishes": "DNELs/classification per REACH registration",
+    "verification": "verified-search"
+  },
+  {
+    "id": "REG12",
+    "refId": "REG12",
+    "title": "Reviews on rare-earth element human-health toxicity",
+    "source": "Frontiers / PMC",
+    "year": "2022-24",
+    "type": "Review",
+    "doi": "frontiersin.org (fenvs.2022.948041)",
+    "dimension": "Toxicology",
+    "substrate": "RE markers",
+    "elements": [
+      "La-Lu"
+    ],
+    "whatItEstablishes": "Pneumoconiosis/biopersistence/fibrosis on inhalation (powder handling)",
+    "verification": "verified-search"
+  },
+  {
+    "id": "REG13",
+    "refId": "REG13",
+    "title": "Titanium dioxide (color additive)",
+    "source": "21 CFR 73.575 (US eCFR/FDA)",
+    "year": "current",
+    "type": "Regulation",
+    "doi": "ecfr.gov (73.575)",
+    "dimension": "Regulatory",
+    "substrate": "Polymer/food",
+    "elements": [
+      "Ti"
+    ],
+    "whatItEstablishes": "TiO2 color additive; Ti \u003C=1% wt of food",
+    "verification": "verified-search"
+  },
+  {
+    "id": "REG14",
+    "refId": "REG14",
+    "title": "Silicon dioxide GRAS",
+    "source": "21 CFR 182.90 (US eCFR/FDA)",
+    "year": "current",
+    "type": "Regulation",
+    "doi": "ecfr.gov (part 182)",
+    "dimension": "Regulatory",
+    "substrate": "Polymer/paper/food",
+    "elements": [
+      "Si"
+    ],
+    "whatItEstablishes": "SiO2 GRAS; migrates from paper/board",
+    "verification": "verified-search"
+  },
+  {
+    "id": "REG15",
+    "refId": "REG15",
+    "title": "Bismuth telluride dossier",
+    "source": "CAMEO Chemicals / NIOSH",
+    "year": "current",
+    "type": "Tox/hazard",
+    "doi": "cameochemicals.noaa.gov/chemical/25002",
+    "dimension": "Toxicology",
+    "substrate": "Occupational",
+    "elements": [
+      "Bi",
+      "Te"
+    ],
+    "whatItEstablishes": "Target organs; irritant; Te drives Bi-telluride hazard",
+    "verification": "verified-search"
+  }
+]

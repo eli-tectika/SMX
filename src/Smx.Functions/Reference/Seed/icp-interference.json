@@ -1,0 +1,417 @@
+[
+  {
+    "id": "icpInterference|Eu|icp-ms-ba",
+    "element": "Eu",
+    "docType": "icpInterference",
+    "subject": "Eu (151/153)",
+    "technique": "ICP-MS",
+    "interferent": "Ba",
+    "interferingSpecies": "135Ba16O\u002B / 137Ba16O\u002B, BaOH\u002B",
+    "severity": "Severe",
+    "mitigation": "N2O mass-shift (BaO2\u002B -\u003E2.6%); reaction cell; oxide-ratio correction",
+    "refIds": [
+      "I1",
+      "I6",
+      "I2"
+    ]
+  },
+  {
+    "id": "icpInterference|Gd|icp-ms-la-pr-ce",
+    "element": "Gd",
+    "docType": "icpInterference",
+    "subject": "Gd (155/157/158)",
+    "technique": "ICP-MS",
+    "interferent": "La, Pr, Ce",
+    "interferingSpecies": "139La16O\u002B, 141Pr16O\u002B, 142Ce16O\u002B",
+    "severity": "Severe",
+    "mitigation": "N2O mass-shift (Gd-\u003EGdO\u002B); use 160Gd; oxide correction",
+    "refIds": [
+      "I1",
+      "I6",
+      "I2"
+    ]
+  },
+  {
+    "id": "icpInterference|Sm|icp-ms-ce",
+    "element": "Sm",
+    "docType": "icpInterference",
+    "subject": "Sm (152)",
+    "technique": "ICP-MS",
+    "interferent": "Ce",
+    "interferingSpecies": "136Ce16O\u002B (CeO)",
+    "severity": "Severe",
+    "mitigation": "use 147Sm; CeO/Ce oxide-ratio correction; reaction cell",
+    "refIds": [
+      "I2"
+    ]
+  },
+  {
+    "id": "icpInterference|Tb|icp-ms-nd-pr",
+    "element": "Tb",
+    "docType": "icpInterference",
+    "subject": "Tb (159)",
+    "technique": "ICP-MS",
+    "interferent": "Nd, Pr",
+    "interferingSpecies": "143Nd16O\u002B, 141Pr18O\u002B",
+    "severity": "Severe",
+    "mitigation": "monoisotopic - N2O mass-shift or oxide correction MANDATORY",
+    "refIds": [
+      "I1",
+      "I2"
+    ]
+  },
+  {
+    "id": "icpInterference|Dy|icp-ms-sm-nd",
+    "element": "Dy",
+    "docType": "icpInterference",
+    "subject": "Dy (163)",
+    "technique": "ICP-MS",
+    "interferent": "Sm, Nd",
+    "interferingSpecies": "147Sm16O\u002B (\u002BNdO)",
+    "severity": "Severe",
+    "mitigation": "use 161/162/164Dy; oxide-ratio correction",
+    "refIds": [
+      "I1",
+      "I2"
+    ]
+  },
+  {
+    "id": "icpInterference|Ho|icp-ms-sm",
+    "element": "Ho",
+    "docType": "icpInterference",
+    "subject": "Ho (165)",
+    "technique": "ICP-MS",
+    "interferent": "Sm",
+    "interferingSpecies": "149Sm16O\u002B",
+    "severity": "Severe",
+    "mitigation": "monoisotopic - N2O mass-shift or LREE-oxide correction MANDATORY",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|Er|icp-ms-nd-sm",
+    "element": "Er",
+    "docType": "icpInterference",
+    "subject": "Er (166)",
+    "technique": "ICP-MS",
+    "interferent": "Nd, Sm",
+    "interferingSpecies": "160Nd16O\u002B, 150Sm16O\u002B",
+    "severity": "Severe",
+    "mitigation": "use 167/168Er; reaction cell; oxide correction",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|Tm|icp-ms-eu",
+    "element": "Tm",
+    "docType": "icpInterference",
+    "subject": "Tm (169)",
+    "technique": "ICP-MS",
+    "interferent": "Eu",
+    "interferingSpecies": "153Eu16O\u002B",
+    "severity": "Severe",
+    "mitigation": "monoisotopic - N2O mass-shift or EuO/Eu correction MANDATORY",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|Yb|icp-ms-gd",
+    "element": "Yb",
+    "docType": "icpInterference",
+    "subject": "Yb (172/173)",
+    "technique": "ICP-MS",
+    "interferent": "Gd",
+    "interferingSpecies": "156Gd16O\u002B, 157Gd16O\u002B",
+    "severity": "Moderate",
+    "mitigation": "use 171/174Yb; oxide correction",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|Lu|icp-ms-tb",
+    "element": "Lu",
+    "docType": "icpInterference",
+    "subject": "Lu (175)",
+    "technique": "ICP-MS",
+    "interferent": "Tb",
+    "interferingSpecies": "159Tb16O\u002B",
+    "severity": "Severe",
+    "mitigation": "near-monoisotopic - TbO correction or reaction cell needed",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|Hf|icp-ms-dy",
+    "element": "Hf",
+    "docType": "icpInterference",
+    "subject": "Hf (177)",
+    "technique": "ICP-MS",
+    "interferent": "Dy",
+    "interferingSpecies": "161Dy16O\u002B",
+    "severity": "Moderate",
+    "mitigation": "use 178/180Hf; oxide correction",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|Ta|icp-ms-ho",
+    "element": "Ta",
+    "docType": "icpInterference",
+    "subject": "Ta (181)",
+    "technique": "ICP-MS",
+    "interferent": "Ho",
+    "interferingSpecies": "165Ho16O\u002B",
+    "severity": "Severe",
+    "mitigation": "Ta monoisotopic - HoO correction or O2 reaction cell needed",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|W|icp-ms-er",
+    "element": "W",
+    "docType": "icpInterference",
+    "subject": "W (182)",
+    "technique": "ICP-MS",
+    "interferent": "Er",
+    "interferingSpecies": "166Er16O\u002B",
+    "severity": "Moderate",
+    "mitigation": "use 183/184W; oxide correction",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|In|icp-ms-sn",
+    "element": "In",
+    "docType": "icpInterference",
+    "subject": "In (115)",
+    "technique": "ICP-MS",
+    "interferent": "Sn",
+    "interferingSpecies": "115Sn\u002B (isobaric, dm~0.0005 u)",
+    "severity": "Severe",
+    "mitigation": "use 113In \u002B math correction via 118Sn; quad cannot resolve",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|Sb|icp-ms-te",
+    "element": "Sb",
+    "docType": "icpInterference",
+    "subject": "Sb (123)",
+    "technique": "ICP-MS",
+    "interferent": "Te",
+    "interferingSpecies": "123Te\u002B (isobaric)",
+    "severity": "Moderate",
+    "mitigation": "use 121Sb (free of Te)",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|As|icp-ms-cl-matrix",
+    "element": "As",
+    "docType": "icpInterference",
+    "subject": "As (75)",
+    "technique": "ICP-MS",
+    "interferent": "Cl (matrix)",
+    "interferingSpecies": "40Ar35Cl\u002B (\u002B 59Co16O, CaO2)",
+    "severity": "Severe",
+    "mitigation": "He collision (KED); EPA ArCl correction eq.; avoid HCl",
+    "refIds": [
+      "I1",
+      "I7"
+    ]
+  },
+  {
+    "id": "icpInterference|V|icp-ms-cl-s",
+    "element": "V",
+    "docType": "icpInterference",
+    "subject": "V (51)",
+    "technique": "ICP-MS",
+    "interferent": "Cl, S",
+    "interferingSpecies": "35Cl16O\u002B, 34S16OH\u002B, 36Ar15N\u002B",
+    "severity": "Severe",
+    "mitigation": "He collision (KED); avoid HCl/H2SO4",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|Cr|icp-ms-ar-c-cl",
+    "element": "Cr",
+    "docType": "icpInterference",
+    "subject": "Cr (52/53)",
+    "technique": "ICP-MS",
+    "interferent": "Ar-C, Cl",
+    "interferingSpecies": "40Ar12C\u002B, 35Cl16OH\u002B, 37Cl16O\u002B",
+    "severity": "Severe",
+    "mitigation": "He KED; control organic-C load; avoid chloride",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|Ti|icp-ms-p-s-si",
+    "element": "Ti",
+    "docType": "icpInterference",
+    "subject": "Ti (47/48)",
+    "technique": "ICP-MS",
+    "interferent": "P, S, Si",
+    "interferingSpecies": "31P16O\u002B, 32S16O\u002B, 30Si16OH\u002B",
+    "severity": "Moderate",
+    "mitigation": "He KED; use 49Ti; control P/S/Si",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|Co|icp-ms-ca",
+    "element": "Co",
+    "docType": "icpInterference",
+    "subject": "Co (59)",
+    "technique": "ICP-MS",
+    "interferent": "Ca",
+    "interferingSpecies": "43Ca16O\u002B, 42Ca16OH\u002B",
+    "severity": "Moderate",
+    "mitigation": "He KED; matrix separation if Ca-rich",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|Ga|icp-ms-cl-ar",
+    "element": "Ga",
+    "docType": "icpInterference",
+    "subject": "Ga (71)",
+    "technique": "ICP-MS",
+    "interferent": "Cl, Ar",
+    "interferingSpecies": "36Ar35Cl\u002B, 37Cl16O18O\u002B",
+    "severity": "Moderate",
+    "mitigation": "He KED; avoid chloride; use 69Ga",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|Ge|icp-ms-ar-s-ca",
+    "element": "Ge",
+    "docType": "icpInterference",
+    "subject": "Ge (72)",
+    "technique": "ICP-MS",
+    "interferent": "Ar, S, Ca",
+    "interferingSpecies": "36Ar2\u002B, 40Ar32S\u002B, 40Ca16O2\u002B",
+    "severity": "Severe",
+    "mitigation": "He KED; use 74Ge; control S/Ca",
+    "refIds": [
+      "I1"
+    ]
+  },
+  {
+    "id": "icpInterference|Sc|icp-oes-ce-nd-matrices",
+    "element": "Sc",
+    "docType": "icpInterference",
+    "subject": "Sc / Y / REE lines",
+    "technique": "ICP-OES",
+    "interferent": "Ce, Nd matrices",
+    "interferingSpecies": "dense Ce II / Nd II line \u002B wing overlap",
+    "severity": "Severe",
+    "mitigation": "high-res echelle optics; inter-element correction (IEC); pick clean lines",
+    "refIds": [
+      "I3",
+      "I4",
+      "I5"
+    ]
+  },
+  {
+    "id": "icpInterference|Nd|icp-oes-ce",
+    "element": "Nd",
+    "docType": "icpInterference",
+    "subject": "Nd II 401.225 nm",
+    "technique": "ICP-OES",
+    "interferent": "Ce",
+    "interferingSpecies": "Ce II 401.239 nm (dl ~14 pm)",
+    "severity": "Severe",
+    "mitigation": "high-res spectrometer; alternate Nd line; IEC",
+    "refIds": [
+      "I3"
+    ]
+  },
+  {
+    "id": "icpInterference|Cu|icp-oes-er",
+    "element": "Cu",
+    "docType": "icpInterference",
+    "subject": "Cu 324.754 nm",
+    "technique": "ICP-OES",
+    "interferent": "Er",
+    "interferingSpecies": "Er 324.750 nm (near-total overlap)",
+    "severity": "Severe",
+    "mitigation": "Kalman-filter / IEC; alternate Cu line",
+    "refIds": [
+      "I3"
+    ]
+  },
+  {
+    "id": "icpInterference|Gd|icp-oes-ce-nd",
+    "element": "Gd",
+    "docType": "icpInterference",
+    "subject": "Gd",
+    "technique": "ICP-OES",
+    "interferent": "Ce, Nd",
+    "interferingSpecies": "Ce/Nd line overlaps on Gd lines",
+    "severity": "Severe",
+    "mitigation": "high-res optics \u002B IEC; reduce Ce/Nd co-content",
+    "refIds": [
+      "I3"
+    ]
+  },
+  {
+    "id": "icpInterference|V|icp-oes-fe-ti",
+    "element": "V",
+    "docType": "icpInterference",
+    "subject": "V / Cr (oil, geol)",
+    "technique": "ICP-OES",
+    "interferent": "Fe, Ti",
+    "interferingSpecies": "Fe \u0026 Ti line-rich spectra overlap V/Cr",
+    "severity": "Severe",
+    "mitigation": "IEC (EPA 6010D ICSAB); high-res optics; alt. lines",
+    "refIds": [
+      "I8"
+    ]
+  },
+  {
+    "id": "icpInterference|La|icp-oes-ca-matrix",
+    "element": "La",
+    "docType": "icpInterference",
+    "subject": "La II 408.6 nm",
+    "technique": "ICP-OES",
+    "interferent": "Ca (matrix)",
+    "interferingSpecies": "Ca-induced suppression (not overlap)",
+    "severity": "Moderate",
+    "mitigation": "matrix-matched standards / standard addition",
+    "refIds": [
+      "I8"
+    ]
+  },
+  {
+    "id": "icpInterference|Ti|icp-oes-ca-p-zn-additive-fe",
+    "element": "Ti",
+    "docType": "icpInterference",
+    "subject": "Ti / V (oil ASTM D5185)",
+    "technique": "ICP-OES",
+    "interferent": "Ca/P/Zn additive, Fe",
+    "interferingSpecies": "strong-emitter wing overlap",
+    "severity": "Moderate",
+    "mitigation": "D5185 line set \u002B IEC",
+    "refIds": [
+      "I9"
+    ]
+  }
+]

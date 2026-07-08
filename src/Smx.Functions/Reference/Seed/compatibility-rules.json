@@ -1,0 +1,988 @@
+[
+  {
+    "id": "rule|Radioactive: Tc, Po, At, Ra, Rn, actinides (U, Th...)|safety-all",
+    "element": "Radioactive: Tc, Po, At, Ra, Rn, actinides (U, Th...)",
+    "docType": "rule",
+    "dimension": "Safety",
+    "substrate": "All",
+    "subject": "Radioactive: Tc, Po, At, Ra, Rn, actinides (U, Th...)",
+    "verdict": "Exclude",
+    "reason": "Radioactive - eliminated up front per SMX safety screen.",
+    "refIds": [
+      "SMX",
+      "docs"
+    ]
+  },
+  {
+    "id": "rule|Toxic: As, Cd, Pb, Hg, Be, Se, Tl|safety-all",
+    "element": "Toxic: As, Cd, Pb, Hg, Be, Se, Tl",
+    "docType": "rule",
+    "dimension": "Safety",
+    "substrate": "All",
+    "subject": "Toxic: As, Cd, Pb, Hg, Be, Se, Tl",
+    "verdict": "Exclude",
+    "reason": "Toxic/poisonous - eliminated; confirmed by EU 10/2011 \u0027ND\u0027, REACH Annex XVII, RoHS.",
+    "refIds": [
+      "REG1",
+      "REG3",
+      "REG4"
+    ]
+  },
+  {
+    "id": "rule|Reactive/burning: Li, Na, K, Rb, Cs (Mg, Ca limited)|safety-all",
+    "element": "Reactive/burning: Li, Na, K, Rb, Cs (Mg, Ca limited)",
+    "docType": "rule",
+    "dimension": "Safety",
+    "substrate": "All",
+    "subject": "Reactive/burning: Li, Na, K, Rb, Cs (Mg, Ca limited)",
+    "verdict": "Exclude",
+    "reason": "Highly reactive/flammable; Mg/Ca too reactive for clean alloying/handling.",
+    "refIds": [
+      "SMX",
+      "docs"
+    ]
+  },
+  {
+    "id": "rule|Mn|gold-solubility-gold",
+    "element": "Mn",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Mn",
+    "verdict": "Go",
+    "reason": "Extensive solid solubility in fcc Au at high T (Au3Mn, AuMn order). Best-soluble TM marker. MA ~1 wt%.",
+    "refIds": [
+      "G11",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|In|gold-solubility-gold",
+    "element": "In",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "In",
+    "verdict": "Go",
+    "reason": "Appreciable terminal fcc solubility (several at%) before AuIn/AuIn2. Tested by PM. MA ~1 wt%.",
+    "refIds": [
+      "G5",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Ga|gold-solubility-gold",
+    "element": "Ga",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Ga",
+    "verdict": "Caution",
+    "reason": "Limited but nonzero Au(fcc) solubility; rich intermetallic field; low MP eases MA. Tested by PM.",
+    "refIds": [
+      "G21",
+      "G31",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Ti|gold-solubility-gold",
+    "element": "Ti",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Ti",
+    "verdict": "Caution",
+    "reason": "Modest terminal solubility; forms Au4Ti etc. Detectable to 12 ppm. Low at% marker.",
+    "refIds": [
+      "G9",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Zr|gold-solubility-gold",
+    "element": "Zr",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Zr",
+    "verdict": "Caution",
+    "reason": "Limited Au(fcc) solubility; Au-rich intermetallics. Detectable ~30 ppm. Low-loading only.",
+    "refIds": [
+      "G15",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Hf|gold-solubility-gold",
+    "element": "Hf",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Hf",
+    "verdict": "Caution",
+    "reason": "Restricted solubility; intermetallics dominate (Zr-like).",
+    "refIds": [
+      "G10",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|V|gold-solubility-gold",
+    "element": "V",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "V",
+    "verdict": "Caution",
+    "reason": "Limited solubility (\u003C~4 wt%); detectable to 3 ppm. Good dilute marker.",
+    "refIds": [
+      "G3",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Cr|gold-solubility-gold",
+    "element": "Cr",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Cr",
+    "verdict": "Caution",
+    "reason": "Terminal fcc solubility at high T (~\u003C2 wt%) but ordered/decomposes on cooling. Reg. limit issue (3-10 ppm).",
+    "refIds": [
+      "G1",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Co|gold-solubility-gold",
+    "element": "Co",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Co",
+    "verdict": "Caution",
+    "reason": "Eutectic with large solid-state miscibility gap; small low-T solubility. Detectable 12 ppm.",
+    "refIds": [
+      "G2",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Sc|gold-solubility-gold",
+    "element": "Sc",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Sc",
+    "verdict": "Caution",
+    "reason": "Au-Sc intermetallics (e.g. AuSc); low terminal solubility. Marker as dilute/compound.",
+    "refIds": [
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Y, La, Ce, Pr, Nd (light RE)|gold-solubility-gold",
+    "element": "Y, La, Ce, Pr, Nd (light RE)",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Y, La, Ce, Pr, Nd (light RE)",
+    "verdict": "Caution",
+    "reason": "Au-RE line compounds (strong negative dH); negligible terminal solid solubility (~0). Marker sits as 2nd phase.",
+    "refIds": [
+      "G24",
+      "G25",
+      "G26",
+      "G27"
+    ]
+  },
+  {
+    "id": "rule|Sm, Eu, Gd, Tb, Dy, Ho, Er, Tm, Yb, Lu (heavy RE)|gold-solubility-gold",
+    "element": "Sm, Eu, Gd, Tb, Dy, Ho, Er, Tm, Yb, Lu (heavy RE)",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Sm, Eu, Gd, Tb, Dy, Ho, Er, Tm, Yb, Lu (heavy RE)",
+    "verdict": "Caution",
+    "reason": "Expected line-compound formers, negligible Au solubility (by analogy; no individual phase-diagram papers).",
+    "refIds": [
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Sn|gold-solubility-gold",
+    "element": "Sn",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Sn",
+    "verdict": "Caution",
+    "reason": "Some terminal solubility then AuSn/AuSn2/AuSn4 (key solder). Watch low-MP eutectic.",
+    "refIds": [
+      "G22",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Al|gold-solubility-gold",
+    "element": "Al",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Al",
+    "verdict": "Caution",
+    "reason": "Au-Al intermetallics (\u0027purple plague\u0027 AuAl2); limited Au-side solubility; reactive. Alloyed to 20% in jewelry.",
+    "refIds": [
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Nb|gold-solubility-gold",
+    "element": "Nb",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Nb",
+    "verdict": "Caution",
+    "reason": "Low solubility; Nb3Au (A15) compounds. Marginal as dilute marker; high MP.",
+    "refIds": [
+      "G8",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Ge|gold-solubility-gold",
+    "element": "Ge",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Ge",
+    "verdict": "Caution",
+    "reason": "Simple eutectic ~361C; near-zero solid solubility (\u003C~1 at%). Classic Au-Ge die-attach solder; marker as 2nd phase.",
+    "refIds": [
+      "G20",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Sr|gold-solubility-gold",
+    "element": "Sr",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Sr",
+    "verdict": "Caution",
+    "reason": "Au-Sr intermetallics; negligible solubility; Sr reactivity/volatility complicates MA.",
+    "refIds": [
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Ta|gold-solubility-gold",
+    "element": "Ta",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Ta",
+    "verdict": "Exclude",
+    "reason": "Very limited solubility \u002B refractory MP 3017C makes MA impractical; Ta3Au-type compounds.",
+    "refIds": [
+      "G14",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Mo|gold-solubility-gold",
+    "element": "Mo",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Mo",
+    "verdict": "Exclude",
+    "reason": "Au-Mo essentially immiscible (large miscibility gaps), no compounds; MP 2623C. Will not alloy uniformly.",
+    "refIds": [
+      "G7",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|W|gold-solubility-gold",
+    "element": "W",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "W",
+    "verdict": "Exclude",
+    "reason": "Au-W essentially immiscible, no phases, near-zero solubility; MP 3422C.",
+    "refIds": [
+      "G12",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Re|gold-solubility-gold",
+    "element": "Re",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Re",
+    "verdict": "Exclude",
+    "reason": "Au-Re near-complete immiscibility; MP 3186C.",
+    "refIds": [
+      "G13",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Sb|gold-solubility-gold",
+    "element": "Sb",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Sb",
+    "verdict": "Exclude",
+    "reason": "Eutectic \u002B AuSb2; Sb solid solubility \u003C~1 at%. Marker as compound, not solution. Reg. limit ~10 ppm.",
+    "refIds": [
+      "G4",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Te|gold-solubility-gold",
+    "element": "Te",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Te",
+    "verdict": "Exclude",
+    "reason": "Eutectic \u002B AuTe2 (calaverite); negligible solubility. Brittle at \u003E0.1 wt%.",
+    "refIds": [
+      "G6",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Bi|gold-solubility-gold",
+    "element": "Bi",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Bi",
+    "verdict": "Exclude",
+    "reason": "Eutectic \u002B Au2Bi; very low Bi solubility. Spec limit ~20 ppm in PM gold.",
+    "refIds": [
+      "G23",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Si|gold-solubility-gold",
+    "element": "Si",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Si",
+    "verdict": "Exclude",
+    "reason": "Classic simple eutectic (~363C, 18.6 at%); mutual solid solubility ~nil. Marker as 2nd phase.",
+    "refIds": [
+      "G19",
+      "G26"
+    ]
+  },
+  {
+    "id": "rule|Cu, Ag, Pd, Pt (reference cases)|gold-solubility-gold",
+    "element": "Cu, Ag, Pd, Pt (reference cases)",
+    "docType": "rule",
+    "dimension": "Gold solubility",
+    "substrate": "Gold",
+    "subject": "Cu, Ag, Pd, Pt (reference cases)",
+    "verdict": "Info",
+    "reason": "Complete/near-complete fcc solid solution - the \u0027fully soluble\u0027 benchmarks. Already present in PM gold -\u003E not used as markers.",
+    "refIds": [
+      "G16",
+      "G17",
+      "G18"
+    ]
+  },
+  {
+    "id": "rule|Zr|oil-compatibility-engine-oil",
+    "element": "Zr",
+    "docType": "rule",
+    "dimension": "Oil compatibility",
+    "substrate": "Engine oil",
+    "subject": "Zr",
+    "verdict": "Go",
+    "reason": "Zr neodecanoate/octoate commercial \u0026 oil-soluble; ~0 native background; no P/S. BENCHMARK marker. Ash-forming (tiny at ppm).",
+    "refIds": [
+      "O13",
+      "O14",
+      "O28"
+    ]
+  },
+  {
+    "id": "rule|Ti|oil-compatibility-engine-oil",
+    "element": "Ti",
+    "docType": "rule",
+    "dimension": "Oil compatibility",
+    "substrate": "Engine oil",
+    "subject": "Ti",
+    "verdict": "Caution",
+    "reason": "Ti neodecanoate is an established AW/FM additive -\u003E finished oils may ALREADY contain Ti (background). Verify base oil.",
+    "refIds": [
+      "O13",
+      "O14",
+      "O1"
+    ]
+  },
+  {
+    "id": "rule|Y, La, Ce, Nd, Yb \u002B RE|oil-compatibility-engine-oil",
+    "element": "Y, La, Ce, Nd, Yb \u002B RE",
+    "docType": "rule",
+    "dimension": "Oil compatibility",
+    "substrate": "Engine oil",
+    "subject": "Y, La, Ce, Nd, Yb \u002B RE",
+    "verdict": "Go",
+    "reason": "RE neodecanoates/2-EH available; RE absent from oil additives \u0026 wear metals -\u003E clean, distinctive. No P/S. Ce/Nd also fuel-catalytic.",
+    "refIds": [
+      "O14",
+      "O28",
+      "O30",
+      "O1"
+    ]
+  },
+  {
+    "id": "rule|Mn|oil-compatibility-engine-oil",
+    "element": "Mn",
+    "docType": "rule",
+    "dimension": "Oil compatibility",
+    "substrate": "Engine oil",
+    "subject": "Mn",
+    "verdict": "Go",
+    "reason": "Mn 2-EH/naphthenate oil-soluble; trace wear background. Caution: Mn(acac) low decomp; MMT-\u003EMn3O4 catalyst fouling if in fuel.",
+    "refIds": [
+      "O25",
+      "O28",
+      "O31"
+    ]
+  },
+  {
+    "id": "rule|Co|oil-compatibility-engine-oil",
+    "element": "Co",
+    "docType": "rule",
+    "dimension": "Oil compatibility",
+    "substrate": "Engine oil",
+    "subject": "Co",
+    "verdict": "Go",
+    "reason": "Co 2-EH/naphthenate classic driers, oil-soluble; not an oil additive (clean). Caution: redox/pro-oxidant - keep 5-15 ppm.",
+    "refIds": [
+      "O23",
+      "O28"
+    ]
+  },
+  {
+    "id": "rule|V|oil-compatibility-engine-oil",
+    "element": "V",
+    "docType": "rule",
+    "dimension": "Oil compatibility",
+    "substrate": "Engine oil",
+    "subject": "V",
+    "verdict": "Caution",
+    "reason": "Vanadyl acac/2-EH oil-soluble but VO(acac)2 decomposes ~400C (engine hot-zone); V background from HFO; catalyst-active; ash.",
+    "refIds": [
+      "O24",
+      "O26"
+    ]
+  },
+  {
+    "id": "rule|Hf|oil-compatibility-engine-oil",
+    "element": "Hf",
+    "docType": "rule",
+    "dimension": "Oil compatibility",
+    "substrate": "Engine oil",
+    "subject": "Hf",
+    "verdict": "Caution",
+    "reason": "Hf mirrors Zr but commercial oil-soluble Hf scarce (custom synth); not in standard ICP panels (method extension).",
+    "refIds": [
+      "O14"
+    ]
+  },
+  {
+    "id": "rule|W|oil-compatibility-engine-oil",
+    "element": "W",
+    "docType": "rule",
+    "dimension": "Oil compatibility",
+    "substrate": "Engine oil",
+    "subject": "W",
+    "verdict": "Caution",
+    "reason": "No simple oil-soluble W carboxylate; delivered as WS2 (adds S) or W-carbonyl. Clean background if a soluble form secured.",
+    "refIds": [
+      "O32"
+    ]
+  },
+  {
+    "id": "rule|Mo|oil-compatibility-engine-oil",
+    "element": "Mo",
+    "docType": "rule",
+    "dimension": "Oil compatibility",
+    "substrate": "Engine oil",
+    "subject": "Mo",
+    "verdict": "Exclude",
+    "reason": "Mainstream FM (MoDTC) present 50-250 ppm in many oils \u0026 in ICP panels -\u003E marker dose buried; reactive with ZDDP/detergents.",
+    "refIds": [
+      "O2",
+      "O15",
+      "O16",
+      "O17",
+      "O18"
+    ]
+  },
+  {
+    "id": "rule|All RE \u002B Zr/Ti/Hf carboxylates \u0026 diketonates|oil-compatibility-engine-oil",
+    "element": "All RE \u002B Zr/Ti/Hf carboxylates \u0026 diketonates",
+    "docType": "rule",
+    "dimension": "Oil compatibility",
+    "substrate": "Engine oil",
+    "subject": "All RE \u002B Zr/Ti/Hf carboxylates \u0026 diketonates",
+    "verdict": "Go",
+    "reason": "Carboxylate/beta-diketonate ligands are C/H/O only -\u003E add NO P or S; preserve ZDDP P-window (GF-6 0.06-0.08%) \u0026 S caps. Major advantage.",
+    "refIds": [
+      "O11",
+      "O23",
+      "O28"
+    ]
+  },
+  {
+    "id": "rule|All metal markers (ash)|oil-compatibility-engine-oil",
+    "element": "All metal markers (ash)",
+    "docType": "rule",
+    "dimension": "Oil compatibility",
+    "substrate": "Engine oil",
+    "subject": "All metal markers (ash)",
+    "verdict": "Caution",
+    "reason": "Every metal marker forms sulfated ash (D874). At 5-50 ppm increment is \u003C\u003C0.01% - negligible vs ACEA C (0.5-0.8%) \u0026 ILSAC GF-7/API SQ (0.9%), but tally in low-SAPS oils near the ceiling.",
+    "refIds": [
+      "O6",
+      "O9",
+      "O10"
+    ]
+  },
+  {
+    "id": "rule|Volatile diketonates (TMHD/acac of Fe,Mn,Ni,V; Y-TMHD)|oil-compatibility-engine-oil",
+    "element": "Volatile diketonates (TMHD/acac of Fe,Mn,Ni,V; Y-TMHD)",
+    "docType": "rule",
+    "dimension": "Oil compatibility",
+    "substrate": "Engine oil",
+    "subject": "Volatile diketonates (TMHD/acac of Fe,Mn,Ni,V; Y-TMHD)",
+    "verdict": "Caution",
+    "reason": "High volatility (sublime \u003C100C) risks marker loss via evaporation (Noack)/maldistribution. Prefer low-volatility neodecanoate/naphthenate.",
+    "refIds": [
+      "O23",
+      "O25",
+      "O27"
+    ]
+  },
+  {
+    "id": "rule|Declared performance-neutral marker|oil-compatibility-engine-oil",
+    "element": "Declared performance-neutral marker",
+    "docType": "rule",
+    "dimension": "Oil compatibility",
+    "substrate": "Engine oil",
+    "subject": "Declared performance-neutral marker",
+    "verdict": "Info",
+    "reason": "API 1509 explicitly permits markers that \u0027distinguish product without materially impacting performance\u0027; conformance audits compare measured vs filed chemistry.",
+    "refIds": [
+      "O7"
+    ]
+  },
+  {
+    "id": "rule|Rare-earth oxides (CeO2, La2O3, Nd2O3...)|process-thermal-polymer-melt",
+    "element": "Rare-earth oxides (CeO2, La2O3, Nd2O3...)",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer melt",
+    "subject": "Rare-earth oxides (CeO2, La2O3, Nd2O3...)",
+    "verdict": "Go",
+    "reason": "Sesquioxides/CeO2 thermally stable far above melt temps; survive compounding. Disperse: control particle size / silane.",
+    "refIds": [
+      "P2",
+      "P10",
+      "P11"
+    ]
+  },
+  {
+    "id": "rule|RE oxide|process-thermal-textile-acid-dyeing",
+    "element": "RE oxide",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Textile (acid dyeing)",
+    "subject": "RE oxide",
+    "verdict": "Go",
+    "reason": "Acid-insoluble \u0026 thermally stable; pigment-grade RE oxides resist solvents/chemicals.",
+    "refIds": [
+      "P11",
+      "P12",
+      "P16"
+    ]
+  },
+  {
+    "id": "rule|RE salt (applied bath)|process-thermal-textile-reactive-alkaline-dye",
+    "element": "RE salt (applied bath)",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Textile (reactive/alkaline dye)",
+    "subject": "RE salt (applied bath)",
+    "verdict": "Go",
+    "reason": "RE3\u002B coordinates cellulose -OH; improves dye fixation; wash-durable to 50 cycles. Used as covert ICP-OES marker.",
+    "refIds": [
+      "P16",
+      "P17",
+      "P18",
+      "P19"
+    ]
+  },
+  {
+    "id": "rule|RE-oxide / RE-Mo-oxide pigment|process-thermal-coating-uv-weather",
+    "element": "RE-oxide / RE-Mo-oxide pigment",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Coating (UV/weather)",
+    "subject": "RE-oxide / RE-Mo-oxide pigment",
+    "verdict": "Go",
+    "reason": "Weather-, light-, chemical-stable; high NIR reflectance; non-toxic.",
+    "refIds": [
+      "P10",
+      "P11",
+      "P12",
+      "P13"
+    ]
+  },
+  {
+    "id": "rule|TiO2 rutile, surface-coated (SiO2/Al2O3/ZrO2)|process-thermal-coating",
+    "element": "TiO2 rutile, surface-coated (SiO2/Al2O3/ZrO2)",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Coating",
+    "subject": "TiO2 rutile, surface-coated (SiO2/Al2O3/ZrO2)",
+    "verdict": "Go",
+    "reason": "Coated rutile suppresses photocatalytic radical generation that chalks the binder.",
+    "refIds": [
+      "P1"
+    ]
+  },
+  {
+    "id": "rule|TiO2 anatase or uncoated|process-thermal-coating-outdoor-polymer",
+    "element": "TiO2 anatase or uncoated",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Coating / outdoor polymer",
+    "subject": "TiO2 anatase or uncoated",
+    "verdict": "Exclude",
+    "reason": "Photocatalytically degrades the organic matrix under UV. Indoor-only, or pick another element.",
+    "refIds": [
+      "P1"
+    ]
+  },
+  {
+    "id": "rule|ZrO2 (zirconia)|process-thermal-polymer-coating",
+    "element": "ZrO2 (zirconia)",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer \u0026 coating",
+    "subject": "ZrO2 (zirconia)",
+    "verdict": "Go",
+    "reason": "Survives PC/epoxy processing; acid-resistant; raises thermal stability at low loadings.",
+    "refIds": [
+      "P5",
+      "P8"
+    ]
+  },
+  {
+    "id": "rule|Bi2O3|process-thermal-polymer-epoxy",
+    "element": "Bi2O3",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer \u0026 epoxy",
+    "subject": "Bi2O3",
+    "verdict": "Go",
+    "reason": "Raises composite thermal stability; tolerated to high loadings (transition ~730C \u003E\u003E processing).",
+    "refIds": [
+      "P7",
+      "P8"
+    ]
+  },
+  {
+    "id": "rule|Sb2O3 / SnO2|process-thermal-polymer-pvc",
+    "element": "Sb2O3 / SnO2",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer (PVC)",
+    "subject": "Sb2O3 / SnO2",
+    "verdict": "Go",
+    "reason": "Fine oxide powders disperse \u0026 are processing-stable (Sb2O3 fire-reactive with halogens = functional).",
+    "refIds": [
+      "P9"
+    ]
+  },
+  {
+    "id": "rule|WO3|process-thermal-polymer",
+    "element": "WO3",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer",
+    "subject": "WO3",
+    "verdict": "Go",
+    "reason": "Robust to high-T processing.",
+    "refIds": [
+      "P9-cf"
+    ]
+  },
+  {
+    "id": "rule|MoO3|process-thermal-polymer",
+    "element": "MoO3",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer",
+    "subject": "MoO3",
+    "verdict": "Caution",
+    "reason": "Comparatively volatile / sublimes \u0026 reduces (MoO3-\u003EMo4O11) at elevated T - marker loss risk in hot/reducing melts. Prefer WO3/tungstate.",
+    "refIds": [
+      "-"
+    ]
+  },
+  {
+    "id": "rule|Metal nitrate (e.g. Ce(NO3)3)|process-thermal-polymer-melt-200-300c",
+    "element": "Metal nitrate (e.g. Ce(NO3)3)",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer melt (\u003E200-300C)",
+    "subject": "Metal nitrate (e.g. Ce(NO3)3)",
+    "verdict": "Caution",
+    "reason": "Nitrates decompose ~190-300C (-\u003E oxide \u002B NO2); gassing/voids/colour. Convert to oxide before compounding.",
+    "refIds": [
+      "P20",
+      "P24"
+    ]
+  },
+  {
+    "id": "rule|Metal carbonate (SrCO3, RE carbonates)|process-thermal-polymer-melt",
+    "element": "Metal carbonate (SrCO3, RE carbonates)",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer melt",
+    "subject": "Metal carbonate (SrCO3, RE carbonates)",
+    "verdict": "Go",
+    "reason": "Stable through normal melt temps (SrCO3 decomp ~875C). Survive processing (not pure oxide, but metal-calibrated).",
+    "refIds": [
+      "P22"
+    ]
+  },
+  {
+    "id": "rule|Metal acetate / hydroxide|process-thermal-polymer-melt",
+    "element": "Metal acetate / hydroxide",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer melt",
+    "subject": "Metal acetate / hydroxide",
+    "verdict": "Caution",
+    "reason": "Decompose low (hydroxides \u003C150-340C; acetates ~110-250C) releasing volatiles/water -\u003E foaming. Prefer oxide.",
+    "refIds": [
+      "P20"
+    ]
+  },
+  {
+    "id": "rule|Marker-form general rule|process-thermal-polymer-textile-coating",
+    "element": "Marker-form general rule",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Polymer/Textile/Coating",
+    "subject": "Marker-form general rule",
+    "verdict": "Info",
+    "reason": "OXIDES = universally robust (thermal\u002Bchemical). Nitrate/acetate/hydroxide OK for water-based textile/coating but risky in polymer melt.",
+    "refIds": [
+      "P10-P13",
+      "P20",
+      "P22-P24"
+    ]
+  },
+  {
+    "id": "rule|RE/Ti/Zr oxide vs bleaching|process-thermal-textile-oxidative-reductive",
+    "element": "RE/Ti/Zr oxide vs bleaching",
+    "docType": "rule",
+    "dimension": "Process / thermal",
+    "substrate": "Textile (oxidative/reductive)",
+    "subject": "RE/Ti/Zr oxide vs bleaching",
+    "verdict": "Info",
+    "reason": "Inferred Go (acid/oxidiser-insoluble) but NO direct study of marker survival through H2O2/hydrosulfite bleach - key experimental gap.",
+    "refIds": [
+      "P16",
+      "P17"
+    ]
+  },
+  {
+    "id": "rule|Lanthanides (sum La...Lu, \u002BSc/Y)|regulatory-food-contact-polymer",
+    "element": "Lanthanides (sum La...Lu, \u002BSc/Y)",
+    "docType": "rule",
+    "dimension": "Regulatory",
+    "substrate": "Food-contact polymer",
+    "subject": "Lanthanides (sum La...Lu, \u002BSc/Y)",
+    "verdict": "Caution",
+    "reason": "EU 10/2011: SUM of all lanthanides \u003C= 0.05 mg/kg. Multiple RE markers share one tiny migration budget. Choose low-migration carriers.",
+    "refIds": [
+      "REG1",
+      "REG2"
+    ]
+  },
+  {
+    "id": "rule|Cobalt (salts)|regulatory-all-food-textile",
+    "element": "Cobalt (salts)",
+    "docType": "rule",
+    "dimension": "Regulatory",
+    "substrate": "All / food / textile",
+    "subject": "Cobalt (salts)",
+    "verdict": "Exclude",
+    "reason": "Co compounds = REACH SVHC (CMR 1B) \u002B skin sensitizer; food SML 0.05; OEKO-TEX 1.0 (Class I). Riskiest single marker.",
+    "refIds": [
+      "REG6",
+      "REG2",
+      "REG7"
+    ]
+  },
+  {
+    "id": "rule|Antimony|regulatory-food-contact-textile",
+    "element": "Antimony",
+    "docType": "rule",
+    "dimension": "Regulatory",
+    "substrate": "Food-contact / textile",
+    "subject": "Antimony",
+    "verdict": "Caution",
+    "reason": "Food SML 0.04 mg/kg (low); OEKO-TEX extractable ~30 mg/kg; Sb2O3 suspected carcinogen.",
+    "refIds": [
+      "REG2",
+      "REG7"
+    ]
+  },
+  {
+    "id": "rule|Aluminium / Barium / Manganese|regulatory-food-contact-polymer",
+    "element": "Aluminium / Barium / Manganese",
+    "docType": "rule",
+    "dimension": "Regulatory",
+    "substrate": "Food-contact polymer",
+    "subject": "Aluminium / Barium / Manganese",
+    "verdict": "Caution",
+    "reason": "EU 10/2011 SMLs: Al 1.0, Ba 1.0, Mn 0.6 mg/kg.",
+    "refIds": [
+      "REG2"
+    ]
+  },
+  {
+    "id": "rule|Tellurium|regulatory-powder-handling-all",
+    "element": "Tellurium",
+    "docType": "rule",
+    "dimension": "Regulatory",
+    "substrate": "Powder handling / all",
+    "subject": "Tellurium",
+    "verdict": "Caution",
+    "reason": "NIOSH/OSHA OEL ~0.1 mg/m3 (low) - occupational watch-out even though finished articles lightly regulated.",
+    "refIds": [
+      "REG10",
+      "REG15"
+    ]
+  },
+  {
+    "id": "rule|Chromium|regulatory-textile-leather-all",
+    "element": "Chromium",
+    "docType": "rule",
+    "dimension": "Regulatory",
+    "substrate": "Textile / leather / all",
+    "subject": "Chromium",
+    "verdict": "Caution",
+    "reason": "Cr(VI) restricted (REACH XVII 47; leather 0.0003%). Keep marker as Cr metal / Cr(III).",
+    "refIds": [
+      "REG4"
+    ]
+  },
+  {
+    "id": "rule|Nickel (benchmark; not in palette)|regulatory-textile-jewelry-skin",
+    "element": "Nickel (benchmark; not in palette)",
+    "docType": "rule",
+    "dimension": "Regulatory",
+    "substrate": "Textile / jewelry (skin)",
+    "subject": "Nickel (benchmark; not in palette)",
+    "verdict": "Exclude",
+    "reason": "REACH Annex XVII Entry 27: Ni release 0.5 ug/cm2/wk (0.2 piercing). Sensitizer benchmark for skin-contact codes.",
+    "refIds": [
+      "REG4",
+      "REG5"
+    ]
+  },
+  {
+    "id": "rule|Titanium|regulatory-food-polymer",
+    "element": "Titanium",
+    "docType": "rule",
+    "dimension": "Regulatory",
+    "substrate": "Food / polymer",
+    "subject": "Titanium",
+    "verdict": "Go",
+    "reason": "TiO2 color additive (US 21 CFR 73.575, Ti \u003C=1% of food). EU delisted E171 as food ADDITIVE (2022) but polymer-pigment use differs - confirm per use.",
+    "refIds": [
+      "REG13"
+    ]
+  },
+  {
+    "id": "rule|Silicon|regulatory-food-polymer-paper",
+    "element": "Silicon",
+    "docType": "rule",
+    "dimension": "Regulatory",
+    "substrate": "Food / polymer / paper",
+    "subject": "Silicon",
+    "verdict": "Go",
+    "reason": "SiO2 GRAS (21 CFR 182.90). Benign.",
+    "refIds": [
+      "REG14"
+    ]
+  },
+  {
+    "id": "rule|Zr, Hf, Nb, Ta, W, Mo, Re, Ga, Ge, In, Bi, Sr, Y|regulatory-most-apps",
+    "element": "Zr, Hf, Nb, Ta, W, Mo, Re, Ga, Ge, In, Bi, Sr, Y",
+    "docType": "rule",
+    "dimension": "Regulatory",
+    "substrate": "Most apps",
+    "subject": "Zr, Hf, Nb, Ta, W, Mo, Re, Ga, Ge, In, Bi, Sr, Y",
+    "verdict": "Go",
+    "reason": "No specific REACH XVII / RoHS / EU 10/2011 numeric limit located as markers (value not located != approved; confirm food-contact dossier if needed).",
+    "refIds": [
+      "REG4",
+      "REG1"
+    ]
+  },
+  {
+    "id": "rule|RoHS scope|regulatory-electronics-eee",
+    "element": "RoHS scope",
+    "docType": "rule",
+    "dimension": "Regulatory",
+    "substrate": "Electronics / EEE",
+    "subject": "RoHS scope",
+    "verdict": "Info",
+    "reason": "RoHS (2011/65/EU) restricts Pb, Hg, Cd, Cr(VI), PBB/PBDE \u002B 4 phthalates - NONE of the SMX markers are restricted.",
+    "refIds": [
+      "REG3"
+    ]
+  },
+  {
+    "id": "rule|As, Cd, Pb, Hg (excluded)|regulatory-all",
+    "element": "As, Cd, Pb, Hg (excluded)",
+    "docType": "rule",
+    "dimension": "Regulatory",
+    "substrate": "All",
+    "subject": "As, Cd, Pb, Hg (excluded)",
+    "verdict": "Exclude",
+    "reason": "EU 10/2011 \u0027ND\u0027; REACH Annex XVII 19/23/63; RoHS; OEKO-TEX tight - confirms exclusion correct.",
+    "refIds": [
+      "REG2",
+      "REG3",
+      "REG4"
+    ]
+  }
+]

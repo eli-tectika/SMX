@@ -1,0 +1,2467 @@
+[
+  {
+    "id": "sigma-aldrich-merck",
+    "supplier": "Sigma-Aldrich / Merck",
+    "status": "Existing",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "Germany / USA",
+    "address": "Merck KGaA, Frankfurter Str. 250, 64293 Darmstadt, Germany; US: 3050 Spruce St, St. Louis, MO 63103",
+    "website": "sigmaaldrich.com",
+    "contact": "isrcustserv@merckgroup.com; \u002B1 800-325-3010; IL: \u002B972-8-9484136",
+    "productCategories": "Full-spectrum chemicals, high-purity inorganics, metals, organometallics, CVD/ALD precursors, nanopowders",
+    "elementsCovered": "All marker elements (REE, Ti, Zr, Hf, Nb, Ta, W, Mo, Re, In, Ga, Ge, Sn, Sb, Te, Bi, Sr...)",
+    "forms": "Oxides, nitrates, chlorides, sulfates, acetates, fluorides, metals, nanopowders, TMHD/acac, sputter targets",
+    "pricing": "Catalog (login)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "american-elements",
+    "supplier": "American Elements",
+    "status": "Existing",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "USA",
+    "address": "10884 Weyburn Ave, Los Angeles, CA 90024, USA",
+    "website": "americanelements.com",
+    "contact": "gabriel.leis@americanelements.com; customerservice@americanelements.com; \u002B1 310-208-0551",
+    "productCategories": "Global manufacturer/distributor of advanced materials, chemicals, alloys, nanomaterials, organometallics",
+    "elementsCovered": "Full target list incl. all REE, refractory metals, metalloids",
+    "forms": "Oxides, salts, metals, nanopowders, TMHD/acac, 2-EH, alkoxides, dispersions, targets",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "edgetech-industries-llc",
+    "supplier": "Edgetech Industries LLC",
+    "status": "Existing",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "USA",
+    "address": "7938 Liberty Way, Parkland, FL 33067, USA (also Miramar, FL)",
+    "website": "edge-techind.com / edgetechree.com",
+    "contact": "sales@edge-techind.com; \u002B1 786-930-4449",
+    "productCategories": "Rare earths, refractory metals, deposition/evaporation materials, nano RE oxides, sputter targets",
+    "elementsCovered": "15 lanthanides \u002B Sc, Y; Ta, Nb, W, Mo, Ti, Zr, Re, In, Co, Hf, Ni, Cr; Ge, Se, Te, Sb, Sn, Bi",
+    "forms": "Metals (powder/ingot/foil/wire), oxides, fluorides, chlorides, nitrides, nano oxides, targets",
+    "pricing": "Some online",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "stanford-advanced-materials-sam",
+    "supplier": "Stanford Advanced Materials (SAM)",
+    "status": "Existing",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "USA",
+    "address": "23661 Birtcher Dr, Lake Forest, CA 92630, USA",
+    "website": "samaterials.com",
+    "contact": "sales@samaterials.com; \u002B1 949-407-8904",
+    "productCategories": "Wide spectrum of metals, oxides, REE, Ta/Nb, nano \u0026 micro, custom products, sputter targets",
+    "elementsCovered": "REE, Ta, Nb, W, Mo, Ti, Zr, Hf, V, In, Ga, Ge, Sn, Sb, Te, Bi",
+    "forms": "Metals, oxides, salts, nano/micro powders, targets, custom",
+    "pricing": "Some online",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "prochem-inc-prochem-online",
+    "supplier": "Prochem, Inc. (Prochem Online)",
+    "status": "Existing",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "USA",
+    "address": "826 Roosevelt Road, Rockford, IL 61109, USA",
+    "website": "prochemonline.com",
+    "contact": "info@prochemonline.com; erica@prochemonline.com; \u002B1 815-398-1788; 800-795-8788",
+    "productCategories": "High-purity inorganics, rare-earth compounds, metal-organics (TMHD/acac), custom synthesis (ISO 9001)",
+    "elementsCovered": "All REE (La-Lu, Y, Sc) \u002B transition / post-transition metals",
+    "forms": "Oxides, fluorides, carbonates, chlorides, nitrates, sulfates, acetates, oxalates, TMHD, acac",
+    "pricing": "Y(TMHD)3 $350/10g; La(TMHD)3 $180/5g; Sr(TMHD)2 $235/5g",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "shanghai-epoch-material-co-shanghai-xinglu-chemical",
+    "supplier": "Shanghai Epoch Material Co. (Shanghai Xinglu Chemical)",
+    "status": "Existing",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "China",
+    "address": "No. 1588 Lianhang Rd, Minhang District, Shanghai (factories in Shandong)",
+    "website": "epomaterial.com",
+    "contact": "cathy@zhuoerchem.com; info@epomaterial.com; \u002B86 17717679251",
+    "productCategories": "Rare-earth oxides/metals/salts, acetylacetonates, nano \u0026 micro forms, master alloys, OLED materials",
+    "elementsCovered": "La, Ce, Pr, Nd, Sm, Eu, Gd, Tb, Dy, Y, Zr, Ni, V",
+    "forms": "Oxides, chlorides, nitrates, fluorides, acac, nanopowders, master alloys",
+    "pricing": "Factory price (quote)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "liche-opto-group-co",
+    "supplier": "Liche Opto Group Co.",
+    "status": "Existing",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "China",
+    "address": "Room 1705, Tianyuan Business Bldg, No.3 Yuejin Rd, Chang\u0027an District, Shijiazhuang, Hebei",
+    "website": "licheoptics.com / en.licheopto.com",
+    "contact": "via site forms (Made-in-China showroom)",
+    "productCategories": "Optical / crystal-growth \u0026 evaporation materials, REM, inorganic salts, polishing powders, coatings",
+    "elementsCovered": "REE, Ca, Mg, Ba, Zr, Pb, Al, Si",
+    "forms": "Fluorides (CaF2, MgF2, BaF2, DyF3, ZrF4, PbF2), oxides, polishing powder, evaporation materials",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "treibacher-industrie-ag",
+    "supplier": "Treibacher Industrie AG",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "Austria",
+    "address": "Auer-von-Welsbach-Strasse 1, 9330 Althofen, Austria",
+    "website": "treibacher.com",
+    "contact": "tiag@treibacher.com; \u002B43 4262 505-0",
+    "productCategories": "RE oxides/salts/solutions, V/Mo/Nb compounds, hard-metal carbides, ferroalloys, YSZ ceramics",
+    "elementsCovered": "Ce, La, Nd, Pr \u002B REE; V, Mo, Nb, Zr, W, Cr, Sc, Mn",
+    "forms": "Oxides, chlorides, carbonates, nitrates, solutions, carbides, ammonium metavanadate, YSZ",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "pacific-industrial-development-corp-pidc",
+    "supplier": "Pacific Industrial Development Corp (PIDC)",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "USA",
+    "address": "4788 Runway Blvd, Ann Arbor, MI 48108, USA (\u002B China plants)",
+    "website": "pidc.com",
+    "contact": "\u002B1 734-930-9292; 800-382-3845",
+    "productCategories": "RE oxides, mixed oxides, inorganics, alumina, zeolites, catalysts (manufacturer)",
+    "elementsCovered": "La, Ce, Pr, Nd, Sm, Eu, Gd, Dy, Er, Y \u002B lanthanides",
+    "forms": "Oxides, mixed oxides, custom-formulated powders",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "hefa-rare-earth-canada-baotou",
+    "supplier": "HEFA Rare Earth (Canada / Baotou)",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "Canada / China",
+    "address": "HEFA Rare Earth Canada Ltd, Richmond BC, Canada; parent: Baotou, Inner Mongolia, China",
+    "website": "rareearth.ca / baotou-rareearth.com",
+    "contact": "via site forms",
+    "productCategories": "Single RE oxides, salts, metals, mischmetal (direct-from-producer, 50\u002B varieties)",
+    "elementsCovered": "La, Ce, Pr, Nd, Sm, Eu, Gd, Tb, Dy, Ho, Er, Tm, Yb, Lu, Y, Sc",
+    "forms": "Oxide, chloride, carbonate, nitrate, fluoride, sulfate, acetate, oxalate, metal, mischmetal",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "lehvoss-auer-remy-lehmann-voss-co",
+    "supplier": "Lehvoss / Auer-Remy (Lehmann\u0026Voss\u0026Co.)",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "Germany",
+    "address": "Lehmann\u0026Voss\u0026Co. KG, Alsterufer 19, 20354 Hamburg, Germany",
+    "website": "lehvoss-auer-remy.de / lehvoss.de",
+    "contact": "\u002B49 40 44197-0; via site",
+    "productCategories": "RE \u002B zirconium oxides, salts, compounds (EU distributor; subs FR/IT/NL/CH/UK/US)",
+    "elementsCovered": "La, Ce, Pr, Nd, Sm, Eu, Gd, Tb, Dy, Y \u002B REE; Zr",
+    "forms": "Oxides, acetates, carbonates, chlorides, fluorides, nitrates, sulfates; powders/solutions",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "irel-india-limited",
+    "supplier": "IREL (India) Limited",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "India",
+    "address": "Rare Earths Division, Aluva, Kerala; Corp Office: Mumbai (Dept of Atomic Energy)",
+    "website": "irel.co.in",
+    "contact": "via /contact-us",
+    "productCategories": "High-purity RE oxides, carbonates, oxalates, chlorides (Government of India producer)",
+    "elementsCovered": "La, Ce, Nd, Pr, Sm, Eu, Gd, Y",
+    "forms": "Oxide, carbonate, oxalate, chloride (\u003E99-99.9%)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "gfs-chemicals-inc",
+    "supplier": "GFS Chemicals, Inc.",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "USA",
+    "address": "867 McKinley Ave, Columbus, OH 43223, USA (HQ Powell, OH)",
+    "website": "gfschemicals.com",
+    "contact": "service@gfschemicals.com; 800-858-9682",
+    "productCategories": "RE salts \u0026 solutions (Ce/La/Y specialty), high-purity acids, anhydrous reagents (US mfr since 1950s)",
+    "elementsCovered": "Ce, La, Y, Gd (\u002Bothers)",
+    "forms": "Nitrate, chloride, sulfate, ammonium nitrate, etchants, solutions, oxides",
+    "pricing": "Catalog",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "chem-impex-international",
+    "supplier": "Chem-Impex International",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "USA",
+    "address": "935 Dillon Drive, Wood Dale, IL 60191, USA",
+    "website": "chemimpex.com",
+    "contact": "customer@chemimpex.com; 630-766-2112; 800-869-9290",
+    "productCategories": "RE oxides/fluorides/compounds, 32,000 research chemicals (PUBLIC PRICING)",
+    "elementsCovered": "Y, Ce, Er, Sm, Nd, Pr, La, Gd, Eu, Dy, Yb",
+    "forms": "Oxide (nano \u0026 micron), fluoride, hexaboride",
+    "pricing": "Y2O3 25g $137.80; CeO2 25g $66; Er2O3 25g $73; Nd2O3 25g $139.30; La2O3 25g $129.60; Eu2O3 5g $215.50; Dy2O3 5g $95; Yb2O3 100g $340",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "city-chemical-llc",
+    "supplier": "City Chemical LLC",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "USA",
+    "address": "139 Allings Crossing Rd, West Haven, CT 06516, USA",
+    "website": "citychemical.com",
+    "contact": "cala@citychemical.com; 800-248-2436; 203-932-2489",
+    "productCategories": "Rare / unusual inorganics, RE \u0026 precious-metal compounds (14,000\u002B in stock)",
+    "elementsCovered": "REE \u002B many metals/metalloids (Si, Ge, Sn, Sb, Te, Bi, Co, Ta, Al)",
+    "forms": "Oxides, halides, silanes, acetates, broad inorganics",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "noah-chemicals-noah-technologies",
+    "supplier": "Noah Chemicals (Noah Technologies)",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "USA",
+    "address": "1 Noah Park, San Antonio, TX 78249-3419, USA",
+    "website": "noahchemicals.com / store.noahchemicals.com",
+    "contact": "solutions@noahtech.com; 888-291-1186; 210-691-2000",
+    "productCategories": "Metal salts, inorganics, ceramics, REE, alkoxides, intermetallics, evaporation materials, custom synth",
+    "elementsCovered": "Sc, Sm, Lu \u002B REE; In, Te, Zr, Si, Sb \u002B most markers",
+    "forms": "Acetates, fluorides, oxides, nitrides, hydroxides, alkoxides, metals (99-99.9999%)",
+    "pricing": "Catalog",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "mitsui-kinzoku-rare-material-division",
+    "supplier": "Mitsui Kinzoku - Rare Material Division",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "Japan",
+    "address": "Mitsui Mining \u0026 Smelting Co., Rare Material Div, Japan (Ohmuta/Fukuoka)",
+    "website": "mitsui-kinzoku.co.jp/group/rare-material/en",
+    "contact": "via /inquiry form",
+    "productCategories": "RE oxides \u0026 compounds (yttrium specialty; first mass-produced Y2O3 in Japan)",
+    "elementsCovered": "Sc, Y, La-Lu (17 REE)",
+    "forms": "Oxides \u002B carbonate/chloride/nitrate compounds",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "iwatani-corporation",
+    "supplier": "Iwatani Corporation",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "Japan",
+    "address": "Osaka HO: 6-4 Hommachi 3-chome, Chuo-ku, Osaka 541-0053; Tokyo HO: Minato-ku, Tokyo",
+    "website": "iwatani.co.jp/eng",
+    "contact": "\u002B81-6-7637-3110; via inquiry form",
+    "productCategories": "RE oxides (light/med/heavy), compounds, metals, alloys (global trading house)",
+    "elementsCovered": "Sc, Y, La, Ce, Pr, Nd, Sm, Eu, Gd, Tb, Dy, Ho, Er, Yb, Lu",
+    "forms": "Oxides (5N; nano 30-100nm; high-BET; granular), carbonates, fluorides, hydroxides",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "metall-rare-earth-limited-mrel",
+    "supplier": "Metall Rare Earth Limited (MREL)",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "China / Hong Kong",
+    "address": "2113 Landmark North, 39 Lung Sum Ave, Sheung Shui, Hong Kong (Shenzhen office)",
+    "website": "metall.com.cn",
+    "contact": "\u002B852 3069 7616",
+    "productCategories": "Ultra-high-purity RE oxides, compounds, metals \u0026 alloys (ion-exchange to 6N), since 1998",
+    "elementsCovered": "Y, Nd, Pr, Dy, Tb, Sm, Eu, Gd, Lu, Yb, Er, Tm, Ho \u002B REE",
+    "forms": "Oxides (to 6N), fluorides, chlorides, carbonates, hydroxides, nitrates, oxalates, borides, metals/alloys",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "grirem-advanced-materials-grinm",
+    "supplier": "Grirem Advanced Materials (GRINM)",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "China",
+    "address": "2 Xinjiekouwai St, Xicheng District, Beijing, China",
+    "website": "grirem.com.cn",
+    "contact": "via site",
+    "productCategories": "RE compounds, metals, alloys, phosphors, catalytic/ceramic/target materials (\u003E10,000 t/yr; state producer)",
+    "elementsCovered": "La-Lu, Y, Sc (full RE)",
+    "forms": "Oxides, compounds, metals, alloys",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "ganzhou-wanfeng-advanced-materials-tech",
+    "supplier": "Ganzhou Wanfeng Advanced Materials Tech",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "China",
+    "address": "No.8 Ganjiangyuan Ave, Zhanggong District, Ganzhou, Jiangxi, China",
+    "website": "gzwfcn.com / gzwfen.com",
+    "contact": "info@gzwfen.com; \u002B86 797-8286977",
+    "productCategories": "RE oxides, metals, salts, polishing powder, targets (ISO 9001/14001)",
+    "elementsCovered": "La, Ce, Pr, Nd, Er \u002B REE",
+    "forms": "Oxide, carbonate, nitrate, chloride, sulfate, fluoride, oxalate, acetate, phosphate, hydroxide",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "jiangyin-jiahua-advanced-material-jamr",
+    "supplier": "Jiangyin Jiahua Advanced Material (JAMR)",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "China",
+    "address": "Jiangyin, Jiangsu, China (Shenghe Resources group)",
+    "website": "jamr-cn.com",
+    "contact": "via site",
+    "productCategories": "High-purity single RE oxides \u0026 co-precipitated oxides (former Neo plant)",
+    "elementsCovered": "La, Y, Yb, Eu \u002B REE",
+    "forms": "Oxides, co-precipitated oxides (Y-Yb, Y-Eu)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "ganzhou-chenguang-rare-earths-new-material",
+    "supplier": "Ganzhou Chenguang Rare Earths New Material",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "China",
+    "address": "10th Fl, Block 15, Tianji Huating, Ganzhou, Jiangxi (Shenghe subsidiary)",
+    "website": "via Made-in-China",
+    "contact": "via Made-in-China showroom",
+    "productCategories": "RE metals, alloys, oxides (heavy RE focus)",
+    "elementsCovered": "La, Ce, Pr, Nd, Sm, Eu, Gd, Tb, Dy, Ho, Y",
+    "forms": "Oxides, metals, alloys (La2O3, CeO2, Y2O3, Gd2O3, Dy2O3, Eu2O3, Tb4O7, Nd2O3, Sm2O3)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "metalysis-ltd",
+    "supplier": "Metalysis Ltd",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "UK",
+    "address": "Units 4A \u0026 4B, Brindley Way, AMP, Catcliffe, Rotherham S60 5FS, UK (mfg: Wath upon Dearne S63 5DB)",
+    "website": "metalysis.com",
+    "contact": "sales@metalysis.com; \u002B44 114 553 7090",
+    "productCategories": "Solid-state metal/alloy powders via FFC electrolysis (oxide-\u003Emetal), master alloys, HEAs",
+    "elementsCovered": "Ta, Ti, Sc, Al, Mo, Nb, Zr \u002B RE (platform ~49 elements)",
+    "forms": "Metal \u0026 alloy powders, spherical powders, master alloys (e.g. Al3Sc ~36% Sc)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "neo-performance-materials",
+    "supplier": "Neo Performance Materials",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "Canada",
+    "address": "Suite 1740, 121 King St West, Toronto, ON M5H 3T9, Canada (Silmet plant: Sillamae, Estonia)",
+    "website": "neomaterials.com",
+    "contact": "info@neomaterials.com; \u002B1 416-367-8588",
+    "productCategories": "(1) Magnequench NdFeB powders; (2) Chemicals\u0026Oxides - lanthanide oxides/compounds; (3) Rare Metals (Estonia) Nb/Ta/Hf/Re",
+    "elementsCovered": "La, Ce, Pr, Nd, Y \u002B REE; Nb, Ta, Hf, Re (NPM Silmet)",
+    "forms": "Oxides, salts, NdFeB powders/magnets, niobium metal",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "star-earth-minerals-pvt-ltd",
+    "supplier": "Star Earth Minerals Pvt. Ltd.",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "India",
+    "address": "Taloja, Navi Mumbai, Maharashtra, India",
+    "website": "starearthminerals.com",
+    "contact": "info@starearthminerals.com",
+    "productCategories": "Rare-earth \u0026 zirconium compounds manufacturer",
+    "elementsCovered": "Ce, La, Pr, Nd, Y, Zr",
+    "forms": "Oxides, nitrates, carbonates, hydrates",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "hunan-rare-earth-metal-materials-research-inst-hnre",
+    "supplier": "Hunan Rare Earth Metal Materials Research Inst. (HNRE)",
+    "status": "New",
+    "category": "RE \u0026 inorganic compounds",
+    "hqCountry": "China",
+    "address": "No. 108 Longyuan Rd, Longping High-tech Park, Changsha, Hunan, China",
+    "website": "rare-earths.net",
+    "contact": "david.liu@hnxty.com; \u002B86 181 7510 2727",
+    "productCategories": "RE metals, compounds, powders, sputter targets, alloys, foils, functional materials (to 6N)",
+    "elementsCovered": "Y, Dy, Tb, Er, Yb \u002B REE",
+    "forms": "Metal, powder, oxide, fluoride, hydride, nitride, boride, chloride, nitrate, chelate, targets, foils",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "rare-earth-products-inc",
+    "supplier": "Rare Earth Products, Inc.",
+    "status": "Existing",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "USA",
+    "address": "PO Box 7074, Beverly, MA 01915, USA",
+    "website": "rareearthproducts.com",
+    "contact": "sales@rareearthproducts.com; \u002B1 978-922-9446",
+    "productCategories": "Rare-earth organometallics: 2-ethylhexanoates (octoates), neodecanoates, beta-diketonates (TMHD/acac/hfac/fod), oxides, fluorides",
+    "elementsCovered": "Full lanthanides \u002B Y, Sc",
+    "forms": "2-ethylhexanoate (every RE), neodecanoate (on request), TMHD, acac, alkoxides",
+    "pricing": "Cerium 2-EH $42/25g, $157/100g; Y(TMHD)3 $51/2g, $237/10g",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "umicore-coatings-specialty-materials-valirex",
+    "supplier": "Umicore - Coatings \u0026 Specialty Materials (VALIREX)",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "Belgium",
+    "address": "Umicore CSM, Watertorenstraat 33, B-2250 Olen, Belgium",
+    "website": "csm.umicore.com",
+    "contact": "via site contact form",
+    "productCategories": "Metal carboxylates \u0026 organics (VALIREX brand) - driers, PU catalysts (successor to OMG/OM Group)",
+    "elementsCovered": "Zr, Co, Ca, Mn, Zn, Li, K, Ba, Bi, Nd \u002B mixes",
+    "forms": "Neodecanoate (\u0027Neo\u0027) and 2-ethylhexanoate/octoate grades; octoate-free Zr/Li grades",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "borchers-a-milliken-brand",
+    "supplier": "Borchers (a Milliken Brand)",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "USA / Germany",
+    "address": "Borchers Americas, Westlake, OH, USA; Borchers GmbH, Berghausener Str. 100, 40789 Monheim, Germany",
+    "website": "borchers.com",
+    "contact": "via site",
+    "productCategories": "Driers/siccatives, tin-free PU catalysts (\u0027Deca\u0027, \u0027Hex-Cem\u0027, \u0027Cem-All\u0027); absorbed OMG Borchers \u002B Mooney",
+    "elementsCovered": "Co, Zr, Mn, Ca, Zn, Bi, Nd (neodymium driers patented)",
+    "forms": "Neodecanoate (\u0027Deca\u0027 line) and 2-EH/octoate (\u0027Hex-Cem\u0027); naphthenate legacy",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "shepherd-chemical-company",
+    "supplier": "Shepherd Chemical Company",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "USA",
+    "address": "4900 Beech Street, Cincinnati, OH 45212, USA",
+    "website": "shepchem.com",
+    "contact": "\u002B1 513-731-1110; via site",
+    "productCategories": "Metal carboxylates \u0026 catalysts (\u0027BiCAT\u0027, \u0027CoMEND\u0027)",
+    "elementsCovered": "Co, Bi, Zn, Mn, Mo, Zr, Ni, Cu, Fe, Ca",
+    "forms": "Neodecanoate, 2-EH/octoate, naphthenate",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "dura-chemicals-inc",
+    "supplier": "Dura Chemicals, Inc.",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "USA",
+    "address": "2200 Powell St Ste 450, Emeryville, CA 94608, USA",
+    "website": "durachem.com",
+    "contact": "\u002B1 510-658-1987",
+    "productCategories": "Metal organics, solvent/specialty driers, fuel/lube catalysts (\u0027DriCAT\u0027, \u0027Duroct\u0027)",
+    "elementsCovered": "Zr, Co, Mn, Ca, Zn, Ce/RE blends, Fe",
+    "forms": "2-EH/octoate, neodecanoate, blends (in methyl soyate / hydrocarbon)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "comar-chemicals-pty-ltd",
+    "supplier": "Comar Chemicals (Pty) Ltd",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "South Africa",
+    "address": "Neil Hare Road, Atlantis Industrial, Cape Town, South Africa (2nd plant: Muttenz, Switzerland)",
+    "website": "comarchemicals.com",
+    "contact": "\u002B27 21-577-1333; via site",
+    "productCategories": "Metal carboxylates: driers, polyester accelerators, LUBRICANT \u0026 FUEL additives, rubber catalysts",
+    "elementsCovered": "Co, Ni, Fe, Zr, Ca, Mn, Nd, Zn, Pb",
+    "forms": "Neodecanoate, octoate, versatate, naphthenate, stearate",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "patcham-fzc",
+    "supplier": "Patcham FZC",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "UAE",
+    "address": "P.O. Box 51129, Hamriyah Free Zone, Sharjah, UAE (plant also Vadodara, India)",
+    "website": "patchamltd.com",
+    "contact": "info@patchamltd.com; via site",
+    "productCategories": "Metal carboxylate driers (\u0027PATcom\u0027), anti-skin, PU catalysts",
+    "elementsCovered": "Zr, Co, Mn, Ca, Zn, Pb, Bi, K, Ba",
+    "forms": "Octoate and neodecanoate (Zr octoate, Zr Neo, Zn neodecanoate, Ca octoate)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "reaxis-inc-tib-chemicals-group",
+    "supplier": "Reaxis Inc. (TIB Chemicals group)",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "USA",
+    "address": "220 Wood St, McKees Rocks, PA 15136, USA",
+    "website": "reaxis.com",
+    "contact": "via site",
+    "productCategories": "PU/silicone catalysts, metal carboxylates",
+    "elementsCovered": "Bi, Zn, Zr, Sn, K, Fe",
+    "forms": "Neodecanoate and octoate (bismuth/zinc/zirconium)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "king-industries-inc",
+    "supplier": "King Industries, Inc.",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "USA",
+    "address": "1 Science Road, Norwalk, CT 06852, USA",
+    "website": "kingindustries.com",
+    "contact": "via site",
+    "productCategories": "Tin-free metal catalysts (\u0027K-KAT\u0027), acid catalysts (NACURE)",
+    "elementsCovered": "Zr, Bi, Zn, Al, Ti",
+    "forms": "Zirconium chelate/carboxylate; bismuth carboxylate; zinc complex",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "todini-and-co-s-p-a-todini-chemicals",
+    "supplier": "Todini and Co. S.p.A. (Todini Chemicals)",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "Italy",
+    "address": "Corso Milano 46, 20900 Monza (MB), Italy",
+    "website": "todini.com",
+    "contact": "via site",
+    "productCategories": "Non-ferrous metal salts/oxides distribution incl. octoates",
+    "elementsCovered": "Mo, V, Bi, Co, Ni, Cu, Sn, Te, Se",
+    "forms": "Octoate (2-EH) grades; carboxylates on request",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "optichem-fze",
+    "supplier": "Optichem FZE",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "UAE",
+    "address": "Jebel Ali Free Zone, Dubai, UAE",
+    "website": "optichem.com",
+    "contact": "management@optichem.com",
+    "productCategories": "Metal organics / driers, anti-skin",
+    "elementsCovered": "Co, Ca, Zr, Mn, Zn, Ba, K, Cu",
+    "forms": "Octoate (2-EH) main; naphthenate (Zr octoate 6/10/12/18/24%)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "arxada-formerly-troy-corp",
+    "supplier": "Arxada (formerly Troy Corp.)",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "Switzerland / USA",
+    "address": "Arxada AG, Peter Merian-Strasse 80, 4052 Basel, Switzerland (Troy: Florham Park, NJ, USA)",
+    "website": "arxada.com / troycorp.com",
+    "contact": "via site",
+    "productCategories": "Metal carboxylates, driers, catalysts (\u0027Troymax\u0027, \u0027Troycat\u0027)",
+    "elementsCovered": "Co, Mn, Zr, Ca, Zn \u002B combos",
+    "forms": "2-EH/octoate \u0026 neodecanoate (markets driers for inks \u0026 LUBRICANTS)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "dorf-ketal-chemicals-tyzor",
+    "supplier": "Dorf Ketal Chemicals (Tyzor)",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "India / USA",
+    "address": "Dorf Ketal, Mumbai, India; US: Stafford, TX",
+    "website": "dorfketal.com",
+    "contact": "via site",
+    "productCategories": "Organic titanates \u0026 zirconates (Tyzor brand) - oil/solvent-soluble Ti/Zr precursors, fuel additives",
+    "elementsCovered": "Ti, Zr",
+    "forms": "Titanate/zirconate esters \u0026 chelates (Tyzor); not metal carboxylates but oil-soluble Ti/Zr",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "faci-s-p-a-faci-group",
+    "supplier": "FACI S.p.A. (FACI Group)",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "Italy",
+    "address": "Via Antica Fiumara 7, 16149 Genova, Italy (\u002B plants ES/UK/CN/SG)",
+    "website": "faci.it",
+    "contact": "via site",
+    "productCategories": "Metal soaps/stearates, esters, paint dryers (driers via FACI China unit)",
+    "elementsCovered": "Ca, Zn, Mg, Al, Na, K (soaps); Co/Mn/Zr (driers)",
+    "forms": "Stearates/oleates; octoate driers (FACI China)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "hefei-tnj-chemical-industry-co-ltd",
+    "supplier": "Hefei TNJ Chemical Industry Co., Ltd.",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "China",
+    "address": "Hefei, Anhui, China",
+    "website": "tnjchem.com",
+    "contact": "sales@tnjchem.com; \u002B86 18949823763",
+    "productCategories": "Specialty/industrial chemicals incl. metal 2-ethylhexanoate",
+    "elementsCovered": "Zr (and others on request)",
+    "forms": "Zirconium 2-ethylhexanoate 12-24% metal",
+    "pricing": "Quote (email)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "ink-chemical-taicang-yip-s-group",
+    "supplier": "INK Chemical (Taicang) / Yip\u0027s group",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "China",
+    "address": "Taicang City, Jiangsu Province, China",
+    "website": "ink-chem.com",
+    "contact": "via site",
+    "productCategories": "Inks \u0026 metal carboxylate driers",
+    "elementsCovered": "Zr, Co, Mn, Ca, Zn",
+    "forms": "Neodecanoate \u0026 octoate driers",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "saraf-resin-chemicals-pvt-ltd",
+    "supplier": "Saraf Resin \u0026 Chemicals Pvt. Ltd.",
+    "status": "New",
+    "category": "Oil-soluble carboxylates / driers",
+    "hqCountry": "India",
+    "address": "Kolkata, West Bengal, India",
+    "website": "sarafresin.in",
+    "contact": "WhatsApp \u002B91 9331062440",
+    "productCategories": "Octoate \u0026 naphthenate driers",
+    "elementsCovered": "Pb, Ca, Co, Mn, Zn, Zr",
+    "forms": "Octoate \u0026 naphthenate (Zr octoate 6%, Co octoate 6%, Mn octoate 6%, Ca 3%)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "strem-ascensus-specialties-dist-by-thermo-fisher",
+    "supplier": "Strem (Ascensus Specialties; dist. by Thermo Fisher)",
+    "status": "Existing",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "USA",
+    "address": "7 Mulliken Way, Newburyport, MA 01950, USA (EU warehouse: Bischheim, France)",
+    "website": "strem.com",
+    "contact": "info@strem.com; \u002B1 978-499-1600; 800-647-8736; EU \u002B33 3 88 62 52 60",
+    "productCategories": "High-purity metalorganics: Metal TMHD / beta-diketonates / organometallics for CVD \u0026 ALD",
+    "elementsCovered": "Sc, Y, La, Ce, Pr, Nd, Eu, Gd, Dy, Ho, Er, Yb, Lu, Zr, Hf, Ti, Sr, Ba, Nb, Ta, Al, Mo, W, Ru, Fe",
+    "forms": "TMHD (thd/dpm), acac, triglyme adducts, alkoxides",
+    "pricing": "Ba(TMHD)2 EUR 50/1g, 193/5g, 726/25g (via Cymit); Ba triglyme $1777.72/1g",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "ereztech-llc",
+    "supplier": "Ereztech LLC",
+    "status": "Existing",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "USA",
+    "address": "11555 Medlock Bridge Rd, Ste 100, Johns Creek, GA 30097, USA",
+    "website": "ereztech.com",
+    "contact": "info@ereztech.com; sales@ereztech.com; \u002B1 888-658-1221",
+    "productCategories": "Custom-synthesis metalorganics; beta-diketonates (TMHD/acac), CVD/ALD, air-sensitive materials",
+    "elementsCovered": "Sc, Y, La, Ce, Pr, Nd, Eu, Gd, Tb, Dy, Ho, Er, Yb, Lu, Zr, Hf, Ti, Sr, Ca, Ba, In, Fe, Al",
+    "forms": "TMHD, acac, alkoxides (ampoules/bottles/bubblers)",
+    "pricing": "Quote (JS-widget prices)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "j-k-scientific-jk-sci-jkchemical",
+    "supplier": "J\u0026K Scientific (jk-sci / JKchemical)",
+    "status": "Existing",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "China / USA",
+    "address": "Beijing: Dawangjing Center A, Chaoyang 100100; US: 2033 Gateway Place Ste 500, San Jose, CA 95110",
+    "website": "jk-sci.com / jkchemical.com",
+    "contact": "jkinfo@jk-sci.com; jkus@jk-sci.com; \u002B86 10 5930 9000; \u002B1 952 942 3333",
+    "productCategories": "Metalorganics, beta-diketonates, CVD/ALD precursors; 15,000\u002B in-house \u002B distributes Strem",
+    "elementsCovered": "Zr, Al, Ni, Y, La, Sr, Ba (catalog/Strem)",
+    "forms": "TMHD, acac, alkoxides",
+    "pricing": "Zr(TMHD)4 $48/1g, 143/5g, 477/25g; Al(TMHD)3 $45/1g..698/25g; La(TMHD)3 $52/1g..826/25g",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "apollo-scientific-ltd",
+    "supplier": "Apollo Scientific Ltd",
+    "status": "New",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "UK",
+    "address": "Unit 3 \u0026 4, 1 Parkway, Denton, Manchester M34 3SG, UK (reg: Bredbury, Stockport SK6 2QR)",
+    "website": "store.apolloscientific.co.uk",
+    "contact": "sales@apolloscientific.co.uk; \u002B44 161 406 0505",
+    "productCategories": "beta-diketonates (TMHD), organometallics, inorganics, CVD precursors; 100k\u002B SKUs with LIVE PRICING",
+    "elementsCovered": "Cu, Ni, Zn, Pb, Fe, Mg, Ba, Sr, Y, Zr, La, Ru, Ti",
+    "forms": "TMHD, acac, mixed alkoxide-diketonate",
+    "pricing": "Cu(TMHD)2 GBP 15/1g..1761/500g; Fe(TMHD)3 15; Ba(TMHD)2 15; Ru(TMHD)(COD) 36/100mg; Y/Zr/Sr/La POA",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "fluorochem-ltd",
+    "supplier": "Fluorochem Ltd",
+    "status": "New",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "UK",
+    "address": "Unit 14, Graphite Way, Rossington Park, Hadfield, Derbyshire SK13 1QH, UK (EU: Cork, Ireland)",
+    "website": "fluorochem.co.uk",
+    "contact": "sales@fluorochem.co.uk; \u002B44 1457 860111; EU sales@fluorochem.eu",
+    "productCategories": "beta-diketonate metal complexes, organometallics, building blocks, salts/inorganics (LIVE PRICING)",
+    "elementsCovered": "Fe, Mn (TMHD verified); broad metal-organic \u0026 metal-salt range",
+    "forms": "TMHD complexes, metal salts, organometallics, silanes",
+    "pricing": "Fe(TMHD)3 GBP 18/1g..277/25g; Mn(TMHD)3 GBP 9/1g..1700/500g",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "abcr-gmbh-gute-chemie",
+    "supplier": "abcr GmbH (\u0027Gute Chemie\u0027)",
+    "status": "New",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "Germany",
+    "address": "Im Schlehert 10, 76187 Karlsruhe, Germany",
+    "website": "abcr.com",
+    "contact": "info@abcr.com; \u002B49 721 95061-0",
+    "productCategories": "Metalorganic CVD/ALD precursors \u002B 400k specialty chems: TMHD/beta-diketonates, organometallics, RE \u0026 inorganic compounds, silanes (LIVE PRICING)",
+    "elementsCovered": "REE (La, Y, Ce, Eu, Ho...) \u002B Zr, Hf, Ti, Ba, Sr, Nb, Ta, Cr, Mo, W, Mn, Re, Co, Si, Ge, Sn, Sb, Fe, Pb",
+    "forms": "TMHD/dpm, acac, glyme/phenanthroline adducts, oxides, halides, nitrates, acetates, alkoxides, silanes",
+    "pricing": "La(TMHD)3 EUR 71.70/1g..993/25g; Y(TMHD)3 69.90/1g; Zr(TMHD)4 145.40/5g; Sr(TMHD)2 tetraglyme 135/1g; Eu(TMHD)3; Ho(TMHD)3; MoO2(TMHD)2",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "tci-chemicals-tokyo-chemical-industry",
+    "supplier": "TCI Chemicals (Tokyo Chemical Industry)",
+    "status": "New",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "Japan",
+    "address": "8F T-PLUS, 16-12 Nihonbashi-kodemmacho, Chuo-ku, Tokyo 103-0001, Japan",
+    "website": "tcichemicals.com",
+    "contact": "\u002B81 3 5640 8851; IL distributor Beit Dekel \u002B972-9-7611800; EU: TCI Europe (Belgium)",
+    "productCategories": "Metalorganic/CVD precursors, dipivaloylmethanates (TMHD), NMR shift reagents, alkoxides, rare-earth compounds",
+    "elementsCovered": "La, Y, Zr, Eu, Mn, Pr, Gd \u002B broad REE",
+    "forms": "TMHD/dpm complexes, acac, alkoxides, metal halides",
+    "pricing": "Catalog (region-gated)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "gelest-mitsubishi-chemical-group",
+    "supplier": "Gelest (Mitsubishi Chemical Group)",
+    "status": "New",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "USA",
+    "address": "11 East Steel Rd, Morrisville, PA 19067, USA",
+    "website": "gelest.com",
+    "contact": "info@gelest.com; \u002B1 215-547-1015; 888-734-8344",
+    "productCategories": "Metalorganic CVD/ALD precursors, beta-diketonates (TMHD/acac/hfac), alkoxides, amides, alkyls",
+    "elementsCovered": "Sc, Y, La, Ce, Pr, Nd, Eu, Gd, Dy, Er, Zr, Hf, Ti, Sr, Ba, Al, Ta, W, Cu",
+    "forms": "TMHD, acac (pentanedionate), alkoxides, mixed-ligand",
+    "pricing": "Quote (no public price)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "volatec-oy",
+    "supplier": "Volatec Oy",
+    "status": "New",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "Finland",
+    "address": "Koneistajantie 3B, 06450 Porvoo, Finland",
+    "website": "volatec.fi",
+    "contact": "volatec@volatec.fi; \u002B358 40 034 2366",
+    "productCategories": "Specialty MOCVD/ALD/CVD precursors; volatile metal beta-diketonates, alkoxides (~70 elements)",
+    "elementsCovered": "Sc, Y, La-Lu, Zr, Hf, Ti, Sr, Ba, Nb, Ta, Al, Mo, W (full target list)",
+    "forms": "beta-diketonates (TMHD/dpm), acac, alkoxides",
+    "pricing": "Quote only",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "epivalence-ltd",
+    "supplier": "EpiValence Ltd",
+    "status": "New",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "UK",
+    "address": "The Wilton Centre, Redcar, Cleveland TS10 4RF, UK",
+    "website": "epivalence.com",
+    "contact": "info@epivalence.com; \u002B44 1642 924 904",
+    "productCategories": "MOCVD/ALD \u0026 CVD precursors, bespoke chemicals, bubblers; 200\u002B compounds of 45 elements",
+    "elementsCovered": "Yb, Ce, Tm (confirmed TMHD); RE \u002B alkaline-earth/TM incl. Sr, Ba, Zr, Hf, Ti, Ta, Al",
+    "forms": "TMHD/beta-diketonates, alkoxides (e.g. Ta ethoxide), acac",
+    "pricing": "Quote only",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "chempur-chempur-feinchemikalien-gmbh",
+    "supplier": "Chempur (ChemPUR Feinchemikalien GmbH)",
+    "status": "New",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "Germany",
+    "address": "Rueppurrer Str. 92, 76137 Karlsruhe, Germany",
+    "website": "chempur.de",
+    "contact": "info@chempur.de; \u002B49 721 933 81 40",
+    "productCategories": "Pure metals, RE compounds, evaporation/sputter materials, metalorganics (3,500\u002B items)",
+    "elementsCovered": "Y, La, Ce \u002B most REE \u0026 metals (Zr, Hf, Ti, Sr, Ba, Al, Nb, Ta, Mo, W)",
+    "forms": "TMHD, acac, oxides, metals, sputter targets",
+    "pricing": "Quote (login-gated)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "dayang-chem-hangzhou-co-ltd",
+    "supplier": "Dayang Chem (Hangzhou) Co., Ltd.",
+    "status": "New",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "China",
+    "address": "9/F Unit 2, 259 Wensan Rd, Xihu District, Hangzhou, Zhejiang 310029, China",
+    "website": "dycnchem.com",
+    "contact": "enquiry@dycnchem.com; \u002B86 571 8893 8639",
+    "productCategories": "Specialty/fine chemicals incl. beta-diketonate metal complexes, MOCVD precursors (trader\u002Bproducer)",
+    "elementsCovered": "Y \u002B broad metal TMHD/acac catalog",
+    "forms": "TMHD/heptanedionate beta-diketonates, acac",
+    "pricing": "Quote only",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "atomax-chemicals-co-ltd",
+    "supplier": "Atomax Chemicals Co., Ltd.",
+    "status": "New",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "China / Hong Kong",
+    "address": "Shenzhen, China; reg. office Wong King Industrial Bldg, San Po Kong, Kowloon, Hong Kong",
+    "website": "atomaxchem.com",
+    "contact": "info@atomaxchem.com; \u002B86 755 33239182; HK \u002B852 5168 6117",
+    "productCategories": "Fine/specialty chemicals incl. metal beta-diketonates for ALD/CVD/MOFs",
+    "elementsCovered": "Y, Sc, Zr, Hf, Ba, Sr (per TMHD families)",
+    "forms": "TMHD beta-diketonates, acac",
+    "pricing": "Quote only",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "jiangsu-nata-opto-electronic-material-co-nata",
+    "supplier": "Jiangsu Nata Opto-electronic Material Co. (Nata)",
+    "status": "New",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "China",
+    "address": "No. 67 Pingsheng Rd, Suzhou Industrial Park, Jiangsu, China (plants Ningbo/Quanjiao/Zibo/Ulanqab)",
+    "website": "natachem.com",
+    "contact": "yaozj@natachem.com; \u002B86 512 62520998",
+    "productCategories": "MO sources, ALD/CVD precursor materials, electronic gases, photoresist (largest MO-source maker in China)",
+    "elementsCovered": "Broad III-V MO; ALD/CVD for Hf, Ti, Zr, Al",
+    "forms": "Metal-amides/alkyls/alkoxides (TEMAH, TDMAT class); beta-diketonates likely custom",
+    "pricing": "Quote only",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "nanjing-aimouyuan-scientific-equipment-co",
+    "supplier": "Nanjing AiMouYuan Scientific Equipment Co.",
+    "status": "New",
+    "category": "Metalorganic / TMHD precursors",
+    "hqCountry": "China",
+    "address": "Nanjing, Jiangsu, China (no street address published)",
+    "website": "n/a (B2B/direct sales)",
+    "contact": "n/a (direct sales)",
+    "productCategories": "Metalorganic / MOCVD-ALD precursors, beta-diketonates (TMHD), high-purity MO sources",
+    "elementsCovered": "Hf, Pb, Er, Zn, Ga, In (incl. RE TMHD)",
+    "forms": "TMHD/thd beta-diketonates; amides; alkyls",
+    "pricing": "Quote only",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "cbmm",
+    "supplier": "CBMM",
+    "status": "Existing",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "Brazil",
+    "address": "Corrego da Mata s/n, Araxa, MG 38183-903, Brazil (offices Pittsburgh/Amsterdam/Beijing/Singapore)",
+    "website": "cbmm.com",
+    "contact": "via cbmm.com/contact",
+    "productCategories": "Niobium products - world\u0027s largest Nb producer (~80% of supply)",
+    "elementsCovered": "Nb",
+    "forms": "Niobium metal, ferroniobium, Nb2O5, niobium chemicals/oxalate, alloys (not nano)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "taniobis-gmbh",
+    "supplier": "Taniobis GmbH",
+    "status": "Existing",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "Germany",
+    "address": "Im Schleeke 78-91, 38640 Goslar, Germany (sites JP/US/TH)",
+    "website": "taniobis.com",
+    "contact": "via taniobis.com",
+    "productCategories": "Tantalum \u0026 niobium metal powders, high-purity oxides, compounds, chlorides, AM powders",
+    "elementsCovered": "Ta, Nb",
+    "forms": "Metal powder, oxide (Ta2O5, Nb2O5), compounds, chloride, spherical AM powder",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "plansee-se",
+    "supplier": "Plansee SE",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "Austria",
+    "address": "Metallwerk-Plansee-Str. 71, 6600 Reutte, Austria",
+    "website": "plansee.com",
+    "contact": "info@plansee-group.com; \u002B43 5672 600 0",
+    "productCategories": "Refractory metal components, powder metallurgy, sputtering targets (top W/Mo producer)",
+    "elementsCovered": "W, Mo, Ta, Nb, Cr",
+    "forms": "Sheet, rod, wire, foil, plate, tube, targets, machined parts, powder",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "h-c-starck-tungsten-gmbh",
+    "supplier": "H.C. Starck Tungsten GmbH",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "Germany",
+    "address": "Im Schleeke 78-91, 38642 Goslar, Germany",
+    "website": "hcstarck.com",
+    "contact": "contact@hcstarck.com; \u002B49 5321 751-0",
+    "productCategories": "Tungsten chemicals, metal \u0026 carbide powders, oxides",
+    "elementsCovered": "W (primary), Ta, Nb",
+    "forms": "Powder (metal \u0026 carbide), oxides (APT, WO3), granules",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "global-advanced-metals-gam",
+    "supplier": "Global Advanced Metals (GAM)",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "County Line Rd, P.O. Box 1608, Boyertown, PA 19512, USA (\u002B AU, JP)",
+    "website": "globaladvancedmetals.com",
+    "contact": "info@globaladvancedmetals.com; \u002B1 610-367-1500",
+    "productCategories": "Ta/Nb powders, mill products, sputter targets, recycling (major Ta/Nb, 70\u002B yrs)",
+    "elementsCovered": "Ta, Nb",
+    "forms": "Powder (capacitor \u0026 metallurgical), wire, sheet, target, Nb2O5",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "ningxia-orient-tantalum-industry-otic",
+    "supplier": "Ningxia Orient Tantalum Industry (OTIC)",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "China",
+    "address": "119 Yejin Rd, Dawukou District, Shizuishan, Ningxia 753000, China",
+    "website": "en.otic.com.cn",
+    "contact": "\u002B86-952-2098888",
+    "productCategories": "Ta/Nb producer (largest in China), targets",
+    "elementsCovered": "Ta, Nb, Zr",
+    "forms": "Powder, wire, strip, crucible, target, tube, Nb-Zr ingot",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "rhenium-alloys-inc",
+    "supplier": "Rhenium Alloys, Inc.",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "38683 Taylor Pkwy, North Ridgeville, OH 44035, USA",
+    "website": "rhenium.com",
+    "contact": "\u002B1 440-365-7388; 888-743-6486",
+    "productCategories": "Re, Mo, W \u002B alloys; mill products, fabricated parts (dedicated Re source)",
+    "elementsCovered": "Re, Mo, W (\u002B Mo-Re, W-Re, W-Cu)",
+    "forms": "Powder, pellets, ammonium perrhenate (APR), sheet, wire, rod, ribbon, foil, filaments",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "buffalo-tungsten-inc",
+    "supplier": "Buffalo Tungsten, Inc.",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "2 Main Street, Depew, NY 14043, USA",
+    "website": "buffalotungsten.com",
+    "contact": "\u002B1 716-683-9170",
+    "productCategories": "High-purity W powder, WC powder, thermal spray",
+    "elementsCovered": "W",
+    "forms": "Powder (W metal, WC, thermal spray)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "midwest-tungsten-service",
+    "supplier": "Midwest Tungsten Service",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "540 Executive Dr, Willowbrook, IL 60527, USA",
+    "website": "tungsten.com",
+    "contact": "mts@tungsten.com; \u002B1 630-325-1001; 800-626-0226",
+    "productCategories": "Refractory mill products, machining, evaporation sources (small qty OK)",
+    "elementsCovered": "W, Mo, Ta (\u002B alloys)",
+    "forms": "Rod, wire, sheet, plate, bar, filaments, boats, crucibles, evaporation sources",
+    "pricing": "Retail webstore (small items)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "ati-specialty-alloys-components-ex-wah-chang",
+    "supplier": "ATI Specialty Alloys \u0026 Components (ex-Wah Chang)",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "Albany/Millersburg, OR plant; ATI corp: 2021 McKinney Ave Ste 1100, Dallas, TX 75201",
+    "website": "atimaterials.com",
+    "contact": "\u002B1 877-777-5137",
+    "productCategories": "Reactive \u0026 refractory metals mill products (major US source for Hf/Zr/Nb)",
+    "elementsCovered": "Hf, Zr, Nb, Ta, Ti, V",
+    "forms": "Ingot, billet, bar, rod, tube, wire, sheet, strip, foil, sponge, crystal bar, chemicals \u0026 powders",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "espi-metals",
+    "supplier": "ESPI Metals",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "1050 Benson Way, Ashland, OR 97520, USA",
+    "website": "espimetals.com",
+    "contact": "sales@espimetals.com; \u002B1 541-488-8311; 800-638-2581",
+    "productCategories": "High-purity metals, compounds \u0026 alloys (R\u0026D); broadest single-source for marker elements; NO minimum order",
+    "elementsCovered": "Nb, Ta, W, Mo, Re, Hf, Zr, Ti, V, Cr, Mn, Co, Sc, In, Ga, Ge, Te, Sb, Bi, Sn \u002B REE",
+    "forms": "Rod, wire, sheet, foil, powder, pieces, shot, oxide, targets; in-house melting/forging/CNC",
+    "pricing": "Online shop (some)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "goodfellow-cambridge-ltd",
+    "supplier": "Goodfellow Cambridge Ltd",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "UK",
+    "address": "Ermine Business Park, Huntingdon, Cambridgeshire PE29 6WR, UK",
+    "website": "goodfellow.com",
+    "contact": "info@goodfellow.com; \u002B44 1480 424800",
+    "productCategories": "Broad research metals/materials catalog (up to 6N purity), web pricing",
+    "elementsCovered": "Nb, Ta, W, Mo, Re, Hf, Zr, Ti, V, Cr, Mn, Co \u002B many",
+    "forms": "Rod, wire, foil, sheet, powder, tube; oxides",
+    "pricing": "Online catalog pricing",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "testbourne-ltd",
+    "supplier": "Testbourne Ltd",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "UK",
+    "address": "Unit C, The Loddon Centre, Wade Rd, Basingstoke, Hampshire RG24 8FL, UK",
+    "website": "testbourne.com",
+    "contact": "\u002B44 1256 467055",
+    "productCategories": "Sputtering targets, evaporation materials, high-purity metals (SuperVac)",
+    "elementsCovered": "W, Mo, Ta, Nb, Ti, Zr, Hf, Cr \u002B many",
+    "forms": "Sputter targets, evaporation materials, powder, wire, rod, sheet",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "kurt-j-lesker-company",
+    "supplier": "Kurt J. Lesker Company",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "1925 Worthington Ave, Jefferson Hills, PA 15025, USA",
+    "website": "lesker.com",
+    "contact": "\u002B1 412-387-9200",
+    "productCategories": "Sputtering targets, evaporation materials (R\u0026D), web pricing",
+    "elementsCovered": "Nb, Ta, W, Mo, Hf, Zr, Ti, V, Cr \u002B many; oxides/fluorides/nitrides",
+    "forms": "Sputter targets, evaporation pellets/pieces, wire",
+    "pricing": "Online pricing (many SKUs)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "aci-alloys-inc",
+    "supplier": "ACI Alloys, Inc.",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "1458 Seareel Pl, San Jose, CA 95131, USA",
+    "website": "acialloys.com",
+    "contact": "sales@acialloys.com; \u002B1 408-259-7337",
+    "productCategories": "Sputtering targets, evaporation, custom/master alloys",
+    "elementsCovered": "Co, Cr, Ti, Zr, In \u002B rare-earth \u002B many",
+    "forms": "Sputter targets, evaporation pieces, backing plates, pellets, bar, foil, wire, powder",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "materion-corporation",
+    "supplier": "Materion Corporation",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "6070 Parkland Blvd, Mayfield Heights, OH 44124, USA",
+    "website": "materion.com",
+    "contact": "\u002B1 216-486-4200",
+    "productCategories": "Advanced materials, sputter targets, inorganic chemicals/powders, RE fluorides, specialty metals",
+    "elementsCovered": "W, Mo, Ta, Nb, Hf, Zr, Ti, Cr, Co \u002B many; REE (esp. fluorides)",
+    "forms": "Sputter targets, powders, inorganic chemicals, fluorides, oxides, clad/plated metals, foils",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "reade-advanced-materials",
+    "supplier": "Reade Advanced Materials",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "PO Box 15039, Riverside (East Providence), RI 02915, USA",
+    "website": "reade.com",
+    "contact": "\u002B1 401-433-7000; Bsatterfield@reade.com",
+    "productCategories": "Specialty chemical solids distributor \u0026 toll processor (400\u002B products); RE, metals, oxides, ceramics, nano",
+    "elementsCovered": "Ce, Dy, Er, Eu, Gd, Ho, La, Lu \u002B REE; Cr, Co, Hf, Ta, Ti, W, V, Zr",
+    "forms": "Powder, ingot, oxides, carbides, nitrides, ferroalloys, nanomaterials, custom sizing",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "atlantic-equipment-engineers-micron-metals",
+    "supplier": "Atlantic Equipment Engineers (Micron Metals)",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "24 Industrial Ave, Upper Saddle River, NJ 07458, USA",
+    "website": "micronmetals.com",
+    "contact": "\u002B1 201-828-9400; 800-486-2436",
+    "productCategories": "High-purity metals, powders \u0026 compounds (~1,000 items); full 17 RE metals \u0026 oxides; nano; custom alloys",
+    "elementsCovered": "REE (Ce, La, Nd, Y... full 17); Nb, Ta, W, V, Hf, Ti, Co, Mn",
+    "forms": "Powder (primary), lumps/chips, oxides, nanopowder, ingot/compound (3N-5N)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "less-common-metals-ltd-lcm",
+    "supplier": "Less Common Metals Ltd (LCM)",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "UK",
+    "address": "Unit 2 Hooton Park, North Rd, Ellesmere Port CH65 1BL, UK",
+    "website": "lesscommonmetals.com",
+    "contact": "general@lesscommonmetals.com; \u002B44 151 356 3500",
+    "productCategories": "RE alloys \u0026 metals, master alloys, strip-cast (leading ex-China RE metal/alloy maker)",
+    "elementsCovered": "Nd, Pr, Sm, Dy, Tb, Y, Gd (\u002B Fe, B, Co)",
+    "forms": "Cast alloy ingot, strip-cast flake, metals, master alloys, bonded magnet powders",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "indium-corporation",
+    "supplier": "Indium Corporation",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "301 Woods Park Dr, Clinton, NY 13323, USA",
+    "website": "indium.com",
+    "contact": "askus@indium.com; \u002B1 315-853-4900",
+    "productCategories": "High-purity minor metals, solders, targets, compounds (top In/Ga source; also Ge, Sn)",
+    "elementsCovered": "In, Ga, Ge, Sn",
+    "forms": "Ingot, shot, wire, foil, powder, sputter targets, oxides (to 6N/7N); In2O3, ITO targets",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "5n-plus-inc",
+    "supplier": "5N Plus Inc.",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "Canada",
+    "address": "4385 Garand St, Montreal, QC H4R 2B4, Canada",
+    "website": "5nplus.com",
+    "contact": "\u002B1 514-856-0644",
+    "productCategories": "Specialty semiconductors \u0026 performance materials (refining); strongest for Te/Bi/Se",
+    "elementsCovered": "Te, Bi, Ga, In, Se, Sb, Ge, Cd",
+    "forms": "Ingot, shot, powder, high-purity metals \u0026 compounds (to 6N/7N); CdTe, oxides",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "ppm-pure-metals-gmbh-vital-pure-metal-solutions",
+    "supplier": "PPM Pure Metals GmbH (Vital Pure Metal Solutions)",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "Germany",
+    "address": "Am Bahnhof 1, 38685 Langelsheim, Germany",
+    "website": "ppmpuremetals.de",
+    "contact": "\u002B49 5326 507-0",
+    "productCategories": "Ultra-pure minor metals \u0026 compounds (EU source for Ga/Ge/In/Te/Sb/Bi)",
+    "elementsCovered": "Ga, Ge, In, Te, Sb, Bi, Sn, Cu",
+    "forms": "Ingot, shot, pieces, powder, compounds (to 6N/7N)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "vital-materials-co-vital-chem",
+    "supplier": "Vital Materials Co. (Vital Chem)",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "China",
+    "address": "68 Huacheng Ave, Tianhe District, Guangzhou 510623, China (German arm: Vital-PMS)",
+    "website": "en.vitalchem.com",
+    "contact": "Sales@vitalchem.com; \u002B86 20-37069188",
+    "productCategories": "Rare \u0026 dispersed metals, high-purity materials, targets (world-leading Se/Te; major Ga/In/Ge)",
+    "elementsCovered": "Ga, In, Ge, Te, Se, Sb, Bi \u002B REE",
+    "forms": "Ingot, shot, powder, oxide, sputter targets",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "william-rowland-ltd",
+    "supplier": "William Rowland Ltd",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "UK",
+    "address": "Meadow Street, Sheffield, UK",
+    "website": "william-rowland.com",
+    "contact": "\u002B44 114 276 9421",
+    "productCategories": "Metals, alloys, solders, master alloys, powders (online metal shop)",
+    "elementsCovered": "Bi, In, Sn, Sb (\u002B Pb, Cd, Ag, Zn, Cu)",
+    "forms": "Ingot, shot, powder, alloys/solders",
+    "pricing": "Online shop pricing",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "umicore-electro-optic-materials",
+    "supplier": "Umicore - Electro-Optic Materials",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "Belgium",
+    "address": "Broekstraat 31, 1000 Brussels, Belgium (Ge ops: Olen, BE)",
+    "website": "umicore.com",
+    "contact": "\u002B32 2 227 7111",
+    "productCategories": "Germanium products, IR optics, specialty metals (premier Ge source)",
+    "elementsCovered": "Ge (primary)",
+    "forms": "Ge ingot/crystal, substrates/wafers, GeO2, optics, chalcogenide glass",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "tosoh-corporation-tosoh-smd",
+    "supplier": "Tosoh Corporation / Tosoh SMD",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "Japan",
+    "address": "3-8-2 Shiba, Minato-ku, Tokyo 105-8623, Japan; Tosoh SMD: 3600 Gantz Rd, Grove City, OH 43123, USA",
+    "website": "tosoh.com / tosohsmd.com",
+    "contact": "\u002B81-3-5427-5118; Tosoh SMD \u002B1-614-875-7912",
+    "productCategories": "Sputter targets, high-purity metals/alloys, powdered metals, zirconia ceramics (world\u0027s largest hi-purity zirconia)",
+    "elementsCovered": "Ti, Ta, W, Mo, Nb, Co, Cr, V, Mn, Ni, Zr, Hf (targets); Zr, Y (zirconia)",
+    "forms": "Sputter targets, ingots/powders, zirconia oxide powder (TZ-3Y, TZ-8Y), granules",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "gfe-metalle-und-materialien-gmbh-amg",
+    "supplier": "GfE Metalle und Materialien GmbH (AMG)",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "Germany",
+    "address": "Hoefener Str. 45, 90431 Nuremberg, Germany",
+    "website": "gfe.com",
+    "contact": "contact@gfe.com; \u002B49 911 9315-91",
+    "productCategories": "High-performance metals/materials, PVD/sputter targets, metal powders, V chemicals, Ti aluminides",
+    "elementsCovered": "Nb, Ta, W, Mo, Ti, V, Cr, Zr",
+    "forms": "Planar \u0026 rotatable sputter targets, evaporation materials, spherical/HDH powders, oxides (Nb/Ta/Ti/Zr oxide, AZO)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "admat-inc",
+    "supplier": "Admat Inc.",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "2460 General Armistead Ave, Suite 213, Norristown, PA 19403, USA",
+    "website": "admatinc.com",
+    "contact": "hongju.chang@admatinc.com; \u002B1 484-322-2094",
+    "productCategories": "Refractory/specialty metals in all mill forms, machined parts, sputter targets, capacitor-grade powders",
+    "elementsCovered": "Ta, Nb, W, Mo, Ti, Hf, Si",
+    "forms": "Powder (cap-grade Ta), ingot, plate, sheet, rod, wire, foil, machined parts, sputter targets",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "kennametal-inc",
+    "supplier": "Kennametal Inc.",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "525 William Penn Pl, Suite 3300, Pittsburgh, PA 15219, USA",
+    "website": "kennametal.com",
+    "contact": "\u002B1 412-248-8000",
+    "productCategories": "Cutting tools, carbide, advanced materials, recycling",
+    "elementsCovered": "W (carbide), Co, Cr, Ti, Ta",
+    "forms": "WC powder, inserts, wear parts, blanks/rod",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "eutectix-llc",
+    "supplier": "Eutectix, LLC",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "USA",
+    "address": "323 Main St, Chatham, NJ 07928, USA (plants: Troy, MI; Tolleson, AZ)",
+    "website": "eutectix.com",
+    "contact": "\u002B1 908-707-0724",
+    "productCategories": "Master \u0026 specialty alloys; Ni/Co superalloys; Zr bulk metallic glasses; RE alloys; AM powders",
+    "elementsCovered": "La, Ce, Pr, Nd, Sm, Y, Gd, Sc (alloys) \u002B Ni, Co, Mn, Al, Mg, Zr, Fe, Nb, B, V",
+    "forms": "Ingots, metal powders, master alloys (AlSc, FeY, LaNi5, NdFeB, NiGd, SmCo)",
+    "pricing": "Quote (custom)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "china-rare-metal-material-co-ltd-crm",
+    "supplier": "China Rare Metal Material Co., Ltd (CRM)",
+    "status": "New",
+    "category": "Refractory \u0026 specialty metals",
+    "hqCountry": "China",
+    "address": "Unit 1208-1212, Honggu Jingdian Bldg, No.1378 Honggu Ave, Nanchang, Jiangxi, China",
+    "website": "china-raremetal.com",
+    "contact": "sales@china-raremetal.com; \u002B86 791-88101311",
+    "productCategories": "Sputter targets, evaporation materials, distilled RE metals, alloys, nanomaterials, crystals, wafers",
+    "elementsCovered": "RE metals \u0026 alloys \u002B W/Mo/Ta/Nb/Ti/Zr/Hf/V/Cr (targets)",
+    "forms": "Sputter targets, evaporation materials, plates, disks, wire, rods, foils, boats, crucibles (3N-6N)",
+    "pricing": "~US$100/piece (1 listing)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "mse-supplies-llc",
+    "supplier": "MSE Supplies LLC",
+    "status": "Existing",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "USA",
+    "address": "2705 E Medina Rd, STE 161, Tucson, AZ 85756, USA",
+    "website": "msesupplies.com",
+    "contact": "sales@msesupplies.com; \u002B1 520-783-3077; 866-673-5967",
+    "productCategories": "High-purity RE products, nano/micro materials, equipment, characterization services, custom",
+    "elementsCovered": "REE \u002B many metals (high-purity)",
+    "forms": "Oxide, metal, nanopowder, sputter target, single crystal, salts, dispersions",
+    "pricing": "E-commerce prices",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "nanochemazone-chemazone-inc",
+    "supplier": "Nanochemazone (Chemazone Inc)",
+    "status": "Existing",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "Canada",
+    "address": "Unit 106, 3906 82 Ave, Leduc, Alberta T9E 8M4, Canada (India arm: chemazone.in)",
+    "website": "nanochemazone.com",
+    "contact": "contact@nanochemazone.com; \u002B1 780-612-4177; 855-508-9998",
+    "productCategories": "Nanopowders, micron powders, metals, alloys, ceramics, oxides, sputter targets, dispersions",
+    "elementsCovered": "Broad periodic table incl. REE \u0026 refractory metals",
+    "forms": "Nanopowder, micronpowder, metal, alloy, oxide, dispersion, target",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "us-research-nanomaterials-us-nano",
+    "supplier": "US Research Nanomaterials (US-nano)",
+    "status": "Existing",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "USA",
+    "address": "3302 Twig Leaf Lane, Houston, TX 77084, USA",
+    "website": "us-nano.com",
+    "contact": "service@us-nano.com; \u002B1 832-460-3661",
+    "productCategories": "Nanoparticles, nanopowders, CNTs, dispersions, oxides",
+    "elementsCovered": "REE oxides; transition/refractory metals",
+    "forms": "Nanopowder, nanoparticle, dispersion, oxide, metal",
+    "pricing": "E-commerce",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "skyspring-nanomaterials-ssnano",
+    "supplier": "SkySpring Nanomaterials (SSNano)",
+    "status": "Existing",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "USA",
+    "address": "2935 Westhollow Dr, Houston, TX 77082, USA",
+    "website": "ssnano.com",
+    "contact": "info@ssnano.com; \u002B1 281-885-8884",
+    "productCategories": "Wide spectrum nano- \u0026 micro-powders, dispersions, oxides, metals",
+    "elementsCovered": "REE oxides \u002B many metals/oxides",
+    "forms": "Nanopowder, micropowder, dispersion, oxide, metal",
+    "pricing": "E-commerce",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "nanografi-nano-technology",
+    "supplier": "Nanografi Nano Technology",
+    "status": "Existing",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "Turkey",
+    "address": "METU Technopolis No:13/1-1, 06531 Cankaya, Ankara, Turkey (\u002B US office)",
+    "website": "nanografi.com",
+    "contact": "\u002B90-312-285-85-09",
+    "productCategories": "Graphene, CNTs, nanopowders, battery materials, advanced nanomaterials",
+    "elementsCovered": "Metal oxides incl. RE oxides; refractory metal powders",
+    "forms": "Nanopowder, dispersion, oxide, metal powder, graphene",
+    "pricing": "E-commerce",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "sat-nano-technology-material-co",
+    "supplier": "SAT Nano Technology Material Co.",
+    "status": "Existing",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "China",
+    "address": "Xiaqiao Industry Zone, Dongcheng District, Dongguan, Guangdong, China",
+    "website": "satnanomaterial.com",
+    "contact": "sales03@satnano.com; \u002B86 13929258449",
+    "productCategories": "Metal/oxide/nitride/carbide nanopowders, alloys, CNT/graphene, nanowires, dispersions",
+    "elementsCovered": "REE oxides \u002B Ag/Cu/Al/W \u0026 many metals",
+    "forms": "Nanopowder, dispersion/colloid, oxide, nitride, carbide, metal, nanowire, target",
+    "pricing": "Some online",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "hunan-fushel-technology-fusnano",
+    "supplier": "Hunan Fushel Technology (FusNano)",
+    "status": "Existing",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "China",
+    "address": "Room 1842, Block B, No.858 Dujuan Rd, Yuelu District, Changsha, Hunan 410205, China",
+    "website": "fusnano.com",
+    "contact": "sales@fusnano.com; \u002B86 17377877377",
+    "productCategories": "Nanopowders/nanoparticles (oxides, ATO, metals), dispersions",
+    "elementsCovered": "REE oxides, Sn/Sb (ATO), transition metals",
+    "forms": "Nanopowder, oxide, dispersion",
+    "pricing": "Some online",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "nanorh-nano-research-elements-reinste",
+    "supplier": "NanoRH (Nano Research Elements / Reinste)",
+    "status": "Existing",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "India",
+    "address": "Plot 1010/121, Sarita Vihar, New Delhi 110076, India (UK: Southall UB2 4LL; US office)",
+    "website": "nanorh.com / reinste.com",
+    "contact": "via site; \u002B91-7864020002; UK \u002B44-141-846-0344; US \u002B1-518-889-9730",
+    "productCategories": "Ultra-high-purity nanomaterials (periodic table), dispersions, quantum dots, CNT/graphene",
+    "elementsCovered": "Broad incl. REE, refractory/specialty metals",
+    "forms": "Nanopowder, dispersion, nanowire, oxide, nitride, ceramic, metal, quantum dot",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "anhui-fitech-materials-co",
+    "supplier": "Anhui Fitech Materials Co.",
+    "status": "Existing",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "China",
+    "address": "Room 701, Block B, Huguang Rd, Independent Innovation Industrial Base, Shushan Econ Dev Zone, Hefei, Anhui",
+    "website": "fitechem.com / topfitech.com",
+    "contact": "info@fitechem.com; \u002B86-551-65566870",
+    "productCategories": "High-purity metals, alloys, compounds, targets, REE, electronic/ceramic materials, food additives",
+    "elementsCovered": "REE (La, Ce...) \u002B Ge, Mg, Sn, Co, Ni, Bi, Mo, V, Zn, Mn; Zr",
+    "forms": "Oxides (CeO2, La2O3, Co3O4, V2O5, Bi2O3, MoO3, SnO2, ZnO, MgO), metal, salts, nanopowder, Zr 2-EH, targets",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "nanomaritsa",
+    "supplier": "Nanomaritsa",
+    "status": "Existing",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "Bulgaria",
+    "address": "Ul. Tsar Samuil 2, 6301 Haskovo, Bulgaria",
+    "website": "nanomaritsa.com",
+    "contact": "info@nanomaritsa.com; sales@nanomaritsa.com",
+    "productCategories": "Nano/micro powders, graphene/CNT, battery materials, dispersions, deposition targets",
+    "elementsCovered": "REE (Er, Sm), Mo, Ti, Fe, Ag, B \u002B broad",
+    "forms": "Nanopowder, dispersion, deposition target, micropowder",
+    "pricing": "Listed on product pages",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "alfa-chemistry",
+    "supplier": "Alfa Chemistry",
+    "status": "Existing",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "USA",
+    "address": "2200 Smithtown Ave, Room 1, Ronkonkoma, NY 11779, USA",
+    "website": "alfa-chemistry.com",
+    "contact": "inquiry@alfa-chemistry.com; \u002B1-516-734-6573",
+    "productCategories": "Nanomaterials, rare-earth materials, organometallics, building blocks, catalysts (catalog distributor)",
+    "elementsCovered": "Broad periodic table incl. REE \u0026 refractory metals",
+    "forms": "Oxide, nanopowder, dispersion, metal, salts, organometallics (acac, 2-EH), fluorides, nitrides",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "nanographenex",
+    "supplier": "NanographeneX",
+    "status": "Existing",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "UK",
+    "address": "United Kingdom (UK Reg. Co. 13508687; postal address not published)",
+    "website": "nanographenex.com",
+    "contact": "via /contact-us; \u002B44-203-432-2247",
+    "productCategories": "Graphene, CNTs, fullerenes, MXenes, quantum dots, MOFs, battery materials, nano/micro particles",
+    "elementsCovered": "Metal oxides, MXene metals; REE via nanoparticle catalog",
+    "forms": "Nanopowder, dispersion, aerogel, oxide, MAX phase, MXene powder",
+    "pricing": "Some on site",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "taki-chemical-co-ltd",
+    "supplier": "Taki Chemical Co., Ltd.",
+    "status": "Existing",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "Japan",
+    "address": "2 Midorimachi, Befu-cho, Kakogawa-shi, Hyogo 675-0124, Japan",
+    "website": "takichem.co.jp",
+    "contact": "via site",
+    "productCategories": "Functional materials (colloidal silica, alumina sol), water-treatment chemicals, phosphates",
+    "elementsCovered": "Si, Al, P (specialty inorganic)",
+    "forms": "Colloidal silica (SiO2 sol), alumina sol, polyaluminum chloride, phosphates",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "plasmachem-gmbh",
+    "supplier": "PlasmaChem GmbH",
+    "status": "New",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "Germany",
+    "address": "Schwarzschildstr. 10, 12489 Berlin, Germany",
+    "website": "shop.plasmachem.com",
+    "contact": "shop@plasmachem.com; \u002B49 30 6392 6313",
+    "productCategories": "Oxide \u0026 metal nanopowders, dispersions, quantum dots (PUBLIC PRICING)",
+    "elementsCovered": "Ce, Y, Zr, Ti, Al, Si, Sn, In, W, Sr, Cu, Zn, Fe, Mg",
+    "forms": "Nanopowders \u002B aqueous dispersions (CeO2, Y2O3, ZrO2, TiO2, In2O3, SnO2, WO3, SrO)",
+    "pricing": "CeO2 disp. EUR 96/10g, 336/50g",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "cerion-nanomaterials-cerion-llc",
+    "supplier": "Cerion Nanomaterials (Cerion LLC)",
+    "status": "New",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "USA",
+    "address": "959 Panorama Trail South, Suite 160, Rochester, NY 14625, USA",
+    "website": "cerionnano.com",
+    "contact": "via site form; \u002B1 585-514-0040",
+    "productCategories": "Custom metal, metal-oxide \u0026 ceramic nanomaterials; dispersions (covers Nb2O5 - rare)",
+    "elementsCovered": "Ce, Y, Zr, Nb, Ti, Al, Si, Co, Ni, Fe, Ba; Cu/Au/Ag/Pt/Pd/Ir",
+    "forms": "Powders \u002B custom dispersions (solvent-matched); CeO2, Y2O3, ZrO2, Nb2O5, BaTiO3",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "meliorum-technologies",
+    "supplier": "Meliorum Technologies",
+    "status": "New",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "USA",
+    "address": "Rochester, NY area, USA",
+    "website": "meliorum.com",
+    "contact": "via site form",
+    "productCategories": "Custom metal \u0026 metal-oxide nanoparticles, colloids (heavy/mid RE oxides)",
+    "elementsCovered": "Ce, Y, Zr, Dy, Er, Gd, Sm, Ti, Al, Cu, Fe, Mn, Si",
+    "forms": "Powder \u002B organic/aqueous dispersion or ink (CeO2, Y2O3, Dy2O3, Er2O3, Gd2O3, Sm2O3)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "nanophase-technologies-corp",
+    "supplier": "Nanophase Technologies Corp.",
+    "status": "New",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "USA",
+    "address": "1319 Marquette Dr, Romeoville, IL 60446, USA",
+    "website": "nanophase.com",
+    "contact": "\u002B1 630-771-6700",
+    "productCategories": "Engineered metal-oxide nanopowders \u0026 dispersions (NanoArc/NanoTek)",
+    "elementsCovered": "Ce, Zn, Al, Ti, Sb/Sn (ATO), Bi, In",
+    "forms": "Powders \u002B dispersions (CeO2, ZnO, Al2O3, TiO2, ATO, Bi2O3, In2O3)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "inframat-advanced-materials-llc",
+    "supplier": "Inframat Advanced Materials, LLC",
+    "status": "New",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "USA",
+    "address": "151 Progress Dr, Manchester, CT 06042, USA",
+    "website": "advancedmaterials.us / inframat.com",
+    "contact": "\u002B1 860-553-6154",
+    "productCategories": "Nanopowders, thermal-spray powders, SOFC materials, YSZ media",
+    "elementsCovered": "Y, Zr, Ce, Ti, Al \u002B many oxides",
+    "forms": "Powders (nano \u0026 micron); 3/8 mol% YSZ (ZrO2-Y2O3), Y2O3 99.995%, CeO2, TiO2",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "promethean-particles-ltd",
+    "supplier": "Promethean Particles Ltd",
+    "status": "New",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "UK",
+    "address": "Nottingham, UK",
+    "website": "prometheanparticles.co.uk",
+    "contact": "via site form",
+    "productCategories": "Bespoke inorganic nanoparticle dispersions (continuous hydrothermal), MOFs",
+    "elementsCovered": "Ti, Ce, Zr, Fe \u002B mixed/metal oxides, hydroxides, sulphides (custom)",
+    "forms": "Aqueous/solvent dispersions; TiO2 \u0026 mixed metal oxides (bespoke)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "iolitec-nanomaterials-ionic-liquids-technologies-gmbh",
+    "supplier": "IoLiTec Nanomaterials (Ionic Liquids Technologies GmbH)",
+    "status": "New",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "Germany",
+    "address": "Im Zukunftspark 9, D-74076 Heilbronn, Germany",
+    "website": "nanomaterials.iolitec.de",
+    "contact": "info@nanomaterials.iolitec.de; \u002B49-7131-89839-0",
+    "productCategories": "Ready-to-use nanoparticle dispersions \u0026 powders",
+    "elementsCovered": "Ti, Zn, Al, Si (catalog); ITO/Sb on request",
+    "forms": "Dispersions: TiO2 (rutile/anatase), ZnO, gamma-Al2O3, SiO2; powders",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "avantama-ag-formerly-nanograde",
+    "supplier": "Avantama AG (formerly Nanograde)",
+    "status": "New",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "Switzerland",
+    "address": "Staefa/Zurich area, Switzerland",
+    "website": "avantama.com",
+    "contact": "via shop / Sigma-Aldrich",
+    "productCategories": "Solution-processable metal-oxide inks/dispersions \u0026 nanopowders (ton-scale)",
+    "elementsCovered": "Zn (incl. Al:ZnO), Ti, In, Sn, Ni \u002B metal oxides",
+    "forms": "Inks/dispersions \u002B powders (ZnO ink, Al-doped ZnO, electron-transport oxides)",
+    "pricing": "Shop",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "tecnan-tecnologia-navarra-de-nanoproductos-s-l",
+    "supplier": "Tecnan (Tecnologia Navarra de Nanoproductos S.L.)",
+    "status": "New",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "Spain",
+    "address": "Area Industrial Perguita C/A no1, 31210 Los Arcos, Navarra, Spain",
+    "website": "tecnan-nanomat.es",
+    "contact": "tecnan@tecnan-nanomat.es; \u002B34 948 640 318",
+    "productCategories": "Pure nanopowders, tailored nano-dispersions, ready-to-use products (largest plant in Europe)",
+    "elementsCovered": "Ti, Si, Ce, Zr, Al, Zn \u002B perovskites/mixed oxides",
+    "forms": "Powders \u002B dispersions (TiO2, SiO2, CeO2, ZrO2, Al2O3, ZnO); TECNADIS line",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "nanomakers-sas",
+    "supplier": "Nanomakers SAS",
+    "status": "New",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "France",
+    "address": "Rambouillet, France",
+    "website": "nanomakers.fr",
+    "contact": "via site form",
+    "productCategories": "Laser-pyrolysis Si \u0026 SiC nanopowders (industrial scale)",
+    "elementsCovered": "Si, C (SiC, Si, C-coated Si)",
+    "forms": "Nanopowders 10-100 nm (SiC beta, Si)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "hongwu-international-group-hwnano",
+    "supplier": "Hongwu International Group (HWNano)",
+    "status": "New",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "China",
+    "address": "B1-1603, Yunsheng Science Park, No.11 Guangpu Middle Rd, Huangpu District, Guangzhou (plant: Xuzhou)",
+    "website": "hwnanomaterial.com",
+    "contact": "hwnano@xuzhounano.com; \u002B8620-87226359",
+    "productCategories": "Inorganic nanoparticles, nanopowders, nano-dispersions, nanocomposites (very broad oxide coverage)",
+    "elementsCovered": "Ce, Y, Bi, In, Sn, Sb, Zr, Ti, Ta, W \u002B metals",
+    "forms": "Powders, dispersions, wet cake, colloid (CeO2, Y2O3, Bi2O3, In2O3, SnO2, Sb2O3, ZrO2, Ta2O5, WO3)",
+    "pricing": "n/a",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "eprui-nanoparticles-microspheres-co",
+    "supplier": "EPRUI Nanoparticles \u0026 Microspheres Co.",
+    "status": "New",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "China",
+    "address": "Nanjing, Jiangsu, China",
+    "website": "nanoparticles-microspheres.com",
+    "contact": "sales@nanoparticles-microspheres.com; \u002B86-21-64192663",
+    "productCategories": "Metal-oxide nanoparticles, microspheres, nanocomposites",
+    "elementsCovered": "Si, Al, Ti, Zn, Zr, In \u002B metals",
+    "forms": "Nanopowders (some dispersions); SiO2, Al2O3, TiO2, ZnO, ZrO2, In2O3; SiC, TiN",
+    "pricing": "n/a",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "hebei-suoyi-new-material-technology-co",
+    "supplier": "Hebei Suoyi New Material Technology Co.",
+    "status": "New",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "China",
+    "address": "No. 89 Congtai Economic Dev Zone, Handan City, Hebei, China",
+    "website": "suoyi-group.com / hbsuoyi.com",
+    "contact": "sales@hbsuoyi.com; \u002B86 177 3302 2666",
+    "productCategories": "RE oxides/salts/metals, zirconia, alumina, nano powders, dispersions",
+    "elementsCovered": "Y, Er, Ce, Zr, Ti, Al, Si, Zn \u002B REE, Sr, Ba",
+    "forms": "Powders \u002B TiO2 dispersion; nano Er2O3, Y2O3, YSZ, TiO2, ZrO2, Al2O3, SiO2",
+    "pricing": "n/a",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "beijing-dk-nano-technology-co",
+    "supplier": "Beijing DK Nano Technology Co.",
+    "status": "New",
+    "category": "Nanomaterials \u0026 dispersions",
+    "hqCountry": "China",
+    "address": "Chaoyang District, Anyuanbeili Street 23, Beijing, China",
+    "website": "beijingdaoking.en.made-in-china.com",
+    "contact": "via Made-in-China",
+    "productCategories": "CNTs, metal nanopowders, oxide nanopowders, dispersions",
+    "elementsCovered": "Mainly metals (Ag, Au, Pt, Pd, Ru) \u002B some oxides",
+    "forms": "Metal nanopowders \u002B Ag/Au aqueous dispersions; some oxides",
+    "pricing": "n/a",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "cymitquimica",
+    "supplier": "CymitQuimica",
+    "status": "Existing",
+    "category": "Global lab distributor",
+    "hqCountry": "Spain",
+    "address": "Carrer de Duran i Borrell 67-69, 08840 Viladecans, Barcelona, Spain",
+    "website": "cymitquimica.com",
+    "contact": "support@cymitquimica.com; \u002B34 93 241 29 27",
+    "productCategories": "Wide spectrum chemicals, materials, micro- \u0026 nanomaterials; EU distributor for Strem etc.",
+    "elementsCovered": "REE \u002B refractory/specialty metals (via brands)",
+    "forms": "Oxides, salts, organometallics, TMHD/acac, micro/nano materials",
+    "pricing": "Catalog (EU pricing)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "santa-cruz-biotechnology",
+    "supplier": "Santa Cruz Biotechnology",
+    "status": "Existing",
+    "category": "Global lab distributor",
+    "hqCountry": "USA",
+    "address": "10410 Finnell St, Dallas, TX 75220, USA (EU: Bergheimer Str. 89-2, 69115 Heidelberg, Germany)",
+    "website": "scbt.com",
+    "contact": "scbt@scbt.com; \u002B1-214-902-3900; EU europe@scbt.com; \u002B49-6221-4503-0",
+    "productCategories": "Antibodies, biochemicals, chemicals (inc. inorganic/metal compounds in chem catalog)",
+    "elementsCovered": "Various metals as salts",
+    "forms": "Oxides, salts, organics (catalog-grade)",
+    "pricing": "Catalog (online)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "thermo-fisher-scientific-alfa-aesar-thermo-scientific-chemicals",
+    "supplier": "Thermo Fisher Scientific / Alfa Aesar (Thermo Scientific Chemicals)",
+    "status": "New",
+    "category": "Global lab distributor",
+    "hqCountry": "USA",
+    "address": "168 Third Ave, Waltham, MA 02451, USA (Alfa legacy: Ward Hill, MA \u0026 Heysham, UK)",
+    "website": "thermofisher.com / alfa.com",
+    "contact": "\u002B1-800-343-0660; IL via Holland Moran; regional .co.il/EU sites",
+    "productCategories": "Vast inorganic \u0026 organometallic catalog: oxides, salts, pure metals, nanopowders, MOCVD/ALD precursors",
+    "elementsCovered": "All 28 marker elements",
+    "forms": "Oxides, nitrates, chlorides, sulfates, carbonates, acetates, metals, nanopowders, TMHD/acac, alkoxides",
+    "pricing": "Published online",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "avantor-vwr",
+    "supplier": "Avantor / VWR",
+    "status": "New",
+    "category": "Global lab distributor",
+    "hqCountry": "USA",
+    "address": "Radnor, PA, USA (VWR International; EU \u0026 global)",
+    "website": "vwr.com / avantorsciences.com",
+    "contact": "via regional sites",
+    "productCategories": "Global lab supply \u0026 distribution: chemicals, reagents, metals salts, many brands",
+    "elementsCovered": "Most marker metals as reagent salts/oxides (via brands)",
+    "forms": "Oxides, salts, organics (multi-brand distribution)",
+    "pricing": "Catalog (account)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "spectrum-chemical-mfg-corp",
+    "supplier": "Spectrum Chemical Mfg. Corp.",
+    "status": "New",
+    "category": "Global lab distributor",
+    "hqCountry": "USA",
+    "address": "769 Jersey Ave, New Brunswick, NJ 08901, USA (\u002B Gardena, CA)",
+    "website": "spectrumchemical.com",
+    "contact": "sales@spectrumchemical.com; \u002B1-732-214-1300",
+    "productCategories": "Lab fine chemicals incl. dedicated Rare Earth Metal Salts category",
+    "elementsCovered": "REE \u002B many transition/post-transition metals",
+    "forms": "Oxides, nitrates, chlorides, sulfates, acetates",
+    "pricing": "Published online",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "bld-pharmatech-ltd-bldpharm",
+    "supplier": "BLD Pharmatech Ltd (BLDpharm)",
+    "status": "New",
+    "category": "Global lab distributor",
+    "hqCountry": "China",
+    "address": "Bldg 11, 1011 Halei Rd, Zhangjiang, Pudong, Shanghai, China (EU: BLD Pharmatech GmbH)",
+    "website": "bldpharm.com",
+    "contact": "sales@bldpharm.com; \u002B86-21-5085 5800",
+    "productCategories": "600k\u002B research chems incl. metal catalysts, MOF ligands; worldwide shipping",
+    "elementsCovered": "Transition-metal catalysts; some marker metals",
+    "forms": "Metal catalysts, halides, organometallics",
+    "pricing": "Catalog",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "boc-sciences",
+    "supplier": "BOC Sciences",
+    "status": "New",
+    "category": "Global lab distributor",
+    "hqCountry": "USA / China",
+    "address": "45-16 Ramsey Rd, Shirley, NY 11967, USA (ops in China)",
+    "website": "bocsci.com",
+    "contact": "inquiry@bocsci.com; \u002B1-631-485-4226",
+    "productCategories": "Custom lab chems, building blocks, metal catalysts, inorganic compounds",
+    "elementsCovered": "Various metals as catalysts/salts",
+    "forms": "Metal salts, catalysts, inorganic compounds",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "loba-chemie-pvt-ltd",
+    "supplier": "Loba Chemie Pvt. Ltd.",
+    "status": "New",
+    "category": "India lab/chemical house",
+    "hqCountry": "India",
+    "address": "Jehangir Villa, 107 Wodehouse Rd, Colaba, Mumbai 400005, India (works: Tarapur)",
+    "website": "lobachemie.com",
+    "contact": "info@lobachemie.com; \u002B91-22-6663 6663",
+    "productCategories": "Lab reagents (ACS/AR/GR), fine chems, inorganic salts, AAS \u0026 ICP standards, RE oxides/fluorides (mfr since 1975)",
+    "elementsCovered": "REE (Ce, La, RE oxides), Ti, Zr, V, Cr, Mo, W, Mn, Co, Al, Sn, Sb, Bi, Sr",
+    "forms": "Oxides, nitrates, chlorides, sulfates, carbonates, acetates; CAN/ceric salts",
+    "pricing": "Catalog",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "central-drug-house-cdh",
+    "supplier": "Central Drug House (CDH)",
+    "status": "New",
+    "category": "India lab/chemical house",
+    "hqCountry": "India",
+    "address": "7/28 Vardaan House, Daryaganj, New Delhi 110002, India",
+    "website": "cdhfinechemical.com",
+    "contact": "sales@cdhfinechemical.com; \u002B91-11-4321 5000",
+    "productCategories": "9000\u002B lab fine chems, reagents, HPLC/AAS solvents, AAS standards (ISO 9001/14001, cGMP)",
+    "elementsCovered": "Most marker metals as common salts; AAS standards",
+    "forms": "Oxides, chlorides, nitrates, sulfates, carbonates, acetates",
+    "pricing": "Catalog",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "srl-sisco-research-laboratories",
+    "supplier": "SRL / Sisco Research Laboratories",
+    "status": "New",
+    "category": "India lab/chemical house",
+    "hqCountry": "India",
+    "address": "Andheri (E), Mumbai, India (plants: Vashi, Taloja, Chennai)",
+    "website": "srlchem.com",
+    "contact": "customercare@srlchem.com; \u002B91-22-2778 1888",
+    "productCategories": "6000\u002B reagents, biochem, AAS standards, NANOPOWDERS, CNTs, inorganic intermediates",
+    "elementsCovered": "REE \u002B transition/post-transition markers; nanopowders of many elements",
+    "forms": "Oxides, salts, nanopowders, AAS standards",
+    "pricing": "Catalog",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "otto-chemie-pvt-ltd-ottokemi",
+    "supplier": "Otto Chemie Pvt. Ltd. (Ottokemi)",
+    "status": "New",
+    "category": "India lab/chemical house",
+    "hqCountry": "India",
+    "address": "603 Vikas Centre, Dr C.G. Rd, Chembur, Mumbai 400074, India",
+    "website": "ottokemi.com",
+    "contact": "info@ottokemi.com; \u002B91-22-2522 0048",
+    "productCategories": "3000\u002B lab/fine chems, RE metals \u0026 salts, precious metals, nanoparticles (ISO 9001 \u002B GMP)",
+    "elementsCovered": "REE \u002B Ti, Zr, V, Cr, Mo, W, Mn, Co, Al, Si, Sn, Sb, Te, Bi, Sr",
+    "forms": "Oxides, nitrates, chlorides, sulfates, acetates; oxide \u0026 elemental nanopowders",
+    "pricing": "Catalog",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "spectrochem-pvt-ltd",
+    "supplier": "Spectrochem Pvt. Ltd.",
+    "status": "New",
+    "category": "India lab/chemical house",
+    "hqCountry": "India",
+    "address": "C-1/B, Kandivli Ind. Estate, Kandivli (W), Mumbai 400067, India",
+    "website": "spectrochem.in",
+    "contact": "info@spectrochem.in; \u002B91-22-2868 1234",
+    "productCategories": "3000\u002B high-purity reagents, solvents, ACS/ISO reagents, GC/AAS standards (ISO 9001)",
+    "elementsCovered": "Common marker metals as reagent salts",
+    "forms": "Oxides, chlorides, nitrates, sulfates",
+    "pricing": "Catalog",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "molychem",
+    "supplier": "Molychem",
+    "status": "New",
+    "category": "India lab/chemical house",
+    "hqCountry": "India",
+    "address": "313 Vir Mansion, Kalbadevi Rd, Mumbai 400002, India (plant: Badlapur)",
+    "website": "molychem.net",
+    "contact": "molychem@vsnl.com; \u002B91-22-2240 1923",
+    "productCategories": "HPLC/AR/GR/LR reagents, metals \u0026 salts, oxides, peroxides, inorganic salts (ISO 9001)",
+    "elementsCovered": "Cr, Mn, Co, Mo, W, Sn, Sb, Bi, Sr, Al \u002B many",
+    "forms": "Oxides, salts, peroxides, volumetric solutions",
+    "pricing": "Catalog",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "avra-synthesis-pvt-ltd",
+    "supplier": "Avra Synthesis Pvt. Ltd.",
+    "status": "New",
+    "category": "India lab/chemical house",
+    "hqCountry": "India",
+    "address": "Plot A/28/1/19, IDA Nacharam, Hyderabad 500076, India",
+    "website": "avrasynthesis.com",
+    "contact": "info@avrachemicals.com; \u002B91-40-2717 3853",
+    "productCategories": "Fine chems \u0026 solvents, organometallics, boron compounds, catalysts",
+    "elementsCovered": "Si, B, transition-metal catalysts/organometallics",
+    "forms": "Organometallics (silanes), metal halides, catalysts",
+    "pricing": "Catalog",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "triveni-interchem-pvt-ltd",
+    "supplier": "Triveni Interchem Pvt. Ltd.",
+    "status": "New",
+    "category": "India lab/chemical house",
+    "hqCountry": "India",
+    "address": "GIDC, Vapi/Valsad, Gujarat, India",
+    "website": "triveniinterchem.com",
+    "contact": "info@triveniinterchem.com; \u002B91-260-242 0631",
+    "productCategories": "Industrial \u0026 inorganic chems: fluorides, fluoborates, sulphates, chlorides, carbonates, borates",
+    "elementsCovered": "Sr, Al, Sn, Sb, Bi \u002B others as salts",
+    "forms": "Fluorides, fluoborates, sulfates, chlorides, carbonates",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "shanghai-macklin-biochemical-co",
+    "supplier": "Shanghai Macklin Biochemical Co.",
+    "status": "New",
+    "category": "China reagent house",
+    "hqCountry": "China",
+    "address": "Bldg 1, 6055 Nanle Rd, Pudong (Zhangjiang), Shanghai, China",
+    "website": "macklin.cn",
+    "contact": "sales@macklin.cn; \u002B86-400-623-8666",
+    "productCategories": "210,000 reagents: general/analytical, catalysts \u0026 ligands, oxides \u0026 ceramics, RE compounds",
+    "elementsCovered": "REE \u002B Ti, Zr, V, Cr, Mo, W, Mn, Co, Al, Sn, Sb",
+    "forms": "Oxides, nitrates, chlorides, acetates, organometallics, nanopowders",
+    "pricing": "Published (CNY)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "aladdin-scientific-shanghai-aladdin-biochem",
+    "supplier": "Aladdin Scientific (Shanghai Aladdin Biochem)",
+    "status": "New",
+    "category": "China reagent house",
+    "hqCountry": "China / USA",
+    "address": "Shanghai HQ, China; US: 14078 Meridian Pkwy, Riverside, CA 92518",
+    "website": "aladdinsci.com",
+    "contact": "info@aladdinsci.com; US \u002B1-833-552-7181",
+    "productCategories": "Lab chems: oxides \u0026 ceramics, RE metal compounds, analytical reagents (offices incl. Ireland)",
+    "elementsCovered": "REE \u002B Ti, Zr, V, Cr, Mo, W, Mn, Co, Al",
+    "forms": "Oxides, nitrates, chlorides, acetates, ceramics, nanopowders",
+    "pricing": "Published online",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "meryer-shanghai-chemical-technology",
+    "supplier": "Meryer (Shanghai) Chemical Technology",
+    "status": "New",
+    "category": "China reagent house",
+    "hqCountry": "China",
+    "address": "Minhang Econ. \u0026 Tech. Dev. District, Shanghai, China (offices Beijing/Shenzhen/HK)",
+    "website": "meryer.com",
+    "contact": "sales@meryer.com; \u002B86-400-660-8290",
+    "productCategories": "Organic/inorganic/biochem reagents, catalysts, high-purity solvents, standards",
+    "elementsCovered": "Many marker metals as inorganic reagents/oxides",
+    "forms": "Oxides, salts, organometallics, catalysts",
+    "pricing": "Published (CNY)",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "richen-nutritional-technology",
+    "supplier": "Richen Nutritional Technology",
+    "status": "Existing",
+    "category": "China reagent house",
+    "hqCountry": "China",
+    "address": "Blk 3, 628 Suide Rd, Putuo District, Shanghai 200331, China",
+    "website": "richen-nutritional.com / richenchina.cn",
+    "contact": "Liujuan@richenchina.cn; \u002B86-21-26079858",
+    "productCategories": "Nutrient/mineral ingredients (food/supplement/pharma grade); NSF certified",
+    "elementsCovered": "Ca, Mg, Fe, Zn, Mn (nutritional minerals only)",
+    "forms": "Carbonate, citrate, sulfate, oxide, gluconate (mineral salts)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "jinan-future-chemical-boss-chemical",
+    "supplier": "Jinan Future Chemical / Boss Chemical",
+    "status": "Existing",
+    "category": "China reagent house",
+    "hqCountry": "China",
+    "address": "303 Future City, Lixia District, Jinan City, Shandong, China",
+    "website": "jnfuturechemical.com / bosschemical.com",
+    "contact": "sales@bosschemical.com; allen@bosschemical.com; \u002B86-15628782329",
+    "productCategories": "Plasticizers, water-treatment chemicals, lubricant additives, solvents, flame retardants",
+    "elementsCovered": "n/a (organic additives, not elemental markers)",
+    "forms": "Phthalate/adipate/phosphate esters, solvents",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "beit-dekel-bdl",
+    "supplier": "Beit Dekel (BDL)",
+    "status": "Existing",
+    "category": "Israel distributor",
+    "hqCountry": "Israel",
+    "address": "16 Ha\u0027tidhar St., Ra\u0027anana 43665, Israel",
+    "website": "bdl.co.il",
+    "contact": "info@bdl.co.il; office@bdl.co.il; \u002B972-9-7611800",
+    "productCategories": "Lab chemicals, life science, microelectronics process chems, pharma chems (distributor since 1972)",
+    "elementsCovered": "Full periodic-table catalog via brands; RE/specialty via TCI, Spectrum, Avantor, Ferro",
+    "forms": "Oxides, salts, organics, electronic materials (brand catalogs)",
+    "pricing": "Per brand catalog",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "tzamal-d-chem-laboratories",
+    "supplier": "Tzamal D-Chem Laboratories",
+    "status": "Existing",
+    "category": "Israel distributor",
+    "hqCountry": "Israel",
+    "address": "20 Ha\u0027Magshimim St., Kiryat-Matalon, Petach Tikva 4934829, Israel",
+    "website": "d-chem.co.il",
+    "contact": "tdc@tzamal-medical.co.il; ilana@tzamal-medical.co.il; \u002B972-73-7151138; 052-4005668",
+    "productCategories": "Fine chemicals \u0026 reagents, life science, catalysts, nanomaterials (distributor)",
+    "elementsCovered": "Via Strem: REE \u002B refractory/specialty metals (full catalog)",
+    "forms": "Inorganics, organometallics, metal precursors (TMHD/acac/2-EH), catalysts, nanomaterials",
+    "pricing": "Per Strem catalog",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "rhenium-rhenium-bio",
+    "supplier": "Rhenium (Rhenium Bio)",
+    "status": "Existing",
+    "category": "Israel distributor",
+    "hqCountry": "Israel",
+    "address": "20 Hasatat St., P.O.B 180, Modi\u0027in 7171101, Israel",
+    "website": "rhenium.co.il / rheniumbio.co.il",
+    "contact": "ShulamitZ@rhenium.co.il; \u002B972-8-955-8888; \u002B972-3-9777003",
+    "productCategories": "Lab/research/diagnostic equipment \u0026 reagents distributor (life science, bioscience)",
+    "elementsCovered": "n/a (bioscience reagents/instruments; limited elemental-marker fit)",
+    "forms": "Reagents/kits/instruments (not metal compounds)",
+    "pricing": "n/a",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "holland-moran-ltd",
+    "supplier": "Holland Moran Ltd.",
+    "status": "New",
+    "category": "Israel distributor",
+    "hqCountry": "Israel",
+    "address": "15 Geron St., PO Box 2753, Industrial Zone, Yehud 56217, Israel",
+    "website": "holland-moran.co.il",
+    "contact": "info@hollandmoran.co.il; \u002B972-73-2268000",
+    "productCategories": "Fine chems \u0026 bulk: organics, inorganics, organometallics, solvents, precious metals, catalysts, isotopes, ref. standards",
+    "elementsCovered": "Precious metals \u002B inorganic markers as salts/oxides; PGM catalysts",
+    "forms": "Oxides, salts, organometallics, PGM compounds, USP/EP/BP reference standards",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "mercury-scientific-industrial-products-ltd",
+    "supplier": "Mercury Scientific \u0026 Industrial Products Ltd.",
+    "status": "New",
+    "category": "Israel distributor",
+    "hqCountry": "Israel",
+    "address": "Industrial Zone, Rosh HaAyin, Israel (est. 1971)",
+    "website": "eng.mercury-ltd.co.il",
+    "contact": "info@mercury-ltd.co.il; \u002B972-3-557 0570",
+    "productCategories": "Chemicals, reagents, biochem, water purification, chromatography (ISO 9001)",
+    "elementsCovered": "Full marker range via Merck/Sigma-Aldrich portfolio",
+    "forms": "Oxides, nitrates, chlorides, sulfates, acetates, organometallics, nanopowders",
+    "pricing": "n/a",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "gadot-group-gadot-israel",
+    "supplier": "Gadot Group (Gadot Israel)",
+    "status": "New",
+    "category": "Israel distributor",
+    "hqCountry": "Israel",
+    "address": "Gadot House, 17 Ha\u0027Mefalsim St., Kiryat Arye, Petah Tikva, Israel",
+    "website": "gadot.com",
+    "contact": "info@gadot.com; \u002B972-3-927 4000",
+    "productCategories": "Importer/distributor of commodity \u0026 specialty chemicals; in-house ISO 17025 lab",
+    "elementsCovered": "Inorganic marker compounds as commodity/specialty salts \u0026 oxides",
+    "forms": "Oxides, carbonates, sulfates, chlorides, nitrates (bulk \u002B specialty)",
+    "pricing": "Quote",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "romical-ltd",
+    "supplier": "Romical Ltd.",
+    "status": "New",
+    "category": "Israel distributor",
+    "hqCountry": "Israel",
+    "address": "Be\u0027er Sheva, Israel (est. 1988)",
+    "website": "romical.com",
+    "contact": "info@romical.com; \u002B972-8-628 0080",
+    "productCategories": "Lab \u0026 industrial chems all grades; high-purity AAS/ICP/GC/LC standards; analytical solutions",
+    "elementsCovered": "Wide marker range via AAS/ICP single-element standards \u002B reagent salts",
+    "forms": "Oxides, salts, single-element AAS/ICP standard solutions",
+    "pricing": "n/a",
+    "lists": [
+      "master"
+    ]
+  },
+  {
+    "id": "bio-lab-ltd",
+    "supplier": "Bio-Lab Ltd.",
+    "status": "New",
+    "category": "Israel distributor",
+    "hqCountry": "Israel",
+    "address": "22 Hayetsira St., PO Box 34038, Jerusalem 9134001, Israel (plant: Ashkelon)",
+    "website": "biolab-chemicals.com",
+    "contact": "info@biolab.co.il; \u002B972-2-672 1234",
+    "productCategories": "Pharma/analytical reagents \u0026 solvents, biochemicals; introduces foreign brands to Israel",
+    "elementsCovered": "Reagent-grade marker metal salts; analytical chems",
+    "forms": "Salts, solvents, reagents",
+    "pricing": "n/a",
+    "lists": [
+      "master"
+    ]
+  }
+]

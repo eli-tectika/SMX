@@ -1,0 +1,2794 @@
+[
+  {
+    "id": "chunk|rule|Radioactive: Tc, Po, At, Ra, Rn, actinides (U, Th...)|safety-all",
+    "content": "Radioactive - eliminated up front per SMX safety screen.",
+    "element": "Radioactive: Tc, Po, At, Ra, Rn, actinides (U, Th...)",
+    "substrate": "All",
+    "dimension": "Safety",
+    "verdict": "Exclude",
+    "refIds": [
+      "SMX",
+      "docs"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Radioactive: Tc, Po, At, Ra, Rn, actinides (U, Th...) (Safety)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Toxic: As, Cd, Pb, Hg, Be, Se, Tl|safety-all",
+    "content": "Toxic/poisonous - eliminated; confirmed by EU 10/2011 \u0027ND\u0027, REACH Annex XVII, RoHS.",
+    "element": "Toxic: As, Cd, Pb, Hg, Be, Se, Tl",
+    "substrate": "All",
+    "dimension": "Safety",
+    "verdict": "Exclude",
+    "refIds": [
+      "REG1",
+      "REG3",
+      "REG4"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Toxic: As, Cd, Pb, Hg, Be, Se, Tl (Safety)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Reactive/burning: Li, Na, K, Rb, Cs (Mg, Ca limited)|safety-all",
+    "content": "Highly reactive/flammable; Mg/Ca too reactive for clean alloying/handling.",
+    "element": "Reactive/burning: Li, Na, K, Rb, Cs (Mg, Ca limited)",
+    "substrate": "All",
+    "dimension": "Safety",
+    "verdict": "Exclude",
+    "refIds": [
+      "SMX",
+      "docs"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Reactive/burning: Li, Na, K, Rb, Cs (Mg, Ca limited) (Safety)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Mn|gold-solubility-gold",
+    "content": "Extensive solid solubility in fcc Au at high T (Au3Mn, AuMn order). Best-soluble TM marker. MA ~1 wt%.",
+    "element": "Mn",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Go",
+    "refIds": [
+      "G11",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Mn (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|In|gold-solubility-gold",
+    "content": "Appreciable terminal fcc solubility (several at%) before AuIn/AuIn2. Tested by PM. MA ~1 wt%.",
+    "element": "In",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Go",
+    "refIds": [
+      "G5",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 In (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Ga|gold-solubility-gold",
+    "content": "Limited but nonzero Au(fcc) solubility; rich intermetallic field; low MP eases MA. Tested by PM.",
+    "element": "Ga",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G21",
+      "G31",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Ga (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Ti|gold-solubility-gold",
+    "content": "Modest terminal solubility; forms Au4Ti etc. Detectable to 12 ppm. Low at% marker.",
+    "element": "Ti",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G9",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Ti (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Zr|gold-solubility-gold",
+    "content": "Limited Au(fcc) solubility; Au-rich intermetallics. Detectable ~30 ppm. Low-loading only.",
+    "element": "Zr",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G15",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Zr (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Hf|gold-solubility-gold",
+    "content": "Restricted solubility; intermetallics dominate (Zr-like).",
+    "element": "Hf",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G10",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Hf (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|V|gold-solubility-gold",
+    "content": "Limited solubility (\u003C~4 wt%); detectable to 3 ppm. Good dilute marker.",
+    "element": "V",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G3",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 V (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Cr|gold-solubility-gold",
+    "content": "Terminal fcc solubility at high T (~\u003C2 wt%) but ordered/decomposes on cooling. Reg. limit issue (3-10 ppm).",
+    "element": "Cr",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G1",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Cr (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Co|gold-solubility-gold",
+    "content": "Eutectic with large solid-state miscibility gap; small low-T solubility. Detectable 12 ppm.",
+    "element": "Co",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G2",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Co (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Sc|gold-solubility-gold",
+    "content": "Au-Sc intermetallics (e.g. AuSc); low terminal solubility. Marker as dilute/compound.",
+    "element": "Sc",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Sc (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Y, La, Ce, Pr, Nd (light RE)|gold-solubility-gold",
+    "content": "Au-RE line compounds (strong negative dH); negligible terminal solid solubility (~0). Marker sits as 2nd phase.",
+    "element": "Y, La, Ce, Pr, Nd (light RE)",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G24",
+      "G25",
+      "G26",
+      "G27"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Y, La, Ce, Pr, Nd (light RE) (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Sm, Eu, Gd, Tb, Dy, Ho, Er, Tm, Yb, Lu (heavy RE)|gold-solubility-gold",
+    "content": "Expected line-compound formers, negligible Au solubility (by analogy; no individual phase-diagram papers).",
+    "element": "Sm, Eu, Gd, Tb, Dy, Ho, Er, Tm, Yb, Lu (heavy RE)",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Sm, Eu, Gd, Tb, Dy, Ho, Er, Tm, Yb, Lu (heavy RE) (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Sn|gold-solubility-gold",
+    "content": "Some terminal solubility then AuSn/AuSn2/AuSn4 (key solder). Watch low-MP eutectic.",
+    "element": "Sn",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G22",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Sn (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Al|gold-solubility-gold",
+    "content": "Au-Al intermetallics (\u0027purple plague\u0027 AuAl2); limited Au-side solubility; reactive. Alloyed to 20% in jewelry.",
+    "element": "Al",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Al (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Nb|gold-solubility-gold",
+    "content": "Low solubility; Nb3Au (A15) compounds. Marginal as dilute marker; high MP.",
+    "element": "Nb",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G8",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Nb (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Ge|gold-solubility-gold",
+    "content": "Simple eutectic ~361C; near-zero solid solubility (\u003C~1 at%). Classic Au-Ge die-attach solder; marker as 2nd phase.",
+    "element": "Ge",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G20",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Ge (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Sr|gold-solubility-gold",
+    "content": "Au-Sr intermetallics; negligible solubility; Sr reactivity/volatility complicates MA.",
+    "element": "Sr",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Caution",
+    "refIds": [
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Sr (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Ta|gold-solubility-gold",
+    "content": "Very limited solubility \u002B refractory MP 3017C makes MA impractical; Ta3Au-type compounds.",
+    "element": "Ta",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Exclude",
+    "refIds": [
+      "G14",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Ta (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Mo|gold-solubility-gold",
+    "content": "Au-Mo essentially immiscible (large miscibility gaps), no compounds; MP 2623C. Will not alloy uniformly.",
+    "element": "Mo",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Exclude",
+    "refIds": [
+      "G7",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Mo (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|W|gold-solubility-gold",
+    "content": "Au-W essentially immiscible, no phases, near-zero solubility; MP 3422C.",
+    "element": "W",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Exclude",
+    "refIds": [
+      "G12",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 W (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Re|gold-solubility-gold",
+    "content": "Au-Re near-complete immiscibility; MP 3186C.",
+    "element": "Re",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Exclude",
+    "refIds": [
+      "G13",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Re (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Sb|gold-solubility-gold",
+    "content": "Eutectic \u002B AuSb2; Sb solid solubility \u003C~1 at%. Marker as compound, not solution. Reg. limit ~10 ppm.",
+    "element": "Sb",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Exclude",
+    "refIds": [
+      "G4",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Sb (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Te|gold-solubility-gold",
+    "content": "Eutectic \u002B AuTe2 (calaverite); negligible solubility. Brittle at \u003E0.1 wt%.",
+    "element": "Te",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Exclude",
+    "refIds": [
+      "G6",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Te (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Bi|gold-solubility-gold",
+    "content": "Eutectic \u002B Au2Bi; very low Bi solubility. Spec limit ~20 ppm in PM gold.",
+    "element": "Bi",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Exclude",
+    "refIds": [
+      "G23",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Bi (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Si|gold-solubility-gold",
+    "content": "Classic simple eutectic (~363C, 18.6 at%); mutual solid solubility ~nil. Marker as 2nd phase.",
+    "element": "Si",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Exclude",
+    "refIds": [
+      "G19",
+      "G26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Si (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Cu, Ag, Pd, Pt (reference cases)|gold-solubility-gold",
+    "content": "Complete/near-complete fcc solid solution - the \u0027fully soluble\u0027 benchmarks. Already present in PM gold -\u003E not used as markers.",
+    "element": "Cu, Ag, Pd, Pt (reference cases)",
+    "substrate": "Gold",
+    "dimension": "Gold solubility",
+    "verdict": "Info",
+    "refIds": [
+      "G16",
+      "G17",
+      "G18"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Cu, Ag, Pd, Pt (reference cases) (Gold solubility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Zr|oil-compatibility-engine-oil",
+    "content": "Zr neodecanoate/octoate commercial \u0026 oil-soluble; ~0 native background; no P/S. BENCHMARK marker. Ash-forming (tiny at ppm).",
+    "element": "Zr",
+    "substrate": "Engine oil",
+    "dimension": "Oil compatibility",
+    "verdict": "Go",
+    "refIds": [
+      "O13",
+      "O14",
+      "O28"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Zr (Oil compatibility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Ti|oil-compatibility-engine-oil",
+    "content": "Ti neodecanoate is an established AW/FM additive -\u003E finished oils may ALREADY contain Ti (background). Verify base oil.",
+    "element": "Ti",
+    "substrate": "Engine oil",
+    "dimension": "Oil compatibility",
+    "verdict": "Caution",
+    "refIds": [
+      "O13",
+      "O14",
+      "O1"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Ti (Oil compatibility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Y, La, Ce, Nd, Yb \u002B RE|oil-compatibility-engine-oil",
+    "content": "RE neodecanoates/2-EH available; RE absent from oil additives \u0026 wear metals -\u003E clean, distinctive. No P/S. Ce/Nd also fuel-catalytic.",
+    "element": "Y, La, Ce, Nd, Yb \u002B RE",
+    "substrate": "Engine oil",
+    "dimension": "Oil compatibility",
+    "verdict": "Go",
+    "refIds": [
+      "O14",
+      "O28",
+      "O30",
+      "O1"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Y, La, Ce, Nd, Yb \u002B RE (Oil compatibility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Mn|oil-compatibility-engine-oil",
+    "content": "Mn 2-EH/naphthenate oil-soluble; trace wear background. Caution: Mn(acac) low decomp; MMT-\u003EMn3O4 catalyst fouling if in fuel.",
+    "element": "Mn",
+    "substrate": "Engine oil",
+    "dimension": "Oil compatibility",
+    "verdict": "Go",
+    "refIds": [
+      "O25",
+      "O28",
+      "O31"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Mn (Oil compatibility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Co|oil-compatibility-engine-oil",
+    "content": "Co 2-EH/naphthenate classic driers, oil-soluble; not an oil additive (clean). Caution: redox/pro-oxidant - keep 5-15 ppm.",
+    "element": "Co",
+    "substrate": "Engine oil",
+    "dimension": "Oil compatibility",
+    "verdict": "Go",
+    "refIds": [
+      "O23",
+      "O28"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Co (Oil compatibility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|V|oil-compatibility-engine-oil",
+    "content": "Vanadyl acac/2-EH oil-soluble but VO(acac)2 decomposes ~400C (engine hot-zone); V background from HFO; catalyst-active; ash.",
+    "element": "V",
+    "substrate": "Engine oil",
+    "dimension": "Oil compatibility",
+    "verdict": "Caution",
+    "refIds": [
+      "O24",
+      "O26"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 V (Oil compatibility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Hf|oil-compatibility-engine-oil",
+    "content": "Hf mirrors Zr but commercial oil-soluble Hf scarce (custom synth); not in standard ICP panels (method extension).",
+    "element": "Hf",
+    "substrate": "Engine oil",
+    "dimension": "Oil compatibility",
+    "verdict": "Caution",
+    "refIds": [
+      "O14"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Hf (Oil compatibility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|W|oil-compatibility-engine-oil",
+    "content": "No simple oil-soluble W carboxylate; delivered as WS2 (adds S) or W-carbonyl. Clean background if a soluble form secured.",
+    "element": "W",
+    "substrate": "Engine oil",
+    "dimension": "Oil compatibility",
+    "verdict": "Caution",
+    "refIds": [
+      "O32"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 W (Oil compatibility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Mo|oil-compatibility-engine-oil",
+    "content": "Mainstream FM (MoDTC) present 50-250 ppm in many oils \u0026 in ICP panels -\u003E marker dose buried; reactive with ZDDP/detergents.",
+    "element": "Mo",
+    "substrate": "Engine oil",
+    "dimension": "Oil compatibility",
+    "verdict": "Exclude",
+    "refIds": [
+      "O2",
+      "O15",
+      "O16",
+      "O17",
+      "O18"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Mo (Oil compatibility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|All RE \u002B Zr/Ti/Hf carboxylates \u0026 diketonates|oil-compatibility-engine-oil",
+    "content": "Carboxylate/beta-diketonate ligands are C/H/O only -\u003E add NO P or S; preserve ZDDP P-window (GF-6 0.06-0.08%) \u0026 S caps. Major advantage.",
+    "element": "All RE \u002B Zr/Ti/Hf carboxylates \u0026 diketonates",
+    "substrate": "Engine oil",
+    "dimension": "Oil compatibility",
+    "verdict": "Go",
+    "refIds": [
+      "O11",
+      "O23",
+      "O28"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 All RE \u002B Zr/Ti/Hf carboxylates \u0026 diketonates (Oil compatibility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|All metal markers (ash)|oil-compatibility-engine-oil",
+    "content": "Every metal marker forms sulfated ash (D874). At 5-50 ppm increment is \u003C\u003C0.01% - negligible vs ACEA C (0.5-0.8%) \u0026 ILSAC GF-7/API SQ (0.9%), but tally in low-SAPS oils near the ceiling.",
+    "element": "All metal markers (ash)",
+    "substrate": "Engine oil",
+    "dimension": "Oil compatibility",
+    "verdict": "Caution",
+    "refIds": [
+      "O6",
+      "O9",
+      "O10"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 All metal markers (ash) (Oil compatibility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Volatile diketonates (TMHD/acac of Fe,Mn,Ni,V; Y-TMHD)|oil-compatibility-engine-oil",
+    "content": "High volatility (sublime \u003C100C) risks marker loss via evaporation (Noack)/maldistribution. Prefer low-volatility neodecanoate/naphthenate.",
+    "element": "Volatile diketonates (TMHD/acac of Fe,Mn,Ni,V; Y-TMHD)",
+    "substrate": "Engine oil",
+    "dimension": "Oil compatibility",
+    "verdict": "Caution",
+    "refIds": [
+      "O23",
+      "O25",
+      "O27"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Volatile diketonates (TMHD/acac of Fe,Mn,Ni,V; Y-TMHD) (Oil compatibility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Declared performance-neutral marker|oil-compatibility-engine-oil",
+    "content": "API 1509 explicitly permits markers that \u0027distinguish product without materially impacting performance\u0027; conformance audits compare measured vs filed chemistry.",
+    "element": "Declared performance-neutral marker",
+    "substrate": "Engine oil",
+    "dimension": "Oil compatibility",
+    "verdict": "Info",
+    "refIds": [
+      "O7"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Declared performance-neutral marker (Oil compatibility)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Rare-earth oxides (CeO2, La2O3, Nd2O3...)|process-thermal-polymer-melt",
+    "content": "Sesquioxides/CeO2 thermally stable far above melt temps; survive compounding. Disperse: control particle size / silane.",
+    "element": "Rare-earth oxides (CeO2, La2O3, Nd2O3...)",
+    "substrate": "Polymer melt",
+    "dimension": "Process / thermal",
+    "verdict": "Go",
+    "refIds": [
+      "P2",
+      "P10",
+      "P11"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Rare-earth oxides (CeO2, La2O3, Nd2O3...) (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|RE oxide|process-thermal-textile-acid-dyeing",
+    "content": "Acid-insoluble \u0026 thermally stable; pigment-grade RE oxides resist solvents/chemicals.",
+    "element": "RE oxide",
+    "substrate": "Textile (acid dyeing)",
+    "dimension": "Process / thermal",
+    "verdict": "Go",
+    "refIds": [
+      "P11",
+      "P12",
+      "P16"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 RE oxide (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|RE salt (applied bath)|process-thermal-textile-reactive-alkaline-dye",
+    "content": "RE3\u002B coordinates cellulose -OH; improves dye fixation; wash-durable to 50 cycles. Used as covert ICP-OES marker.",
+    "element": "RE salt (applied bath)",
+    "substrate": "Textile (reactive/alkaline dye)",
+    "dimension": "Process / thermal",
+    "verdict": "Go",
+    "refIds": [
+      "P16",
+      "P17",
+      "P18",
+      "P19"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 RE salt (applied bath) (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|RE-oxide / RE-Mo-oxide pigment|process-thermal-coating-uv-weather",
+    "content": "Weather-, light-, chemical-stable; high NIR reflectance; non-toxic.",
+    "element": "RE-oxide / RE-Mo-oxide pigment",
+    "substrate": "Coating (UV/weather)",
+    "dimension": "Process / thermal",
+    "verdict": "Go",
+    "refIds": [
+      "P10",
+      "P11",
+      "P12",
+      "P13"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 RE-oxide / RE-Mo-oxide pigment (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|TiO2 rutile, surface-coated (SiO2/Al2O3/ZrO2)|process-thermal-coating",
+    "content": "Coated rutile suppresses photocatalytic radical generation that chalks the binder.",
+    "element": "TiO2 rutile, surface-coated (SiO2/Al2O3/ZrO2)",
+    "substrate": "Coating",
+    "dimension": "Process / thermal",
+    "verdict": "Go",
+    "refIds": [
+      "P1"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 TiO2 rutile, surface-coated (SiO2/Al2O3/ZrO2) (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|TiO2 anatase or uncoated|process-thermal-coating-outdoor-polymer",
+    "content": "Photocatalytically degrades the organic matrix under UV. Indoor-only, or pick another element.",
+    "element": "TiO2 anatase or uncoated",
+    "substrate": "Coating / outdoor polymer",
+    "dimension": "Process / thermal",
+    "verdict": "Exclude",
+    "refIds": [
+      "P1"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 TiO2 anatase or uncoated (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|ZrO2 (zirconia)|process-thermal-polymer-coating",
+    "content": "Survives PC/epoxy processing; acid-resistant; raises thermal stability at low loadings.",
+    "element": "ZrO2 (zirconia)",
+    "substrate": "Polymer \u0026 coating",
+    "dimension": "Process / thermal",
+    "verdict": "Go",
+    "refIds": [
+      "P5",
+      "P8"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 ZrO2 (zirconia) (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Bi2O3|process-thermal-polymer-epoxy",
+    "content": "Raises composite thermal stability; tolerated to high loadings (transition ~730C \u003E\u003E processing).",
+    "element": "Bi2O3",
+    "substrate": "Polymer \u0026 epoxy",
+    "dimension": "Process / thermal",
+    "verdict": "Go",
+    "refIds": [
+      "P7",
+      "P8"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Bi2O3 (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Sb2O3 / SnO2|process-thermal-polymer-pvc",
+    "content": "Fine oxide powders disperse \u0026 are processing-stable (Sb2O3 fire-reactive with halogens = functional).",
+    "element": "Sb2O3 / SnO2",
+    "substrate": "Polymer (PVC)",
+    "dimension": "Process / thermal",
+    "verdict": "Go",
+    "refIds": [
+      "P9"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Sb2O3 / SnO2 (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|WO3|process-thermal-polymer",
+    "content": "Robust to high-T processing.",
+    "element": "WO3",
+    "substrate": "Polymer",
+    "dimension": "Process / thermal",
+    "verdict": "Go",
+    "refIds": [
+      "P9-cf"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 WO3 (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|MoO3|process-thermal-polymer",
+    "content": "Comparatively volatile / sublimes \u0026 reduces (MoO3-\u003EMo4O11) at elevated T - marker loss risk in hot/reducing melts. Prefer WO3/tungstate.",
+    "element": "MoO3",
+    "substrate": "Polymer",
+    "dimension": "Process / thermal",
+    "verdict": "Caution",
+    "refIds": [
+      "-"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 MoO3 (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Metal nitrate (e.g. Ce(NO3)3)|process-thermal-polymer-melt-200-300c",
+    "content": "Nitrates decompose ~190-300C (-\u003E oxide \u002B NO2); gassing/voids/colour. Convert to oxide before compounding.",
+    "element": "Metal nitrate (e.g. Ce(NO3)3)",
+    "substrate": "Polymer melt (\u003E200-300C)",
+    "dimension": "Process / thermal",
+    "verdict": "Caution",
+    "refIds": [
+      "P20",
+      "P24"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Metal nitrate (e.g. Ce(NO3)3) (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Metal carbonate (SrCO3, RE carbonates)|process-thermal-polymer-melt",
+    "content": "Stable through normal melt temps (SrCO3 decomp ~875C). Survive processing (not pure oxide, but metal-calibrated).",
+    "element": "Metal carbonate (SrCO3, RE carbonates)",
+    "substrate": "Polymer melt",
+    "dimension": "Process / thermal",
+    "verdict": "Go",
+    "refIds": [
+      "P22"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Metal carbonate (SrCO3, RE carbonates) (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Metal acetate / hydroxide|process-thermal-polymer-melt",
+    "content": "Decompose low (hydroxides \u003C150-340C; acetates ~110-250C) releasing volatiles/water -\u003E foaming. Prefer oxide.",
+    "element": "Metal acetate / hydroxide",
+    "substrate": "Polymer melt",
+    "dimension": "Process / thermal",
+    "verdict": "Caution",
+    "refIds": [
+      "P20"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Metal acetate / hydroxide (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Marker-form general rule|process-thermal-polymer-textile-coating",
+    "content": "OXIDES = universally robust (thermal\u002Bchemical). Nitrate/acetate/hydroxide OK for water-based textile/coating but risky in polymer melt.",
+    "element": "Marker-form general rule",
+    "substrate": "Polymer/Textile/Coating",
+    "dimension": "Process / thermal",
+    "verdict": "Info",
+    "refIds": [
+      "P10-P13",
+      "P20",
+      "P22-P24"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Marker-form general rule (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|RE/Ti/Zr oxide vs bleaching|process-thermal-textile-oxidative-reductive",
+    "content": "Inferred Go (acid/oxidiser-insoluble) but NO direct study of marker survival through H2O2/hydrosulfite bleach - key experimental gap.",
+    "element": "RE/Ti/Zr oxide vs bleaching",
+    "substrate": "Textile (oxidative/reductive)",
+    "dimension": "Process / thermal",
+    "verdict": "Info",
+    "refIds": [
+      "P16",
+      "P17"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 RE/Ti/Zr oxide vs bleaching (Process / thermal)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Lanthanides (sum La...Lu, \u002BSc/Y)|regulatory-food-contact-polymer",
+    "content": "EU 10/2011: SUM of all lanthanides \u003C= 0.05 mg/kg. Multiple RE markers share one tiny migration budget. Choose low-migration carriers.",
+    "element": "Lanthanides (sum La...Lu, \u002BSc/Y)",
+    "substrate": "Food-contact polymer",
+    "dimension": "Regulatory",
+    "verdict": "Caution",
+    "refIds": [
+      "REG1",
+      "REG2"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Lanthanides (sum La...Lu, \u002BSc/Y) (Regulatory)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Cobalt (salts)|regulatory-all-food-textile",
+    "content": "Co compounds = REACH SVHC (CMR 1B) \u002B skin sensitizer; food SML 0.05; OEKO-TEX 1.0 (Class I). Riskiest single marker.",
+    "element": "Cobalt (salts)",
+    "substrate": "All / food / textile",
+    "dimension": "Regulatory",
+    "verdict": "Exclude",
+    "refIds": [
+      "REG6",
+      "REG2",
+      "REG7"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Cobalt (salts) (Regulatory)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Antimony|regulatory-food-contact-textile",
+    "content": "Food SML 0.04 mg/kg (low); OEKO-TEX extractable ~30 mg/kg; Sb2O3 suspected carcinogen.",
+    "element": "Antimony",
+    "substrate": "Food-contact / textile",
+    "dimension": "Regulatory",
+    "verdict": "Caution",
+    "refIds": [
+      "REG2",
+      "REG7"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Antimony (Regulatory)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Aluminium / Barium / Manganese|regulatory-food-contact-polymer",
+    "content": "EU 10/2011 SMLs: Al 1.0, Ba 1.0, Mn 0.6 mg/kg.",
+    "element": "Aluminium / Barium / Manganese",
+    "substrate": "Food-contact polymer",
+    "dimension": "Regulatory",
+    "verdict": "Caution",
+    "refIds": [
+      "REG2"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Aluminium / Barium / Manganese (Regulatory)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Tellurium|regulatory-powder-handling-all",
+    "content": "NIOSH/OSHA OEL ~0.1 mg/m3 (low) - occupational watch-out even though finished articles lightly regulated.",
+    "element": "Tellurium",
+    "substrate": "Powder handling / all",
+    "dimension": "Regulatory",
+    "verdict": "Caution",
+    "refIds": [
+      "REG10",
+      "REG15"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Tellurium (Regulatory)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Chromium|regulatory-textile-leather-all",
+    "content": "Cr(VI) restricted (REACH XVII 47; leather 0.0003%). Keep marker as Cr metal / Cr(III).",
+    "element": "Chromium",
+    "substrate": "Textile / leather / all",
+    "dimension": "Regulatory",
+    "verdict": "Caution",
+    "refIds": [
+      "REG4"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Chromium (Regulatory)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Nickel (benchmark; not in palette)|regulatory-textile-jewelry-skin",
+    "content": "REACH Annex XVII Entry 27: Ni release 0.5 ug/cm2/wk (0.2 piercing). Sensitizer benchmark for skin-contact codes.",
+    "element": "Nickel (benchmark; not in palette)",
+    "substrate": "Textile / jewelry (skin)",
+    "dimension": "Regulatory",
+    "verdict": "Exclude",
+    "refIds": [
+      "REG4",
+      "REG5"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Nickel (benchmark; not in palette) (Regulatory)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Titanium|regulatory-food-polymer",
+    "content": "TiO2 color additive (US 21 CFR 73.575, Ti \u003C=1% of food). EU delisted E171 as food ADDITIVE (2022) but polymer-pigment use differs - confirm per use.",
+    "element": "Titanium",
+    "substrate": "Food / polymer",
+    "dimension": "Regulatory",
+    "verdict": "Go",
+    "refIds": [
+      "REG13"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Titanium (Regulatory)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Silicon|regulatory-food-polymer-paper",
+    "content": "SiO2 GRAS (21 CFR 182.90). Benign.",
+    "element": "Silicon",
+    "substrate": "Food / polymer / paper",
+    "dimension": "Regulatory",
+    "verdict": "Go",
+    "refIds": [
+      "REG14"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Silicon (Regulatory)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|Zr, Hf, Nb, Ta, W, Mo, Re, Ga, Ge, In, Bi, Sr, Y|regulatory-most-apps",
+    "content": "No specific REACH XVII / RoHS / EU 10/2011 numeric limit located as markers (value not located != approved; confirm food-contact dossier if needed).",
+    "element": "Zr, Hf, Nb, Ta, W, Mo, Re, Ga, Ge, In, Bi, Sr, Y",
+    "substrate": "Most apps",
+    "dimension": "Regulatory",
+    "verdict": "Go",
+    "refIds": [
+      "REG4",
+      "REG1"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 Zr, Hf, Nb, Ta, W, Mo, Re, Ga, Ge, In, Bi, Sr, Y (Regulatory)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|RoHS scope|regulatory-electronics-eee",
+    "content": "RoHS (2011/65/EU) restricts Pb, Hg, Cd, Cr(VI), PBB/PBDE \u002B 4 phthalates - NONE of the SMX markers are restricted.",
+    "element": "RoHS scope",
+    "substrate": "Electronics / EEE",
+    "dimension": "Regulatory",
+    "verdict": "Info",
+    "refIds": [
+      "REG3"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 RoHS scope (Regulatory)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|rule|As, Cd, Pb, Hg (excluded)|regulatory-all",
+    "content": "EU 10/2011 \u0027ND\u0027; REACH Annex XVII 19/23/63; RoHS; OEKO-TEX tight - confirms exclusion correct.",
+    "element": "As, Cd, Pb, Hg (excluded)",
+    "substrate": "All",
+    "dimension": "Regulatory",
+    "verdict": "Exclude",
+    "refIds": [
+      "REG2",
+      "REG3",
+      "REG4"
+    ],
+    "sourceTitle": "Compatibility Rules \u2014 As, Cd, Pb, Hg (excluded) (Regulatory)",
+    "sheet": "Compatibility Rules",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G1",
+    "content": "Au-Cr binary; terminal fcc solubility \u002B ordered phases",
+    "element": "Cr",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G1"
+    ],
+    "sourceTitle": "Okamoto \u0026 Massalski, The Au-Cr system",
+    "doi": "10.1007/BF02880403",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G2",
+    "content": "Au-Co eutectic, large solid miscibility gap",
+    "element": "Co",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G2"
+    ],
+    "sourceTitle": "Okamoto et al., The Au-Co system",
+    "doi": "10.1007/BF02869509",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G3",
+    "content": "Au-V; intermediate compounds, limited terminal solubility",
+    "element": "V",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G3"
+    ],
+    "sourceTitle": "J.F. Smith, The Au-V system",
+    "doi": "10.1007/BF02868289",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G4",
+    "content": "Au-Sb eutectic, AuSb2, very low Sb solubility",
+    "element": "Sb",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G4"
+    ],
+    "sourceTitle": "Okamoto \u0026 Massalski, The Au-Sb system",
+    "doi": "10.1007/BF02868954",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G5",
+    "content": "Au-In; intermetallics \u002B appreciable terminal fcc solubility",
+    "element": "In",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G5"
+    ],
+    "sourceTitle": "H. Okamoto, Au-In",
+    "doi": "10.1007/s11669-004-0029-5",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G6",
+    "content": "Au-Te eutectic, AuTe2, negligible solubility",
+    "element": "Te",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G6"
+    ],
+    "sourceTitle": "Okamoto \u0026 Massalski, The Au-Te system",
+    "doi": "10.1007/BF02868955",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G7",
+    "content": "Au-Mo near-immiscible, large miscibility gaps",
+    "element": "Mo",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G7"
+    ],
+    "sourceTitle": "Massalski et al., The Au-Mo system",
+    "doi": "10.1007/BF02867807",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G8",
+    "content": "Au-Nb; Nb3Au (A15), limited solubility",
+    "element": "Nb",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G8"
+    ],
+    "sourceTitle": "Okamoto \u0026 Massalski, The Au-Nb system",
+    "doi": "10.1007/BF02869225",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G9",
+    "content": "Au-Ti; Au4Ti/AuTi intermetallics, modest solubility",
+    "element": "Ti",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G9"
+    ],
+    "sourceTitle": "J.L. Murray, The Au-Ti system",
+    "doi": "10.1007/BF02868667",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G10",
+    "content": "Au-Hf; intermetallics, restricted solubility",
+    "element": "Hf",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G10"
+    ],
+    "sourceTitle": "Okamoto \u0026 Massalski, The Au-Hf system",
+    "doi": "10.1007/BF02872954",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G11",
+    "content": "Au-Mn extensive solid solubility \u002B ordered phases",
+    "element": "Mn",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G11"
+    ],
+    "sourceTitle": "Massalski \u0026 Okamoto, The Au-Mn system",
+    "doi": "10.1007/BF02869510",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G12",
+    "content": "Au-W essentially immiscible, no compounds",
+    "element": "W",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G12"
+    ],
+    "sourceTitle": "Okamoto \u0026 Massalski, The Au-W system",
+    "doi": "10.1007/BF02869226",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G13",
+    "content": "Au-Re near-complete immiscibility",
+    "element": "Re",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G13"
+    ],
+    "sourceTitle": "Okamoto \u0026 Massalski, The Au-Re system",
+    "doi": "10.1007/BF02872959",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G14",
+    "content": "Au-Ta limited solubility, Ta3Au-type compounds",
+    "element": "Ta",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G14"
+    ],
+    "sourceTitle": "Okamoto \u0026 Massalski, The Au-Ta system",
+    "doi": "10.1007/BF02880525",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G15",
+    "content": "Au-Zr intermetallics, modest terminal solubility",
+    "element": "Zr",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G15"
+    ],
+    "sourceTitle": "H. Okamoto, Au-Zr",
+    "doi": "10.1007/s11669-999-0002-4",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G16",
+    "content": "REFERENCE: complete fcc solution \u002B AuCu/Au3Cu order",
+    "element": "Cu",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G16"
+    ],
+    "sourceTitle": "Okamoto et al., The Au-Cu system",
+    "doi": "10.1007/BF02893155",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G17",
+    "content": "REFERENCE: complete fcc solubility (isomorphous)",
+    "element": "Ag",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G17"
+    ],
+    "sourceTitle": "Okamoto \u0026 Massalski, The Ag-Au system",
+    "doi": "10.1007/BF02880317",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G18",
+    "content": "REFERENCE: complete fcc solubility (isomorphous)",
+    "element": "Pd",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G18"
+    ],
+    "sourceTitle": "Okamoto \u0026 Massalski, The Au-Pd system",
+    "doi": "10.1007/BF02880404",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G19",
+    "content": "Au-Si eutectic ~363C; near-zero mutual solubility",
+    "element": "Si",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G19"
+    ],
+    "sourceTitle": "Okamoto \u0026 Massalski, The Au-Si system",
+    "doi": "10.1007/BF02884878",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G20",
+    "content": "Au-Ge eutectic ~361C; negligible solid solubility",
+    "element": "Ge",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G20"
+    ],
+    "sourceTitle": "Okamoto \u0026 Massalski, The Au-Ge system",
+    "doi": "10.1007/BF02868323",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G21",
+    "content": "Au-Ga intermetallics; limited terminal solubility",
+    "element": "Ga",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G21"
+    ],
+    "sourceTitle": "H. Okamoto, Au-Ga",
+    "doi": "10.1007/s11669-012-0178-x",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G22",
+    "content": "Au-Sn (AuSn...AuSn4); Au-rich eutectic; solder system",
+    "element": "Sn",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G22"
+    ],
+    "sourceTitle": "Okamoto \u0026 Massalski, The Au-Sn system",
+    "doi": "10.1007/BF02872904",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G23",
+    "content": "Au-Bi eutectic, Au2Bi; very low Bi solubility",
+    "element": "Bi",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G23"
+    ],
+    "sourceTitle": "Okamoto \u0026 Massalski, The Au-Bi system",
+    "doi": "10.1007/BF02868093",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G24",
+    "content": "Au-Nd intermetallics; negligible terminal solubility",
+    "element": "Nd",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G24"
+    ],
+    "sourceTitle": "H. Okamoto, Au-Nd",
+    "doi": "10.1007/s11669-007-9148-0",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G25",
+    "content": "Au-Pr line compounds; negligible solubility",
+    "element": "Pr",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G25"
+    ],
+    "sourceTitle": "H. Okamoto, Au-Pr",
+    "doi": "10.1007/s11669-007-9129-3",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G26",
+    "content": "Consolidated Au-X binaries \u002B crystallography; gap-filler for RE/Sr/Al/Sc",
+    "element": "All,Au-X",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G26"
+    ],
+    "sourceTitle": "Au Binary Alloy Phase Diagrams",
+    "doi": "10.31399/asm.hb.v03.a0006146",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G27",
+    "content": "Au-La phase relations (line compounds, no terminal solubility)",
+    "element": "La",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G27"
+    ],
+    "sourceTitle": "La Binary Alloy Phase Diagrams",
+    "doi": "10.31399/asm.hb.v03.a0006173",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G28",
+    "content": "Darken-Gurry ellipse predicts terminal solubility (size \u002B electronegativity)",
+    "element": "size\u002BEN",
+    "substrate": "General",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G28"
+    ],
+    "sourceTitle": "Mae, What the Darken-Gurry Plot Means About Solubility",
+    "doi": "10.1007/s11661-016-3730-1",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G29",
+    "content": "Modern assessment of Hume-Rothery size/EN/VEC rules \u0026 limits",
+    "element": "HR,rules",
+    "substrate": "General",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G29"
+    ],
+    "sourceTitle": "Miracle \u0026 Senkov, Critical Review of High Entropy Alloys",
+    "doi": "10.1016/j.actamat.2016.08.081",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G30",
+    "content": "ML predictors beyond classical Hume-Rothery rules",
+    "element": "predictors",
+    "substrate": "General",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G30"
+    ],
+    "sourceTitle": "Pei et al., ML prediction of solid-solution formation",
+    "doi": "10.1038/s41524-020-0308-7",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|G31",
+    "content": "Earlier Au-Ga assessment (corroborates G21)",
+    "element": "Ga",
+    "substrate": "Gold",
+    "dimension": "Substrate solubility",
+    "refIds": [
+      "G31"
+    ],
+    "sourceTitle": "Elliott \u0026 Shunk, The Au-Ga system",
+    "doi": "10.1007/BF02868293",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O1",
+    "content": "Primary ICP method; defines additive/wear/contaminant panel incl. Ti/V/Mn",
+    "element": "22,elements",
+    "substrate": "Oil",
+    "dimension": "Detection / background",
+    "refIds": [
+      "O1"
+    ],
+    "sourceTitle": "Multielement determination of used/unused lubricating oils by ICP-AES",
+    "doi": "store.astm.org/d5185-18.html",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O2",
+    "content": "Additive-element panel (Mo measured natively = FM background)",
+    "element": "Ba,B,Ca,Cu,Mg,Mo,P,S,Zn",
+    "substrate": "Oil",
+    "dimension": "Detection / background",
+    "refIds": [
+      "O2"
+    ],
+    "sourceTitle": "Additive elements in lubricating oils by ICP-AES",
+    "doi": "ASTM D4951",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O3",
+    "content": "WDXRF quantitation incl. S/P/Cl (P/S accounting)",
+    "element": "Ca,Cl,Cu,Mg,P,S,Zn",
+    "substrate": "Oil",
+    "dimension": "Detection",
+    "refIds": [
+      "O3"
+    ],
+    "sourceTitle": "Ca,Cl,Cu,Mg,P,S,Zn in oils by WDXRF",
+    "doi": "ASTM D6443",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O4",
+    "content": "EDXRF method - matches SMX XRF readout architecture",
+    "element": "Mg,P,S,Cl,Ca,Zn,Mo",
+    "substrate": "Oil",
+    "dimension": "Detection",
+    "refIds": [
+      "O4"
+    ],
+    "sourceTitle": "Additive elements in oils by EDXRF",
+    "doi": "store.astm.org/d7751-16r21.html",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O5",
+    "content": "Working range ~10 ppm-1% confirms 5-50 ppm dosing detectable",
+    "element": "Ba,Ca,Mg,Zn",
+    "substrate": "Oil",
+    "dimension": "Detection",
+    "refIds": [
+      "O5"
+    ],
+    "sourceTitle": "Ba,Ca,Mg,Zn in unused oils by AAS",
+    "doi": "ASTM D4628",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O6",
+    "content": "Defines sulfated ash (SA in SAPS) - core constraint for metal markers",
+    "element": "ash-forming,metals",
+    "substrate": "Oil",
+    "dimension": "Regulatory (SAPS)",
+    "refIds": [
+      "O6"
+    ],
+    "sourceTitle": "Sulfated ash from lubricating oils and additives",
+    "doi": "astm.org/d0874-23.html",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O7",
+    "content": "Explicitly permits performance-neutral markers; conformance audits",
+    "element": "markers",
+    "substrate": "Oil",
+    "dimension": "Regulatory",
+    "refIds": [
+      "O7"
+    ],
+    "sourceTitle": "Engine Oil Licensing \u0026 Certification System",
+    "doi": "api.org",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O8",
+    "content": "Base-oil group chemistry context (marker solubility, native S)",
+    "element": "S,saturates",
+    "substrate": "Base oil",
+    "dimension": "Substrate context",
+    "refIds": [
+      "O8"
+    ],
+    "sourceTitle": "Base Oil Interchangeability Guidelines (Groups I-V)",
+    "doi": "api.org",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O9",
+    "content": "Low/mid-SAPS caps (C1/C4 ash \u003C=0.5%; C2/C3 \u003C=0.8%)",
+    "element": "ash,P,S",
+    "substrate": "Oil",
+    "dimension": "Regulatory (SAPS)",
+    "refIds": [
+      "O9"
+    ],
+    "sourceTitle": "ACEA Oil Sequences - Light-duty 2021 Rev.1",
+    "doi": "acea.auto",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O10",
+    "content": "GF-7/API SQ introduces 0.9% max sulfated ash (D874)",
+    "element": "ash",
+    "substrate": "Oil",
+    "dimension": "Regulatory (SAPS)",
+    "refIds": [
+      "O10"
+    ],
+    "sourceTitle": "API SQ / ILSAC GF-7 sulphated-ash debate",
+    "doi": "fuelsandlubes.com",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O11",
+    "content": "P window \u0026 S caps constrain P/S-bearing ligands (markers are P/S-free)",
+    "element": "P,S,Noack",
+    "substrate": "Oil",
+    "dimension": "Regulatory",
+    "refIds": [
+      "O11"
+    ],
+    "sourceTitle": "ILSAC GF-6 chemical limits (P 0.06-0.08%, S caps, Noack)",
+    "doi": "oilspecifications.org/ilsac.php",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O12",
+    "content": "Overbased detergents neutralize carboxylic acids -\u003E may sequester carboxylate markers",
+    "element": "Ca,Mg",
+    "substrate": "Oil",
+    "dimension": "Additive interaction",
+    "refIds": [
+      "O12"
+    ],
+    "sourceTitle": "Oil-soluble colloidal additives",
+    "doi": "10.1016/S1359-0294(00)00066-2",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O13",
+    "content": "Ti neodecanoate as FM/AW 10-1500 ppm; Ti is an established additive (background)",
+    "element": "Ti",
+    "substrate": "Oil",
+    "dimension": "Solubility / background",
+    "refIds": [
+      "O13"
+    ],
+    "sourceTitle": "Titanium-containing lubricating oil composition",
+    "doi": "patents.google.com/patent/US7776800B2",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O14",
+    "content": "Commercial oil-soluble Ti-neodecanoate (~6.7% Ti) \u0026 Zr-neodecanoate (~14% Zr)",
+    "element": "Ti,Zr",
+    "substrate": "Oil",
+    "dimension": "Solubility",
+    "refIds": [
+      "O14"
+    ],
+    "sourceTitle": "Ti / Zr neodecanoate product \u0026 CAS data",
+    "doi": "alfa-chemistry.com",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O15",
+    "content": "Hydrocarbon-soluble Mo octoate (FM/AO) - heavy native Mo background",
+    "element": "Mo",
+    "substrate": "Oil",
+    "dimension": "Solubility / background",
+    "refIds": [
+      "O15"
+    ],
+    "sourceTitle": "Molybdenum Octoate 15.5%",
+    "doi": "shepchem.com",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O16",
+    "content": "Mo naphthenate/octoate/2-EH are established FM - reinforces Mo confound",
+    "element": "Mo",
+    "substrate": "Oil",
+    "dimension": "Background",
+    "refIds": [
+      "O16"
+    ],
+    "sourceTitle": "Oil-soluble Mo multifunctional FM additives",
+    "doi": "US6103674",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O17",
+    "content": "MoDTC FM/MoS2 film; Mo-marker indistinguishable from FM Mo",
+    "element": "Mo",
+    "substrate": "Oil",
+    "dimension": "Additive interaction",
+    "refIds": [
+      "O17"
+    ],
+    "sourceTitle": "Tribological performance of organic molybdenum",
+    "doi": "pmc.ncbi.nlm.nih.gov/articles/PMC8191977",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O18",
+    "content": "Mo co-reacts with ZDDP (MoS2 \u002B phosphate) - reactive-marker caution",
+    "element": "Mo,Zn,P,S",
+    "substrate": "Oil",
+    "dimension": "Additive interaction",
+    "refIds": [
+      "O18"
+    ],
+    "sourceTitle": "Synergistic MoDTC \u002B ZDTP tribofilm behaviour",
+    "doi": "arxiv.org/abs/0704.0338",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O19",
+    "content": "ZDDP phosphate-glass tribofilm; reactive metals can co-deposit",
+    "element": "Zn,P,S",
+    "substrate": "Oil",
+    "dimension": "Additive interaction",
+    "refIds": [
+      "O19"
+    ],
+    "sourceTitle": "Mechanism of ZDDP Antiwear Film Formation",
+    "doi": "10.1007/s11249-016-0706-7",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O20",
+    "content": "Oil-derived P poisons TWC/O2 sensor; Ca/Mg mitigate - poisoning framework",
+    "element": "P,Zn,Ca,Mg",
+    "substrate": "Oil/exhaust",
+    "dimension": "Catalyst poisoning",
+    "refIds": [
+      "O20"
+    ],
+    "sourceTitle": "Engine oil additive effects on TWC \u0026 O2 sensors",
+    "doi": "saemobilus.sae.org/content/940746",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O21",
+    "content": "Quantifies P loss of washcoat area/OSC - poisoning reference",
+    "element": "P,Zn",
+    "substrate": "Oil/exhaust",
+    "dimension": "Catalyst poisoning",
+    "refIds": [
+      "O21"
+    ],
+    "sourceTitle": "Effects of oil phosphorus on TWC deactivation",
+    "doi": "sciencedirect.com (S0166983400818424)",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O22",
+    "content": "Mechanistic P-poisoning of DOC - extends to diesel aftertreatment",
+    "element": "P",
+    "substrate": "Oil/exhaust",
+    "dimension": "Catalyst poisoning",
+    "refIds": [
+      "O22"
+    ],
+    "sourceTitle": "Deactivation of P-poisoned diesel oxidation catalysts",
+    "doi": "10.1039/D0CY00589D",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O23",
+    "content": "TGA sublimation enthalpies; TMHD vs acac volatility (Zr/Co)",
+    "element": "Zr,Cr,Fe,Co,Sc,Al,Ga,Cu",
+    "substrate": "Organometallic",
+    "dimension": "Thermal stability",
+    "refIds": [
+      "O23"
+    ],
+    "sourceTitle": "Substituent effects on volatility of metal beta-diketonates",
+    "doi": "10.1002/1099-0712(200005/10)10:3/5\u003C223::AID-AMO411\u003E3.0.CO;2-M",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O24",
+    "content": "Sublimation pressures \u002B stability for V and RE (Tm,Dy) acac",
+    "element": "V,Cu,Zn,Tm,Dy",
+    "substrate": "Organometallic",
+    "dimension": "Thermal stability",
+    "refIds": [
+      "O24"
+    ],
+    "sourceTitle": "Thermal stability \u0026 sublimation of metal beta-diketonates",
+    "doi": "10.1021/je9001653",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O25",
+    "content": "TGA: Mn/Fe/Ni acac decompose at evaporator T; Cr/Al stable",
+    "element": "Al,Cr,Fe,Mn,Ni",
+    "substrate": "Organometallic",
+    "dimension": "Thermal stability",
+    "refIds": [
+      "O25"
+    ],
+    "sourceTitle": "Thermal stability \u0026 sublimation of metal acetylacetonates",
+    "doi": "10.1016/j.surfcoat.2007.04.083",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O26",
+    "content": "VO(acac)2 decomposes ~400C -\u003E V2O5 (vs engine hot-zone temps)",
+    "element": "V",
+    "substrate": "Organometallic",
+    "dimension": "Thermal stability",
+    "refIds": [
+      "O26"
+    ],
+    "sourceTitle": "Thermal decomposition of vanadyl acetylacetonate",
+    "doi": "10.1134/S0020168515090150",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O27",
+    "content": "Y(TMHD)3 sublimes 92C; Y(acac)3 non-subliming (more retained)",
+    "element": "Y",
+    "substrate": "Organometallic",
+    "dimension": "Thermal stability",
+    "refIds": [
+      "O27"
+    ],
+    "sourceTitle": "Three yttrium organometallics for YSZ by PE-CVD",
+    "doi": "osti.gov/biblio/1760141",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O28",
+    "content": "Metal carboxylates (2-EH/neodecanoate/naphthenate) oil-soluble, water-insoluble; chain-length rationale",
+    "element": "Co,Mn,Fe,Zr,Ca",
+    "substrate": "Oil/solvent",
+    "dimension": "Solubility",
+    "refIds": [
+      "O28"
+    ],
+    "sourceTitle": "Metallic soaps / oil drying agents (carboxylate solubility)",
+    "doi": "mdpi.com/2304-6740/4/2/11",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O29",
+    "content": "Additional Ti-organometallic precedent (S/N-containing variants)",
+    "element": "Ti",
+    "substrate": "Oil",
+    "dimension": "Solubility",
+    "refIds": [
+      "O29"
+    ],
+    "sourceTitle": "Two oil-soluble organic titanium compounds (AW/EP)",
+    "doi": "hindawi.com/journals/jspec/2018/2576896",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O30",
+    "content": "Ceria fuel-borne catalyst transforms in combustion, persists in exhaust",
+    "element": "Ce",
+    "substrate": "Fuel/exhaust",
+    "dimension": "Fate / catalyst",
+    "refIds": [
+      "O30"
+    ],
+    "sourceTitle": "Transformation of CeO2 nanoparticles from a diesel fuel additive",
+    "doi": "10.1021/acs.est.6b03173",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O31",
+    "content": "MMT -\u003E Mn3O4 particulates degrade emission-control systems",
+    "element": "Mn",
+    "substrate": "Fuel/exhaust",
+    "dimension": "Catalyst poisoning",
+    "refIds": [
+      "O31"
+    ],
+    "sourceTitle": "MMT (methylcyclopentadienyl Mn tricarbonyl) review",
+    "doi": "theicct.org",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|O32",
+    "content": "W delivered as WS2/nanosheet (no simple W-carboxylate) - availability gap",
+    "element": "W",
+    "substrate": "Oil",
+    "dimension": "Solubility",
+    "refIds": [
+      "O32"
+    ],
+    "sourceTitle": "Oil-soluble WS2 nanosheets \u0026 tribology",
+    "doi": "sciencedirect.com (S0301679X19301318)",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P1",
+    "content": "Anatase/uncoated TiO2 photodegrades binder; coated rutile is safe",
+    "element": "TiO2",
+    "substrate": "Coating",
+    "dimension": "Process / UV",
+    "refIds": [
+      "P1"
+    ],
+    "sourceTitle": "Effect of TiO2 pigment type on UV degradation of coatings",
+    "doi": "10.1007/s11998-009-9216-y",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P2",
+    "content": "CeO2 survives polyimide processing; raises performance",
+    "element": "CeO2",
+    "substrate": "Polymer",
+    "dimension": "Process / thermal",
+    "refIds": [
+      "P2"
+    ],
+    "sourceTitle": "Polyimide/CeO2 nanocomposites - thermal \u0026 mechanical",
+    "doi": "10.3390/polym12091952",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P3",
+    "content": "Oxide nanopowder melt-compounded into HDPE/PP (masterbatch route)",
+    "element": "ZnO",
+    "substrate": "Polymer",
+    "dimension": "Process / dispersion",
+    "refIds": [
+      "P3"
+    ],
+    "sourceTitle": "Polyolefin/ZnO composites by melt processing",
+    "doi": "10.3390/molecules24132432",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P4",
+    "content": "Oxide particle size governs dispersion/flow/thermal stability",
+    "element": "ZnO",
+    "substrate": "Polymer",
+    "dimension": "Process / dispersion",
+    "refIds": [
+      "P4"
+    ],
+    "sourceTitle": "ZnO crystallite size effect in PP nanocomposites",
+    "doi": "10.1016/j.compositesb.2013.08.010",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P5",
+    "content": "ZrO2 survives PC melt; affects degradation kinetics",
+    "element": "ZrO2",
+    "substrate": "Polymer",
+    "dimension": "Process / thermal",
+    "refIds": [
+      "P5"
+    ],
+    "sourceTitle": "ZrO2 nanoparticles in polycarbonate",
+    "doi": "10.1016/j.eurpolymj.2013.04.019",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P6",
+    "content": "Some oxides stabilize, others catalyze degradation - choice matters",
+    "element": "oxide,nanofillers",
+    "substrate": "Polymer",
+    "dimension": "Process / thermal",
+    "refIds": [
+      "P6"
+    ],
+    "sourceTitle": "Nanofillers as thermal stabilizers in LDPE",
+    "doi": "10.1016/j.polymdegradstab.2008.10.011",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P7",
+    "content": "High Bi2O3 loadings raise composite thermal stability",
+    "element": "Bi2O3",
+    "substrate": "Polymer",
+    "dimension": "Process / thermal",
+    "refIds": [
+      "P7"
+    ],
+    "sourceTitle": "Polyimide/Bi2O3 composites",
+    "doi": "10.1016/j.heliyon.2019.e01703",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P8",
+    "content": "Bi2O3 well-tolerated, improves thermal stability in epoxy",
+    "element": "Bi2O3",
+    "substrate": "Polymer/coating",
+    "dimension": "Process / thermal",
+    "refIds": [
+      "P8"
+    ],
+    "sourceTitle": "Bi2O3 micro/nano in epoxy - thermal/mechanical",
+    "doi": "10.1016/j.apradiso.2021.109780",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P9",
+    "content": "Sb2O3/SnO2 oxides disperse \u0026 are processing-stable in PVC",
+    "element": "Sb2O3,SnO2",
+    "substrate": "Polymer (PVC)",
+    "dimension": "Process / thermal",
+    "refIds": [
+      "P9"
+    ],
+    "sourceTitle": "Sb2O3/SnO2 in flexible PVC films",
+    "doi": "10.1002/app.56045",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P10",
+    "content": "RE-oxide pigments: high thermal/chemical stability, good dispersibility",
+    "element": "Ce,Mo",
+    "substrate": "Coating/pigment",
+    "dimension": "Process / UV",
+    "refIds": [
+      "P10"
+    ],
+    "sourceTitle": "Cerium molybdenum oxides as benign pigments",
+    "doi": "10.1016/j.dyepig.2006.07.021",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P11",
+    "content": "RE-oxide pigments heat/light/weather/solvent/chemical resistant",
+    "element": "RE,oxides",
+    "substrate": "Coating/pigment",
+    "dimension": "Process / UV",
+    "refIds": [
+      "P11"
+    ],
+    "sourceTitle": "Mixed rare-earth oxides as benign pigments",
+    "doi": "10.1016/j.dyepig.2006.08.036",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P12",
+    "content": "RE-oxide colorants weather/UV-stable, high NIR reflectance",
+    "element": "RE,oxides",
+    "substrate": "Coating",
+    "dimension": "Process / UV",
+    "refIds": [
+      "P12"
+    ],
+    "sourceTitle": "Colored cool colorants based on RE metal ions",
+    "doi": "10.1016/j.solmat.2008.06.008",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P13",
+    "content": "Doped RE oxides thermally/chemically stable pigments",
+    "element": "Ce,Pr",
+    "substrate": "Coating",
+    "dimension": "Process / UV",
+    "refIds": [
+      "P13"
+    ],
+    "sourceTitle": "Doped RE oxides for benign reddish-yellow pigments",
+    "doi": "10.1246/cl.2008.902",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P14",
+    "content": "Silane surface modification disperses CeO2 / prevents agglomeration",
+    "element": "CeO2",
+    "substrate": "Coating/polymer",
+    "dimension": "Process / dispersion",
+    "refIds": [
+      "P14"
+    ],
+    "sourceTitle": "CeO2 nanoparticles in nitrile-rubber adhesive (silane mod.)",
+    "doi": "10.1021/acsomega.2c05092",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P15",
+    "content": "CeO2 incorporated/optimized in cellulose-derived film",
+    "element": "CeO2",
+    "substrate": "Polymer (cellulosic)",
+    "dimension": "Process / dispersion",
+    "refIds": [
+      "P15"
+    ],
+    "sourceTitle": "CeO2-doped cellulose acetate films (DoE optimization)",
+    "doi": "10.1016/j.jmrt.2025.01.224",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P16",
+    "content": "RE salts effective mordants at ~1/10 alum dose; improve fastness",
+    "element": "RE,salts",
+    "substrate": "Textile (cotton)",
+    "dimension": "Textile fastness",
+    "refIds": [
+      "P16"
+    ],
+    "sourceTitle": "Natural dyeing of cotton using RE salts as mordant",
+    "doi": "10.1108/PRT-05-2023-0037",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P17",
+    "content": "RE3\u002B adsorbs to cellulose -OH; wash-durable to 50 cycles",
+    "element": "RE,(Ce3\u002B)",
+    "substrate": "Textile",
+    "dimension": "Textile fastness",
+    "refIds": [
+      "P17"
+    ],
+    "sourceTitle": "Rare-earth ions as antibacterial agents for wool/cotton",
+    "doi": "10.1007/s11696-021-01999-9",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P18",
+    "content": "Closest analog: RE covert markers in dyeing, read by ICP-OES; survives dyeing",
+    "element": "RE",
+    "substrate": "Textile (dyeing)",
+    "dimension": "Textile marking",
+    "refIds": [
+      "P18"
+    ],
+    "sourceTitle": "Rare-earth marking on anti-counterfeiting waterless dyeing",
+    "doi": "10.1177/24723444231206855",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P19",
+    "content": "RE complexes improve reactive-dye fixation (\u002B~1 grade), cut salt 70%",
+    "element": "RE",
+    "substrate": "Textile (cellulosic)",
+    "dimension": "Textile fastness",
+    "refIds": [
+      "P19"
+    ],
+    "sourceTitle": "RE pretreatment improves reactive dye on banana fiber",
+    "doi": "10.3390/molecules30010176",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P20",
+    "content": "Metal nitrates decompose to oxides via hydroxy-nitrate, release NO2",
+    "element": "nitrates",
+    "substrate": "Marker form",
+    "dimension": "Process / thermal",
+    "refIds": [
+      "P20"
+    ],
+    "sourceTitle": "Thermal Decomposition of Metal Nitrates in Air and H2",
+    "doi": "10.1021/jp026961c",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P21",
+    "content": "Rutile TiO2 inert, processes ~280-300C without decomposition (corroborating)",
+    "element": "TiO2",
+    "substrate": "Polymer (masterbatch)",
+    "dimension": "Process / thermal",
+    "refIds": [
+      "P21"
+    ],
+    "sourceTitle": "Rutile TiO2 in plastic masterbatch (color stability)",
+    "doi": "titanmastech.com",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P22",
+    "content": "RE carbonates decompose stepwise (Ln2(CO3)3 -\u003E Ln2O2CO3 -\u003E Ln2O3)",
+    "element": "RE,carbonates",
+    "substrate": "Marker form",
+    "dimension": "Process / thermal",
+    "refIds": [
+      "P22"
+    ],
+    "sourceTitle": "Formation \u0026 thermal decomposition of RE carbonates",
+    "doi": "10.1007/BF00553839",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P23",
+    "content": "Cerous oxalate -\u003E ceria in two steps (~130C dehydr.; ~360C decomp.)",
+    "element": "Ce,oxalate",
+    "substrate": "Marker form",
+    "dimension": "Process / thermal",
+    "refIds": [
+      "P23"
+    ],
+    "sourceTitle": "Thermal decomposition of cerium oxalate",
+    "doi": "10.1007/BF01932788",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|P24",
+    "content": "Ce(III) nitrate decomposes ~190-300C -\u003E oxide",
+    "element": "Ce,nitrate",
+    "substrate": "Marker form",
+    "dimension": "Process / thermal",
+    "refIds": [
+      "P24"
+    ],
+    "sourceTitle": "Thermal decomposition of cerium(III) nitrate hydrate",
+    "doi": "osti.gov/biblio/4040438",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|X1",
+    "content": "SI-traceable transition energies (Ka1=KL3, La1=L3M5) with uncertainties",
+    "element": "Z=10-100",
+    "substrate": "-",
+    "dimension": "Detection (XRF)",
+    "refIds": [
+      "X1"
+    ],
+    "sourceTitle": "NIST X-Ray Transition Energies (SRD 128); Deslattes et al.",
+    "doi": "10.1103/RevModPhys.75.35",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|X2",
+    "content": "Working line-energy table used for the marker palette \u0026 overlaps",
+    "element": "Z=3-95",
+    "substrate": "-",
+    "dimension": "Detection (XRF)",
+    "refIds": [
+      "X2"
+    ],
+    "sourceTitle": "X-Ray Data Booklet, Table 1-2 (principal emission lines)",
+    "doi": "xdb.lbl.gov/Section1/Table_1-2.pdf",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|X3",
+    "content": "Original evaluated wavelength/energy data underlying Table 1-2",
+    "element": "All,elements",
+    "substrate": "-",
+    "dimension": "Detection (XRF)",
+    "refIds": [
+      "X3"
+    ],
+    "sourceTitle": "J.A. Bearden, X-Ray Wavelengths",
+    "doi": "10.1103/RevModPhys.39.78",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|X4",
+    "content": "Programmatic line energies/edges/yields for code compatibility checks",
+    "element": "All,elements",
+    "substrate": "-",
+    "dimension": "Detection (XRF)",
+    "refIds": [
+      "X4"
+    ],
+    "sourceTitle": "xraylib - library for X-ray-matter interactions",
+    "doi": "10.1016/j.sab.2011.09.011",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|X5",
+    "content": "SQLite/Python DB implementing ELAM line energies",
+    "element": "Z\u003C=98",
+    "substrate": "-",
+    "dimension": "Detection (XRF)",
+    "refIds": [
+      "X5"
+    ],
+    "sourceTitle": "XrayDB - X-ray reference data (SQLite)",
+    "doi": "github.com/xraypy/XrayDB",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|X6",
+    "content": "The ELAM compiled database (lines/yields) behind X4/X5",
+    "element": "All,elements",
+    "substrate": "-",
+    "dimension": "Detection (XRF)",
+    "refIds": [
+      "X6"
+    ],
+    "sourceTitle": "Elam, Ravel \u0026 Sieber, atomic database for X-ray calc.",
+    "doi": "10.1016/S0969-806X(01)00227-4",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|X7",
+    "content": "Detection-limit theory \u002B spectral-overlap correction (EDXRF/WDXRF)",
+    "element": "All,elements",
+    "substrate": "-",
+    "dimension": "Detection (XRF)",
+    "refIds": [
+      "X7"
+    ],
+    "sourceTitle": "Handbook of X-Ray Spectrometry, 2nd ed.",
+    "doi": "ISBN 0-8247-0600-5",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|X8",
+    "content": "Method validation: detection limits, line-overlap handling (WDXRF)",
+    "element": "-",
+    "substrate": "Metals/ceramics",
+    "dimension": "Detection (XRF)",
+    "refIds": [
+      "X8"
+    ],
+    "sourceTitle": "Guide for Elemental Analysis by WDXRF",
+    "doi": "store.astm.org/e1621-21.html",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|X9",
+    "content": "Fused-bead WDXRF protocol; matrix/overlap caveats",
+    "element": "-",
+    "substrate": "Oxides/ceramics",
+    "dimension": "Detection (XRF)",
+    "refIds": [
+      "X9"
+    ],
+    "sourceTitle": "Chemical analysis of refractories by XRF (fused bead)",
+    "doi": "iso.org/standard/51445.html",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|X10",
+    "content": "Documents REE L vs 3d-metal Ka overlap (4.5-8.7 keV); K-line workaround",
+    "element": "Y,La,Ce,Pr,Nd",
+    "substrate": "-",
+    "dimension": "Detection (XRF)",
+    "refIds": [
+      "X10"
+    ],
+    "sourceTitle": "High-energy interference-free K-line synchrotron XRF of REEs",
+    "doi": "academic.oup.com/metallomics/article/15/9/mfad050",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|I1",
+    "content": "Canonical polyatomic \u002B oxide interference table (cited by EPA 6020)",
+    "element": "all,masses",
+    "substrate": "-",
+    "dimension": "Detection (ICP)",
+    "refIds": [
+      "I1"
+    ],
+    "sourceTitle": "A Table of Polyatomic Interferences in ICP-MS (May \u0026 Wiedmeyer)",
+    "doi": "PerkinElmer hosted PDF",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|I2",
+    "content": "Working MO\u002B/M\u002B \u0026 MOH\u002B/M\u002B correction scheme (CeO,PrO,BaO)",
+    "element": "La-Lu,Ba",
+    "substrate": "-",
+    "dimension": "Detection (ICP)",
+    "refIds": [
+      "I2"
+    ],
+    "sourceTitle": "ICP-MS Lanthanide Interference Corrections (Hollocher)",
+    "doi": "muse.union.edu/hollochk/.../ree-corrections",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|I3",
+    "content": "Ce/Nd matrices give heavy line\u002Bwing interference; La cleaner",
+    "element": "Sc,Y,REE",
+    "substrate": "-",
+    "dimension": "Detection (ICP-OES)",
+    "refIds": [
+      "I3"
+    ],
+    "sourceTitle": "Spectral interferences of Sc,Y,REE in Ce/Nd/La matrices by ICP-AES (I)",
+    "doi": "10.1016/0584-8547(92)80148-a",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|I4",
+    "content": "OES line-overlap mapping for Lu/Y; line-selection guidance",
+    "element": "Lu,Y",
+    "substrate": "-",
+    "dimension": "Detection (ICP-OES)",
+    "refIds": [
+      "I4"
+    ],
+    "sourceTitle": "Spectral interferences ... Lu and Y matrices (IV)",
+    "doi": "10.1016/s0584-8547(98)00199-2",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|I5",
+    "content": "Yb-matrix line-overlap mapping; least-interfered lines",
+    "element": "Yb",
+    "substrate": "-",
+    "dimension": "Detection (ICP-OES)",
+    "refIds": [
+      "I5"
+    ],
+    "sourceTitle": "Spectral interferences ... Ytterbium (VI)",
+    "doi": "10.1016/s0584-8547(02)00064-2",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|I6",
+    "content": "N2O mass-shift removes BaO on Eu \u0026 LaO on Gd without math correction",
+    "element": "La-Lu,Ba",
+    "substrate": "-",
+    "dimension": "Detection (ICP-MS)",
+    "refIds": [
+      "I6"
+    ],
+    "sourceTitle": "Determination of REEs by ICP-MS/MS with N2O reaction gas (Zhu)",
+    "doi": "10.3389/fchem.2022.912938",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|I7",
+    "content": "Isobaric/molecular interference framework; ArCl \u0026 oxide corrections",
+    "element": "all,6020,analytes",
+    "substrate": "-",
+    "dimension": "Detection (ICP-MS)",
+    "refIds": [
+      "I7"
+    ],
+    "sourceTitle": "ICP-Mass Spectrometry (SW-846)",
+    "doi": "epa.gov (6020b.pdf)",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|I8",
+    "content": "Requires inter-element correction (IEC) \u0026 interference-check solutions",
+    "element": "multi-element",
+    "substrate": "-",
+    "dimension": "Detection (ICP-OES)",
+    "refIds": [
+      "I8"
+    ],
+    "sourceTitle": "ICP-OES (SW-846)",
+    "doi": "epa.gov/hw-sw846 (6010d)",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|I9",
+    "content": "ICP-OES protocol/wavelengths for oil-matrix marker quantification",
+    "element": "Al,Si,Ti,V,Cr,Mn,Mo,Sn",
+    "substrate": "Oil",
+    "dimension": "Detection (ICP-OES)",
+    "refIds": [
+      "I9"
+    ],
+    "sourceTitle": "Multielement determination of oils by ICP-AES",
+    "doi": "store.astm.org/d5185-18.html",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|I10",
+    "content": "Reference ICP-MS method; analyte list ~ entire SMX palette; flags RE oxide overlap",
+    "element": "~70,incl.,all,RE",
+    "substrate": "-",
+    "dimension": "Detection (ICP-MS)",
+    "refIds": [
+      "I10"
+    ],
+    "sourceTitle": "Application of ICP-MS (water) - selected elements",
+    "doi": "iso.org/standard/82245.html",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|I11",
+    "content": "Reaction-cell chemistry data underpinning interference removal",
+    "element": "70,elements,incl.,RE",
+    "substrate": "-",
+    "dimension": "Detection (ICP-MS)",
+    "refIds": [
+      "I11"
+    ],
+    "sourceTitle": "Reaction data for 70 elements (O2/NH3/H2) ICP-QQQ",
+    "doi": "agilent.com",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|I12",
+    "content": "Practical LREE-oxide -\u003E MREE/HREE correction via oxide-ratio monitoring",
+    "element": "Sc,La-Lu",
+    "substrate": "-",
+    "dimension": "Detection (ICP-MS)",
+    "refIds": [
+      "I12"
+    ],
+    "sourceTitle": "Oxide interference correction on Sc \u0026 REE by ICP-MS (An et al.)",
+    "doi": "10.1007/s12583-019-0898-5",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG1",
+    "content": "Base food-contact regime: positive list \u002B Specific Migration Limits",
+    "element": "all,metals,(SML)",
+    "substrate": "Polymer (food)",
+    "dimension": "Regulatory",
+    "refIds": [
+      "REG1"
+    ],
+    "sourceTitle": "Plastic materials \u0026 articles intended to contact food",
+    "doi": "eur-lex.europa.eu/eli/reg/2011/10",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG2",
+    "content": "Adds/updates SMLs for ~24 elements incl. lanthanide-group 0.05 mg/kg",
+    "element": "Al,Sb,Ba,Co,Mn,Ni,La-group...",
+    "substrate": "Polymer (food)",
+    "dimension": "Regulatory",
+    "refIds": [
+      "REG2"
+    ],
+    "sourceTitle": "Amending 10/2011 (Annex II metals table)",
+    "doi": "eur-lex.europa.eu/eli/reg/2020/1245",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG3",
+    "content": "10 restricted substances - NONE are SMX markers",
+    "element": "Pb,Hg,Cd,Cr(VI)\u002Bphthalates",
+    "substrate": "Electronics",
+    "dimension": "Regulatory",
+    "refIds": [
+      "REG3"
+    ],
+    "sourceTitle": "RoHS 2 \u002B Annex II (Delegated Dir. 2015/863)",
+    "doi": "eur-lex.europa.eu/eli/dir/2011/65",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG4",
+    "content": "Restriction entries; Ni (27) \u0026 Cr(VI) (47) most relevant",
+    "element": "As,Cd,Ni,Cr(VI),Pb",
+    "substrate": "All",
+    "dimension": "Regulatory",
+    "refIds": [
+      "REG4"
+    ],
+    "sourceTitle": "Conditions of restriction (consolidated)",
+    "doi": "echa.europa.eu/substances-restricted-under-reach",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG5",
+    "content": "0.5 ug/cm2/wk skin; 0.2 piercing - sensitizer benchmark",
+    "element": "Ni",
+    "substrate": "Textile/jewelry (skin)",
+    "dimension": "Regulatory",
+    "refIds": [
+      "REG5"
+    ],
+    "sourceTitle": "Nickel release (jewelry/skin)",
+    "doi": "echa.europa.eu",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG6",
+    "content": "Cobalt compounds = SVHC (carcinogenic \u002B reprotoxic)",
+    "element": "Co",
+    "substrate": "All",
+    "dimension": "Regulatory",
+    "refIds": [
+      "REG6"
+    ],
+    "sourceTitle": "Cobalt dichloride substance info (SVHC)",
+    "doi": "echa.europa.eu/substance-information/.../100.028.718",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG7",
+    "content": "Extractable-metal limits by product class (Co 1.0 Class I; Sb ~30)",
+    "element": "Sb,Co,Ni,Cr,Cu,Pb,As",
+    "substrate": "Textile (skin)",
+    "dimension": "Regulatory",
+    "refIds": [
+      "REG7"
+    ],
+    "sourceTitle": "Standard 100 Annex 4 (extractable heavy metals)",
+    "doi": "oeko-tex.com",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG8",
+    "content": "De-facto chemical limits: low-SAPS ash \u003C=0.8%, P \u003C=0.08%, S \u003C=0.3%",
+    "element": "S,P,sulfated,ash",
+    "substrate": "Oil",
+    "dimension": "Regulatory",
+    "refIds": [
+      "REG8"
+    ],
+    "sourceTitle": "API SP / ILSAC GF-6 / ACEA SAPS",
+    "doi": "api.org",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG9",
+    "content": "MRLs \u002B adverse-effect reviews (Mn neuro; V respiratory)",
+    "element": "Sb,Mn,V,Ba,Sr,Co",
+    "substrate": "All",
+    "dimension": "Toxicology",
+    "refIds": [
+      "REG9"
+    ],
+    "sourceTitle": "Toxicological Profiles (Sb,Mn,V,Ba,Sr,Co)",
+    "doi": "atsdr.cdc.gov/toxprofiles",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG10",
+    "content": "Te REL/PEL 0.1 mg/m3; Bi2Te3 10 mg/m3",
+    "element": "Te,Bi",
+    "substrate": "Occupational",
+    "dimension": "Toxicology",
+    "refIds": [
+      "REG10"
+    ],
+    "sourceTitle": "Pocket Guide - Tellurium / Bismuth telluride",
+    "doi": "cdc.gov/niosh/npg",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG11",
+    "content": "DNELs/classification per REACH registration",
+    "element": "Ce,La,RE,refractory",
+    "substrate": "All",
+    "dimension": "Toxicology",
+    "refIds": [
+      "REG11"
+    ],
+    "sourceTitle": "Registered-substance dossiers (DNELs)",
+    "doi": "echa.europa.eu/information-on-chemicals",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG12",
+    "content": "Pneumoconiosis/biopersistence/fibrosis on inhalation (powder handling)",
+    "element": "La-Lu",
+    "substrate": "RE markers",
+    "dimension": "Toxicology",
+    "refIds": [
+      "REG12"
+    ],
+    "sourceTitle": "Reviews on rare-earth element human-health toxicity",
+    "doi": "frontiersin.org (fenvs.2022.948041)",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG13",
+    "content": "TiO2 color additive; Ti \u003C=1% wt of food",
+    "element": "Ti",
+    "substrate": "Polymer/food",
+    "dimension": "Regulatory",
+    "refIds": [
+      "REG13"
+    ],
+    "sourceTitle": "Titanium dioxide (color additive)",
+    "doi": "ecfr.gov (73.575)",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG14",
+    "content": "SiO2 GRAS; migrates from paper/board",
+    "element": "Si",
+    "substrate": "Polymer/paper/food",
+    "dimension": "Regulatory",
+    "refIds": [
+      "REG14"
+    ],
+    "sourceTitle": "Silicon dioxide GRAS",
+    "doi": "ecfr.gov (part 182)",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  },
+  {
+    "id": "chunk|bib|REG15",
+    "content": "Target organs; irritant; Te drives Bi-telluride hazard",
+    "element": "Bi,Te",
+    "substrate": "Occupational",
+    "dimension": "Toxicology",
+    "refIds": [
+      "REG15"
+    ],
+    "sourceTitle": "Bismuth telluride dossier",
+    "doi": "cameochemicals.noaa.gov/chemical/25002",
+    "sheet": "Reference Library",
+    "dataset": "compatibility-2026-07"
+  }
+]
