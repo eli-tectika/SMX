@@ -1,0 +1,43 @@
+using Microsoft.Extensions.Configuration;
+
+namespace Smx.Infrastructure;
+
+public sealed record BackendOptions(
+    string FoundryEndpoint,
+    string ClaudeDeployment,
+    string CosmosAccountEndpoint,
+    string CosmosDatabase,
+    string RecordContainer,
+    string LeaseContainer,
+    string CompatibilityContainer,
+    string SearchEndpoint,
+    string SdsIndex,
+    string ReferenceIndex,
+    string RegulatoryIndex,
+    string? UamiClientId,
+    string? FoundryApiKey,           // local-dev only; production resolves Entra first, then Key Vault
+    string? KeyVaultUri,
+    int ScreeningParallelism)
+{
+    public string AnthropicBaseUrl => $"{FoundryEndpoint.TrimEnd('/')}/anthropic/v1";
+
+    // FOUNDRY_ENDPOINT / SEARCH_ENDPOINT default to "" (the API host doesn't use them);
+    // the components that actually need them throw — see FoundryChatClientFactory and the
+    // orchestrator Program.cs guard in Task 13.
+    public static BackendOptions From(IConfiguration c) => new(
+        FoundryEndpoint: c["FOUNDRY_ENDPOINT"] ?? "",
+        ClaudeDeployment: c["CLAUDE_DEPLOYMENT"] ?? "claude-opus-4-7",
+        CosmosAccountEndpoint: c["COSMOS_ACCOUNT_ENDPOINT"] ?? throw new InvalidOperationException("COSMOS_ACCOUNT_ENDPOINT missing"),
+        CosmosDatabase: c["COSMOS_DATABASE"] ?? "smx",
+        RecordContainer: c["RECORD_CONTAINER"] ?? "record",
+        LeaseContainer: c["RECORD_LEASE_CONTAINER"] ?? "record-leases",
+        CompatibilityContainer: c["COMPATIBILITY_CONTAINER"] ?? "ref-compatibility",
+        SearchEndpoint: c["SEARCH_ENDPOINT"] ?? "",
+        SdsIndex: c["SDS_SEARCH_INDEX"] ?? "sds-index",
+        ReferenceIndex: c["REFERENCE_SEARCH_INDEX"] ?? "smx-reference",
+        RegulatoryIndex: c["REGULATORY_SEARCH_INDEX"] ?? "regulatory-index",
+        UamiClientId: c["UAMI_CLIENT_ID"],
+        FoundryApiKey: c["FOUNDRY_API_KEY"],
+        KeyVaultUri: c["KEYVAULT_URI"],
+        ScreeningParallelism: int.TryParse(c["SCREENING_PARALLELISM"], out var p) ? p : 4);
+}
