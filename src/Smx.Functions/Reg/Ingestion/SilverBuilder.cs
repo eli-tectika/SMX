@@ -4,9 +4,13 @@ namespace Smx.Functions.Reg.Ingestion;
 
 // Turns parsed chunks into Silver documents: each carries a full structured citation (regulation, authority,
 // entry, source url, official date) so every downstream verdict traces to a cited source. Chunk id is
-// deterministic ("{docId}#{i}") → idempotent upserts to Cosmos and to the Gold index.
+// deterministic ("{docId}_{i}") → idempotent upserts to Cosmos and the Gold index. The separator is "_" (not
+// "#"): Azure AI Search document keys allow only letters, digits, "_", "-", "=" (and "#" also breaks Cosmos ids).
 public static class SilverBuilder
 {
+    // Search/Cosmos-safe chunk id. docId is already a slug (lowercase alnum + dash); "_" separates the index.
+    public static string ChunkId(string docId, int i) => $"{docId}_{i}";
+
     public static IReadOnlyList<SilverChunk> Build(
         RegSource source, RegDoc doc, string docSha256, string runId, string syncDate,
         IReadOnlyList<ParsedChunk> parsed)
@@ -18,7 +22,7 @@ public static class SilverBuilder
             var citation = new Citation(
                 source.Regulation, source.Authority, p.EntryId, p.ArticleOrAnnex, doc.Url, p.OfficialDate);
             chunks.Add(new SilverChunk(
-                $"{doc.DocId}#{i}", source.SourceId, doc.DocId, i, p.Text, citation,
+                ChunkId(doc.DocId, i), source.SourceId, doc.DocId, i, p.Text, citation,
                 docSha256, runId, syncDate, "staged"));
         }
         return chunks;
@@ -33,7 +37,7 @@ public static class SilverBuilder
         var chunks = new List<SilverChunk>(texts.Count);
         for (var i = 0; i < texts.Count; i++)
             chunks.Add(new SilverChunk(
-                $"{docId}#{i}", sourceId, docId, i, texts[i], citation,
+                ChunkId(docId, i), sourceId, docId, i, texts[i], citation,
                 docSha256, runId, syncDate, status));
         return chunks;
     }

@@ -93,8 +93,9 @@ public class SeedImporterTests
             Assert.Equal("32012R0528", cite.EntryId);                          // CELEX
             Assert.Equal("2012-05-22", cite.OfficialDate);
             Assert.False(string.IsNullOrEmpty(cite.SourceUrl));
-            // Deterministic chunk ids.
-            Assert.Equal($"{docId}#0", chunks.OrderBy(c => c.ChunkIndex).First().Id);
+            // Deterministic chunk ids — and Azure AI Search / Cosmos key-safe (letters, digits, _ - =; no '#').
+            Assert.Equal($"{docId}_0", chunks.OrderBy(c => c.ChunkIndex).First().Id);
+            Assert.All(chunks, c => Assert.Matches("^[A-Za-z0-9_=-]+$", c.Id));
 
             // Gold: embedded + pushed, once per chunk, with EnsureIndex called.
             Assert.Equal(1, h.Search.EnsureCalls);

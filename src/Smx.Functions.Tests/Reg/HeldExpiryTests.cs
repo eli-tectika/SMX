@@ -40,7 +40,7 @@ public class HeldExpiryTests
         var diff = new CorpusDiff("sync-202605", 0, 1, 0, 0, new[] { "d" }, new AnomalyAssessment(true, new[] { "big" }));
         await review.UpsertAsync(new ReviewRecord("sync-202605", "sync-202605", diff, RegStatus.Held, null, null, "2026-05-22T03:00:00Z", null), default);
         await silver.UpsertStagedAsync(new[] {
-            new SilverChunk("d#0", "s", "d", 0, "x", new Citation("R","A",null,null,"u","2026-05-01"), "sha", "sync-202605", "2026-05-22", "staged") }, default);
+            new SilverChunk("d_0", "s", "d", 0, "x", new Citation("R","A",null,null,"u","2026-05-01"), "sha", "sync-202605", "2026-05-22", "staged") }, default);
 
         await pipeline.ExpireStaleHeldAsync(DateTimeOffset.Parse("2026-07-01T03:00:00Z"), default);
 
