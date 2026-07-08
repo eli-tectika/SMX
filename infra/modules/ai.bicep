@@ -31,6 +31,15 @@ param gpt4oCapacity int = 1
 @description('text-embedding-3-large deployment capacity (thousands of TPM). Kept minimal.')
 param embeddingCapacity int = 1
 
+@description('Deploy the Claude Opus 4.7 reasoning model (Anthropic on Foundry). ON by default — named by the SOW. Verified available in swedencentral (format Anthropic, GlobalStandard, version 1).')
+param deployClaude bool = true
+
+@description('Claude deployment capacity. GlobalStandard capacity unit; kept minimal.')
+param claudeCapacity int = 1
+
+@description('Claude model version as listed by `az cognitiveservices model list` (empty = provider default, currently version 1).')
+param claudeModelVersion string = ''
+
 var searchName = 'srch-${namePrefix}-${env}-${uniqueSuffix}'
 var foundryName = 'aif-${namePrefix}-${env}-${uniqueSuffix}'
 
@@ -39,6 +48,8 @@ var searchIndexDataContribId = '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
 var searchServiceContribId = '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
 // Cognitive Services OpenAI User
 var openAiUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+// Cognitive Services User — required for Entra auth against non-OpenAI (Anthropic) surfaces.
+var cognitiveServicesUserRoleId = 'a97b65f3-24c7-4388-baec-2e87135dc908'
 
 var ipRules = empty(deployerIpAddress) ? [] : [ { value: deployerIpAddress } ]
 
@@ -151,6 +162,39 @@ resource embedding 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01'
       name: 'text-embedding-3-large'
       version: '1'
     }
+  }
+}
+
+// Claude Opus 4.7 (reasoning for the agent backend). Anthropic format, GlobalStandard SKU
+// (confirmed by `az cognitiveservices model list -l swedencentral`). Deployments on one account
+// must be serialized — chain dependsOn embedding (which chains gpt-4o).
+resource claude 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = if (deployClaude) {
+  parent: foundry
+  name: 'claude-opus-4-7'
+  sku: {
+    name: 'GlobalStandard'
+    capacity: claudeCapacity
+  }
+  dependsOn: [
+    embedding
+  ]
+  properties: {
+    model: union({
+      format: 'Anthropic'
+      name: 'claude-opus-4-7'
+    }, empty(claudeModelVersion) ? {} : { version: claudeModelVersion })
+  }
+}
+
+// Cognitive Services User on the Foundry account — lets the workload identity call the
+// Anthropic surface with an Entra bearer token (the OpenAI User role only covers OpenAI routes).
+resource foundryCogUserRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundry.id, uamiPrincipalId, cognitiveServicesUserRoleId)
+  scope: foundry
+  properties: {
+    principalId: uamiPrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesUserRoleId)
+    principalType: 'ServicePrincipal'
   }
 }
 

@@ -26,6 +26,9 @@ param cosmosDatabaseName string = 'smx'
 @description('Deploy the gpt-4o chat model (requires Standard gpt-4o quota; OFF by default).')
 param deployGpt4o bool = false
 
+@description('Deploy the Claude Opus 4.7 reasoning model on Foundry (Anthropic, GlobalStandard). ON by default — the agent backend needs it.')
+param deployClaude bool = true
+
 @description('Entra app-registration client id for Function App Easy Auth. Empty = auth OFF (first deploy); configure-auth.sh fills it in.')
 param authClientId string = ''
 
@@ -100,6 +103,7 @@ module ai 'modules/ai.bicep' = {
     uamiPrincipalId: security.outputs.uamiPrincipalId
     searchSku: searchSku
     deployGpt4o: deployGpt4o
+    deployClaude: deployClaude
   }
 }
 
