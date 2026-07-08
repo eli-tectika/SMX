@@ -56,6 +56,13 @@ param sdsRevisionRecheckDays int = 90
 param sdsDryRun bool = false
 param sdsSearchIndex string = 'sds-index'
 
+@description('Regulatory Sync knobs (Reg subsystem, same app). Monthly by default; anomaly thresholds drive the circuit breaker.')
+param regSyncCron string = '0 0 3 1 * *' // monthly, 1st at 03:00 UTC
+param regSearchIndex string = 'regulatory-corpus'
+param regDryRun bool = false
+param regAnomalyAbs int = 200
+param regAnomalyPct int = 25
+
 @description('Entra app-registration client id for Easy Auth. Empty = auth stays OFF (first deploy).')
 param authClientId string = ''
 
@@ -301,6 +308,18 @@ resource regSyncApp 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'SDS_REVISION_RECHECK_DAYS', value: string(sdsRevisionRecheckDays) }
         { name: 'SDS_DRY_RUN', value: string(sdsDryRun) }
         { name: 'SDS_ALLOWLIST_PATH', value: 'Sds/Config/suppliers.allowlist.json' }
+        // Regulatory Sync (Reg subsystem) — same app, same identity/endpoints; its own containers + index.
+        { name: 'REG_SYNC_CRON', value: regSyncCron }
+        { name: 'REG_SEARCH_INDEX', value: regSearchIndex }
+        { name: 'REG_STATE_CONTAINER', value: 'reg-state' }
+        { name: 'REG_REGISTRY_CONTAINER', value: 'reg-registry' }
+        { name: 'REG_REVIEW_CONTAINER', value: 'reg-review' }
+        { name: 'REG_SILVER_CONTAINER', value: 'reg-silver' }
+        { name: 'REG_RUNS_CONTAINER', value: 'reg-runs' }
+        { name: 'REG_REGISTRY_PATH', value: 'Reg/Config/regulators.registry.json' }
+        { name: 'REG_DRY_RUN', value: string(regDryRun) }
+        { name: 'REG_ANOMALY_ABS', value: string(regAnomalyAbs) }
+        { name: 'REG_ANOMALY_PCT', value: string(regAnomalyPct) }
       ]
     }
   }

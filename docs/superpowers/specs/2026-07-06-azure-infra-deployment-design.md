@@ -284,3 +284,14 @@ This is why Durable Functions (external-event wait) fits and a Logic App approva
 **Boundary.** The Foundry `gpt-4o` reasoning model is **not** part of the Sync's ground truth — the Sync only
 fetches/structures/embeds authoritative documents; the model reasons over retrieved chunks at query time.
 Implementation lands in **Plan 3** (Functions), on top of the AI Search + embedding deployment from Plan 2.
+
+**Implementation note (reconciliation, 2026-07).** The Regulatory Sync was **implemented without Durable
+Functions**, as a `Reg/` subsystem inside the existing `Smx.Functions` app beside the SDS subsystem (which is
+also a plain `TimerTrigger`). Rationale: (a) the shipped app has no Durable dependency; (b) the review gate is
+implemented as an **automatic circuit breaker** — the sync **promotes automatically** and holds for R.E.
+sign-off **only on an anomaly** (large diff / parse-format change / fetch failure), so the "wait for external
+event" is the exception, not the rule. The hold is a persisted `reg-review` record (status `held`) resumed by a
+plain HTTP endpoint (`POST /reg/review/{runId}`) — structurally the same park/resume as the SDS
+`awaiting_operator` + `OperatorUpload` pattern. Everything else in this section stands: curated-registry
+sourcing, Bronze/Silver/Gold, sha256 change-detection, per-chunk citation + sync date, keyless over the NAT
+egress. The gate strictness left open in §14 is resolved as: auto-promote by default, human hold on anomaly.

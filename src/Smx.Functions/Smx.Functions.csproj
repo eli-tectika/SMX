@@ -24,5 +24,6 @@
   <ItemGroup>
     <None Update="host.json"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
     <None Update="Sds/Config/suppliers.allowlist.json"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
+    <None Update="Reg/Config/regulators.registry.json"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
   </ItemGroup>
 </Project>

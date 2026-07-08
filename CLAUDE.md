@@ -4,13 +4,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository status
 
-This is a **greenfield / pre-implementation** repository. There is no application code, build
-system, or test tooling yet — only a README stub and design documents under [project_files/](project_files/).
-Those documents are the **source of truth** for what must be built. Do not invent architecture that
-contradicts them; when the spec is silent or ambiguous, ask rather than guess.
+This repository is in **early implementation**. Design documents under [project_files/](project_files/)
+and [docs/superpowers/](docs/superpowers/) are the **source of truth** for what must be built. Do not invent
+architecture that contradicts them; when the spec is silent or ambiguous, ask rather than guess. The first
+application code is the Functions app (`src/Smx.Functions`) — the SDS library subsystem and the Regulatory
+Sync subsystem (`Reg/`).
 
-Consequently there are **no build / lint / test commands yet**. Establishing them (and the `infra/`
-folder below) is part of the work. When you add a stack, document its commands here.
+### Build & test (`src/`)
+
+.NET 8 isolated-worker Azure Functions. From `src/`:
+
+```
+dotnet build Smx.Functions/Smx.Functions.csproj          # build the app
+dotnet test  Smx.Functions.Tests/Smx.Functions.Tests.csproj   # xUnit tests (SDS + Reg)
+func start   # run locally (in src/Smx.Functions); needs Azurite + Cosmos emulator; set *_DRY_RUN=true to skip egress
+```
+
+Infra (Bicep) — validate both variants compile from repo root:
+
+```
+az bicep build --file infra/main.bicep --stdout > /dev/null
+az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
+```
 
 ## Source-of-truth documents (`project_files/`)
 

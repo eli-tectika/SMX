@@ -15,6 +15,10 @@ using Smx.Functions.Sds.Config;
 using Smx.Functions.Sds.Data;
 using Smx.Functions.Sds.Ingestion;
 using Smx.Functions.Sds.Sourcing;
+using Smx.Functions.Reg.Config;
+using Smx.Functions.Reg.Data;
+using Smx.Functions.Reg.Ingestion;
+using Smx.Functions.Reg.Sourcing;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
@@ -82,6 +86,58 @@ var host = new HostBuilder()
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
                 sp.GetRequiredService<AllowlistProvider>(), opts,
                 sp.GetRequiredService<ILogger<NatEgressClient>>()));
+        }
+
+        // ── Regulatory Sync (Reg/) — a separate subsystem in the same app, beside SDS. Reuses the shared
+        //    credential, CosmosClient, IBronzeStore, and IEmbedder; adds its own Cosmos stores + Gold index. ──
+        var regOpts = RegOptions.From(ctx.Configuration);
+        services.AddSingleton(regOpts);
+
+        services.AddSingleton<IRegStateStore>(sp => new CosmosRegStateStore(
+            sp.GetRequiredService<CosmosClient>().GetContainer(regOpts.CosmosDatabase, regOpts.StateContainer)));
+        services.AddSingleton<IRegSilverStore>(sp => new CosmosRegSilverStore(
+            sp.GetRequiredService<CosmosClient>().GetContainer(regOpts.CosmosDatabase, regOpts.SilverContainer)));
+        services.AddSingleton<IRegReviewStore>(sp => new CosmosRegReviewStore(
+            sp.GetRequiredService<CosmosClient>().GetContainer(regOpts.CosmosDatabase, regOpts.ReviewContainer)));
+        services.AddSingleton<IRegRunsStore>(sp => new CosmosRegRunsStore(
+            sp.GetRequiredService<CosmosClient>().GetContainer(regOpts.CosmosDatabase, regOpts.RunsContainer)));
+        services.AddSingleton<IRegRegistryStore>(sp => new CosmosRegRegistryStore(
+            sp.GetRequiredService<CosmosClient>().GetContainer(regOpts.CosmosDatabase, regOpts.RegistryContainer)));
+
+        services.AddSingleton<IRegSearchClient>(_ => new RegSearchClient(
+            new SearchIndexClient(new Uri(regOpts.SearchEndpoint), cred, new SearchClientOptions
+            {
+                Serializer = new JsonObjectSerializer(new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
+            }),
+            regOpts.SearchIndex));
+
+        // Curated official-source registry + Bronze ingestor (reuses the shared IBronzeStore).
+        services.AddSingleton(_ => RegRegistryProvider.FromFile(regOpts.RegistryPath));
+        services.AddSingleton<BronzeIngestor>();
+
+        // Parsers (one per source format) + registry that resolves them by RegSource.Parser.
+        services.AddSingleton<IRegParser, OehhaProp65Parser>();
+        services.AddSingleton<IRegParser, GenericCsvParser>();
+        services.AddSingleton<IRegParser, EcfrParser>();
+        services.AddSingleton<RegParserRegistry>();
+
+        // The sync pipeline (testable core RunSyncAsync) — consumed by the RegSync timer + ReviewDecisionHttp.
+        services.AddSingleton<SyncPipeline>();
+
+        // One-time seed importer (local corpus → medallion, no egress) — consumed by the SeedImportHttp trigger.
+        // Reuses the shared IBronzeStore + IEmbedder and the Reg Silver/State stores + Gold search client above.
+        services.AddSingleton<Smx.Functions.Reg.Seeding.SeedImporter>();
+
+        // Reg egress — its OWN allowlist (regulators), distinct type from the SDS IEgressClient.
+        if (regOpts.DryRun)
+            services.AddSingleton<IRegEgress>(_ => RegDryRunEgress.Default(Array.Empty<byte>()));
+        else
+        {
+            services.AddHttpClient();
+            services.AddSingleton<IRegEgress>(sp => new RegNatEgressClient(
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
+                sp.GetRequiredService<RegRegistryProvider>(), regOpts,
+                sp.GetRequiredService<ILogger<RegNatEgressClient>>()));
         }
     })
     .Build();

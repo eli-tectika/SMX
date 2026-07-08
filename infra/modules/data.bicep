@@ -149,6 +149,27 @@ resource sdsRegistry 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/contain
   }
 }
 
+// Regulatory Sync (Reg subsystem) containers. The workload identity has Cosmos data-plane rights only and
+// cannot create containers at runtime, so they are provisioned here (SDS design D3). See project_files spec §15.
+var regContainers = [
+  { name: 'reg-state', pk: '/sourceId' }    // per-doc sha256 change-detection state
+  { name: 'reg-registry', pk: '/sourceId' } // curated official-source registry (seeded from git)
+  { name: 'reg-review', pk: '/syncRunId' }  // corpus-diff review record (audit; held only on anomaly)
+  { name: 'reg-silver', pk: '/docId' }      // parsed+cited chunks, staged/live/superseded
+  { name: 'reg-runs', pk: '/syncRunId' }    // per-run log
+]
+
+resource regCosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = [for c in regContainers: {
+  parent: cosmosDb
+  name: c.name
+  properties: {
+    resource: {
+      id: c.name
+      partitionKey: { paths: [ c.pk ], kind: 'Hash' }
+    }
+  }
+}]
+
 output storageId string = storage.id
 output storageName string = storage.name
 output cosmosId string = cosmos.id

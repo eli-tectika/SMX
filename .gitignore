@@ -6,3 +6,8 @@ obj/
 # Compiled ARM output from `az bicep build`
 infra/**/main.json
 infra/**/modules/*.json
+
+# Local regulatory-corpus data (seed input for the Regulatory Sync; loaded via SeedImporter,
+# not stored in git — large official PDFs + scraped text).
+Regulations 2/
+Regulations/

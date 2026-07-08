@@ -1,0 +1,181 @@
+[
+  {
+    "sourceId": "oehha-prop65",
+    "regulation": "California Proposition 65",
+    "authority": "OEHHA",
+    "accessMethod": "dataset",
+    "domain": "oehha.ca.gov",
+    "parser": "OehhaProp65Parser",
+    "enabled": true,
+    "version": 1,
+    "cadence": "monthly",
+    "documents": [
+      {
+        "docId": "p65-list",
+        "url": "https://oehha.ca.gov/media/downloads/proposition-65/p65chemicalslist.csv",
+        "title": "Proposition 65 Chemicals List"
+      }
+    ]
+  },
+  {
+    "sourceId": "echa-svhc",
+    "regulation": "REACH SVHC Candidate List",
+    "authority": "ECHA",
+    "accessMethod": "scrape",
+    "domain": "echa.europa.eu",
+    "parser": "GenericCsvParser",
+    "enabled": false,
+    "version": 1,
+    "cadence": "monthly",
+    "parserConfig": {
+      "nameColumn": "substance",
+      "entryColumn": "ec / list",
+      "dateColumn": "inclusion",
+      "extraColumns": "reason for inclusion"
+    },
+    "documents": [
+      {
+        "docId": "svhc-candidate-list",
+        "url": "https://echa.europa.eu/candidate-list-table",
+        "title": "SVHC Candidate List"
+      }
+    ],
+    "_note": "SCAFFOLD — enabled:false. The candidate-list-table URL is an HTML page, not a CSV export; confirm the real machine-readable export (CSV/XLSX or ECHA API) and its exact column headers, then write/validate an HTML-table or CSV parser before enabling. Do NOT enable against a guessed schema (correctness)."
+  },
+  {
+    "sourceId": "reach-annex-xvii",
+    "regulation": "REACH Annex XVII (Restrictions)",
+    "authority": "ECHA / EUR-Lex",
+    "accessMethod": "document",
+    "domain": "eur-lex.europa.eu",
+    "parser": "EurLexParser",
+    "enabled": false,
+    "version": 1,
+    "cadence": "monthly",
+    "documents": [
+      {
+        "docId": "celex-02006R1907",
+        "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A02006R1907",
+        "title": "Regulation (EC) 1907/2006 (REACH) consolidated — Annex XVII"
+      }
+    ],
+    "_note": "SCAFFOLD — enabled:false. Requires a EUR-Lex Cellar/Formex parser (article/annex segmentation of consolidated CELEX 02006R1907). Confirm the machine-readable retrieval (Cellar SPARQL/REST or Formex XML) and build a validated EurLexParser before enabling. No EurLexParser exists yet."
+  },
+  {
+    "sourceId": "clp-annex-vi",
+    "regulation": "CLP Annex VI (Harmonised Classifications)",
+    "authority": "ECHA / EUR-Lex",
+    "accessMethod": "document",
+    "domain": "eur-lex.europa.eu",
+    "parser": "EurLexParser",
+    "enabled": false,
+    "version": 1,
+    "cadence": "monthly",
+    "documents": [
+      {
+        "docId": "celex-02008R1272",
+        "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A02008R1272",
+        "title": "Regulation (EC) 1272/2008 (CLP) consolidated — Annex VI"
+      }
+    ],
+    "_note": "SCAFFOLD — enabled:false. Requires the EUR-Lex parser (CELEX 02008R1272, Annex VI Table 3 harmonised-classification rows). Confirm the machine-readable table source and build a validated parser before enabling."
+  },
+  {
+    "sourceId": "eu-pops",
+    "regulation": "EU POPs Regulation (EU) 2019/1021",
+    "authority": "EUR-Lex",
+    "accessMethod": "document",
+    "domain": "eur-lex.europa.eu",
+    "parser": "EurLexParser",
+    "enabled": false,
+    "version": 1,
+    "cadence": "monthly",
+    "documents": [
+      {
+        "docId": "celex-02019R1021",
+        "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A02019R1021",
+        "title": "Regulation (EU) 2019/1021 (POPs) consolidated — Annexes I–IV"
+      }
+    ],
+    "_note": "SCAFFOLD — enabled:false. Requires the EUR-Lex parser (CELEX 02019R1021, Annex I/II substance entries). Confirm the machine-readable source and build a validated parser before enabling."
+  },
+  {
+    "sourceId": "eu-rohs",
+    "regulation": "EU RoHS Directive 2011/65/EU (Exemptions)",
+    "authority": "EUR-Lex",
+    "accessMethod": "document",
+    "domain": "eur-lex.europa.eu",
+    "parser": "EurLexParser",
+    "enabled": false,
+    "version": 1,
+    "cadence": "monthly",
+    "documents": [
+      {
+        "docId": "celex-02011L0065",
+        "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A02011L0065",
+        "title": "Directive 2011/65/EU (RoHS) consolidated — Annexes III & IV exemptions"
+      }
+    ],
+    "_note": "SCAFFOLD — enabled:false. Requires the EUR-Lex parser (CELEX 02011L0065, Annex III/IV exemption entries with expiry dates). Confirm the machine-readable source and build a validated parser before enabling."
+  },
+  {
+    "sourceId": "ecfr-fda-food-contact",
+    "regulation": "US FDA Food Additive & Food-Contact Regulations (21 CFR)",
+    "authority": "FDA",
+    "accessMethod": "api",
+    "domain": "ecfr.gov",
+    "parser": "EcfrParser",
+    "enabled": true,
+    "version": 1,
+    "cadence": "monthly",
+    "parserConfig": {
+      "parts": "170,175,176,177,178"
+    },
+    "documents": [
+      {
+        "docId": "ecfr-title21-versions",
+        "url": "https://www.ecfr.gov/api/versioner/v1/versions/title-21.json",
+        "title": "eCFR Title 21 — section version/amendment index"
+      }
+    ],
+    "_note": "ENABLED — parses the eCFR versioner /versions JSON (verified schema: content_versions[].{identifier,amendment_date,name,part,title,type,removed}). Emits one citable chunk per current section (parts 170,175,176,177,178) carrying its authoritative last-amended date for change detection. This indexes section-level metadata + amendment dates, not full CFR text; full-text ingestion via /full/{date}/title-21.xml is a future enhancement pending a validated CFR-XML parser."
+  },
+  {
+    "sourceId": "ecfr-epa",
+    "regulation": "US EPA Regulations (40 CFR)",
+    "authority": "EPA",
+    "accessMethod": "api",
+    "domain": "ecfr.gov",
+    "parser": "EcfrParser",
+    "enabled": true,
+    "version": 1,
+    "cadence": "monthly",
+    "documents": [
+      {
+        "docId": "ecfr-title40-versions",
+        "url": "https://www.ecfr.gov/api/versioner/v1/versions/title-40.json",
+        "title": "eCFR Title 40 — section version/amendment index"
+      }
+    ],
+    "_note": "ENABLED — same verified EcfrParser as FDA. No parts filter is set (Title 40 is large), so the first sync will exceed the circuit-breaker diff threshold and be HELD for R.E. sign-off — the intended safe behavior for a large new source. Scope it by adding parserConfig.parts (the EPA parts relevant to marker screening) once the R.E. confirms them."
+  },
+  {
+    "sourceId": "echa-pfas",
+    "regulation": "PFAS Universal Restriction (status)",
+    "authority": "ECHA",
+    "accessMethod": "scrape",
+    "domain": "echa.europa.eu",
+    "parser": "EchaHtmlParser",
+    "enabled": false,
+    "version": 1,
+    "cadence": "monthly",
+    "documents": [
+      {
+        "docId": "pfas-hot-topic",
+        "url": "https://echa.europa.eu/hot-topics/pfas",
+        "title": "ECHA PFAS hot-topic / restriction status"
+      }
+    ],
+    "_note": "SCAFFOLD — enabled:false. This is an HTML status page with no stable machine-readable schema; it tracks the evolving PFAS universal-restriction dossier rather than a fixed substance list. Confirm a structured source (or accept a curated summary) and build a validated parser before enabling."
+  }
+]
