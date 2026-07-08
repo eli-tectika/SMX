@@ -170,6 +170,24 @@ resource regCosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases
   }
 }]
 
+// Reference-data: compatibility knowledge (per-element deterministic lookup).
+var refContainers = [
+  { name: 'ref-compatibility', pk: '/element' }
+  { name: 'ref-bibliography', pk: '/refId' }
+  { name: 'ref-suppliers', pk: '/supplier' }
+  { name: 'ref-catalog', pk: '/element' }
+]
+resource refCosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = [for c in refContainers: {
+  parent: cosmosDb
+  name: c.name
+  properties: {
+    resource: {
+      id: c.name
+      partitionKey: { paths: [ c.pk ], kind: 'Hash' }
+    }
+  }
+}]
+
 output storageId string = storage.id
 output storageName string = storage.name
 output cosmosId string = cosmos.id
@@ -177,3 +195,7 @@ output cosmosName string = cosmos.name
 output bronzeFilesystem string = bronzeContainer.name
 output sdsMasterListContainer string = sdsMasterList.name
 output sdsRegistryContainer string = sdsRegistry.name
+output refCompatibilityContainer string = refCompatibility.name
+output refBibliographyContainer string = refBibliography.name
+output refSuppliersContainer string = refSuppliers.name
+output refCatalogContainer string = refCatalog.name
