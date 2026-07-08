@@ -1,0 +1,1 @@
+[{ "id": "G15", "refId": "G15", "title": "Au-Zr system", "source": "JPE", "year": "1985", "type": "Phase-diagram", "doi": "10.1007/x", "dimension": "Substrate solubility", "substrate": "Gold", "elements": ["Zr"], "whatItEstablishes": "terminal fcc", "verification": "verified-fetched" }]

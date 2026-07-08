@@ -1,0 +1,1 @@
+[{ "id": "rule|Zr|gold-solubility", "element": "Zr", "docType": "rule", "dimension": "Gold solubility", "substrate": "Gold", "verdict": "Caution", "reason": "Limited Au(fcc) solubility", "refIds": ["G15","G26"] }]

@@ -1,0 +1,1 @@
+[{ "id": "chunk|rule|Zr|gold-solubility", "content": "Limited Au(fcc) solubility", "element": "Zr", "substrate": "Gold", "dimension": "Gold solubility", "verdict": "Caution", "refIds": ["G15","G26"], "sourceTitle": "Au-Zr system", "doi": "10.1007/x", "url": null, "sheet": "Compatibility Rules", "dataset": "compatibility-2026-07" }]
