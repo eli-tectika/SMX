@@ -1,12 +1,33 @@
 using System.Text.Json.Serialization;
+using Azure.Identity;
+using Azure.Monitor.OpenTelemetry.AspNetCore;
+using Microsoft.Azure.Cosmos;
 using Smx.Backend.Api;
+using Smx.Domain;
+using Smx.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
-// IRecordStore is registered in Task 13 (Cosmos) and overridden in tests.
+
+// Production wiring only when configured; tests inject InMemoryRecordStore instead.
+if (builder.Configuration["COSMOS_ACCOUNT_ENDPOINT"] is { Length: > 0 })
+{
+    var opts = BackendOptions.From(builder.Configuration);
+    Azure.Core.TokenCredential credential = opts.UamiClientId is { } id
+        ? new ManagedIdentityCredential(id)
+        : new DefaultAzureCredential();
+    builder.Services.AddSingleton(new CosmosClient(opts.CosmosAccountEndpoint, credential, new CosmosClientOptions
+    {
+        SerializerOptions = new CosmosSerializationOptions { PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase },
+    }));
+    builder.Services.AddSingleton<IRecordStore>(sp => new CosmosRecordStore(
+        sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.RecordContainer)));
+}
+if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] is { Length: > 0 })
+    builder.Services.AddOpenTelemetry().UseAzureMonitor();
 
 var app = builder.Build();
 app.MapProjectEndpoints();
