@@ -126,3 +126,16 @@ The first application code now lives under `src/` (this is no longer a pure-infr
   - Test: `dotnet test src/Smx.Functions.sln`  (the test project sets `RollForward=Major` so it runs on a
     newer runtime when the net8.0 runtime is absent)
   - Publish to Azure: `infra/scripts/publish-functions.sh <env>`, then `infra/scripts/configure-auth.sh <env>`.
+- **Reference-data subsystem** (`src/Smx.Functions/Reference`, same Function App) — seeds the curated
+  marker **compatibility** and **supplier** spreadsheets (in [`data/`](data/)) into query-ready stores
+  (4 `ref-*` Cosmos containers + the `smx-reference` AI Search index). Design + plan:
+  [`docs/superpowers/specs/2026-07-08-reference-data-subsystem-design.md`](docs/superpowers/specs/2026-07-08-reference-data-subsystem-design.md),
+  [`docs/superpowers/plans/2026-07-08-reference-data-subsystem.md`](docs/superpowers/plans/2026-07-08-reference-data-subsystem.md).
+  - Regenerate normalized seed JSON from the workbooks:
+    `dotnet run --project tools/Smx.ReferenceData.Transform -- data src/Smx.Functions/Reference/Seed 2026-07`
+    (note: opening a workbook with ClosedXML rewrites it on disk; `git checkout data/` afterwards to keep the source pristine).
+  - Seed Azure (after `publish-functions.sh` + `configure-auth.sh`, before `harden.sh`):
+    `infra/scripts/seed-reference-data.sh <env>`
+  - Deferred follow-ons: the XRF Lines mapper, the Compatibility Matrix rollup and Element×Form coverage
+    matrix, the supplementary supplier lists, RD7 class/pair expansion, and a few unresolved source citation
+    tokens (e.g. a rule whose `Key Ref(s)` cell is literally `-`).
