@@ -68,3 +68,4 @@ output uamiPrincipalId string = uami.properties.principalId
 output uamiClientId string = uami.properties.clientId
 output keyVaultId string = keyVault.id
 output keyVaultName string = keyVault.name
+output keyVaultUri string = keyVault.properties.vaultUri

@@ -20,6 +20,33 @@ param placeholderImage string = 'mcr.microsoft.com/azuredocs/containerapps-hello
 @description('Add a Dedicated (D4) workload profile (prod).')
 param includeDedicatedProfile bool = false
 
+@description('ACR login server (empty = no registry wiring; placeholder images only).')
+param acrLoginServer string = ''
+
+@description('Backend API image (empty = placeholder).')
+param backendImage string = ''
+
+@description('Orchestrator image (empty = placeholder).')
+param orchestratorImage string = ''
+
+@description('Client ID of the workload UAMI (env var for ManagedIdentityCredential).')
+param uamiClientId string = ''
+
+@description('Foundry account endpoint; the app derives the /anthropic/v1 base itself.')
+param foundryEndpoint string = ''
+
+@description('Cosmos account document endpoint.')
+param cosmosEndpoint string = ''
+
+@description('AI Search endpoint.')
+param searchEndpoint string = ''
+
+@description('App Insights connection string (empty = telemetry off).')
+param appInsightsConnectionString string = ''
+
+@description('Key Vault URI for the Foundry Anthropic key fallback (empty = Entra-only).')
+param keyVaultUri string = ''
+
 var caeName = 'cae-${namePrefix}-${env}-${regionShort}'
 var consumptionProfile = [
   {
@@ -36,13 +63,6 @@ var dedicatedProfile = [
   }
 ]
 
-// Frontend is fronted by the App Gateway; backend/orchestrator are internal-only.
-var apps = [
-  'frontend'
-  'backend'
-  'orchestrator'
-]
-
 resource cae 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: caeName
   location: location
@@ -57,8 +77,63 @@ resource cae 'Microsoft.App/managedEnvironments@2024-03-01' = {
   }
 }
 
+var sharedEnv = [
+  { name: 'UAMI_CLIENT_ID', value: uamiClientId }
+  { name: 'FOUNDRY_ENDPOINT', value: foundryEndpoint }
+  { name: 'COSMOS_ACCOUNT_ENDPOINT', value: cosmosEndpoint }
+  { name: 'SEARCH_ENDPOINT', value: searchEndpoint }
+  { name: 'KEYVAULT_URI', value: keyVaultUri }
+  { name: 'CLAUDE_DEPLOYMENT', value: 'claude-opus-4-7' }
+  { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
+]
+
+var registries = empty(acrLoginServer) ? [] : [
+  {
+    server: acrLoginServer
+    identity: uamiId
+  }
+]
+
+// name/image/port/ingress/env per app; probes only where there is an HTTP surface.
+var apps = [
+  {
+    name: 'frontend'
+    image: placeholderImage
+    hasIngress: true
+    targetPort: 80
+    minReplicas: 1 // gateway backend probe needs a warm replica
+    env: []
+    probes: []
+  }
+  {
+    name: 'backend'
+    image: empty(backendImage) ? placeholderImage : backendImage
+    hasIngress: true
+    targetPort: empty(backendImage) ? 80 : 8080 // aspnet:8.0 default port
+    minReplicas: 0
+    env: sharedEnv
+    probes: empty(backendImage) ? [] : [
+      {
+        type: 'Readiness'
+        httpGet: { path: '/healthz', port: 8080 }
+        initialDelaySeconds: 5
+        periodSeconds: 10
+      }
+    ]
+  }
+  {
+    name: 'orchestrator'
+    image: empty(orchestratorImage) ? placeholderImage : orchestratorImage
+    hasIngress: empty(orchestratorImage) // placeholder needs ingress to be healthy; real worker has none
+    targetPort: 80
+    minReplicas: empty(orchestratorImage) ? 0 : 1 // change-feed processor must be running to dispatch
+    env: sharedEnv
+    probes: []
+  }
+]
+
 resource containerApps 'Microsoft.App/containerApps@2024-03-01' = [for app in apps: {
-  name: 'ca-${namePrefix}-${env}-${app}-${regionShort}'
+  name: 'ca-${namePrefix}-${env}-${app.name}-${regionShort}'
   location: location
   tags: tags
   identity: {
@@ -72,29 +147,29 @@ resource containerApps 'Microsoft.App/containerApps@2024-03-01' = [for app in ap
     workloadProfileName: 'Consumption'
     configuration: {
       activeRevisionsMode: 'Single'
-      ingress: {
+      ingress: app.hasIngress ? {
         external: false
-        targetPort: 80
+        targetPort: app.targetPort
         transport: 'auto'
-        // HTTP end-to-end for the placeholder (gateway → ACA over the private VNet).
-        // HTTPS end-to-end is a later step once a domain/cert exists (design Decision F).
-        allowInsecure: true
-      }
+        allowInsecure: true // HTTP end-to-end inside the private VNet; HTTPS deferred (Decision F)
+      } : null
+      registries: registries
     }
     template: {
       containers: [
         {
-          name: app
-          image: placeholderImage
+          name: app.name
+          image: app.image
           resources: {
-            cpu: json('0.25')
-            memory: '0.5Gi'
+            cpu: json('0.5')
+            memory: '1Gi'
           }
+          env: app.env
+          probes: app.probes
         }
       ]
       scale: {
-        // Frontend stays warm so the App Gateway backend is healthy; internal apps scale to zero.
-        minReplicas: app == 'frontend' ? 1 : 0
+        minReplicas: app.minReplicas
         maxReplicas: 2
       }
     }
@@ -106,3 +181,5 @@ output envStaticIp string = cae.properties.staticIp
 output envDefaultDomain string = cae.properties.defaultDomain
 output frontendFqdn string = containerApps[0].properties.configuration.ingress.fqdn
 output frontendAppName string = containerApps[0].name
+output backendAppName string = containerApps[1].name
+output orchestratorAppName string = containerApps[2].name

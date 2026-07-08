@@ -29,6 +29,12 @@ param deployGpt4o bool = false
 @description('Deploy the Claude Opus 4.7 reasoning model on Foundry (Anthropic, GlobalStandard). ON by default — the agent backend needs it.')
 param deployClaude bool = true
 
+@description('Backend API image (ACR path incl. tag). Empty = placeholder.')
+param backendImage string = ''
+
+@description('Orchestrator image (ACR path incl. tag). Empty = placeholder.')
+param orchestratorImage string = ''
+
 @description('Entra app-registration client id for Function App Easy Auth. Empty = auth OFF (first deploy); configure-auth.sh fills it in.')
 param authClientId string = ''
 
@@ -165,6 +171,15 @@ module compute 'modules/compute.bicep' = {
     acaSubnetId: network.outputs.acaSubnetId
     uamiId: security.outputs.uamiId
     includeDedicatedProfile: env == 'prod'
+    acrLoginServer: acr.outputs.acrLoginServer
+    backendImage: backendImage
+    orchestratorImage: orchestratorImage
+    uamiClientId: security.outputs.uamiClientId
+    foundryEndpoint: ai.outputs.foundryEndpoint
+    cosmosEndpoint: data.outputs.cosmosDocumentEndpoint
+    searchEndpoint: 'https://${ai.outputs.searchName}.search.windows.net'
+    keyVaultUri: security.outputs.keyVaultUri
+    appInsightsConnectionString: observability.outputs.appInsightsConnectionString
   }
 }
 
