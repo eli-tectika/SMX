@@ -15,7 +15,7 @@ param acaSubnetId string
 param uamiId string
 
 @description('Placeholder image until real app images exist; swapped via swap-images.sh.')
-param placeholderImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
+param placeholderImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 
 @description('Add a Dedicated (D4) workload profile (prod).')
 param includeDedicatedProfile bool = false
@@ -76,7 +76,9 @@ resource containerApps 'Microsoft.App/containerApps@2024-03-01' = [for app in ap
         external: false
         targetPort: 80
         transport: 'auto'
-        allowInsecure: false
+        // HTTP end-to-end for the placeholder (gateway → ACA over the private VNet).
+        // HTTPS end-to-end is a later step once a domain/cert exists (design Decision F).
+        allowInsecure: true
       }
     }
     template: {
@@ -91,7 +93,8 @@ resource containerApps 'Microsoft.App/containerApps@2024-03-01' = [for app in ap
         }
       ]
       scale: {
-        minReplicas: 0
+        // Frontend stays warm so the App Gateway backend is healthy; internal apps scale to zero.
+        minReplicas: app == 'frontend' ? 1 : 0
         maxReplicas: 2
       }
     }

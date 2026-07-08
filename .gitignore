@@ -11,3 +11,6 @@ infra/**/modules/*.json
 # not stored in git — large official PDFs + scraped text).
 Regulations 2/
 Regulations/
+
+# Claude code's internal files
+.claude/
