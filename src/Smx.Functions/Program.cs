@@ -19,6 +19,10 @@ using Smx.Functions.Reg.Config;
 using Smx.Functions.Reg.Data;
 using Smx.Functions.Reg.Ingestion;
 using Smx.Functions.Reg.Sourcing;
+using Smx.Functions.Reference.Config;
+using Smx.Functions.Reference.Data;
+using Smx.Functions.Reference.Ingestion;
+using Smx.Functions.Reference.Seeding;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
@@ -142,6 +146,22 @@ var host = new HostBuilder()
                 sp.GetRequiredService<RegRegistryProvider>(), regOpts,
                 sp.GetRequiredService<ILogger<RegNatEgressClient>>()));
         }
+        // ---- Reference-data subsystem (seed the compatibility/supplier knowledge stores) ----
+        var refOpts = ReferenceOptions.From(ctx.Configuration);
+        services.AddSingleton(refOpts);
+        services.AddSingleton<IReferenceStore>(sp =>
+            new CosmosReferenceStore(sp.GetRequiredService<CosmosClient>(), refOpts.CosmosDatabase));
+        services.AddSingleton<IReferenceSearchClient>(_ => new ReferenceSearchClient(
+            new SearchIndexClient(new Uri(opts.SearchEndpoint), cred, new SearchClientOptions
+            {
+                Serializer = new JsonObjectSerializer(new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
+            }),
+            refOpts.SearchIndex));
+        services.AddSingleton(sp => new ReferenceSeeder(
+            sp.GetRequiredService<IReferenceStore>(),
+            sp.GetRequiredService<IEmbedder>(),        // reused from the SDS registration
+            sp.GetRequiredService<IReferenceSearchClient>(),
+            refOpts));
     })
     .Build();
 
