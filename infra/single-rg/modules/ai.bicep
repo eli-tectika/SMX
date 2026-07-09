@@ -40,6 +40,18 @@ param claudeCapacity int = 1
 @description('Claude model version as listed by `az cognitiveservices model list` (empty = provider default, currently version 1).')
 param claudeModelVersion string = ''
 
+// Anthropic model-provider attestation — REQUIRED for Claude deployments; the RP uses it to
+// auto-accept the Anthropic Marketplace offer on the org's behalf. industry must be lowercase
+// from: technology|finance|healthcare|education|retail|manufacturing|government|media|other.
+@description('Legal organization name using Claude (marketplace attestation).')
+param claudeOrganizationName string = 'SMX'
+
+@description('Two-letter country code for the Claude attestation.')
+param claudeCountryCode string = 'IL'
+
+@description('Industry for the Claude attestation (lowercase, from the Azure-supported list).')
+param claudeIndustry string = 'technology'
+
 var searchName = 'srch-${namePrefix}-${env}-${uniqueSuffix}'
 var foundryName = 'aif-${namePrefix}-${env}-${uniqueSuffix}'
 
@@ -168,7 +180,7 @@ resource embedding 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01'
 // Claude Opus 4.7 (reasoning for the agent backend). Anthropic format, GlobalStandard SKU
 // (confirmed by `az cognitiveservices model list -l swedencentral`). Deployments on one account
 // must be serialized — chain dependsOn embedding (which chains gpt-4o).
-resource claude 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = if (deployClaude) {
+resource claude 'Microsoft.CognitiveServices/accounts/deployments@2025-10-01-preview' = if (deployClaude) {
   parent: foundry
   name: 'claude-opus-4-7'
   sku: {
@@ -183,6 +195,12 @@ resource claude 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = 
       format: 'Anthropic'
       name: 'claude-opus-4-7'
     }, empty(claudeModelVersion) ? {} : { version: claudeModelVersion })
+    // REQUIRED for Anthropic deployments (auto-signs the Marketplace offer).
+    modelProviderData: {
+      organizationName: claudeOrganizationName
+      countryCode: claudeCountryCode
+      industry: claudeIndustry
+    }
   }
 }
 
