@@ -24,7 +24,9 @@ builder.Services.AddSingleton(opts);
 builder.Services.AddSingleton(credential);
 builder.Services.AddSingleton(new CosmosClient(opts.CosmosAccountEndpoint, credential, new CosmosClientOptions
 {
-    SerializerOptions = new CosmosSerializationOptions { PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase },
+    // System.Text.Json (not the SDK's default Newtonsoft) — required to round-trip JsonElement
+    // (ProjectDoc.Payload + the ChangeFeedProcessor<JsonElement>). See SystemTextJsonCosmosSerializer.
+    Serializer = new SystemTextJsonCosmosSerializer(Json.Options),
 }));
 builder.Services.AddSingleton<IRecordStore>(sp => new CosmosRecordStore(
     sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.RecordContainer)));

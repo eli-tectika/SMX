@@ -1,4 +1,5 @@
 using Anthropic.Foundry;
+using Azure.AI.OpenAI;
 using Azure.Core;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.Extensions.AI;
@@ -6,9 +7,13 @@ using Microsoft.Extensions.AI;
 namespace Smx.Infrastructure;
 
 /// <summary>
-/// Builds the <see cref="IChatClient"/> that MAF agents consume: Anthropic C# SDK Foundry client
-/// (<see cref="AnthropicFoundryClient"/>) → <c>AsIChatClient(deployment)</c> → function-invocation
-/// pipeline.
+/// Builds the <see cref="IChatClient"/> that MAF agents consume. Two providers, selected by
+/// <see cref="BackendOptions.ModelProvider"/>:
+///   • "anthropic" (default, the SOW target) — Anthropic C# SDK Foundry client
+///     (<see cref="AnthropicFoundryClient"/>) → <c>AsIChatClient(deployment)</c>.
+///   • "openai" — <see cref="AzureOpenAIClient"/> against the same Foundry account, a stand-in used
+///     while Claude quota is unavailable. MAF agents are model-agnostic; only this construction differs.
+/// Both wrap the same function-invocation pipeline.
 ///
 /// Credential resolution (secretless-first, private-by-default):
 ///   (1) Entra bearer via the injected <see cref="TokenCredential"/>
@@ -26,6 +31,9 @@ public static class FoundryChatClientFactory
 
     public static async Task<IChatClient> CreateAsync(BackendOptions opts, TokenCredential credential, CancellationToken ct = default)
     {
+        if (opts.ModelProvider.Equals("openai", StringComparison.OrdinalIgnoreCase))
+            return CreateOpenAi(opts, credential);
+
         if (string.IsNullOrEmpty(opts.FoundryEndpoint))
             throw new InvalidOperationException("FOUNDRY_ENDPOINT missing — required for the agent host");
 
@@ -60,6 +68,22 @@ public static class FoundryChatClientFactory
         var client = new AnthropicFoundryClient(credentials) { BaseUrl = opts.AnthropicBaseUrl };
 
         return client.AsIChatClient(opts.ClaudeDeployment)
+            .AsBuilder()
+            .UseFunctionInvocation()
+            .Build();
+    }
+
+    /// Azure OpenAI on the Foundry AIServices account — the "openai" provider (Claude-quota stand-in).
+    /// Entra-only: the workload identity needs the Cognitive Services OpenAI User role on the account.
+    private static IChatClient CreateOpenAi(BackendOptions opts, TokenCredential credential)
+    {
+        var endpoint = opts.ResolvedOpenAiEndpoint;
+        if (string.IsNullOrEmpty(endpoint))
+            throw new InvalidOperationException("OPENAI_ENDPOINT (or FOUNDRY_ENDPOINT) missing — required for the OpenAI provider");
+
+        var azure = new AzureOpenAIClient(new Uri(endpoint), credential);
+        return azure.GetChatClient(opts.OpenAiDeployment)
+            .AsIChatClient()
             .AsBuilder()
             .UseFunctionInvocation()
             .Build();
