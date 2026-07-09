@@ -1,0 +1,25 @@
+{
+  "entries": [
+    {
+      "tag": "XRF",
+      "text": "Metallic inks on printed labels raise the Ti background enough to mask Ti-adjacent lines. Ask about ink chemistry at intake.",
+      "scope": "any printed label",
+      "source": "MUFE clear bottle · operator, 2026-03-14",
+      "confidence": 0.9
+    },
+    {
+      "tag": "material",
+      "text": "Recycled PET carries a variable Sb background from the polymerization catalyst. Treat Sb as conditional on any rPET component.",
+      "scope": "rPET",
+      "source": "Dior serum · operator, 2026-05-02",
+      "confidence": 0.85
+    },
+    {
+      "tag": "regulatory",
+      "text": "Barium salt entries in Annex II hinge on solubility class. Route every Ba candidate to the R.E. rather than auto-clearing it.",
+      "scope": "EU cosmetics, Ba",
+      "source": "Guerlain flacon · R.E. determination, 2025-11-20",
+      "confidence": 1.0
+    }
+  ]
+}

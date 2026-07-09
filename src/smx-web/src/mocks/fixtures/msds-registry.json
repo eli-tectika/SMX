@@ -1,0 +1,29 @@
+{
+  "blocked": ["Gd neodecanoate"],
+  "entries": [
+    {
+      "substance": "Y 2-ethylhexanoate",
+      "supplier": "Sigma-Aldrich",
+      "version": "3.1",
+      "date": "2026-02-11",
+      "status": "current",
+      "projects": ["MUFE clear bottle", "Dior serum"]
+    },
+    {
+      "substance": "Gd neodecanoate",
+      "supplier": "American Elements",
+      "version": "—",
+      "date": "—",
+      "status": "missing",
+      "projects": ["MUFE clear bottle"]
+    },
+    {
+      "substance": "La neodecanoate",
+      "supplier": "Strem",
+      "version": "2.4",
+      "date": "2024-08-30",
+      "status": "expired",
+      "projects": ["Dior serum"]
+    }
+  ]
+}

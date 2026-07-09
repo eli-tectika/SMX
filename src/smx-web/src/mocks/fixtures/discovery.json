@@ -1,0 +1,53 @@
+{
+  "components": ["bottle", "sticker", "lid", "liquid"],
+  "queries": ["oil-soluble carboxylates", "no cosmetics restriction", "catalog-available"],
+  "tiers": [
+    {
+      "tier": "A",
+      "candidates": [
+        {
+          "element": "Y",
+          "form": "2-ethylhexanoate",
+          "cas": "14832-90-7",
+          "metalPercent": 12.0,
+          "why": "Clean XRF background on every component, no cosmetics restriction, two independent suppliers.",
+          "sources": ["Sigma-Aldrich", "Strem"]
+        },
+        {
+          "element": "Gd",
+          "form": "neodecanoate",
+          "cas": "68583-78-8",
+          "metalPercent": 20.5,
+          "why": "Clean on bottle and liquid; oil-soluble at the target loading.",
+          "sources": ["American Elements"]
+        }
+      ]
+    },
+    {
+      "tier": "B",
+      "candidates": [
+        {
+          "element": "Ba",
+          "form": "2-ethylhexanoate",
+          "cas": "2457-01-4",
+          "metalPercent": 24.0,
+          "why": "Conditional on lid and liquid — weak background signal; application limit in EU leave-on.",
+          "sources": ["Strem"]
+        }
+      ]
+    },
+    {
+      "tier": "C",
+      "candidates": [
+        {
+          "element": "Cu",
+          "form": "naphthenate",
+          "cas": "1338-02-9",
+          "metalPercent": 8.0,
+          "why": "Present in the background of all four components — excluded.",
+          "sources": ["Sigma-Aldrich"]
+        }
+      ]
+    }
+  ]
+}

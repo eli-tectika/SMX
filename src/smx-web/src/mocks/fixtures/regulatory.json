@@ -1,0 +1,166 @@
+{
+  "corpusSyncedAt": "2026-07-01",
+  "reviewed": 3,
+  "total": 4,
+  "substances": [
+    {
+      "element": "Y",
+      "form": "2-ethylhexanoate",
+      "cas": "14832-90-7",
+      "elementGate": "Pass",
+      "application": "Pass",
+      "conclusion": "Cleared",
+      "reviewed": true,
+      "evidence": {
+        "elementGate": [
+          {
+            "check": "EU Cosmetics Regulation Annex II (prohibited)",
+            "result": "Not listed",
+            "source": "EC 1223/2009",
+            "reference": "Annex II",
+            "retrievedAt": "2026-07-01"
+          },
+          {
+            "check": "ECHA SVHC candidate list",
+            "result": "Not listed",
+            "source": "ECHA",
+            "reference": "candidate-list",
+            "retrievedAt": "2026-07-01"
+          }
+        ],
+        "application": [
+          {
+            "check": "Leave-on cosmetic, EU + US",
+            "result": "No restriction",
+            "source": "EC 1223/2009",
+            "reference": "Annex III",
+            "retrievedAt": "2026-07-01"
+          }
+        ],
+        "hazard": [
+          {
+            "check": "CLP classification",
+            "result": "Not classified",
+            "source": "ECHA C&L",
+            "reference": "14832-90-7",
+            "retrievedAt": "2026-07-01"
+          }
+        ]
+      }
+    },
+    {
+      "element": "Gd",
+      "form": "neodecanoate",
+      "cas": "68583-78-8",
+      "elementGate": "Pass",
+      "application": "Conditional",
+      "conclusion": "Cleared with condition",
+      "reviewed": true,
+      "evidence": {
+        "elementGate": [
+          {
+            "check": "EU Cosmetics Regulation Annex II",
+            "result": "Not listed",
+            "source": "EC 1223/2009",
+            "reference": "Annex II",
+            "retrievedAt": "2026-07-01"
+          }
+        ],
+        "application": [
+          {
+            "check": "Leave-on cosmetic, EU",
+            "result": "Permitted below 0.5% w/w",
+            "source": "EC 1223/2009",
+            "reference": "Annex III #142",
+            "retrievedAt": "2026-07-01"
+          }
+        ],
+        "hazard": [
+          {
+            "check": "CLP classification",
+            "result": "Skin Irrit. 2",
+            "source": "ECHA C&L",
+            "reference": "68583-78-8",
+            "retrievedAt": "2026-07-01"
+          }
+        ]
+      }
+    },
+    {
+      "element": "Ba",
+      "form": "2-ethylhexanoate",
+      "cas": "2457-01-4",
+      "elementGate": "Pass",
+      "application": "NeedsReview",
+      "conclusion": "Awaiting R.E. determination",
+      "reviewed": true,
+      "evidence": {
+        "elementGate": [
+          {
+            "check": "EU Cosmetics Regulation Annex II",
+            "result": "Soluble barium salts listed; this salt's solubility is unresolved",
+            "source": "EC 1223/2009",
+            "reference": "Annex II #189",
+            "retrievedAt": "2026-07-01"
+          }
+        ],
+        "application": [
+          {
+            "check": "Leave-on cosmetic, EU",
+            "result": "Depends on solubility classification",
+            "source": "EC 1223/2009",
+            "reference": "Annex II #189",
+            "retrievedAt": "2026-07-01"
+          }
+        ],
+        "hazard": [
+          {
+            "check": "CLP classification",
+            "result": "Acute Tox. 4",
+            "source": "ECHA C&L",
+            "reference": "2457-01-4",
+            "retrievedAt": "2026-07-01"
+          }
+        ]
+      }
+    },
+    {
+      "element": "Pb",
+      "form": "naphthenate",
+      "cas": "61790-14-5",
+      "elementGate": "Fail",
+      "application": "Fail",
+      "conclusion": "Excluded product-wide",
+      "reviewed": false,
+      "evidence": {
+        "elementGate": [
+          {
+            "check": "EU Cosmetics Regulation Annex II (prohibited)",
+            "result": "Lead and its compounds are prohibited",
+            "source": "EC 1223/2009",
+            "reference": "Annex II #289",
+            "retrievedAt": "2026-07-01"
+          }
+        ],
+        "application": [
+          {
+            "check": "Any application",
+            "result": "Barred by the product-wide element gate",
+            "source": "EC 1223/2009",
+            "reference": "Annex II #289",
+            "retrievedAt": "2026-07-01"
+          }
+        ],
+        "hazard": [
+          {
+            "check": "CLP classification",
+            "result": "Repr. 1A, STOT RE 2",
+            "source": "ECHA C&L",
+            "reference": "61790-14-5",
+            "retrievedAt": "2026-07-01"
+          }
+        ]
+      }
+    }
+  ]
+}

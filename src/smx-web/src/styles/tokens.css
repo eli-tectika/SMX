@@ -1,0 +1,32 @@
+/* Design-token source of truth. Copied verbatim from the :root block shared by
+   project_files/mockups_{1,2,3}_*.html. Do not drift from those files. */
+:root {
+  --text-primary: #18191b;
+  --text-secondary: #55575c;
+  --text-muted: #8b8d93;
+  --border: #e6e7e9;
+  --border-strong: #d0d2d6;
+  --radius: 8px;
+  --surface-1: #eef0f2;
+  --surface-2: #f8f9fa;
+  --bg-accent: #e9f0fe;
+  --text-accent: #1b56d6;
+  --border-accent: #accbf6;
+  --bg-success: #e8f4e4;
+  --text-success: #2c6a1d;
+  --border-success: #b7ddac;
+  --bg-danger: #fbeaea;
+  --text-danger: #a52a2a;
+  --border-danger: #eebfbf;
+  --bg-warning: #fdf2e0;
+  --text-warning: #8a5910;
+  --border-warning: #edd6a4;
+  --bg-pro: #eeecfb;
+  --text-pro: #463cae;
+  --border-pro: #c6bff1;
+  --bg-teal: #e1f2f0;
+  --text-teal: #0f6b62;
+  --border-teal: #a9dcd6;
+
+  --page-bg: #fbfbfc;
+}
