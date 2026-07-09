@@ -1,0 +1,341 @@
+/* Shared component classes lifted from the mockups. Keep selectors and metrics
+   aligned with project_files/mockups_*.html — those files are the layout reference. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: var(--text-primary);
+  background: var(--page-bg);
+  margin: 0;
+  line-height: 1.4;
+  font-size: 13px;
+}
+
+a {
+  color: var(--text-accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font: inherit;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+/* ---- layout -------------------------------------------------------------- */
+
+.wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 24px 48px;
+}
+
+.screen {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  margin: 0 0 20px;
+  background: #fff;
+}
+
+.cap {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 14px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+.cap b {
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.region {
+  border: 0.5px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+.secondary {
+  color: var(--text-secondary);
+}
+.tiny {
+  font-size: 11px;
+}
+.small {
+  font-size: 12px;
+}
+
+/* ---- app nav ------------------------------------------------------------- */
+
+.appnav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 0.5px solid var(--border);
+  padding: 10px 24px;
+  background: #fff;
+}
+
+.tab {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 5px 2px;
+  border-bottom: 1.5px solid transparent;
+}
+.tab.on {
+  color: var(--text-primary);
+  font-weight: 500;
+  border-bottom-color: var(--text-accent);
+}
+.tab:hover {
+  text-decoration: none;
+  color: var(--text-primary);
+}
+
+/* ---- stage spine --------------------------------------------------------- */
+
+.spine {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 14px;
+}
+
+.pill {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: center;
+  font-size: 11px;
+  padding: 6px 4px;
+  border: 0.5px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  background: #fff;
+  cursor: pointer;
+}
+.pill.on {
+  border-color: var(--border-accent);
+  background: var(--bg-accent);
+  color: var(--text-accent);
+}
+.pill.gate {
+  background: var(--bg-warning);
+  border-color: var(--border-warning);
+  color: var(--text-warning);
+}
+.pill.done {
+  color: var(--text-success);
+}
+.pill.fail {
+  background: var(--bg-danger);
+  border-color: var(--border-danger);
+  color: var(--text-danger);
+}
+.pill.mut {
+  opacity: 0.5;
+}
+
+/* ---- verdict chips (V / L / X and Pass / Fail) --------------------------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.v {
+  background: var(--bg-success);
+  color: var(--text-success);
+}
+.l {
+  background: var(--bg-pro);
+  color: var(--text-pro);
+}
+.x {
+  background: var(--bg-danger);
+  color: var(--text-danger);
+}
+.n {
+  background: var(--bg-warning);
+  color: var(--text-warning);
+}
+
+/* ---- tables -------------------------------------------------------------- */
+
+.mx {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.mx th,
+.mx td {
+  border: 0.5px solid var(--border);
+  padding: 7px 9px;
+  text-align: left;
+  vertical-align: middle;
+}
+.mx th {
+  background: var(--surface-2);
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.mx tbody tr:hover {
+  background: var(--surface-2);
+}
+
+/* ---- chat bubbles / research trail --------------------------------------- */
+
+.bub {
+  font-size: 13px;
+  padding: 8px 11px;
+  border-radius: 11px;
+  margin: 0 0 7px;
+  max-width: 90%;
+  line-height: 1.45;
+}
+.ba {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+.bu {
+  background: var(--bg-accent);
+  color: var(--text-accent);
+  margin-left: auto;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 5px 0;
+}
+
+.src {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 0.5px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 6px;
+  margin: 3px 4px 0 0;
+}
+
+.qr {
+  font-size: 12px;
+  border: 0.5px solid var(--border-strong);
+  background: transparent;
+  border-radius: 16px;
+  padding: 4px 12px;
+  margin: 2px 4px 0 0;
+  color: var(--text-secondary);
+}
+
+.name {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 10px 0 3px;
+}
+
+/* ---- forms --------------------------------------------------------------- */
+
+input[type='text'],
+select {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 8px;
+  border: 0.5px solid var(--border-strong);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text-primary);
+  width: 100%;
+}
+input[type='text']:focus,
+select:focus {
+  outline: 2px solid var(--border-accent);
+  outline-offset: -1px;
+}
+
+.btn {
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  border: 0.5px solid var(--border-strong);
+  background: #fff;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.btn.primary {
+  background: var(--text-accent);
+  border-color: var(--text-accent);
+  color: #fff;
+}
+.btn.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- banners ------------------------------------------------------------- */
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  margin: 0 0 14px;
+  border: 0.5px solid;
+}
+.banner.warn {
+  background: var(--bg-warning);
+  border-color: var(--border-warning);
+  color: var(--text-warning);
+}
+.banner.danger {
+  background: var(--bg-danger);
+  border-color: var(--border-danger);
+  color: var(--text-danger);
+}
+.banner.info {
+  background: var(--bg-accent);
+  border-color: var(--border-accent);
+  color: var(--text-accent);
+}

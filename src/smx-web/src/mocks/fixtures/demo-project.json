@@ -1,0 +1,10 @@
+{
+  "projectId": "proj-demo",
+  "client": "LVMH",
+  "product": "MUFE clear bottle (demo)",
+  "stages": {
+    "intake": { "status": "done", "attempts": 1 },
+    "screening": { "status": "done", "attempts": 2 },
+    "matrix": { "status": "done", "attempts": 1 }
+  }
+}

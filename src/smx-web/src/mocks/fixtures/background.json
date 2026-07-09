@@ -1,0 +1,43 @@
+{
+  "components": ["bottle", "sticker", "lid", "liquid"],
+  "rows": [
+    {
+      "element": "Y",
+      "line": "Kα",
+      "elementStatus": "open",
+      "verdicts": ["V", "V", "V", "V"]
+    },
+    {
+      "element": "Ba",
+      "line": "Lα",
+      "elementStatus": "open",
+      "verdicts": ["V", "X", "L", "L"],
+      "flags": { "lid": "Application limit — leave-on cosmetic, EU" }
+    },
+    {
+      "element": "Cu",
+      "line": "Kα",
+      "elementStatus": "open",
+      "verdicts": ["X", "X", "X", "X"]
+    },
+    {
+      "element": "Gd",
+      "line": "Lα",
+      "elementStatus": "open",
+      "verdicts": ["V", "V", "L", "V"]
+    },
+    {
+      "element": "Pb",
+      "line": "Lβ",
+      "elementStatus": "locked",
+      "lockReason": "Element gate — banned product-wide (EC 1223/2009 Annex II)",
+      "verdicts": ["X", "X", "X", "X"]
+    }
+  ],
+  "pools": [
+    { "component": "bottle", "strong": ["Y", "Gd"], "conditional": [] },
+    { "component": "sticker", "strong": ["Y"], "conditional": ["Gd"] },
+    { "component": "lid", "strong": ["Y"], "conditional": ["Ba", "Gd"] },
+    { "component": "liquid", "strong": ["Y", "Gd"], "conditional": ["Ba"] }
+  ]
+}

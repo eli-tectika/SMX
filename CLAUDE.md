@@ -139,6 +139,21 @@ The first application code now lives under `src/` (this is no longer a pure-infr
   - Deferred follow-ons: the XRF Lines mapper, the Compatibility Matrix rollup and Element×Form coverage
     matrix, the supplementary supplier lists, RD7 class/pair expansion, and a few unresolved source citation
     tokens (e.g. a rule whose `Key Ref(s)` cell is literally `-`).
+- **Frontend** (`src/smx-web`, React + Vite + TypeScript) — the single-operator UI. See
+  [`src/smx-web/README.md`](src/smx-web/README.md).
+  - `npm install && npm run dev` (`:5173`, proxies `/api` → the backend on `:5169`); `npm run build`; `npm test`.
+  - Styling comes from the `:root` design tokens shared by the `project_files/mockups_*.html` files —
+    treat those as the token source of truth and keep `src/styles/tokens.css` in step with them.
+  - Only three screens are backed by real endpoints (intake form, stage spine, compatibility matrix).
+    Every other journey stage and cross-project surface renders fixture data behind a **`MockBadge`**.
+    That badge is load-bearing, not decoration: a fabricated verdict must never be able to pass for an
+    agent-produced one. Do not remove it from a screen until that screen reads from a real endpoint.
+    For the same reason the gate controls and the agent composer are disabled — gates are
+    operator-signed records and no endpoint exists to sign one.
+  - The backend has **no CORS policy and needs none**: Vite's proxy (dev) and App Gateway's `apiPathRule`
+    (Azure) both make `/api/*` same-origin.
+  - Deploy: `docker build` then `infra/scripts/swap-images.sh <env> frontend <image>` — the `frontend`
+    Container App already exists in Bicep with a placeholder image; no infra change is needed.
 - **Agent backend** (`src/Smx.Backend.sln`: `Smx.Domain`, `Smx.Infrastructure`, `Smx.Backend` API,
   `Smx.Orchestrator` agent host; deployed as the `backend` + `orchestrator` Container Apps) — the SMX
   reasoning layer: self-managed **Microsoft Agent Framework** agents on **Claude Opus 4.7** (Foundry,

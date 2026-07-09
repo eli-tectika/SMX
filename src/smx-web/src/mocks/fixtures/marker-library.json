@@ -1,0 +1,28 @@
+{
+  "entries": [
+    {
+      "code": "L-1",
+      "composition": "Y : Gd = 1 : 1.5",
+      "validatedFor": ["PET bottle", "paper label"],
+      "source": "MUFE clear bottle · 2026-03",
+      "status": "approved",
+      "reuseCount": 3
+    },
+    {
+      "code": "L-2",
+      "composition": "Y : Gd : La = 1 : 1.5 : 0.8",
+      "validatedFor": ["PP lid", "aqueous liquid"],
+      "source": "Dior serum · 2026-05",
+      "status": "approved",
+      "reuseCount": 1
+    },
+    {
+      "code": "L-7",
+      "composition": "Zr : Nb = 1 : 2",
+      "validatedFor": ["glass"],
+      "source": "Guerlain flacon · 2025-11",
+      "status": "retired",
+      "reuseCount": 0
+    }
+  ]
+}

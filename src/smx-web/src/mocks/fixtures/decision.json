@@ -1,0 +1,29 @@
+{
+  "vpApproved": false,
+  "rows": [
+    {
+      "component": "bottle",
+      "code": "L-1",
+      "ppm": 18,
+      "clears": { "xrf": true, "compatibility": true, "regulatory": true, "availability": true }
+    },
+    {
+      "component": "sticker",
+      "code": "L-1",
+      "ppm": 22,
+      "clears": { "xrf": true, "compatibility": true, "regulatory": true, "availability": true }
+    },
+    {
+      "component": "lid",
+      "code": "L-2",
+      "ppm": 16,
+      "clears": { "xrf": true, "compatibility": true, "regulatory": false, "availability": true }
+    },
+    {
+      "component": "liquid",
+      "code": "L-2",
+      "ppm": 20,
+      "clears": { "xrf": true, "compatibility": true, "regulatory": true, "availability": false }
+    }
+  ]
+}
