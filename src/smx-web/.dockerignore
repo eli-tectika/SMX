@@ -1,0 +1,9 @@
+# Host node_modules carry platform-native binaries (esbuild, rollup) built for the
+# host OS; copying them over the ones `npm ci` builds for Alpine breaks the build.
+node_modules
+dist
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore
