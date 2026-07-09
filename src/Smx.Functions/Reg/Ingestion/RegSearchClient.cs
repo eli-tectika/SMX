@@ -48,10 +48,18 @@ public sealed class RegSearchClient : IRegSearchClient
         await _indexClient.CreateOrUpdateIndexAsync(index, cancellationToken: ct);
     }
 
+    // AI Search caps a request at ~16 MB; a 3072-dim vector is ~12 KB, so a large doc's chunks must be pushed
+    // in bounded batches or the whole upload fails with HTTP 413 (seen on large regulatory texts).
+    private const int PushBatch = 100;
+
     public async Task PushAsync(IReadOnlyList<GoldChunk> chunks, CancellationToken ct)
     {
         if (chunks.Count == 0) return;
         var search = _indexClient.GetSearchClient(_indexName);
-        await search.MergeOrUploadDocumentsAsync(chunks, cancellationToken: ct);
+        for (var i = 0; i < chunks.Count; i += PushBatch)
+        {
+            var slice = chunks.Skip(i).Take(PushBatch).ToList();
+            await search.MergeOrUploadDocumentsAsync(slice, cancellationToken: ct);
+        }
     }
 }
