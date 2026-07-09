@@ -73,6 +73,9 @@ public class ReferenceSeederTests
         Assert.Equal(1, store.Count("ref-suppliers"));
         Assert.Equal(1, store.Count("ref-catalog"));
         Assert.Equal(2, search.Pushed.Count);        // pushed both runs, but same id -> merge/upload upsert
-        Assert.Equal("chunk|rule|Zr|gold-solubility", search.Pushed[1].Id);
+        // Search keys must be Azure-AI-Search-safe (letters, digits, _ - =); the natural '|'-laden id is transformed.
+        Assert.Matches("^[A-Za-z0-9_=-]+$", search.Pushed[1].Id);
+        Assert.StartsWith("chunk-rule-zr-gold-solubility", search.Pushed[1].Id);   // derived from the natural id
+        Assert.Equal(search.Pushed[0].Id, search.Pushed[1].Id);   // deterministic across reseeds (idempotent upsert)
     }
 }

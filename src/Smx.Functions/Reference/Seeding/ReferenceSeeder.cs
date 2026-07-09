@@ -34,7 +34,7 @@ public sealed class ReferenceSeeder
         {
             var vectors = await _embedder.EmbedAsync(data.Chunks.Select(c => c.Content).ToList(), ct);
             var chunks = data.Chunks.Select((c, i) => new ReferenceChunk(
-                c.Id, c.Content, vectors[i], c.Element, c.Substrate, c.Dimension, c.Verdict,
+                ReferenceKey.SearchKey(c.Id), c.Content, vectors[i], c.Element, c.Substrate, c.Dimension, c.Verdict,
                 c.RefIds, c.SourceTitle, c.Doi, c.Url, c.Sheet, c.Dataset)).ToList();
             await _search.PushAsync(chunks, ct);
         }

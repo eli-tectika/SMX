@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Smx.Functions.Reference.Domain;
@@ -22,6 +24,19 @@ public static class ReferenceKey
 
     public static string DocId(string docType, string element, string discriminator)
         => $"{docType}|{element.Trim()}|{Slug(discriminator)}";
+
+    /// <summary>
+    /// Azure AI Search document keys may only contain letters, digits, '_', '-', '='.
+    /// Natural ids (e.g. "chunk|rule|Toxic: As, Cd|safety-all") are not key-safe, so derive a
+    /// safe, deterministic, collision-resistant key: the slug plus a short hash of the raw id.
+    /// </summary>
+    public static string SearchKey(string id)
+    {
+        var slug = Slug(id);
+        if (slug.Length > 128) slug = slug[..128].Trim('-');
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id))).ToLowerInvariant()[..10];
+        return slug.Length == 0 ? hash : $"{slug}-{hash}";
+    }
 }
 
 // ---- ref-compatibility container (partition: /element) ----
