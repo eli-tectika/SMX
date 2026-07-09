@@ -11,14 +11,20 @@ param tags object
 @description('Resource ID of the App Gateway dedicated subnet.')
 param agwSubnetId string
 
-@description('ACA environment internal static IP (backend target).')
+@description('ACA environment internal static IP — target of the private DNS A records that resolve the app FQDNs.')
 param acaStaticIp string
 
-@description('Frontend app internal FQDN — backend host header + ACA ingress routing + probe host.')
+@description('ACA environment default domain (e.g. <token>.<region>.azurecontainerapps.io) — names the private DNS zone.')
+param acaDefaultDomain string
+
+@description('Frontend app internal FQDN — default-route backend target + probe host (pick-host-from-backend).')
 param frontendFqdn string
 
-@description('Backend API app internal FQDN — host header for the /api/* path rule + its probe host.')
+@description('Backend API app internal FQDN — /api/* backend target + probe host (pick-host-from-backend).')
 param backendFqdn string
+
+@description('VNets to link the ACA private DNS zone to so the gateway (and spoke) resolve the app FQDNs. Each item: { name: string, vnetId: string }.')
+param dnsVnetLinks array
 
 @allowed(['Standard_v2', 'WAF_v2'])
 @description('Gateway SKU: Standard_v2 (dev) or WAF_v2 (prod, prevention).')
@@ -30,15 +36,53 @@ var gwId = resourceId('Microsoft.Network/applicationGateways', gwName)
 
 var feIpName = 'appGwPublicFrontendIp'
 var fePortName = 'port80'
-var poolName = 'acaBackendPool'
+var poolName = 'acaBackendPool'        // default route → frontend app FQDN
+var apiPoolName = 'acaApiBackendPool'  // /api/* → backend API app FQDN
 var httpSettingsName = 'acaHttpSettings'
+var apiHttpSettingsName = 'acaApiHttpSettings'
 var listenerName = 'httpListener'
 var ruleName = 'httpRule'
 var probeName = 'acaProbe'
-// Backend API (/api/*) shares the ACA static IP; differentiated by Host header + its own probe.
-var apiHttpSettingsName = 'acaApiHttpSettings'
 var apiProbeName = 'acaApiProbe'
 var pathMapName = 'acaPathMap'
+
+// --- Private DNS zone: resolve the ACA app FQDNs for the gateway ---
+// An internal ACA environment publishes no public DNS. The App Gateway must reach the apps by
+// their ingress FQDN (multitenant-backend routing: envoy dispatches on the Host header, and a raw
+// static-IP backend returns "Azure Container App - Unavailable"). This zone resolves those FQDNs
+// to the environment static IP. The apps use VNet-limited ingress (external:true on an internal
+// env), so the gateway targets the apex form (<app>.<defaultDomain>) — the '*' record. '@' and
+// '*.internal' are kept for completeness (env apex + any future env-internal-only FQDNs).
+resource acaDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name: acaDefaultDomain
+  location: 'global'
+  tags: tags
+}
+
+resource acaDnsRecords 'Microsoft.Network/privateDnsZones/A@2020-06-01' = [for rec in ['*', '@', '*.internal']: {
+  parent: acaDnsZone
+  name: rec
+  properties: {
+    ttl: 3600
+    aRecords: [
+      {
+        ipv4Address: acaStaticIp
+      }
+    ]
+  }
+}]
+
+resource acaDnsLinks 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = [for link in dnsVnetLinks: {
+  parent: acaDnsZone
+  name: 'link-${link.name}'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: link.vnetId
+    }
+  }
+}]
 
 resource pip 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
   name: pipName
@@ -56,6 +100,10 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
   name: gwName
   location: location
   tags: tags
+  // The gateway probes the app FQDNs on create; the private DNS links must exist first.
+  dependsOn: [
+    acaDnsLinks
+  ]
   properties: {
     sku: {
       name: gatewaySku
@@ -96,13 +144,26 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
         }
       }
     ]
+    // FQDN-based backends (not the static IP): the gateway resolves each app's ingress FQDN via the
+    // private DNS zone above, and — with pickHostNameFromBackendAddress — sends that FQDN as the Host
+    // header so ACA's envoy routes to the right app.
     backendAddressPools: [
       {
         name: poolName
         properties: {
           backendAddresses: [
             {
-              ipAddress: acaStaticIp
+              fqdn: frontendFqdn
+            }
+          ]
+        }
+      }
+      {
+        name: apiPoolName
+        properties: {
+          backendAddresses: [
+            {
+              fqdn: backendFqdn
             }
           ]
         }
@@ -113,12 +174,11 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
         name: probeName
         properties: {
           protocol: 'Http'
-          host: frontendFqdn
+          pickHostNameFromBackendHttpSettings: true
           path: '/'
           interval: 30
           timeout: 30
           unhealthyThreshold: 3
-          pickHostNameFromBackendHttpSettings: false
           match: {
             statusCodes: [
               '200-399'
@@ -130,12 +190,11 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
         name: apiProbeName
         properties: {
           protocol: 'Http'
-          host: backendFqdn
+          pickHostNameFromBackendHttpSettings: true
           path: '/api/healthz' // backend serves under PATH_BASE=/api
           interval: 30
           timeout: 30
           unhealthyThreshold: 3
-          pickHostNameFromBackendHttpSettings: false
           match: {
             statusCodes: [
               '200-399'
@@ -151,8 +210,7 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
           port: 80
           protocol: 'Http'
           cookieBasedAffinity: 'Disabled'
-          pickHostNameFromBackendAddress: false
-          hostName: frontendFqdn
+          pickHostNameFromBackendAddress: true // Host header = the frontend FQDN in the pool
           requestTimeout: 30
           probe: {
             id: '${gwId}/probes/${probeName}'
@@ -165,8 +223,7 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
           port: 80
           protocol: 'Http'
           cookieBasedAffinity: 'Disabled'
-          pickHostNameFromBackendAddress: false
-          hostName: backendFqdn
+          pickHostNameFromBackendAddress: true // Host header = the backend FQDN in the pool
           requestTimeout: 120 // agent runs can be slow; allow a generous backend timeout
           probe: {
             id: '${gwId}/probes/${apiProbeName}'
@@ -206,9 +263,9 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
                 paths: [
                   '/api/*'
                 ]
-                // same ACA static IP, but the backend Host header routes to the API app
+                // /api/* → backend API app (its own FQDN pool + Host header)
                 backendAddressPool: {
-                  id: '${gwId}/backendAddressPools/${poolName}'
+                  id: '${gwId}/backendAddressPools/${apiPoolName}'
                 }
                 backendHttpSettings: {
                   id: '${gwId}/backendHttpSettingsCollection/${apiHttpSettingsName}'

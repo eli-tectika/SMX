@@ -1,0 +1,64 @@
+# CI for the SMX repo: .NET build+test and Bicep validation on every push/PR,
+# plus an infra what-if preview on PRs when Azure OIDC repo variables are configured.
+# Deploys remain script-based (infra/scripts/deploy.sh) — see infra/README.md.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dotnet:
+    name: Build & test (.NET)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          # net8.0 projects (RollForward=Major) + the net10.0 backend test project.
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Test SDS/Reg/Reference functions
+        run: dotnet test src/Smx.Functions.sln --nologo
+      - name: Test agent backend
+        run: dotnet test src/Smx.Backend.sln --nologo
+
+  bicep:
+    name: Validate Bicep (both variants)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile multi-RG variant
+        run: az bicep build --file infra/main.bicep --stdout > /dev/null
+      - name: Compile single-RG variant
+        run: az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
+
+  whatif:
+    name: Infra what-if preview (dev)
+    # Runs only on PRs and only when the Azure OIDC identifiers are configured as
+    # repository *variables* (they are not secrets): AZURE_CLIENT_ID, AZURE_TENANT_ID,
+    # AZURE_SUBSCRIPTION_ID — a federated credential for this repo must exist on the app.
+    if: github.event_name == 'pull_request' && vars.AZURE_CLIENT_ID != ''
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: What-if (dev)
+        run: |
+          az deployment sub what-if \
+            --location swedencentral \
+            --template-file infra/main.bicep \
+            --parameters infra/env/dev.bicepparam \
+            --result-format ResourceIdOnly

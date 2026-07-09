@@ -296,10 +296,26 @@ module gateway 'modules/gateway.bicep' = {
     tags: envTags
     agwSubnetId: '${hub.outputs.vnetId}/subnets/snet-agw-${env}'
     acaStaticIp: compute.outputs.envStaticIp
+    acaDefaultDomain: compute.outputs.envDefaultDomain
     frontendFqdn: compute.outputs.frontendFqdn
     backendFqdn: compute.outputs.backendFqdn
+    // Link the ACA private DNS zone to the hub VNet (where the gateway resolves names) and the spoke.
+    dnsVnetLinks: [
+      { name: 'hub', vnetId: hub.outputs.vnetId }
+      { name: 'spoke', vnetId: spoke.outputs.vnetId }
+    ]
     gatewaySku: env == 'prod' ? 'WAF_v2' : 'Standard_v2'
   }
+}
+
+// Audit-only governance guardrails over the spoke's PaaS (public-access audits; SMX-009).
+// Gated: policyAssignments/write needs the Resource Policy Contributor role, which the current
+// dev deployer account lacks (mirrors the deployClaude quota gate). Default on for fresh
+// subscriptions (deployers are typically Owner); dev.bicepparam sets it false until granted.
+param deployPolicyGuardrails bool = true
+module policy 'modules/policy.bicep' = if (deployPolicyGuardrails) {
+  name: 'policy-${env}'
+  scope: envRg
 }
 
 output hubResourceGroup string = hubRg.name

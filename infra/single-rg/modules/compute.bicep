@@ -152,7 +152,12 @@ resource containerApps 'Microsoft.App/containerApps@2024-03-01' = [for app in ap
     configuration: {
       activeRevisionsMode: 'Single'
       ingress: app.hasIngress ? {
-        external: false
+        // On an INTERNAL environment, external:true means "Limited to VNet" (registered on the
+        // env's internal-LB envoy listener) — still zero public exposure; the App Gateway stays
+        // the only public entry. external:false would mean "Limited to Container Apps Environment"
+        // (app-to-app only): envoy's VNet-facing listener returns 404 "does not exist" to the
+        // gateway for every Host form, which surfaced as a permanent 502.
+        external: true
         targetPort: app.targetPort
         transport: 'auto'
         allowInsecure: true // HTTP end-to-end inside the private VNet; HTTPS deferred (Decision F)

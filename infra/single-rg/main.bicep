@@ -222,10 +222,22 @@ module gateway 'modules/gateway.bicep' = {
     tags: mergedTags
     agwSubnetId: network.outputs.agwSubnetId
     acaStaticIp: compute.outputs.envStaticIp
+    acaDefaultDomain: compute.outputs.envDefaultDomain
     frontendFqdn: compute.outputs.frontendFqdn
     backendFqdn: compute.outputs.backendFqdn
+    // Single-RG variant: one VNet holds both the gateway and the ACA env.
+    dnsVnetLinks: [
+      { name: 'main', vnetId: network.outputs.vnetId }
+    ]
     gatewaySku: env == 'prod' ? 'WAF_v2' : 'Standard_v2'
   }
+}
+
+// Audit-only governance guardrails over this RG's PaaS (public-access audits; SMX-009).
+// Gated: policyAssignments/write needs the Resource Policy Contributor role (see infra/main.bicep).
+param deployPolicyGuardrails bool = true
+module policy 'modules/policy.bicep' = if (deployPolicyGuardrails) {
+  name: 'policy-${env}'
 }
 
 output resourceGroupName string = resourceGroup().name
