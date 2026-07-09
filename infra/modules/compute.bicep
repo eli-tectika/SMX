@@ -111,11 +111,12 @@ var apps = [
     hasIngress: true
     targetPort: empty(backendImage) ? 80 : 8080 // aspnet:8.0 default port
     minReplicas: 0
-    env: sharedEnv
+    // PATH_BASE makes the API serve under /api (App Gateway forwards /api/* unstripped).
+    env: concat(sharedEnv, [ { name: 'PATH_BASE', value: '/api' } ])
     probes: empty(backendImage) ? [] : [
       {
         type: 'Readiness'
-        httpGet: { path: '/healthz', port: 8080 }
+        httpGet: { path: '/api/healthz', port: 8080 } // matches PATH_BASE
         initialDelaySeconds: 5
         periodSeconds: 10
       }
@@ -183,3 +184,4 @@ output frontendFqdn string = containerApps[0].properties.configuration.ingress.f
 output frontendAppName string = containerApps[0].name
 output backendAppName string = containerApps[1].name
 output orchestratorAppName string = containerApps[2].name
+output backendFqdn string = containerApps[1].properties.configuration.ingress.fqdn

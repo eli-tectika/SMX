@@ -30,6 +30,9 @@ if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] is { Length: 
     builder.Services.AddOpenTelemetry().UseAzureMonitor();
 
 var app = builder.Build();
+// App Gateway path-based routing forwards /api/* WITHOUT stripping the prefix, so serve under it.
+if (app.Configuration["PATH_BASE"] is { Length: > 0 } pathBase)
+    app.UsePathBase(pathBase);
 app.MapProjectEndpoints();
 app.Run();
 

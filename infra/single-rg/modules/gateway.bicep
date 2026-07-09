@@ -17,6 +17,9 @@ param acaStaticIp string
 @description('Frontend app internal FQDN — backend host header + ACA ingress routing + probe host.')
 param frontendFqdn string
 
+@description('Backend API app internal FQDN — host header for the /api/* path rule + its probe host.')
+param backendFqdn string
+
 @allowed(['Standard_v2', 'WAF_v2'])
 @description('Gateway SKU: Standard_v2 (dev) or WAF_v2 (prod, prevention).')
 param gatewaySku string = 'Standard_v2'
@@ -32,6 +35,10 @@ var httpSettingsName = 'acaHttpSettings'
 var listenerName = 'httpListener'
 var ruleName = 'httpRule'
 var probeName = 'acaProbe'
+// Backend API (/api/*) shares the ACA static IP; differentiated by Host header + its own probe.
+var apiHttpSettingsName = 'acaApiHttpSettings'
+var apiProbeName = 'acaApiProbe'
+var pathMapName = 'acaPathMap'
 
 resource pip 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
   name: pipName
@@ -119,6 +126,23 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
           }
         }
       }
+      {
+        name: apiProbeName
+        properties: {
+          protocol: 'Http'
+          host: backendFqdn
+          path: '/api/healthz' // backend serves under PATH_BASE=/api
+          interval: 30
+          timeout: 30
+          unhealthyThreshold: 3
+          pickHostNameFromBackendHttpSettings: false
+          match: {
+            statusCodes: [
+              '200-399'
+            ]
+          }
+        }
+      }
     ]
     backendHttpSettingsCollection: [
       {
@@ -132,6 +156,20 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
           requestTimeout: 30
           probe: {
             id: '${gwId}/probes/${probeName}'
+          }
+        }
+      }
+      {
+        name: apiHttpSettingsName
+        properties: {
+          port: 80
+          protocol: 'Http'
+          cookieBasedAffinity: 'Disabled'
+          pickHostNameFromBackendAddress: false
+          hostName: backendFqdn
+          requestTimeout: 120 // agent runs can be slow; allow a generous backend timeout
+          probe: {
+            id: '${gwId}/probes/${apiProbeName}'
           }
         }
       }
@@ -150,20 +188,48 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
         }
       }
     ]
+    urlPathMaps: [
+      {
+        name: pathMapName
+        properties: {
+          // default (everything not /api/*) → frontend
+          defaultBackendAddressPool: {
+            id: '${gwId}/backendAddressPools/${poolName}'
+          }
+          defaultBackendHttpSettings: {
+            id: '${gwId}/backendHttpSettingsCollection/${httpSettingsName}'
+          }
+          pathRules: [
+            {
+              name: 'apiPathRule'
+              properties: {
+                paths: [
+                  '/api/*'
+                ]
+                // same ACA static IP, but the backend Host header routes to the API app
+                backendAddressPool: {
+                  id: '${gwId}/backendAddressPools/${poolName}'
+                }
+                backendHttpSettings: {
+                  id: '${gwId}/backendHttpSettingsCollection/${apiHttpSettingsName}'
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
     requestRoutingRules: [
       {
         name: ruleName
         properties: {
-          ruleType: 'Basic'
+          ruleType: 'PathBasedRouting'
           priority: 100
           httpListener: {
             id: '${gwId}/httpListeners/${listenerName}'
           }
-          backendAddressPool: {
-            id: '${gwId}/backendAddressPools/${poolName}'
-          }
-          backendHttpSettings: {
-            id: '${gwId}/backendHttpSettingsCollection/${httpSettingsName}'
+          urlPathMap: {
+            id: '${gwId}/urlPathMaps/${pathMapName}'
           }
         }
       }

@@ -293,6 +293,7 @@ module gateway 'modules/gateway.bicep' = {
     agwSubnetId: '${hub.outputs.vnetId}/subnets/snet-agw-${env}'
     acaStaticIp: compute.outputs.envStaticIp
     frontendFqdn: compute.outputs.frontendFqdn
+    backendFqdn: compute.outputs.backendFqdn
     gatewaySku: env == 'prod' ? 'WAF_v2' : 'Standard_v2'
   }
 }
