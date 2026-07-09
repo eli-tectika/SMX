@@ -34,8 +34,18 @@ public static class FoundryChatClientFactory
         var apiKey = opts.FoundryApiKey;
         if (apiKey is null && opts.KeyVaultUri is not null)
         {
-            var secrets = new SecretClient(new Uri(opts.KeyVaultUri), credential);
-            apiKey = (await secrets.GetSecretAsync(KeySecretName, cancellationToken: ct)).Value.Value;
+            // The key is optional: when the secret is not present we fall through to secretless
+            // Entra (the production path). Only a missing secret is tolerated — other Key Vault
+            // failures (auth, network) still surface.
+            try
+            {
+                var secrets = new SecretClient(new Uri(opts.KeyVaultUri), credential);
+                apiKey = (await secrets.GetSecretAsync(KeySecretName, cancellationToken: ct)).Value.Value;
+            }
+            catch (Azure.RequestFailedException e) when (e.Status == 404)
+            {
+                // secret not configured → use Entra
+            }
         }
 
         // ResourceName is only consumed by the SDK to build a *default* base URL
