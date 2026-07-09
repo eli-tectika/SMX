@@ -29,6 +29,9 @@ param deployGpt4o bool = false
 @description('Deploy the Claude Opus 4.7 reasoning model on Foundry (Anthropic, GlobalStandard). ON by default — the agent backend needs it.')
 param deployClaude bool = true
 
+@description('Frontend SPA image (ACR path incl. tag). Empty = placeholder.')
+param frontendImage string = ''
+
 @description('Backend API image (ACR path incl. tag). Empty = placeholder.')
 param backendImage string = ''
 
@@ -172,6 +175,7 @@ module compute 'modules/compute.bicep' = {
     uamiId: security.outputs.uamiId
     includeDedicatedProfile: env == 'prod'
     acrLoginServer: acr.outputs.acrLoginServer
+    frontendImage: frontendImage
     backendImage: backendImage
     orchestratorImage: orchestratorImage
     uamiClientId: security.outputs.uamiClientId

@@ -152,8 +152,9 @@ The first application code now lives under `src/` (this is no longer a pure-infr
     operator-signed records and no endpoint exists to sign one.
   - The backend has **no CORS policy and needs none**: Vite's proxy (dev) and App Gateway's `apiPathRule`
     (Azure) both make `/api/*` same-origin.
-  - Deploy: `docker build` then `infra/scripts/swap-images.sh <env> frontend <image>` — the `frontend`
-    Container App already exists in Bicep with a placeholder image; no infra change is needed.
+  - Deploy: `infra/scripts/build-images.sh <env>` (builds all three images), then pass the tag through
+    the `frontendImage` Bicep parameter. `swap-images.sh` only mutates the live Container App, so the
+    next `deploy.sh` reverts it to the placeholder — treat it as a stopgap, not a deploy.
 - **Agent backend** (`src/Smx.Backend.sln`: `Smx.Domain`, `Smx.Infrastructure`, `Smx.Backend` API,
   `Smx.Orchestrator` agent host; deployed as the `backend` + `orchestrator` Container Apps) — the SMX
   reasoning layer: self-managed **Microsoft Agent Framework** agents on **Claude Opus 4.7** (Foundry,

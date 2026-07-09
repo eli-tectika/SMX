@@ -66,9 +66,14 @@ cell's `overall` agrees with its own dimensions; a mismatch renders a loud incon
 ## Deploy
 
 ```
-docker build -t <acr>.azurecr.io/smx-frontend:<tag> .
-infra/scripts/swap-images.sh <env> frontend <acr>.azurecr.io/smx-frontend:<tag>
+infra/scripts/build-images.sh <env>            # cloud build; tags with the short git SHA
+infra/scripts/deploy.sh <env> -p frontendImage=<acr>.azurecr.io/smx-frontend:<tag>
 ```
 
 The `frontend` Container App already exists (`infra/modules/compute.bicep`, `targetPort: 80`,
-internal ingress); this replaces its placeholder image. No Bicep change is required.
+internal ingress) and defaults to a placeholder image.
+
+Pass the image through the `frontendImage` Bicep parameter, not `swap-images.sh`. The swap script
+mutates only the live Container App, so the next `deploy.sh` reconciles it back to the placeholder
+declared in Bicep. Use `swap-images.sh <env> frontend <image>` only as a stopgap when you cannot run
+a full deploy, and follow up with a real one.

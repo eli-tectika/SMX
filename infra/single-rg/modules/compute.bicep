@@ -23,6 +23,9 @@ param includeDedicatedProfile bool = false
 @description('ACR login server (empty = no registry wiring; placeholder images only).')
 param acrLoginServer string = ''
 
+@description('Frontend SPA image (empty = placeholder).')
+param frontendImage string = ''
+
 @description('Backend API image (empty = placeholder).')
 param backendImage string = ''
 
@@ -98,9 +101,9 @@ var registries = empty(acrLoginServer) ? [] : [
 var apps = [
   {
     name: 'frontend'
-    image: placeholderImage
+    image: empty(frontendImage) ? placeholderImage : frontendImage
     hasIngress: true
-    targetPort: 80
+    targetPort: 80 // nginx and the placeholder both listen on 80
     minReplicas: 1 // gateway backend probe needs a warm replica
     env: []
     probes: []
