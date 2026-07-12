@@ -31,6 +31,13 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
             Element = "Zr", Form = "neodec",
             Dimensions = [new("ElementGate", overall, [new Citation("r", "x", "t")], 0.9, "r")],
         });
+        // Register this (cas, bottle) cell as a non-C candidate so the verdict set is COMPLETE
+        // (MatrixAssembler.IsComplete counts non-C cells and finds this verdict).
+        var candidates = await _store.GetCandidatesAsync(pid)
+            ?? new CandidatesDoc { Id = RecordIds.Candidates(pid), ProjectId = pid };
+        candidates.Substances.Add(new CandidateSubstance(
+            "bottle", "Zr", "neodec", cas, null, null, false, "A", "seed", []));
+        await _store.UpsertCandidatesAsync(candidates);
     }
 
     [Fact]
@@ -125,5 +132,22 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
         Assert.NotNull(g);
         Assert.Equal("approved", g!.Status);
         Assert.False(string.IsNullOrEmpty(g.ApprovedAt));
+    }
+
+    [Fact]
+    public async Task Approve_Returns422_WhenVerdictSetIncomplete()
+    {
+        // A non-C candidate with NO verdict → MatrixAssembler.IsComplete is false.
+        var proj = ProjectDoc.Create("p1", "Acme", "P", JsonDocument.Parse("{}").RootElement);
+        await _store.UpsertProjectAsync(proj);
+        await _store.UpsertCandidatesAsync(new CandidatesDoc
+        {
+            Id = RecordIds.Candidates("p1"), ProjectId = "p1",
+            Substances = { new CandidateSubstance("bottle", "Zr", "neodec", "cas1", null, null, false, "A", "seed", []) },
+        });
+        var resp = await _client.PostAsJsonAsync("/projects/p1/regulatory/approve", new { });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+        Assert.Contains("incomplete", await resp.Content.ReadAsStringAsync());
+        Assert.Null(await _store.GetGateAsync("p1", GateTypes.Regulatory));
     }
 }

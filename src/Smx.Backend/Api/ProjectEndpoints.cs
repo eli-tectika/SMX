@@ -72,6 +72,9 @@ public static class ProjectEndpoints
             async (string projectId, IRecordStore store, CancellationToken ct) =>
         {
             var verdicts = await store.GetVerdictsAsync(projectId, ct);
+            var candidates = await store.GetCandidatesAsync(projectId, ct);
+            if (candidates is null || !MatrixAssembler.IsComplete(candidates, verdicts))
+                return Results.UnprocessableEntity(new { error = "regulatory analysis incomplete — every candidate needs a verdict before sign-off" });
             var (ok, blockers) = RegulatoryGate.Armable(verdicts);
             if (!ok)
                 return Results.UnprocessableEntity(new { error = "gate not armable — open the flagged items first", blockers });
