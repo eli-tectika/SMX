@@ -5,48 +5,54 @@ namespace Smx.Domain.Tests;
 
 public class MatrixAssemblerTests
 {
-    private static ConstraintsDoc Constraints() => new()
+    private static CandidatesDoc Candidates() => new()
     {
-        Id = RecordIds.Constraints("p1"), ProjectId = "p1",
-        Components = [new("bottle", "HDPE", "packaging", ["EU"], "brand"), new("liquid", "aqueous", "cosmetic", ["EU"], "brand")],
-        Substances = [new("Zr", "neodecanoate", "cas-zr"), new("Cd", "sulfide", "cas-cd")],
+        Id = RecordIds.Candidates("p1"), ProjectId = "p1",
+        Substances =
+        [
+            new("bottle", "Y", "2-EH", "136-25-4", null, null, true, "A", "strong", []),
+            new("bottle", "Zr", "neodec", "39049-04-2", null, null, false, "C", "excluded", []), // C: not screened
+        ],
     };
 
-    private static VerdictDoc V(string cas, string comp, VerdictStatus s) => new()
+    private static VerdictDoc Verdict(string cas, string comp, VerdictStatus s) => new()
     {
         Id = RecordIds.Verdict("p1", cas, comp), ProjectId = "p1", Cas = cas, ComponentId = comp,
-        Element = cas == "cas-zr" ? "Zr" : "Cd", Form = "f",
-        Dimensions = [new("ElementGate", s, [new Citation("reg-index", "r", "t")], 0.9, "r")],
+        Element = "Y", Form = "2-EH",
+        Dimensions = [new("ElementGate", s, [new Citation("regulatory", "x", "t")], 0.9, "r")],
     };
 
     [Fact]
-    public void IsComplete_FalseUntilEveryCellHasAVerdict()
+    public void Cells_ExcludesCTier()
     {
-        var c = Constraints();
-        Assert.False(MatrixAssembler.IsComplete(c, [V("cas-zr", "bottle", VerdictStatus.Pass)]));
-        VerdictDoc[] all = [V("cas-zr", "bottle", VerdictStatus.Pass), V("cas-zr", "liquid", VerdictStatus.Pass),
-                            V("cas-cd", "bottle", VerdictStatus.Fail), V("cas-cd", "liquid", VerdictStatus.Fail)];
-        Assert.True(MatrixAssembler.IsComplete(c, all));
+        var cells = MatrixAssembler.Cells(Candidates()).ToList();
+        Assert.Single(cells);
+        Assert.Equal(("136-25-4", "bottle"), cells[0]);
     }
 
     [Fact]
-    public void Assemble_ProducesRowPerSubstance_ColumnPerComponent_CellPerPair()
+    public void IsComplete_TrueOnlyWhenEveryNonCCellHasVerdict()
     {
-        var c = Constraints();
-        VerdictDoc[] all = [V("cas-zr", "bottle", VerdictStatus.Pass), V("cas-zr", "liquid", VerdictStatus.Conditional),
-                            V("cas-cd", "bottle", VerdictStatus.Fail), V("cas-cd", "liquid", VerdictStatus.Fail)];
-        var m = MatrixAssembler.Assemble(c, all, "2026-07-08T00:00:00Z");
-        Assert.Equal("p1|matrix", m.Id);
-        Assert.Equal(2, m.Rows.Count);
-        Assert.Equal(["bottle", "liquid"], m.Columns);
-        Assert.Equal(4, m.Cells.Count);
-        Assert.Equal(VerdictStatus.Conditional, m.Cells.Single(x => x.Cas == "cas-zr" && x.ComponentId == "liquid").Overall);
+        var c = Candidates();
+        Assert.False(MatrixAssembler.IsComplete(c, []));
+        Assert.True(MatrixAssembler.IsComplete(c, [Verdict("136-25-4", "bottle", VerdictStatus.Pass)]));
     }
 
     [Fact]
-    public void Assemble_Throws_WhenIncomplete()
+    public void Assemble_BuildsRowsColumnsCells()
     {
-        Assert.Throws<InvalidOperationException>(() =>
-            MatrixAssembler.Assemble(Constraints(), [V("cas-zr", "bottle", VerdictStatus.Pass)], "t"));
+        var c = Candidates();
+        var m = MatrixAssembler.Assemble(c, ["bottle"], [Verdict("136-25-4", "bottle", VerdictStatus.Pass)], "t");
+        Assert.Equal(["bottle"], m.Columns);
+        Assert.Single(m.Rows);
+        Assert.Equal("136-25-4", m.Rows[0].Cas);
+        Assert.Single(m.Cells);
+        Assert.Equal(VerdictStatus.Pass, m.Cells[0].Overall);
+    }
+
+    [Fact]
+    public void Assemble_ThrowsWhenIncomplete()
+    {
+        Assert.Throws<InvalidOperationException>(() => MatrixAssembler.Assemble(Candidates(), ["bottle"], [], "t"));
     }
 }
