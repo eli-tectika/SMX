@@ -42,6 +42,16 @@ public static class ProjectEndpoints
                 $"{projectId}-compatibility-matrix.xlsx");
         });
 
+        app.MapPost("/projects/{projectId}/regulatory/review",
+            async (string projectId, ReviewRequest req, IRecordStore store, CancellationToken ct) =>
+        {
+            if (await store.GetVerdictAsync(projectId, req.Cas, req.ComponentId, ct) is not { } v)
+                return Results.NotFound();
+            v.EvidenceReviewed = true;
+            await store.UpsertVerdictAsync(v, ct);
+            return Results.Ok(new { reviewed = true });
+        });
+
         app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
     }
 }
