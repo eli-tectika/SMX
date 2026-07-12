@@ -20,10 +20,15 @@ public sealed class InMemoryRecordStore : IRecordStore
             _docs.Values.OfType<VerdictDoc>().Where(v => v.ProjectId == projectId).ToList());
     public Task<CandidatesDoc?> GetCandidatesAsync(string projectId, CancellationToken ct = default) =>
         Task.FromResult(_docs.TryGetValue(RecordIds.Candidates(projectId), out var d) ? (CandidatesDoc?)d : null);
+    public Task<GateDoc?> GetGateAsync(string projectId, string gateType, CancellationToken ct = default) =>
+        Task.FromResult(_docs.TryGetValue(RecordIds.Gate(projectId, gateType), out var d) ? (GateDoc?)d : null);
+    public Task<VerdictDoc?> GetVerdictAsync(string projectId, string cas, string componentId, CancellationToken ct = default) =>
+        Task.FromResult(_docs.TryGetValue(RecordIds.Verdict(projectId, cas, componentId), out var d) ? (VerdictDoc?)d : null);
 
     public Task UpsertProjectAsync(ProjectDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
     public Task UpsertConstraintsAsync(ConstraintsDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
     public Task UpsertVerdictAsync(VerdictDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
     public Task UpsertMatrixAsync(MatrixDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
     public Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
+    public Task UpsertGateAsync(GateDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
 }

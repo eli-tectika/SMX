@@ -41,4 +41,23 @@ public class InMemoryRecordStoreTests
         Assert.NotNull(got);
         Assert.Single(got!.Substances);
     }
+
+    [Fact]
+    public async Task Gate_And_SingleVerdict_RoundTrip()
+    {
+        var store = new Smx.Domain.Tests.Fakes.InMemoryRecordStore();
+        await store.UpsertGateAsync(new GateDoc { Id = RecordIds.Gate("p1", GateTypes.Regulatory), ProjectId = "p1",
+            GateType = GateTypes.Regulatory, Status = "approved" });
+        var g = await store.GetGateAsync("p1", GateTypes.Regulatory);
+        Assert.NotNull(g);
+        Assert.Equal("approved", g!.Status);
+        Assert.Null(await store.GetGateAsync("p1", "vp"));
+
+        await store.UpsertVerdictAsync(new VerdictDoc { Id = RecordIds.Verdict("p1", "cas1", "bottle"),
+            ProjectId = "p1", Cas = "cas1", ComponentId = "bottle", Element = "Zr", Form = "f" });
+        var v = await store.GetVerdictAsync("p1", "cas1", "bottle");
+        Assert.NotNull(v);
+        Assert.Equal("Zr", v!.Element);
+        Assert.Null(await store.GetVerdictAsync("p1", "nope", "bottle"));
+    }
 }

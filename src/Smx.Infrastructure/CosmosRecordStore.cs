@@ -15,6 +15,10 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
         ReadAsync<MatrixDoc>(RecordIds.Matrix(projectId), projectId, ct);
     public Task<CandidatesDoc?> GetCandidatesAsync(string projectId, CancellationToken ct = default) =>
         ReadAsync<CandidatesDoc>(RecordIds.Candidates(projectId), projectId, ct);
+    public Task<GateDoc?> GetGateAsync(string projectId, string gateType, CancellationToken ct = default) =>
+        ReadAsync<GateDoc>(RecordIds.Gate(projectId, gateType), projectId, ct);
+    public Task<VerdictDoc?> GetVerdictAsync(string projectId, string cas, string componentId, CancellationToken ct = default) =>
+        ReadAsync<VerdictDoc>(RecordIds.Verdict(projectId, cas, componentId), projectId, ct);
 
     public async Task<IReadOnlyList<VerdictDoc>> GetVerdictsAsync(string projectId, CancellationToken ct = default)
     {
@@ -33,6 +37,7 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
     public Task UpsertVerdictAsync(VerdictDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertMatrixAsync(MatrixDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
+    public Task UpsertGateAsync(GateDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
 
     private async Task<T?> ReadAsync<T>(string id, string pk, CancellationToken ct) where T : class
     {
