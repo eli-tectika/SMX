@@ -34,3 +34,14 @@ public sealed class FakeSearch : IRegulatorySearch, ISdsSearch, IReferenceSearch
         return Task.FromResult<IReadOnlyList<RetrievedChunk>>(Results.Take(top).ToList());
     }
 }
+
+public sealed class FakeLearnedConclusionsSearch : ILearnedConclusionsSearch
+{
+    public List<string> Queries { get; } = [];
+    public List<RetrievedChunk> Results { get; } = [];
+    public Task<IReadOnlyList<RetrievedChunk>> SearchAsync(string query, int top = 5, CancellationToken ct = default)
+    {
+        Queries.Add(query);
+        return Task.FromResult<IReadOnlyList<RetrievedChunk>>(Results.Take(top).ToList());
+    }
+}
