@@ -1,18 +1,11 @@
 using Smx.Domain;
 using Smx.Domain.Records;
-using Smx.Orchestrator.Agents;
 
 namespace Smx.Orchestrator.Dispatch;
 
-public interface IAgentRuns
-{
-    Task<AgentRunResult<ConstraintsDoc>> RunIntakeAsync(ProjectDoc project, CancellationToken ct);
-    Task<AgentRunResult<VerdictDoc>> RunScreeningAsync(ConstraintsDoc constraints, SubstanceSpec substance, string componentId, CancellationToken ct);
-}
-
-/// Reacts to record changes. Change feed is at-least-once: every branch here must be
-/// idempotent (re-checking store state before acting) and every write an upsert.
-public sealed class StageDispatcher(IRecordStore store, IAgentRuns agents, int screeningParallelism)
+/// Reacts to record changes. Change feed is at-least-once: every branch must be idempotent
+/// (re-check store state before acting) and every write an upsert.
+public sealed class StageDispatcher(IRecordStore store, IAgentRuns agents, int regulatoryParallelism)
 {
     public async Task OnRecordChangedAsync(object doc, CancellationToken ct)
     {
@@ -20,6 +13,7 @@ public sealed class StageDispatcher(IRecordStore store, IAgentRuns agents, int s
         {
             case ProjectDoc p: await OnProjectAsync(p, ct); break;
             case ConstraintsDoc c: await OnConstraintsAsync(c, ct); break;
+            case CandidatesDoc cd: await OnCandidatesAsync(cd, ct); break;
             case VerdictDoc v: await OnVerdictAsync(v, ct); break;
             case MatrixDoc: break; // terminal
         }
@@ -27,8 +21,8 @@ public sealed class StageDispatcher(IRecordStore store, IAgentRuns agents, int s
 
     private async Task OnProjectAsync(ProjectDoc p, CancellationToken ct)
     {
-        if (p.Stages[Stages.Intake].Status != "pending") return;                 // idempotency gate
-        if (await store.GetConstraintsAsync(p.ProjectId, ct) is not null) return; // belt-and-braces
+        if (p.Stages[Stages.Intake].Status != "pending") return;
+        if (await store.GetConstraintsAsync(p.ProjectId, ct) is not null) return;
         await SetStageAsync(p.ProjectId, Stages.Intake, s => { s.Status = "running"; s.Attempts++; }, ct);
         try
         {
@@ -39,9 +33,7 @@ public sealed class StageDispatcher(IRecordStore store, IAgentRuns agents, int s
                 await SetStageAsync(p.ProjectId, Stages.Intake, s => { s.Status = "done"; s.Error = null; }, ct);
             }
             else
-            {
                 await SetStageAsync(p.ProjectId, Stages.Intake, s => { s.Status = "needs-review"; s.Error = result.Error; }, ct);
-            }
         }
         catch (Exception e)
         {
@@ -51,28 +43,59 @@ public sealed class StageDispatcher(IRecordStore store, IAgentRuns agents, int s
 
     private async Task OnConstraintsAsync(ConstraintsDoc c, CancellationToken ct)
     {
-        var existing = (await store.GetVerdictsAsync(c.ProjectId, ct)).Select(v => (v.Cas, v.ComponentId)).ToHashSet();
-        var missing = MatrixAssembler.Cells(c).Where(cell => !existing.Contains(cell)).ToList();
-        if (missing.Count == 0) { await TryAssembleAsync(c.ProjectId, ct); return; }
+        if (await store.GetCandidatesAsync(c.ProjectId, ct) is not null) return; // idempotency
+        await SetStageAsync(c.ProjectId, Stages.Discovery, s => { s.Status = "running"; s.Attempts++; }, ct);
+        try
+        {
+            // Known-candidate mode: bypass the Discovery agent when the operator/eval supplied candidates.
+            if (c.ProvidedCandidates.Count > 0)
+            {
+                await store.UpsertCandidatesAsync(new CandidatesDoc
+                {
+                    Id = RecordIds.Candidates(c.ProjectId), ProjectId = c.ProjectId,
+                    Substances = [.. c.ProvidedCandidates],
+                }, ct);
+                await SetStageAsync(c.ProjectId, Stages.Discovery, s => { s.Status = "done"; s.Error = null; }, ct);
+                return;
+            }
+            var result = await agents.RunDiscoveryAsync(c, ct);
+            if (result.Succeeded)
+            {
+                await store.UpsertCandidatesAsync(result.Output!, ct);
+                await SetStageAsync(c.ProjectId, Stages.Discovery, s => { s.Status = "done"; s.Error = null; }, ct);
+            }
+            else
+                await SetStageAsync(c.ProjectId, Stages.Discovery, s => { s.Status = "needs-review"; s.Error = result.Error; }, ct);
+        }
+        catch (Exception e)
+        {
+            await SetStageAsync(c.ProjectId, Stages.Discovery, s => { s.Status = "failed"; s.Error = e.Message; }, ct);
+        }
+    }
 
-        await SetStageAsync(c.ProjectId, Stages.Screening, s => { s.Status = "running"; s.Attempts++; }, ct);
-        using var gate = new SemaphoreSlim(screeningParallelism);
-        var tasks = missing.Select(async cell =>
+    private async Task OnCandidatesAsync(CandidatesDoc cd, CancellationToken ct)
+    {
+        var constraints = await store.GetConstraintsAsync(cd.ProjectId, ct);
+        if (constraints is null) return;
+        var existing = (await store.GetVerdictsAsync(cd.ProjectId, ct)).Select(v => (v.Cas, v.ComponentId)).ToHashSet();
+        var missing = cd.Substances.Where(s => s.Tier != "C" && !existing.Contains((s.Cas, s.ComponentId))).ToList();
+        if (missing.Count == 0) { await TryAssembleAsync(cd.ProjectId, ct); return; }
+
+        await SetStageAsync(cd.ProjectId, Stages.Regulatory, s => { s.Status = "running"; s.Attempts++; }, ct);
+        using var gate = new SemaphoreSlim(regulatoryParallelism);
+        var tasks = missing.Select(async candidate =>
         {
             await gate.WaitAsync(ct);
             try
             {
-                var substance = c.Substances.Single(s => s.Cas == cell.Cas);
                 try
                 {
-                    var result = await agents.RunScreeningAsync(c, substance, cell.ComponentId, ct);
-                    // needs_review is a first-class outcome: write a placeholder verdict so the
-                    // matrix can complete and the operator sees exactly which cells need eyes.
+                    var result = await agents.RunRegulatoryAsync(constraints, candidate, ct);
                     var verdict = result.Succeeded ? result.Output! : new VerdictDoc
                     {
-                        Id = RecordIds.Verdict(c.ProjectId, cell.Cas, cell.ComponentId),
-                        ProjectId = c.ProjectId, Cas = cell.Cas, ComponentId = cell.ComponentId,
-                        Element = substance.Element, Form = substance.Form,
+                        Id = RecordIds.Verdict(cd.ProjectId, candidate.Cas, candidate.ComponentId),
+                        ProjectId = cd.ProjectId, Cas = candidate.Cas, ComponentId = candidate.ComponentId,
+                        Element = candidate.Element, Form = candidate.Form,
                         Dimensions = [new("ElementGate", VerdictStatus.NeedsReview, [],
                             0, $"agent could not produce a valid cited verdict: {result.Error}")],
                     };
@@ -80,13 +103,13 @@ public sealed class StageDispatcher(IRecordStore store, IAgentRuns agents, int s
                 }
                 catch (Exception e)
                 {
-                    await SetStageAsync(c.ProjectId, Stages.Screening, s => { s.Status = "failed"; s.Error = e.Message; }, ct);
+                    await SetStageAsync(cd.ProjectId, Stages.Regulatory, s => { s.Status = "failed"; s.Error = e.Message; }, ct);
                 }
             }
             finally { gate.Release(); }
         });
         await Task.WhenAll(tasks);
-        await TryAssembleAsync(c.ProjectId, ct);
+        await TryAssembleAsync(cd.ProjectId, ct);
     }
 
     private Task OnVerdictAsync(VerdictDoc v, CancellationToken ct) => TryAssembleAsync(v.ProjectId, ct);
@@ -94,18 +117,20 @@ public sealed class StageDispatcher(IRecordStore store, IAgentRuns agents, int s
     private async Task TryAssembleAsync(string projectId, CancellationToken ct)
     {
         var constraints = await store.GetConstraintsAsync(projectId, ct);
-        if (constraints is null) return;
+        var candidates = await store.GetCandidatesAsync(projectId, ct);
+        if (constraints is null || candidates is null) return;
         var verdicts = await store.GetVerdictsAsync(projectId, ct);
-        if (!MatrixAssembler.IsComplete(constraints, verdicts)) return;
+        if (!MatrixAssembler.IsComplete(candidates, verdicts)) return;
 
         var anyReview = verdicts.Any(v => v.Overall == VerdictStatus.NeedsReview);
-        await SetStageAsync(projectId, Stages.Screening,
+        await SetStageAsync(projectId, Stages.Regulatory,
             s => { if (s.Status != "failed") s.Status = anyReview ? "needs-review" : "done"; }, ct);
 
         if (await store.GetMatrixAsync(projectId, ct) is null)
         {
+            var componentIds = constraints.Components.Select(k => k.Id).ToList();
             await store.UpsertMatrixAsync(
-                MatrixAssembler.Assemble(constraints, verdicts, DateTimeOffset.UtcNow.ToString("O")), ct);
+                MatrixAssembler.Assemble(candidates, componentIds, verdicts, DateTimeOffset.UtcNow.ToString("O")), ct);
         }
         await SetStageAsync(projectId, Stages.Matrix, s => s.Status = "done", ct);
     }

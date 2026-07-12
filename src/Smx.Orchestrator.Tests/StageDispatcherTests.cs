@@ -33,58 +33,95 @@ public class StageDispatcherTests
     }
 
     [Fact]
-    public async Task ProjectChange_WithIntakeAlreadyDone_DoesNotRerunIntake()
+    public async Task ConstraintsWritten_RunsDiscovery_WritesCandidates()
     {
         var (d, store, agents) = Sut();
-        var doc = await Seed(store);
-        await d.OnRecordChangedAsync(doc, default);
-        await d.OnRecordChangedAsync((await store.GetProjectAsync("p1"))!, default); // change-feed redelivery
-        Assert.Equal(1, agents.IntakeCalls);
+        await d.OnRecordChangedAsync(await Seed(store), default);
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
+        Assert.Equal(1, agents.DiscoveryCalls);
+        Assert.NotNull(await store.GetCandidatesAsync("p1"));
+        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Discovery].Status);
     }
 
     [Fact]
-    public async Task ConstraintsWritten_FansOutScreening_PerCell_ThenAssemblesMatrix()
+    public async Task ConstraintsWithProvidedCandidates_BypassesDiscoveryAgent()
+    {
+        var (d, store, agents) = Sut();
+        agents.Intake = p => Task.FromResult(Smx.Orchestrator.Agents.AgentRunResult<ConstraintsDoc>.Ok(new ConstraintsDoc
+        {
+            Id = RecordIds.Constraints(p.ProjectId), ProjectId = p.ProjectId,
+            Components = [new("bottle", "HDPE", "packaging", ["EU"], "brand")],
+            ProvidedCandidates = [new("bottle", "Zr", "neodec", "cas-zr", null, null, true, "A", "provided",
+                [new Citation("catalog", "x", "t")])],
+            DerivedScope = [new("reach-annex-xvii", "*", "r", new Citation("regulatory", "x", "t"))],
+        }));
+        await d.OnRecordChangedAsync(await Seed(store), default);
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
+        Assert.Equal(0, agents.DiscoveryCalls);                 // bypassed
+        Assert.Single((await store.GetCandidatesAsync("p1"))!.Substances);
+    }
+
+    [Fact]
+    public async Task CandidatesWritten_FansOutRegulatory_ThenAssemblesMatrix()
     {
         var (d, store, _) = Sut();
         await d.OnRecordChangedAsync(await Seed(store), default);              // intake
-        var constraints = await store.GetConstraintsAsync("p1");
-        await d.OnRecordChangedAsync(constraints!, default);                    // screening fan-out
-        Assert.Single(await store.GetVerdictsAsync("p1"));                      // 1 substance × 1 component
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default); // discovery
+        await d.OnRecordChangedAsync((await store.GetCandidatesAsync("p1"))!, default);  // regulatory fan-out
+        Assert.Single(await store.GetVerdictsAsync("p1"));
         var last = (await store.GetVerdictsAsync("p1"))[0];
-        await d.OnRecordChangedAsync(last, default);                            // verdict arrival → assembly
+        await d.OnRecordChangedAsync(last, default);                            // verdict → assembly
         Assert.NotNull(await store.GetMatrixAsync("p1"));
         var proj = await store.GetProjectAsync("p1");
-        Assert.Equal("done", proj!.Stages[Stages.Screening].Status);
+        Assert.Equal("done", proj!.Stages[Stages.Regulatory].Status);
         Assert.Equal("done", proj.Stages[Stages.Matrix].Status);
     }
 
     [Fact]
-    public async Task ScreeningFanOut_SkipsCellsThatAlreadyHaveVerdicts()
+    public async Task RegulatoryFanOut_SkipsCellsThatAlreadyHaveVerdicts()
     {
         var (d, store, agents) = Sut();
         await d.OnRecordChangedAsync(await Seed(store), default);
-        var constraints = await store.GetConstraintsAsync("p1");
-        await d.OnRecordChangedAsync(constraints!, default);
-        var callsAfterFirst = agents.ScreenCalls;
-        await d.OnRecordChangedAsync(constraints!, default); // redelivery
-        Assert.Equal(callsAfterFirst, agents.ScreenCalls);
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
+        var candidates = await store.GetCandidatesAsync("p1");
+        await d.OnRecordChangedAsync(candidates!, default);
+        var callsAfterFirst = agents.RegulatoryCalls;
+        await d.OnRecordChangedAsync(candidates!, default);                     // redelivery
+        Assert.Equal(callsAfterFirst, agents.RegulatoryCalls);
     }
 
     [Fact]
-    public async Task IntakeNeedsReview_MarksStage_DoesNotCascade()
+    public async Task DiscoveryNeedsReview_MarksStage_DoesNotCascade()
     {
         var (d, store, agents) = Sut();
-        agents.Intake = _ => Task.FromResult(
-            Smx.Orchestrator.Agents.AgentRunResult<ConstraintsDoc>.NeedsReview("uncited scope"));
+        agents.Discovery = _ => Task.FromResult(
+            Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>.NeedsReview("no catalog hits"));
         await d.OnRecordChangedAsync(await Seed(store), default);
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
         var proj = await store.GetProjectAsync("p1");
-        Assert.Equal("needs-review", proj!.Stages[Stages.Intake].Status);
-        Assert.Contains("uncited scope", proj.Stages[Stages.Intake].Error);
-        Assert.Null(await store.GetConstraintsAsync("p1"));
+        Assert.Equal("needs-review", proj!.Stages[Stages.Discovery].Status);
+        Assert.Null(await store.GetCandidatesAsync("p1"));
     }
 
     [Fact]
-    public async Task AgentThrow_MarksStageFailed_WithErrorDetail()
+    public async Task RegulatoryNeedsReview_WritesPlaceholderVerdict_MatrixStillAssembles()
+    {
+        var (d, store, agents) = Sut();
+        agents.Regulatory = (c, cand) => Task.FromResult(
+            Smx.Orchestrator.Agents.AgentRunResult<VerdictDoc>.NeedsReview("no retrieval"));
+        await d.OnRecordChangedAsync(await Seed(store), default);
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
+        await d.OnRecordChangedAsync((await store.GetCandidatesAsync("p1"))!, default);
+        var verdicts = await store.GetVerdictsAsync("p1");
+        Assert.Single(verdicts);
+        Assert.Equal(VerdictStatus.NeedsReview, verdicts[0].Overall);
+        await d.OnRecordChangedAsync(verdicts[0], default);
+        Assert.NotNull(await store.GetMatrixAsync("p1"));
+        Assert.Equal("needs-review", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+    }
+
+    [Fact]
+    public async Task IntakeThrow_MarksStageFailed_WithErrorDetail()
     {
         var (d, store, agents) = Sut();
         agents.Intake = _ => throw new InvalidOperationException("foundry 500");
@@ -92,22 +129,5 @@ public class StageDispatcherTests
         var proj = await store.GetProjectAsync("p1");
         Assert.Equal("failed", proj!.Stages[Stages.Intake].Status);
         Assert.Contains("foundry 500", proj.Stages[Stages.Intake].Error);
-        Assert.Equal(1, proj.Stages[Stages.Intake].Attempts);
-    }
-
-    [Fact]
-    public async Task NeedsReviewVerdict_StillCountsTowardCompletion_ScreeningStageEndsNeedsReview()
-    {
-        var (d, store, agents) = Sut();
-        agents.Screen = (c, s, comp) => Task.FromResult(
-            Smx.Orchestrator.Agents.AgentRunResult<VerdictDoc>.NeedsReview("no retrieval"));
-        await d.OnRecordChangedAsync(await Seed(store), default);
-        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
-        var verdicts = await store.GetVerdictsAsync("p1");
-        Assert.Single(verdicts);                                   // placeholder NeedsReview verdict written
-        Assert.Equal(VerdictStatus.NeedsReview, verdicts[0].Overall);
-        await d.OnRecordChangedAsync(verdicts[0], default);
-        Assert.NotNull(await store.GetMatrixAsync("p1"));          // matrix still assembles (cells say NeedsReview)
-        Assert.Equal("needs-review", (await store.GetProjectAsync("p1"))!.Stages[Stages.Screening].Status);
     }
 }

@@ -11,6 +11,7 @@ public static class RecordDocRouter
         {
             RecordTypes.Project => element.Deserialize<ProjectDoc>(Json.Options),
             RecordTypes.Constraints => element.Deserialize<ConstraintsDoc>(Json.Options),
+            RecordTypes.Candidates => element.Deserialize<CandidatesDoc>(Json.Options),
             RecordTypes.Verdict => element.Deserialize<VerdictDoc>(Json.Options),
             RecordTypes.Matrix => element.Deserialize<MatrixDoc>(Json.Options),
             _ => null,
