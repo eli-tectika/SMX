@@ -1,0 +1,667 @@
+/* ---------------------------------------------------------------------------
+   primitives.css — the reusable pieces the wireframe never had.
+
+   Rule of thumb for every class here: it either reports a fact the record
+   already knows and the screen currently withholds, or it is a summary layer
+   that makes a wall of chips answer a question at a glance. Nothing here is
+   ornament.
+   --------------------------------------------------------------------------- */
+
+/* ---- neutral chip ------------------------------------------------------------
+   The v/l/x/n chip families MEAN Pass/Conditional/Fail/NeedsReview. A marker
+   element, a code, a tag category, and a supplier name are none of those things,
+   and painting them in verdict colours is a grammar error. They get this. */
+
+.chip--neutral {
+  background: var(--surface-1);
+  color: var(--text-secondary);
+}
+
+.chip--mono {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+}
+
+/* ---- card --------------------------------------------------------------------
+   Paper picked up, not a game tile: 1px of lift. */
+
+.card {
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--r3);
+  padding: var(--s4);
+  box-shadow: var(--shadow-1);
+}
+
+.card--link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out);
+}
+
+.card--link:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-2);
+  border-color: var(--border-strong);
+  text-decoration: none;
+}
+
+.card--link:active {
+  transform: translateY(0);
+}
+
+/* Bucket tone — the 3px left edge that says which pile this project is in. */
+.card[data-tone='warning'] {
+  border-left: 3px solid var(--text-warning);
+}
+.card[data-tone='danger'] {
+  border-left: 3px solid var(--text-danger);
+}
+.card[data-tone='accent'] {
+  border-left: 3px solid var(--text-accent);
+}
+.card[data-tone='muted'] {
+  border-left: 3px solid var(--border-strong);
+}
+
+/* ---- stat --------------------------------------------------------------------
+   Tabular numerals: a stat strip whose digits jitter between renders reads as
+   unreliable. */
+
+.stat {
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: var(--s3) var(--s4);
+  box-shadow: var(--shadow-1);
+  min-width: 0;
+}
+
+.stat__value {
+  font-size: var(--t-display);
+  line-height: var(--lh-tight);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.stat__label {
+  font-size: var(--t-tiny);
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.stat__hint {
+  font-size: var(--t-tiny);
+  color: var(--text-muted);
+  margin-top: var(--s1);
+}
+
+.stat[data-tone='warning'] .stat__value {
+  color: var(--text-warning);
+}
+.stat[data-tone='danger'] .stat__value {
+  color: var(--text-danger);
+}
+.stat[data-tone='accent'] .stat__value {
+  color: var(--text-accent);
+}
+
+/* The count the spec demands and no endpoint can produce. Showing the hole and
+   naming it is more honest than quietly dropping the question. */
+.stat--absent {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  box-shadow: none;
+  background: transparent;
+}
+
+.stat--absent .stat__value {
+  color: var(--text-muted);
+  font-size: var(--t-lead);
+}
+
+/* ---- meter -------------------------------------------------------------------
+   Confidence and gate arming. The fill is NEUTRAL, never green: a high-confidence
+   verdict is not a Pass, and an armed gate is not an approval. Below threshold it
+   goes amber, because low confidence is a gate-arming BLOCKER (spec §1.8), not a
+   bad grade. */
+
+.meter {
+  position: relative;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--surface-1);
+  overflow: hidden;
+}
+
+.meter__fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--text-secondary);
+  transform-origin: left center;
+  animation: meter-fill var(--dur-4) var(--ease-out);
+}
+
+/* Mount only. An updating meter snaps — a number you can misread mid-flight is a
+   defect, and that includes one you can misread as a bar. */
+@keyframes meter-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.meter[data-low='true'] .meter__fill {
+  background: var(--text-warning);
+}
+
+.meter__tick {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 1px;
+  background: var(--border-strong);
+}
+
+.meter__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.meter__num {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-tiny);
+  color: var(--text-secondary);
+  min-width: 34px;
+  text-align: right;
+}
+
+/* ---- verdict ribbon ----------------------------------------------------------
+   The stacked V/L/?/X bar — the shape of a project at a glance. Here the verdict
+   palette IS correct: every segment is a verdict. */
+
+.ribbon {
+  display: flex;
+  height: 6px;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+.ribbon__seg {
+  height: 100%;
+  animation: meter-fill var(--dur-4) var(--ease-out);
+  transform-origin: left center;
+}
+
+.ribbon__seg[data-v='Pass'] {
+  background: var(--text-success);
+}
+.ribbon__seg[data-v='Conditional'] {
+  background: var(--text-pro);
+}
+.ribbon__seg[data-v='NeedsReview'] {
+  background: var(--text-warning);
+}
+.ribbon__seg[data-v='Fail'] {
+  background: var(--text-danger);
+}
+
+.ribbon__key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-top: var(--s2);
+  font-size: var(--t-tiny);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ribbon__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+
+/* ---- mini spine --------------------------------------------------------------
+   Eight nodes on a rail. Gates are DIAMONDS so a gate is distinguishable from a
+   stage at 8px, without spending a colour on the difference. */
+
+/* Nodes and labels share one grid, so a label always sits under its own node.
+   (Laying the nodes out with flex rails and the labels with even columns drifts them
+   apart — the two tracks have different geometry.) The rail is drawn per-cell rather
+   than as a separate element. */
+.mini-spine {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: center;
+  width: 100%;
+}
+
+.mini-spine__cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 12px;
+}
+
+/* The rail runs from the previous node to this one. */
+.mini-spine__cell:not(:first-child)::before {
+  content: '';
+  position: absolute;
+  right: 50%;
+  left: -50%;
+  height: 1px;
+  background: var(--border);
+}
+
+.mini-spine__cell[data-prev-done='true']::before {
+  background: var(--border-success);
+}
+
+.mini-spine__node {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  background: var(--surface-0);
+  flex: none;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
+}
+
+.mini-spine__node[data-gate='true'] {
+  border-radius: 1px;
+  transform: rotate(45deg);
+  width: 8px;
+  height: 8px;
+}
+
+.mini-spine__node[data-status='done'] {
+  background: var(--text-success);
+  border-color: var(--text-success);
+}
+.mini-spine__node[data-status='running'] {
+  background: var(--text-accent);
+  border-color: var(--text-accent);
+  animation: breathe 1.6s var(--ease-inout) infinite;
+}
+.mini-spine__node[data-status='needs-review'] {
+  border-color: var(--text-warning);
+  background: var(--bg-warning);
+}
+.mini-spine__node[data-status='failed'] {
+  background: var(--text-danger);
+  border-color: var(--text-danger);
+}
+.mini-spine__node[data-status='pending'] {
+  background: var(--surface-0);
+}
+
+/* A stage with no backend cannot report a park state, so the card never claims
+   one: the node stays hollow and dashed. */
+.mini-spine__node[data-backed='false'] {
+  border-style: dashed;
+  border-color: var(--border);
+  background: transparent;
+}
+
+/* Same grid as the nodes above — this is what keeps a label under its node. */
+.mini-spine__labels {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  margin-top: var(--s1);
+}
+
+.mini-spine__labels span {
+  font-size: var(--t-micro);
+  color: var(--text-muted);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 2px;
+}
+
+/* ---- section header ----------------------------------------------------------- */
+
+.sec {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: var(--s5) 0 var(--s3);
+}
+
+/* Only zero the top margin when the header truly opens the page. A header that is
+   merely the first child of its own <section> still needs air above it, or the
+   bucket headings collide with the card above them. */
+.wrap > .sec:first-child,
+.screen > .sec:first-child {
+  margin-top: 0;
+}
+
+.sec__eyebrow {
+  font-size: var(--t-tiny);
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.sec__title {
+  font-size: var(--t-lead);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.sec__count {
+  font-size: var(--t-tiny);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sec__hint {
+  font-size: var(--t-small);
+  color: var(--text-muted);
+}
+
+.sec__actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--s2);
+}
+
+/* ---- empty state ------------------------------------------------------------- */
+
+.empty {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r3);
+  padding: var(--s7) var(--s5);
+  text-align: center;
+  background: transparent;
+}
+
+.empty__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: var(--text-muted);
+  margin-bottom: var(--s3);
+}
+
+.empty__title {
+  font-size: var(--t-lead);
+  color: var(--text-primary);
+  margin: 0 0 var(--s2);
+}
+
+.empty__body {
+  font-size: var(--t-small);
+  color: var(--text-secondary);
+  max-width: 46ch;
+  margin: 0 auto var(--s4);
+  line-height: var(--lh-body);
+}
+
+.empty__actions {
+  display: flex;
+  gap: var(--s2);
+  justify-content: center;
+}
+
+/* ---- bar row (comparison) -----------------------------------------------------
+   Price, lead time, reuse count, metal loading. All NEUTRAL — a price is not a
+   verdict. */
+
+.barrow {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) 2fr auto;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+}
+
+.barrow__track {
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--surface-1);
+  overflow: hidden;
+}
+
+.barrow__fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--border-strong);
+  transform-origin: left center;
+  animation: meter-fill var(--dur-4) var(--ease-out);
+}
+
+.barrow[data-best='true'] .barrow__fill {
+  background: var(--text-secondary);
+}
+
+.barrow__value {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-small);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.barrow__label {
+  font-size: var(--t-small);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- gate ---------------------------------------------------------------------
+   The anti-rubber-stamping component. It moves the gate from the bottom of the
+   screen to the top, as the subject, and enumerates exactly what is unopened.
+   The sign control stays disabled regardless of arming — there is no endpoint. */
+
+.gatebox {
+  border: 1px solid var(--border-warning);
+  border-top: 4px solid var(--text-warning);
+  border-radius: var(--r3);
+  background: var(--bg-warning);
+  padding: var(--s4);
+  margin-bottom: var(--s4);
+}
+
+/* A soft review gate is not a lock. The border teaches the difference. */
+.gatebox[data-kind='soft'] {
+  border: 1px dashed var(--border-warning);
+  background: transparent;
+}
+
+.gatebox__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+}
+
+.gatebox__title {
+  font-size: var(--t-small);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
+  color: var(--text-warning);
+}
+
+.gatebox__sub {
+  font-size: var(--t-tiny);
+  color: var(--text-warning);
+  opacity: 0.85;
+}
+
+.gatebox__req {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  font-size: var(--t-small);
+  padding: var(--s1) 0;
+  color: var(--text-warning);
+}
+
+.gatebox__req[data-met='true'] {
+  opacity: 0.7;
+}
+
+.gatebox__req-detail {
+  font-size: var(--t-tiny);
+  opacity: 0.9;
+  margin-top: 2px;
+}
+
+.gatebox__actions {
+  display: flex;
+  gap: var(--s2);
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--border-warning);
+}
+
+/* The review ledger is browser-local. It must say so wherever it is used. */
+.gatebox__ledger-note {
+  font-size: var(--t-micro);
+  color: var(--text-warning);
+  opacity: 0.75;
+  margin-top: var(--s2);
+}
+
+/* ---- park slot ----------------------------------------------------------------
+   The five spec-named waits (awaiting physics XRF, awaiting R.E. determination, …)
+   have no backend representation. This occupies exactly the position the real
+   indicator will occupy, unfilled — never coloured as if active, never showing a
+   person or an elapsed time. When the record grows a park state this is a data
+   swap, not a redesign. */
+
+.park {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r2);
+  padding: var(--s3);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  color: var(--text-muted);
+  font-size: var(--t-small);
+  background: repeating-linear-gradient(
+    45deg,
+    transparent 0 8px,
+    color-mix(in srgb, var(--text-muted) 3%, transparent) 8px 9px
+  );
+}
+
+/* ---- segmented control --------------------------------------------------------- */
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r1);
+  overflow: hidden;
+  background: var(--surface-0);
+}
+
+.seg__btn {
+  border: 0;
+  background: transparent;
+  padding: 5px 12px;
+  font-size: var(--t-small);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease-out);
+}
+
+.seg__btn + .seg__btn {
+  border-left: 1px solid var(--border);
+}
+
+.seg__btn:hover {
+  background: var(--surface-2);
+}
+
+.seg__btn[aria-pressed='true'] {
+  background: var(--bg-accent);
+  color: var(--text-accent);
+  font-weight: 500;
+}
+
+/* ---- search ------------------------------------------------------------------- */
+
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search > i {
+  position: absolute;
+  left: 9px;
+  color: var(--text-muted);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.search > input {
+  padding-left: 28px;
+}
+
+/* ---- tooltip (CSS only) -------------------------------------------------------
+   Never used to hide anything a decision depends on. Supplementary only. */
+
+[data-tip] {
+  position: relative;
+}
+
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: #fff;
+  font-size: var(--t-tiny);
+  font-weight: 400;
+  padding: 4px 8px;
+  border-radius: var(--r1);
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
+  box-shadow: var(--shadow-2);
+}
+
+/* ---- grid helpers -------------------------------------------------------------- */
+
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: var(--s2);
+  margin-bottom: var(--s5);
+}
+
+.card-list {
+  display: grid;
+  gap: var(--s3);
+}

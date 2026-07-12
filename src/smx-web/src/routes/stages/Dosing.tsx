@@ -1,7 +1,10 @@
 import { MockBadge } from '../../components/MockBadge';
+import { Gate, type Requirement } from '../../components/ui/Gate';
+import { ParkSlot } from '../../components/ui/Primitives';
+import { axisMax, niceTicks } from '../../domain/ticks';
 import dosing from '../../mocks/fixtures/dosing.json';
 
-interface Window {
+interface Win {
   element: string;
   floor: number;
   recommendedLow: number;
@@ -17,30 +20,62 @@ interface Code {
   note: string;
 }
 
-const CHART_W = 560;
-const LABEL_W = 46;
-const ROW_H = 34;
-const PAD_TOP = 22;
+const CHART_W = 620;
+const LABEL_W = 42;
+const ROW_H = 40;
+const PAD_TOP = 26;
 
 /**
  * Dosing & codes (spec §4.5) — the ppm window chart and the code cards.
  *
- * The chart is hand-drawn SVG rather than a chart library: it encodes a floor, a
- * recommended band, and a dashed upper bound, and the annotated bands are the point.
- * Axis is ppm, shared across the rows so bars are comparable.
+ * The chart is hand-drawn SVG rather than a chart library: the annotated bands
+ * (floor, recommended, ceiling) are the whole point and a generic bar chart would
+ * lose them.
+ *
+ * The axis ticks now come from niceTicks(), which fixes a real bug: this screen
+ * used to scale to max(ceiling) * 1.1 (= 38.5) while hardcoding its gridlines to
+ * [0, 10, 20, 30], so the labels understated the chart and would have drifted
+ * further wrong the moment a ceiling changed. On a screen whose only job is to
+ * show a dosing window, a mislabelled axis is a correctness bug.
  */
 export function Dosing() {
-  const { windows, codes } = dosing as { windows: Window[]; codes: Code[] };
-  const max = Math.max(...windows.map((w) => w.ceiling)) * 1.1;
-  const scale = (v: number) => LABEL_W + (v / max) * (CHART_W - LABEL_W - 10);
-  const height = PAD_TOP + windows.length * ROW_H + 24;
+  const { windows, codes } = dosing as { windows: Win[]; codes: Code[] };
+
+  const rawMax = Math.max(...windows.map((w) => w.ceiling));
+  const max = axisMax(rawMax * 1.05);
+  const ticks = niceTicks(rawMax * 1.05);
+  const scale = (v: number) => LABEL_W + (v / max) * (CHART_W - LABEL_W - 12);
+  const height = PAD_TOP + windows.length * ROW_H + 20;
+
+  const requirements: Requirement[] = [
+    {
+      id: 'windows',
+      label: 'A ppm window exists for every marker element',
+      met: windows.length > 0,
+      detail: <>{windows.map((w) => w.element).join(', ')}</>,
+    },
+    {
+      id: 'review',
+      label: 'Code finalization reviewed (PL / VP / physics)',
+      met: false,
+      detail: <>No endpoint records a soft review. This gate cannot be marked reviewed.</>,
+    },
+  ];
 
   return (
-    <section className="screen">
+    <section className="screen" data-provenance="mock">
       <div className="cap">
         <b>Dosing &amp; codes</b> &nbsp;·&nbsp; spec §4.5 — ppm windows + code combinations, per
         component
       </div>
+
+      <Gate
+        kind="soft"
+        title="Code finalization"
+        records="PL / VP / physics review"
+        requirements={requirements}
+        signLabel="Mark review recorded"
+      />
 
       <MockBadge note="No ppm model has run. These windows and ratio signatures are illustrative." />
 
@@ -49,10 +84,11 @@ export function Dosing() {
         width="100%"
         role="img"
         aria-label="Recommended ppm window per marker element"
-        style={{ marginBottom: 18 }}
+        style={{ marginBottom: 10 }}
       >
         <title>Recommended ppm window per marker element</title>
-        {[0, 10, 20, 30].map((t) => (
+
+        {ticks.map((t) => (
           <g key={t}>
             <line
               x1={scale(t)}
@@ -62,12 +98,18 @@ export function Dosing() {
               stroke="var(--border)"
               strokeWidth="0.5"
             />
-            <text x={scale(t)} y={PAD_TOP - 10} fontSize="9" fill="var(--text-muted)" textAnchor="middle">
+            <text
+              x={scale(t)}
+              y={PAD_TOP - 11}
+              fontSize="9"
+              fill="var(--text-muted)"
+              textAnchor="middle"
+            >
               {t}
             </text>
           </g>
         ))}
-        <text x={CHART_W - 4} y={height - 6} fontSize="9" fill="var(--text-muted)" textAnchor="end">
+        <text x={CHART_W - 4} y={height - 4} fontSize="9" fill="var(--text-muted)" textAnchor="end">
           ppm
         </text>
 
@@ -75,10 +117,11 @@ export function Dosing() {
           const y = PAD_TOP + i * ROW_H + 6;
           return (
             <g key={w.element}>
-              <text x={0} y={y + 9} fontSize="11" fill="var(--text-primary)" fontWeight="500">
+              <text x={0} y={y + 10} fontSize="11" fill="var(--text-primary)" fontWeight="500">
                 {w.element}
               </text>
-              {/* full usable range: floor -> ceiling */}
+
+              {/* usable range: floor -> ceiling */}
               <rect
                 x={scale(w.floor)}
                 y={y}
@@ -98,7 +141,7 @@ export function Dosing() {
                 stroke="var(--border-success)"
                 strokeWidth="0.5"
               />
-              {/* detection floor */}
+              {/* detection floor — below this the marker cannot be read back */}
               <line
                 x1={scale(w.floor)}
                 y1={y - 3}
@@ -117,16 +160,32 @@ export function Dosing() {
                 strokeWidth="1.5"
                 strokeDasharray="3 2"
               />
+
+              {/* Value labels — the numbers were previously unreadable from the chart. */}
+              <text
+                x={scale(w.recommendedLow) + (scale(w.recommendedHigh) - scale(w.recommendedLow)) / 2}
+                y={y + 10}
+                fontSize="9"
+                fill="var(--text-success)"
+                textAnchor="middle"
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              >
+                {w.recommendedLow}–{w.recommendedHigh}
+              </text>
+              <text x={scale(w.floor)} y={y + 27} fontSize="8" fill="var(--text-danger)" textAnchor="middle">
+                {w.floor}
+              </text>
+              <text x={scale(w.ceiling)} y={y + 27} fontSize="8" fill="var(--text-muted)" textAnchor="middle">
+                {w.ceiling}
+              </text>
             </g>
           );
         })}
       </svg>
 
-      <div className="tiny muted" style={{ display: 'flex', gap: 14, marginBottom: 18 }}>
+      <div className="tiny muted" style={{ display: 'flex', gap: 14, marginBottom: 8, flexWrap: 'wrap' }}>
         <span>
-          <span
-            style={{ display: 'inline-block', width: 10, height: 3, background: 'var(--text-danger)' }}
-          />{' '}
+          <span style={{ display: 'inline-block', width: 10, height: 3, background: 'var(--text-danger)' }} />{' '}
           detection floor
         </span>
         <span>
@@ -142,50 +201,58 @@ export function Dosing() {
           recommended band
         </span>
         <span>
-          <span
-            style={{
-              display: 'inline-block',
-              width: 10,
-              borderTop: '2px dashed var(--text-muted)',
-            }}
-          />{' '}
+          <span style={{ display: 'inline-block', width: 10, borderTop: '2px dashed var(--text-muted)' }} />{' '}
           upper bound
         </span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+      {/* Spec §4.5: "the estimate tends to underestimate, so basis and confidence are
+          shown per bound." The fixture carries no basis, and inventing one would be a
+          fabricated claim about how a bound was derived. Say so instead. */}
+      <div className="banner warn" style={{ marginBottom: 18 }}>
+        <i className="ti ti-alert-triangle" aria-hidden="true" />
+        <div>
+          Spec §4.5 requires a <b>basis and confidence per bound</b> — a regulatory ceiling and a
+          formulation estimate are not the same claim, and the estimate tends to underestimate. The
+          fixture carries neither, so none is shown. These bounds are unattributed.
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 10 }}>
         {codes.map((c) => (
-          <div className="region" key={c.code}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <span style={{ fontSize: 14, fontWeight: 600 }}>{c.code}</span>
+          <div className="card" key={c.code}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
+                {c.code}
+              </span>
               <span className="tiny muted">{c.kind}</span>
-              <span className="tiny muted" style={{ marginLeft: 'auto' }}>
+              <span
+                className="tiny muted"
+                style={{ marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}
+              >
                 {c.orderAmountKg} kg
               </span>
             </div>
-            <div style={{ marginBottom: 6 }}>
+            <div style={{ marginBottom: 8 }}>
+              {/* A marker element is not a verdict — green here would read as "Pass". */}
               {c.markers.map((m) => (
-                <span className="chip v" key={m} style={{ marginRight: 3 }}>
+                <span className="chip chip--neutral" key={m} style={{ marginRight: 3 }}>
                   {m}
                 </span>
               ))}
             </div>
-            <div className="small secondary">
-              ratio <b>{c.ratio}</b>
+            <div className="small secondary" style={{ marginBottom: 4 }}>
+              ratio <b style={{ fontFamily: 'var(--font-mono)' }}>{c.ratio}</b>
             </div>
-            <p className="tiny muted" style={{ margin: '5px 0 0' }}>
+            <p className="tiny muted" style={{ margin: 0 }}>
               {c.note}
             </p>
           </div>
         ))}
       </div>
 
-      <div className="banner warn" style={{ marginTop: 14 }}>
-        <i className="ti ti-eye-exclamation" aria-hidden="true" />
-        <div>
-          Code finalization is a <b>soft review</b> gate (PL / VP / physics). Recording that review
-          has no endpoint yet.
-        </div>
+      <div style={{ marginTop: 14 }}>
+        <ParkSlot awaiting="code-finalization review" specRef="spec §4.5" />
       </div>
     </section>
   );

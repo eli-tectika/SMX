@@ -1,0 +1,219 @@
+/* ---------------------------------------------------------------------------
+   craft.css — depth, focus, motion, and provenance texture.
+
+   base.css stays the mockup-fidelity layer so drift from project_files/mockups_*.html
+   remains diffable. Everything that goes beyond the wireframe lives here.
+
+   MOTION POLICY — what may never animate. These are not style preferences; they
+   follow from the spec's primary design driver (correctness) and its anti-
+   rubber-stamping rule (§1.8):
+
+     - A VERDICT. No chip ever transitions its colour, glyph, or position. If a
+       re-run flips Pass -> Fail the cell changes instantly and the change is
+       announced. A verdict change must read as a correction to a record, never
+       as a reveal.
+     - A GATE ARMING. No sweep to "unlocked", no lock-icon animation, no
+       check-mark draw-on. Drama belongs to withholding, never to granting.
+     - NUMBERS. No count-up, no odometer — not on failure counts, ppm, prices, or
+       confidence. A number you can misread mid-flight is a defect.
+     - ANYTHING CELEBRATORY. No confetti, no success toast, no pulse on `done`.
+       A completed project is quiet.
+     - THE MOCK BADGE OR HATCH. Never fades, never slides, never dismisses.
+     - ATTENTION LOOPS. No pulsing red, no blinking alerts. Danger is loud in
+       colour and copy, and static in motion.
+     - LAYOUT ON HOVER. Nothing a decision depends on hides behind a hover.
+
+   The only looping animations in the app are the spinner and the spine node
+   "breathe", and both are bound to a stage whose REAL status is `running`.
+   --------------------------------------------------------------------------- */
+
+/* ---- focus -----------------------------------------------------------------
+   Every interactive element. The matrix cells and stage pills — the highest-
+   stakes controls in the app — previously had no focus style at all. */
+
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--r1);
+  transition: box-shadow var(--dur-1) var(--ease-out);
+}
+
+/* The matrix cell is a chip-button; its focus halo must clear the chip's radius. */
+.chip:focus-visible {
+  border-radius: var(--r1);
+}
+
+/* ---- elevation -------------------------------------------------------------- */
+
+.screen {
+  box-shadow: var(--shadow-1);
+}
+
+/* ---- motion ----------------------------------------------------------------- */
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The spinner spins ONLY where something is genuinely running. An idle spinner
+   is a lie about work in progress. */
+.ti-loader[data-running],
+.spin {
+  display: inline-block;
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes sk-sweep {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* ---- skeletons -------------------------------------------------------------- */
+
+.sk {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 0%,
+    var(--surface-1) 50%,
+    var(--surface-2) 100%
+  );
+  background-size: 200% 100%;
+  animation: sk-sweep 1.2s linear infinite;
+  border-radius: var(--r1);
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* A shimmering block with no motion cue is worse than a flat one. */
+  .sk {
+    background: var(--surface-1);
+    animation: none;
+  }
+}
+
+.sk--text {
+  height: 10px;
+  margin: 3px 0;
+}
+.sk--chip {
+  height: 22px;
+  width: 48px;
+  border-radius: var(--r1);
+}
+.sk--spine {
+  height: 18px;
+  width: 100%;
+}
+.sk--bar {
+  height: 8px;
+  border-radius: var(--r-pill);
+}
+
+/* ---- provenance texture ------------------------------------------------------
+   Mockness becomes a property of the SURFACE, not a badge that scrolls out of
+   view. The MockBadge stays as well — this is additional enforcement, not a
+   replacement. A fabricated verdict must never be able to pass for a real one. */
+
+.screen[data-provenance='mock'] {
+  border-left: 3px solid var(--border-warning);
+  position: relative;
+  overflow: hidden;
+}
+
+.screen[data-provenance='mock']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent 0 10px,
+    color-mix(in srgb, var(--text-warning) 4%, transparent) 10px 11px
+  );
+}
+
+/* Content must sit above the hatch. */
+.screen[data-provenance='mock'] > * {
+  position: relative;
+}
+
+/* An uncited verdict is the worst artifact this system can produce. It should
+   look like it — not like a line of grey text. */
+.hatch-danger {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--bg-danger) 0 6px,
+    color-mix(in srgb, var(--text-danger) 10%, var(--bg-danger)) 6px 7px
+  );
+}
+
+/* A product-wide element-gate ban is a ban. Loud is correct here. */
+.hatch-lock {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--bg-danger) 0 8px,
+    color-mix(in srgb, var(--text-danger) 8%, var(--bg-danger)) 8px 9px
+  );
+}
+
+/* ---- sticky tables -----------------------------------------------------------
+   Sticky cells drop their borders, so the rule has to be an inset shadow. */
+
+.mx--sticky {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.mx--sticky thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-2);
+  box-shadow:
+    inset 0 -1px 0 var(--border-strong),
+    inset 0 1px 0 var(--border);
+}
+
+.mx--sticky [data-rowhead] {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface-0);
+  box-shadow: inset -1px 0 0 var(--border);
+}
+
+.mx--sticky thead th[data-rowhead] {
+  z-index: 3;
+  background: var(--surface-2);
+}
+
+/* ---- matrix crosshair --------------------------------------------------------
+   Tinting the row and column a cell belongs to. Colour is never used here — this
+   is a spatial aid, not a claim about the data. */
+
+.mx--crosshair tbody tr[data-hot] {
+  background: var(--surface-2);
+}
+
+.mx--crosshair th[data-hot] {
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+.mx--crosshair td,
+.mx--crosshair th {
+  transition: background var(--dur-1) var(--ease-out);
+}
