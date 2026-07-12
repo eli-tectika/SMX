@@ -3,15 +3,9 @@ import { matrixXlsxUrl } from '../api/client';
 import { MiniSpine } from '../components/ui/MiniSpine';
 import { Card, EmptyState, SectionHeader, Skeleton, StatCard } from '../components/ui/Primitives';
 import { VerdictRibbon } from '../components/ui/VerdictRibbon';
-import {
-  BUCKET_LABEL,
-  bucket,
-  bucketTone,
-  whatsBlocking,
-  type Bucket,
-} from '../domain/blocking';
+import { BUCKET_LABEL, bucket, bucketTone, whatsBlocking, type Bucket } from '../domain/blocking';
 import { forgetProject, useProjectsOverview, type ProjectCard } from '../hooks/useProjectsOverview';
-import { DEMO_PROJECT_ID } from '../mocks/demo';
+import { isDemo, loadDemoProject } from '../mocks/demo';
 
 /**
  * The re-entry surface (spec §2).
@@ -45,7 +39,7 @@ export function Projects() {
     0,
   );
 
-  if (cards.length === 0 && !loading) return <ProjectsEmpty />;
+  if (cards.length === 0 && !loading) return <ProjectsEmpty onLoadDemo={refresh} />;
 
   return (
     <>
@@ -102,7 +96,14 @@ export function Projects() {
             <SectionHeader eyebrow={BUCKET_LABEL[b]} count={groups[b].length} />
             <div className="card-list">
               {groups[b].map((c) => (
-                <ProjectRow key={c.recent.projectId} card={c} />
+                <ProjectRow
+                  key={c.recent.projectId}
+                  card={c}
+                  onForget={() => {
+                    forgetProject(c.recent.projectId);
+                    refresh();
+                  }}
+                />
               ))}
             </div>
           </section>
@@ -112,7 +113,14 @@ export function Projects() {
       {loading && cards.length > 0 && ready.length === 0 && (
         <div className="card-list">
           {cards.map((c) => (
-            <ProjectRow key={c.recent.projectId} card={c} />
+            <ProjectRow
+              key={c.recent.projectId}
+              card={c}
+              onForget={() => {
+                forgetProject(c.recent.projectId);
+                refresh();
+              }}
+            />
           ))}
         </div>
       )}
@@ -158,7 +166,7 @@ export function Projects() {
   );
 }
 
-function ProjectRow({ card }: { card: ProjectCard }) {
+function ProjectRow({ card, onForget }: { card: ProjectCard; onForget: () => void }) {
   const { recent, state } = card;
 
   if (state.kind === 'stale') return null;
@@ -198,9 +206,27 @@ function ProjectRow({ card }: { card: ProjectCard }) {
       <Link
         to={`/p/${project.projectId}/intake`}
         className="card--link"
-        style={{ padding: 0, border: 0, boxShadow: 'none', background: 'transparent' }}
+        style={{
+          padding: 0,
+          border: 0,
+          boxShadow: 'none',
+          background: 'transparent',
+        }}
       >
         <CardHead recent={recent} />
+
+        {/* The dashboard is otherwise entirely real data. The demo project is the one
+            exception, so it must announce itself — a fabricated card must never be
+            able to pass for a real one. */}
+        {isDemo(project.projectId) && (
+          <div className="banner warn" style={{ margin: '10px 0 0' }}>
+            <i className="ti ti-flask" aria-hidden="true" />
+            <div>
+              <b>Demo data</b> — a fixture project, not a real record. Dev only. Use <i>Forget</i>{' '}
+              to remove it.
+            </div>
+          </div>
+        )}
 
         <div style={{ margin: '14px 0 10px' }}>
           <MiniSpine stages={project.stages} showLabels />
@@ -252,8 +278,8 @@ function ProjectRow({ card }: { card: ProjectCard }) {
               <div className="tiny" style={{ color: 'var(--text-warning)', marginTop: 6 }}>
                 {matrix.lowConfidence > 0 && (
                   <span>
-                    {matrix.lowConfidence} verdict{matrix.lowConfidence === 1 ? '' : 's'} below 75%
-                    confidence
+                    {matrix.lowConfidence} verdict
+                    {matrix.lowConfidence === 1 ? '' : 's'} below 75% confidence
                   </span>
                 )}
                 {matrix.lowConfidence > 0 && unopenedFlagged > 0 && ' · '}
@@ -269,11 +295,26 @@ function ProjectRow({ card }: { card: ProjectCard }) {
       </Link>
 
       {/* Outside the link: a link must not wrap another interactive control. */}
-      {matrix && (
-        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--border)' }}>
-          <a className="btn" href={matrixXlsxUrl(project.projectId)} download>
-            <i className="ti ti-download" aria-hidden="true" /> Matrix .xlsx
-          </a>
+      {(matrix || isDemo(project.projectId)) && (
+        <div
+          style={{
+            marginTop: 10,
+            paddingTop: 10,
+            borderTop: '0.5px solid var(--border)',
+            display: 'flex',
+            gap: 8,
+          }}
+        >
+          {matrix && (
+            <a className="btn" href={matrixXlsxUrl(project.projectId)} download>
+              <i className="ti ti-download" aria-hidden="true" /> Matrix .xlsx
+            </a>
+          )}
+          {isDemo(project.projectId) && (
+            <button className="btn" style={{ marginLeft: 'auto' }} onClick={onForget}>
+              <i className="ti ti-x" aria-hidden="true" /> Forget demo
+            </button>
+          )}
         </div>
       )}
     </Card>
@@ -282,8 +323,21 @@ function ProjectRow({ card }: { card: ProjectCard }) {
 
 function CardHead({ recent }: { recent: ProjectCard['recent'] }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 'var(--t-lead)', fontWeight: 500, color: 'var(--ink)' }}>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: 8,
+        flexWrap: 'wrap',
+      }}
+    >
+      <span
+        style={{
+          fontSize: 'var(--t-lead)',
+          fontWeight: 500,
+          color: 'var(--ink)',
+        }}
+      >
         {recent.product}
       </span>
       <span className="tiny muted">
@@ -294,7 +348,7 @@ function CardHead({ recent }: { recent: ProjectCard['recent'] }) {
   );
 }
 
-function ProjectsEmpty() {
+function ProjectsEmpty({ onLoadDemo }: { onLoadDemo: () => void }) {
   return (
     <>
       <SectionHeader
@@ -310,9 +364,9 @@ function ProjectsEmpty() {
         title="No projects on this browser."
         body={
           <>
-            The API has no list-projects endpoint. This page remembers the ids you created here; each
-            one is re-read from the record when you open it, so a stale pointer can never put wrong
-            data on screen.
+            The API has no list-projects endpoint. This page remembers the ids you created here;
+            each one is re-read from the record when you open it, so a stale pointer can never put
+            wrong data on screen.
           </>
         }
         actions={
@@ -321,9 +375,16 @@ function ProjectsEmpty() {
               <i className="ti ti-plus" aria-hidden="true" /> New project
             </Link>
             {import.meta.env.DEV && (
-              <Link className="btn" to={`/p/${DEMO_PROJECT_ID}/matrix`}>
-                <i className="ti ti-flask" aria-hidden="true" /> Demo project · dev only
-              </Link>
+              <button
+                className="btn"
+                onClick={() => {
+                  loadDemoProject();
+                  onLoadDemo();
+                }}
+                title="Adds a fixture project so the populated dashboard can be seen without creating a real one"
+              >
+                <i className="ti ti-flask" aria-hidden="true" /> Load demo data · dev only
+              </button>
             )}
           </>
         }
