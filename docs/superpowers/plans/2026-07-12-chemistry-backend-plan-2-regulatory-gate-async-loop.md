@@ -10,7 +10,9 @@
 
 **Key flow change:** Plan 1 ended `Intake → Discovery → Regulatory → Matrix` with Regulatory going `done`. Plan 2 makes Regulatory park in **`awaiting-RE`** once verdicts complete (the matrix still assembles — it *is* the R.E.'s compliance view), and only an approved `GateDoc` moves it to `done`. Nothing consumes the approved gate yet (Dosing is Plan 4), so approval is the new terminal state.
 
-**Arming rule (the anti-rubber-stamping core, spec §4.4):** the gate arms **iff every non-`Pass` verdict (`NeedsReview`/`Conditional`/`Fail`) has `EvidenceReviewed == true`.** Recording a determination implies review (the determination endpoint sets `EvidenceReviewed` too). A `rejected` determination requires a non-empty reason. Rejected cells are excluded from the compliant set (consumed in Plan 4).
+**Arming rule (the anti-rubber-stamping core, spec §4.4):** the gate arms **iff (a) the verdict set is complete — every non-`C`-tier candidate×component cell has a verdict (`MatrixAssembler.IsComplete`) — and (b) every non-`Pass` verdict (`NeedsReview`/`Conditional`/`Fail`) has `EvidenceReviewed == true`.** Recording a determination implies review (the determination endpoint sets `EvidenceReviewed` too). A `rejected` determination requires a non-empty reason. Rejected cells are excluded from the compliant set (consumed in Plan 4).
+
+> **Deviation recorded during execution (Task 9).** As written, Task 9's `/regulatory/approve` checked only `RegulatoryGate.Armable` (condition (b)). Code review found this could sign the gate over an **empty or partial** verdict set (`Armable([]) == ok`), a false-pass path the dispatcher already guards against (`TryAssembleAsync` won't park `awaiting-RE` until `IsComplete`). The endpoint was hardened to also require `MatrixAssembler.IsComplete` — condition (a) above — before arming, matching the dispatcher's own precondition. See Task 9 below for the shipped code.
 
 ---
 
@@ -788,13 +790,18 @@ The sign-off. 422 with blockers if not armable; else writes an approved `GateDoc
 Run: `dotnet test src/Smx.Backend.sln --filter "FullyQualifiedName~RegulatoryGateEndpointsTests.Approve_WritesApprovedGate_WhenArmable"`
 Expected: FAIL — the `/regulatory/approve` route doesn't exist.
 
-- [ ] **Step 3: Add the endpoint.** In `src/Smx.Backend/Api/ProjectEndpoints.cs`, add after the `/regulatory/determination` endpoint (this needs `using Smx.Domain;` which the file already has):
+- [ ] **Step 3: Add the endpoint.** In `src/Smx.Backend/Api/ProjectEndpoints.cs`, add after the `/regulatory/determination` endpoint (this needs `using Smx.Domain;` which the file already has).
+
+**As shipped** (hardened over the original plan text — see the Deviation note in the header): a **completeness guard** (`MatrixAssembler.IsComplete`) runs before the armable check so the gate cannot be signed over an empty/partial verdict set:
 
 ```csharp
         app.MapPost("/projects/{projectId}/regulatory/approve",
             async (string projectId, IRecordStore store, CancellationToken ct) =>
         {
             var verdicts = await store.GetVerdictsAsync(projectId, ct);
+            var candidates = await store.GetCandidatesAsync(projectId, ct);
+            if (candidates is null || !MatrixAssembler.IsComplete(candidates, verdicts))
+                return Results.UnprocessableEntity(new { error = "regulatory analysis incomplete — every candidate needs a verdict before sign-off" });
             var (ok, blockers) = RegulatoryGate.Armable(verdicts);
             if (!ok)
                 return Results.UnprocessableEntity(new { error = "gate not armable — open the flagged items first", blockers });
@@ -807,6 +814,8 @@ Expected: FAIL — the `/regulatory/approve` route doesn't exist.
             return Results.Ok(new { status = "approved" });
         });
 ```
+
+Because of this guard, the test helper `SeedVerdict` also seeds a matching non-`C` `CandidatesDoc` entry (so a single seeded verdict is a *complete* set), and a regression test `Approve_Returns422_WhenVerdictSetIncomplete` proves an un-verdicted candidate is refused (422, no gate written). A determination/review test set (`Determination_RejectWithReason_PersistsReasonAndReviewed`, `Determination_Returns404_ForUnknownVerdict`) was also added under Task 8 to lock the audit-trail (`DeterminationReason` persistence) and the 404 path.
 
 - [ ] **Step 4: Run test to verify it passes**
 
