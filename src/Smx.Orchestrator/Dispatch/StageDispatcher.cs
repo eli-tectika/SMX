@@ -15,6 +15,7 @@ public sealed class StageDispatcher(IRecordStore store, IAgentRuns agents, int r
             case ConstraintsDoc c: await OnConstraintsAsync(c, ct); break;
             case CandidatesDoc cd: await OnCandidatesAsync(cd, ct); break;
             case VerdictDoc v: await OnVerdictAsync(v, ct); break;
+            case GateDoc g: await OnGateAsync(g, ct); break;
             case MatrixDoc: break; // terminal
         }
     }
@@ -114,6 +115,13 @@ public sealed class StageDispatcher(IRecordStore store, IAgentRuns agents, int r
 
     private Task OnVerdictAsync(VerdictDoc v, CancellationToken ct) => TryAssembleAsync(v.ProjectId, ct);
 
+    private async Task OnGateAsync(GateDoc g, CancellationToken ct)
+    {
+        if (g is { GateType: GateTypes.Regulatory, Status: "approved" })
+            await SetStageAsync(g.ProjectId, Stages.Regulatory,
+                s => { if (s.Status == "awaiting-RE") s.Status = "done"; }, ct);
+    }
+
     private async Task TryAssembleAsync(string projectId, CancellationToken ct)
     {
         var constraints = await store.GetConstraintsAsync(projectId, ct);
@@ -122,9 +130,10 @@ public sealed class StageDispatcher(IRecordStore store, IAgentRuns agents, int r
         var verdicts = await store.GetVerdictsAsync(projectId, ct);
         if (!MatrixAssembler.IsComplete(candidates, verdicts)) return;
 
-        var anyReview = verdicts.Any(v => v.Overall == VerdictStatus.NeedsReview);
+        var gate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
+        var regStatus = gate?.Status == "approved" ? "done" : "awaiting-RE";
         await SetStageAsync(projectId, Stages.Regulatory,
-            s => { if (s.Status != "failed") s.Status = anyReview ? "needs-review" : "done"; }, ct);
+            s => { if (s.Status is not ("failed" or "done")) s.Status = regStatus; }, ct);
 
         if (await store.GetMatrixAsync(projectId, ct) is null)
         {

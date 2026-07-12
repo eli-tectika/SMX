@@ -73,7 +73,7 @@ public class StageDispatcherTests
         await d.OnRecordChangedAsync(last, default);                            // verdict → assembly
         Assert.NotNull(await store.GetMatrixAsync("p1"));
         var proj = await store.GetProjectAsync("p1");
-        Assert.Equal("done", proj!.Stages[Stages.Regulatory].Status);
+        Assert.Equal("awaiting-RE", proj!.Stages[Stages.Regulatory].Status);
         Assert.Equal("done", proj.Stages[Stages.Matrix].Status);
     }
 
@@ -117,7 +117,48 @@ public class StageDispatcherTests
         Assert.Equal(VerdictStatus.NeedsReview, verdicts[0].Overall);
         await d.OnRecordChangedAsync(verdicts[0], default);
         Assert.NotNull(await store.GetMatrixAsync("p1"));
-        Assert.Equal("needs-review", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+        Assert.Equal("awaiting-RE", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+    }
+
+    [Fact]
+    public async Task ApprovedRegulatoryGate_MovesRegulatoryStageToDone()
+    {
+        var (d, store, _) = Sut();
+        await d.OnRecordChangedAsync(await Seed(store), default);
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
+        await d.OnRecordChangedAsync((await store.GetCandidatesAsync("p1"))!, default);
+        Assert.Equal("awaiting-RE", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+
+        await store.UpsertGateAsync(new GateDoc { Id = RecordIds.Gate("p1", GateTypes.Regulatory), ProjectId = "p1",
+            GateType = GateTypes.Regulatory, Status = "approved", ApprovedAt = "t" });
+        await d.OnRecordChangedAsync((await store.GetGateAsync("p1", GateTypes.Regulatory))!, default);
+        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+    }
+
+    [Fact]
+    public async Task LockedRegulatoryGate_DoesNotAdvanceStage()
+    {
+        var (d, store, _) = Sut();
+        await d.OnRecordChangedAsync(await Seed(store), default);
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
+        await d.OnRecordChangedAsync((await store.GetCandidatesAsync("p1"))!, default);
+        await store.UpsertGateAsync(new GateDoc { Id = RecordIds.Gate("p1", GateTypes.Regulatory), ProjectId = "p1",
+            GateType = GateTypes.Regulatory, Status = "locked" });
+        await d.OnRecordChangedAsync((await store.GetGateAsync("p1", GateTypes.Regulatory))!, default);
+        Assert.Equal("awaiting-RE", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+    }
+
+    [Fact]
+    public async Task GateApprovedBeforeVerdictsComplete_StageGoesDoneOnAssembly()
+    {
+        var (d, store, _) = Sut();
+        await d.OnRecordChangedAsync(await Seed(store), default);
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
+        // Gate approved early (before the regulatory fan-out assembles the matrix).
+        await store.UpsertGateAsync(new GateDoc { Id = RecordIds.Gate("p1", GateTypes.Regulatory), ProjectId = "p1",
+            GateType = GateTypes.Regulatory, Status = "approved", ApprovedAt = "t" });
+        await d.OnRecordChangedAsync((await store.GetCandidatesAsync("p1"))!, default); // fan-out → assemble
+        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
     }
 
     [Fact]
