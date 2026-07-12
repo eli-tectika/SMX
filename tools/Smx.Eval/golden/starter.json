@@ -7,10 +7,21 @@
         { "id": "bottle", "material": "HDPE", "application": "packaging", "markets": ["EU"], "objective": "brand" },
         { "id": "liquid", "material": "aqueous surfactant", "application": "cosmetic", "markets": ["EU"], "objective": "brand" }
       ],
-      "substances": [
-        { "element": "Cd", "form": "sulfide", "cas": "1306-23-6" },
-        { "element": "Pb", "form": "2-ethylhexanoate", "cas": "301-08-6" },
-        { "element": "Zr", "form": "neodecanoate", "cas": "39049-04-2" }
+      "elementPools": [
+        { "component": "bottle", "element": "Cd", "line": "Kα", "status": "V", "signalNote": null },
+        { "component": "bottle", "element": "Pb", "line": "Lα", "status": "V", "signalNote": null },
+        { "component": "bottle", "element": "Zr", "line": "Kα", "status": "V", "signalNote": null },
+        { "component": "liquid", "element": "Cd", "line": "Kα", "status": "V", "signalNote": null },
+        { "component": "liquid", "element": "Pb", "line": "Lα", "status": "V", "signalNote": null },
+        { "component": "liquid", "element": "Zr", "line": "Kα", "status": "V", "signalNote": null }
+      ],
+      "candidates": [
+        { "componentId": "bottle", "element": "Cd", "form": "sulfide", "cas": "1306-23-6", "particleSize": null, "solvent": null, "preferred": true, "tier": "A", "rationale": "known-candidate (eval)", "citations": [{ "source": "catalog", "reference": "eval/known", "retrievedAt": "t" }] },
+        { "componentId": "liquid", "element": "Cd", "form": "sulfide", "cas": "1306-23-6", "particleSize": null, "solvent": null, "preferred": true, "tier": "A", "rationale": "known-candidate (eval)", "citations": [{ "source": "catalog", "reference": "eval/known", "retrievedAt": "t" }] },
+        { "componentId": "bottle", "element": "Pb", "form": "2-ethylhexanoate", "cas": "301-08-6", "particleSize": null, "solvent": null, "preferred": true, "tier": "A", "rationale": "known-candidate (eval)", "citations": [{ "source": "catalog", "reference": "eval/known", "retrievedAt": "t" }] },
+        { "componentId": "liquid", "element": "Pb", "form": "2-ethylhexanoate", "cas": "301-08-6", "particleSize": null, "solvent": null, "preferred": true, "tier": "A", "rationale": "known-candidate (eval)", "citations": [{ "source": "catalog", "reference": "eval/known", "retrievedAt": "t" }] },
+        { "componentId": "bottle", "element": "Zr", "form": "neodecanoate", "cas": "39049-04-2", "particleSize": null, "solvent": null, "preferred": true, "tier": "A", "rationale": "known-candidate (eval)", "citations": [{ "source": "catalog", "reference": "eval/known", "retrievedAt": "t" }] },
+        { "componentId": "liquid", "element": "Zr", "form": "neodecanoate", "cas": "39049-04-2", "particleSize": null, "solvent": null, "preferred": true, "tier": "A", "rationale": "known-candidate (eval)", "citations": [{ "source": "catalog", "reference": "eval/known", "retrievedAt": "t" }] }
       ],
       "clientRestrictedList": []
     },
