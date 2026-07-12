@@ -16,6 +16,10 @@ public sealed class VerdictDoc
     public required string Element { get; set; }
     public required string Form { get; set; }
     public List<DimensionVerdict> Dimensions { get; set; } = [];
+    // Operator inputs (Regulatory gate, Plan 2) — distinct from the agent's Dimensions above.
+    public bool EvidenceReviewed { get; set; }
+    public string? Determination { get; set; }        // null | "recommended" | "rejected"
+    public string? DeterminationReason { get; set; }  // required when Determination == "rejected"
     public VerdictStatus Overall => Fold(Dimensions);
 
     public static VerdictStatus Fold(IReadOnlyList<DimensionVerdict> dims) =>

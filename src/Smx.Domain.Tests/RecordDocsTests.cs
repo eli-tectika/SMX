@@ -107,4 +107,26 @@ public class RecordDocsTests
         Assert.Single(c.ProvidedCandidates);
         Assert.Equal("V", c.ElementPools[0].Status);
     }
+
+    [Fact]
+    public void VerdictDoc_CarriesOperatorReviewFields_DefaultingUnset()
+    {
+        var v = new VerdictDoc
+        {
+            Id = RecordIds.Verdict("p1", "c1", "bottle"),
+            ProjectId = "p1", Cas = "c1", ComponentId = "bottle", Element = "Zr", Form = "neodec",
+        };
+        Assert.False(v.EvidenceReviewed);
+        Assert.Null(v.Determination);
+        Assert.Null(v.DeterminationReason);
+
+        v.EvidenceReviewed = true;
+        v.Determination = "rejected";
+        v.DeterminationReason = "EU Cosmetics Annex III";
+        var back = System.Text.Json.JsonSerializer.Deserialize<VerdictDoc>(
+            System.Text.Json.JsonSerializer.Serialize(v, Json.Options), Json.Options)!;
+        Assert.True(back.EvidenceReviewed);
+        Assert.Equal("rejected", back.Determination);
+        Assert.Equal("EU Cosmetics Annex III", back.DeterminationReason);
+    }
 }
