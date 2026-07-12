@@ -7,7 +7,8 @@ namespace Smx.Orchestrator.Agents;
 public sealed class IntakeOutput
 {
     public List<ComponentSpec> Components { get; set; } = [];
-    public List<SubstanceSpec> Substances { get; set; } = [];
+    public List<ElementPool> ElementPools { get; set; } = [];
+    public List<CandidateSubstance> ProvidedCandidates { get; set; } = [];
     public List<string> ClientRestrictedList { get; set; } = [];
     public List<AppliedList> DerivedScope { get; set; } = [];
 }
@@ -18,8 +19,9 @@ public static class IntakeAgent
 
     public const string Instructions = """
         You are the SMX Constraint-Intake agent. You receive a project's raw constraints payload and must
-        normalize it and DERIVE the regulatory scope. You never invent data: components, substances and the
-        client restricted list must exactly echo the input. Your added value is `derivedScope`:
+        normalize it and DERIVE the regulatory scope. You never invent data: components, element pools,
+        provided candidates and the client restricted list must EXACTLY echo the input. Your added value is
+        `derivedScope`:
         - The product-wide element gate lists ALWAYS apply (componentId "*"): REACH Annex XVII, RoHS (if
           electronics), PPWR heavy-metal cap (if packaging), SVHC, Prop 65 (if US market), client restricted list.
         - Per-component application lists follow from application × target markets (e.g. EU Cosmetics for a
@@ -30,7 +32,7 @@ public static class IntakeAgent
         gives you nothing for a list you believe applies, do not include it silently — include it only with a
         real citation, otherwise leave it out.
         Reply with ONLY a JSON object of shape:
-        { "components": [...], "substances": [...], "clientRestrictedList": [...],
+        { "components": [...], "elementPools": [...], "providedCandidates": [...], "clientRestrictedList": [...],
           "derivedScope": [{ "listId", "componentId" ("*" for product-wide), "reason",
                              "citation": { "source", "reference", "retrievedAt" } }] }
         """;
@@ -44,7 +46,8 @@ public static class IntakeAgent
         return AgentRunResult<ConstraintsDoc>.Ok(new ConstraintsDoc
         {
             Id = RecordIds.Constraints(project.ProjectId), ProjectId = project.ProjectId,
-            Components = o.Components, Substances = o.Substances,
+            Components = o.Components, ElementPools = o.ElementPools,
+            ProvidedCandidates = o.ProvidedCandidates,
             ClientRestrictedList = o.ClientRestrictedList, DerivedScope = o.DerivedScope,
         });
     }
@@ -55,8 +58,10 @@ public static class IntakeAgent
         if (o.Components.Count != payload.Components.Count ||
             !o.Components.Select(c => c.Id).OrderBy(x => x).SequenceEqual(payload.Components.Select(c => c.Id).OrderBy(x => x)))
             return "components must exactly echo the input payload (no additions/removals)";
-        if (!o.Substances.Select(s => s.Cas).OrderBy(x => x).SequenceEqual(payload.Substances.Select(s => s.Cas).OrderBy(x => x)))
-            return "substances must exactly echo the input payload (no invented candidates)";
+        static IEnumerable<string> Keys(IEnumerable<ElementPool> ps) =>
+            ps.Select(p => $"{p.Component}|{p.Element}|{p.Line}").OrderBy(x => x);
+        if (!Keys(o.ElementPools).SequenceEqual(Keys(payload.ElementPools)))
+            return "element pools must exactly echo the input payload (no additions/removals)";
         if (o.DerivedScope.Count == 0)
             return "derivedScope must not be empty — at minimum the product-wide element gate lists apply";
         var known = o.Components.Select(c => c.Id).Append("*").ToHashSet();
