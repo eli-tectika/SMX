@@ -104,4 +104,26 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
             new { cas = "nope", componentId = "bottle", determination = "recommended", reason = (string?)null });
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
+
+    [Fact]
+    public async Task Approve_Returns422WithBlockers_WhenFlaggedItemUnreviewed()
+    {
+        await SeedVerdict("p1", "cas1", VerdictStatus.Fail); // flagged + unreviewed
+        var resp = await _client.PostAsJsonAsync("/projects/p1/regulatory/approve", new { });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+        Assert.Contains("cas1", await resp.Content.ReadAsStringAsync());
+        Assert.Null(await _store.GetGateAsync("p1", GateTypes.Regulatory));
+    }
+
+    [Fact]
+    public async Task Approve_WritesApprovedGate_WhenArmable()
+    {
+        await SeedVerdict("p1", "cas1", VerdictStatus.Pass); // clean → armable without review
+        var resp = await _client.PostAsJsonAsync("/projects/p1/regulatory/approve", new { });
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var g = await _store.GetGateAsync("p1", GateTypes.Regulatory);
+        Assert.NotNull(g);
+        Assert.Equal("approved", g!.Status);
+        Assert.False(string.IsNullOrEmpty(g.ApprovedAt));
+    }
 }

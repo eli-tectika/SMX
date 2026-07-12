@@ -68,6 +68,22 @@ public static class ProjectEndpoints
             return Results.Ok(new { v.Determination });
         });
 
+        app.MapPost("/projects/{projectId}/regulatory/approve",
+            async (string projectId, IRecordStore store, CancellationToken ct) =>
+        {
+            var verdicts = await store.GetVerdictsAsync(projectId, ct);
+            var (ok, blockers) = RegulatoryGate.Armable(verdicts);
+            if (!ok)
+                return Results.UnprocessableEntity(new { error = "gate not armable — open the flagged items first", blockers });
+            await store.UpsertGateAsync(new GateDoc
+            {
+                Id = RecordIds.Gate(projectId, GateTypes.Regulatory), ProjectId = projectId,
+                GateType = GateTypes.Regulatory, Status = "approved",
+                ApprovedAt = DateTimeOffset.UtcNow.ToString("O"),
+            }, ct);
+            return Results.Ok(new { status = "approved" });
+        });
+
         app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
     }
 }
