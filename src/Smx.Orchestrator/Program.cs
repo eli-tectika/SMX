@@ -32,6 +32,8 @@ builder.Services.AddSingleton<IRecordStore>(sp => new CosmosRecordStore(
     sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.RecordContainer)));
 builder.Services.AddSingleton<ICompatibilityLookup>(sp => new CosmosCompatibilityLookup(
     sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.CompatibilityContainer)));
+builder.Services.AddSingleton<ICatalogLookup>(sp => new CosmosCatalogLookup(
+    sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.CatalogContainer)));
 builder.Services.AddSingleton<IRegulatorySearch>(new RegulatorySearchTool(
     new SearchClient(new Uri(opts.SearchEndpoint), opts.RegulatoryIndex, credential)));
 builder.Services.AddSingleton<ISdsSearch>(new SdsSearchTool(
