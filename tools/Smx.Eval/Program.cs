@@ -30,8 +30,8 @@ foreach (var gc in cases)
         }
         var status = await http.GetFromJsonAsync<JsonElement>($"/projects/{projectId}");
         var stages = status.GetProperty("stages");
-        Console.WriteLine($"   waiting... intake={S(stages, "intake")} screening={S(stages, "screening")} matrix={S(stages, "matrix")}");
-        if (S(stages, "intake") == "failed" || S(stages, "screening") == "failed") break;
+        Console.WriteLine($"   waiting... intake={S(stages, "intake")} discovery={S(stages, "discovery")} regulatory={S(stages, "regulatory")} matrix={S(stages, "matrix")}");
+        if (S(stages, "intake") == "failed" || S(stages, "discovery") == "failed" || S(stages, "regulatory") == "failed") break;
         await Task.Delay(TimeSpan.FromSeconds(15));
     }
     if (matrix is null) { Console.WriteLine($"   NO MATRIX for {gc.Name} — counting all cells as missing"); }

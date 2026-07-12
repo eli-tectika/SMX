@@ -18,7 +18,7 @@ public sealed record BackendOptions(
     string? UamiClientId,
     string? FoundryApiKey,           // local-dev only; production resolves Entra first, then Key Vault
     string? KeyVaultUri,
-    int ScreeningParallelism,
+    int RegulatoryParallelism,
     // Chat provider selection. "anthropic" (default) → Claude on Foundry (the SOW target);
     // "openai" → Azure OpenAI on the same Foundry account, used as a stand-in when Claude quota
     // is unavailable. MAF agents are model-agnostic, so only the IChatClient construction differs.
@@ -51,7 +51,7 @@ public sealed record BackendOptions(
         UamiClientId: c["UAMI_CLIENT_ID"],
         FoundryApiKey: c["FOUNDRY_API_KEY"],
         KeyVaultUri: c["KEYVAULT_URI"],
-        ScreeningParallelism: int.TryParse(c["SCREENING_PARALLELISM"], out var p) ? p : 4,
+        RegulatoryParallelism: int.TryParse(c["REGULATORY_PARALLELISM"], out var p) ? p : 4,
         ModelProvider: c["MODEL_PROVIDER"] ?? "anthropic",
         OpenAiDeployment: c["OPENAI_DEPLOYMENT"] ?? "gpt-5-mini",
         OpenAiEndpoint: c["OPENAI_ENDPOINT"] ?? "");

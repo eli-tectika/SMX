@@ -24,7 +24,7 @@ public class BackendOptionsTests
         Assert.Equal("smx-reference", o.ReferenceIndex);                // default
         Assert.Equal("regulatory-index", o.RegulatoryIndex);            // default; overridden when team schema lands
         Assert.Equal("ref-compatibility", o.CompatibilityContainer);    // default
-        Assert.Equal(4, o.ScreeningParallelism);                        // default
+        Assert.Equal(4, o.RegulatoryParallelism);                       // default
         Assert.Equal("https://aif-smx-dev.services.ai.azure.com/anthropic/v1", o.AnthropicBaseUrl);
         Assert.Equal("anthropic", o.ModelProvider);                     // default — SOW target
         Assert.Equal("gpt-5-mini", o.OpenAiDeployment);                 // default stand-in deployment

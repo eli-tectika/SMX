@@ -45,7 +45,7 @@ builder.Services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(sp =>
     FoundryChatClientFactory.CreateAsync(opts, credential).GetAwaiter().GetResult());
 builder.Services.AddSingleton<IAgentRuns, AgentRuns>();
 builder.Services.AddSingleton(sp => new StageDispatcher(
-    sp.GetRequiredService<IRecordStore>(), sp.GetRequiredService<IAgentRuns>(), opts.ScreeningParallelism));
+    sp.GetRequiredService<IRecordStore>(), sp.GetRequiredService<IAgentRuns>(), opts.RegulatoryParallelism));
 builder.Services.AddHostedService<ChangeFeedWorker>();
 
 if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] is { Length: > 0 } aiConn)
