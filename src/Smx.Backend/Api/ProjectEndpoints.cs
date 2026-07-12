@@ -12,7 +12,13 @@ public static class ProjectEndpoints
         {
             if (req.Validate() is { } error) return Results.BadRequest(new { error });
             var projectId = $"proj-{Guid.NewGuid():N}"[..17];
-            var payload = JsonSerializer.SerializeToElement(req, Json.Options);
+            var payload = JsonSerializer.SerializeToElement(new
+            {
+                components = req.Components,
+                elementPools = req.ElementPools,
+                providedCandidates = req.Candidates ?? [],
+                clientRestrictedList = req.ClientRestrictedList ?? [],
+            }, Json.Options);
             var doc = ProjectDoc.Create(projectId, req.Client, req.Product, payload);
             doc.CreatedAt = DateTimeOffset.UtcNow.ToString("O");
             await store.UpsertProjectAsync(doc, ct);
