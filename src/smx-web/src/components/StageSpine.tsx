@@ -34,7 +34,12 @@ export function StageSpine({ project }: { project: ProjectSummary }) {
             }
             style={mocked ? { borderStyle: 'dashed' } : undefined}
           >
-            <i className={`ti ${stageIcon(state, stage.gate)}`} aria-hidden="true" />
+            <i
+              className={`ti ${stageIcon(state, stage.gate)}`}
+              aria-hidden="true"
+              /* Spins only where an agent is genuinely running. */
+              data-running={state?.status === 'running' ? '' : undefined}
+            />
             {stage.label}
             {mocked && (
               <span className="sr-only"> (mock data — no backend stage)</span>

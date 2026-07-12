@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import '@tabler/icons-webfont/dist/tabler-icons.min.css';
 import './styles/tokens.css';
 import './styles/base.css';
+import './styles/craft.css';
+import './styles/primitives.css';
 import { App } from './App';
 
 /**

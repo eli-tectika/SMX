@@ -30,3 +30,81 @@
 
   --page-bg: #fbfbfc;
 }
+
+/* ---------------------------------------------------------------------------
+   Layer 2 — craft tokens.
+
+   No new hues. The 23 values above are the whole chroma budget, and only they
+   carry meaning: green=V/Pass, red=X/Fail, purple=L/Conditional & agent,
+   amber=gate/parked, blue=active/selected, teal=operator. Everything below is
+   achromatic — depth, rhythm, and time. Colour is a claim; these are not.
+   --------------------------------------------------------------------------- */
+:root {
+  /* surfaces & ink */
+  --surface-0: #ffffff;
+  --surface-3: #e3e5e8; /* sticky headers, spine rails */
+  --ink: #0e0f11; /* headings — one step darker than --text-primary */
+
+  /* elevation — cool grey, never soot */
+  --shadow-hue: 218 12% 18%;
+  --shadow-1: 0 1px 2px hsl(var(--shadow-hue) / 0.05), 0 1px 1px hsl(var(--shadow-hue) / 0.04);
+  --shadow-2: 0 1px 2px hsl(var(--shadow-hue) / 0.04), 0 4px 10px -2px hsl(var(--shadow-hue) / 0.07);
+  --shadow-3: 0 2px 4px hsl(var(--shadow-hue) / 0.04), 0 12px 28px -8px hsl(var(--shadow-hue) / 0.12);
+
+  /* spacing — 4px rhythm */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  /* radii */
+  --r1: 6px;
+  --r2: 8px;
+  --r3: 12px;
+  --r4: 14px;
+  --r-pill: 999px;
+
+  /* type */
+  --t-micro: 10px;
+  --t-tiny: 11px;
+  --t-small: 12px;
+  --t-body: 13px;
+  --t-lead: 15px;
+  --t-title: 18px;
+  --t-display: 26px;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+  --lh-tight: 1.25;
+  --track-eyebrow: 0.07em;
+
+  /* motion */
+  --dur-1: 90ms; /* hover tint, focus ring, crosshair */
+  --dur-2: 150ms; /* card lift, button, tab underline */
+  --dur-3: 240ms; /* expand, evidence rail */
+  --dur-4: 420ms; /* meter fill — mount only, never on update */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* focus. Accent blue is grammar-correct here: focus IS "active/selected".
+     Geometry separates the two — focus is an outer halo, selection an inner ring. */
+  --focus-ring: 0 0 0 2px var(--page-bg), 0 0 0 4px var(--text-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-1: 0ms;
+    --dur-2: 0ms;
+    --dur-3: 0ms;
+    --dur-4: 0ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
