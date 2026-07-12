@@ -82,4 +82,26 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
             new { cas = "cas1", componentId = "bottle", determination = "maybe", reason = (string?)null });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
     }
+
+    [Fact]
+    public async Task Determination_RejectWithReason_PersistsReasonAndReviewed()
+    {
+        await SeedVerdict("p1", "cas1", VerdictStatus.Fail);
+        var resp = await _client.PostAsJsonAsync("/projects/p1/regulatory/determination",
+            new { cas = "cas1", componentId = "bottle", determination = "rejected", reason = "EU Cosmetics Annex III" });
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var v = await _store.GetVerdictAsync("p1", "cas1", "bottle");
+        Assert.Equal("rejected", v!.Determination);
+        Assert.Equal("EU Cosmetics Annex III", v.DeterminationReason);
+        Assert.True(v.EvidenceReviewed);
+    }
+
+    [Fact]
+    public async Task Determination_Returns404_ForUnknownVerdict()
+    {
+        await SeedVerdict("p1", "cas1", VerdictStatus.Fail);
+        var resp = await _client.PostAsJsonAsync("/projects/p1/regulatory/determination",
+            new { cas = "nope", componentId = "bottle", determination = "recommended", reason = (string?)null });
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
 }
