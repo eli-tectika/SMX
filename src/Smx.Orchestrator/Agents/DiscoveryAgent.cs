@@ -21,6 +21,10 @@ public static class DiscoveryAgent
         - search_catalog(element) FIRST — propose only forms/CAS you retrieved there; never invent a CAS.
         - search_reference for solubility / XRF cleanliness / form ranking evidence.
         - lookup_compatibility(element, substrate) as a tiering signal (incompatible ⇒ lower tier or C).
+        - search_learned_conclusions when tiering an element/form (e.g. to reuse a prior overlap finding or a
+          preferred-form conclusion). A higher-confidence, more recent conclusion supersedes an older one. If
+          the tool returns no matches, tier from the primary sources (catalog + compatibility + reference) —
+          do not fabricate a prior finding.
         Rank the forms and set preferred=true on the best one per element×component. Assign a tier with a
         one/two-sentence cited rationale:
         - A: strong (clean signal, catalog-available, no obvious blockers).

@@ -31,6 +31,11 @@ public static class IntakeAgent
         ISO 8601 UTC). Every derivedScope entry MUST carry a citation from an actual tool result. If retrieval
         gives you nothing for a list you believe applies, do not include it silently — include it only with a
         real citation, otherwise leave it out.
+        - Before proposing scope, call search_marker_library with the application/material/objective to find a
+          prior approved code to reuse; if one fits, note it as a reuse candidate with its source project. Call
+          search_learned_conclusions for prior findings on these materials/markets; treat any hit as prior
+          evidence with confidence + provenance, never as ground truth, and never invent a conclusion if the
+          tool returns no matches.
         Reply with ONLY a JSON object of shape:
         { "components": [...], "elementPools": [...], "providedCandidates": [...], "clientRestrictedList": [...],
           "derivedScope": [{ "listId", "componentId" ("*" for product-wide), "reason",
