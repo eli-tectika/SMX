@@ -62,6 +62,10 @@ public static class IntakeAgent
             ps.Select(p => $"{p.Component}|{p.Element}|{p.Line}").OrderBy(x => x);
         if (!Keys(o.ElementPools).SequenceEqual(Keys(payload.ElementPools)))
             return "element pools must exactly echo the input payload (no additions/removals)";
+        static IEnumerable<string> CandidateKeys(IEnumerable<CandidateSubstance> cs) =>
+            cs.Select(c => $"{c.ComponentId}|{c.Element}|{c.Cas}").OrderBy(x => x);
+        if (!CandidateKeys(o.ProvidedCandidates).SequenceEqual(CandidateKeys(payload.ProvidedCandidates)))
+            return "provided candidates must exactly echo the input payload (no additions/removals)";
         if (o.DerivedScope.Count == 0)
             return "derivedScope must not be empty — at minimum the product-wide element gate lists apply";
         var known = o.Components.Select(c => c.Id).Append("*").ToHashSet();
