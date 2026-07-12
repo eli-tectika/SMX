@@ -7,6 +7,7 @@ public static class RecordTypes
     public const string Candidates = "candidates";
     public const string Verdict = "verdict";
     public const string Matrix = "matrix";
+    public const string Gate = "gate";
 }
 
 public static class Stages
@@ -23,4 +24,5 @@ public static class RecordIds
     public static string Candidates(string projectId) => $"{projectId}|candidates";
     public static string Verdict(string projectId, string cas, string componentId) => $"{projectId}|verdict|{cas}|{componentId}";
     public static string Matrix(string projectId) => $"{projectId}|matrix";
+    public static string Gate(string projectId, string gateType) => $"{projectId}|gate|{gateType}";
 }

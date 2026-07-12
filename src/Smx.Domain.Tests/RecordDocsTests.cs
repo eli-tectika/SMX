@@ -129,4 +129,14 @@ public class RecordDocsTests
         Assert.Equal("rejected", back.Determination);
         Assert.Equal("EU Cosmetics Annex III", back.DeterminationReason);
     }
+
+    [Fact]
+    public void GateDoc_HasDeterministicId_TypeAndDefaults()
+    {
+        var g = new GateDoc { Id = RecordIds.Gate("p1", GateTypes.Regulatory), ProjectId = "p1", GateType = GateTypes.Regulatory };
+        Assert.Equal("p1|gate|regulatory", g.Id);
+        Assert.Equal(RecordTypes.Gate, g.Type);
+        Assert.Equal("regulatory", g.GateType);
+        Assert.Equal("locked", g.Status);
+    }
 }

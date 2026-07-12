@@ -4,7 +4,7 @@ namespace Smx.Domain.Records;
 
 public sealed class StageState
 {
-    public string Status { get; set; } = "pending"; // pending|running|failed|needs-review|done
+    public string Status { get; set; } = "pending"; // pending|running|awaiting-RE|failed|needs-review|done
     public int Attempts { get; set; }
     public string? Error { get; set; }
 }
