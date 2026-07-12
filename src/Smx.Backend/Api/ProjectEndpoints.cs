@@ -78,11 +78,12 @@ public static class ProjectEndpoints
             var (ok, blockers) = RegulatoryGate.Armable(verdicts);
             if (!ok)
                 return Results.UnprocessableEntity(new { error = "gate not armable — open the flagged items first", blockers });
+            var existing = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
             await store.UpsertGateAsync(new GateDoc
             {
                 Id = RecordIds.Gate(projectId, GateTypes.Regulatory), ProjectId = projectId,
                 GateType = GateTypes.Regulatory, Status = "approved",
-                ApprovedAt = DateTimeOffset.UtcNow.ToString("O"),
+                ApprovedAt = existing?.Status == "approved" ? existing.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
             }, ct);
             return Results.Ok(new { status = "approved" });
         });
@@ -90,13 +91,18 @@ public static class ProjectEndpoints
         app.MapGet("/projects/{projectId}/gate/regulatory",
             async (string projectId, IRecordStore store, CancellationToken ct) =>
         {
-            var (armable, blockers) = RegulatoryGate.Armable(await store.GetVerdictsAsync(projectId, ct));
+            var verdicts = await store.GetVerdictsAsync(projectId, ct);
+            var candidates = await store.GetCandidatesAsync(projectId, ct);
+            var complete = candidates is not null && MatrixAssembler.IsComplete(candidates, verdicts);
+            var (armed, blockers) = RegulatoryGate.Armable(verdicts);
+            var armable = complete && armed;
+            var allBlockers = complete ? blockers : blockers.Prepend("incomplete: not every candidate has a verdict yet").ToList();
             var gate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
             return Results.Json(new
             {
                 status = gate?.Status ?? "locked",
                 armable,
-                blockers,
+                blockers = allBlockers,
                 approvedAt = gate?.ApprovedAt,
             }, Json.Options);
         });

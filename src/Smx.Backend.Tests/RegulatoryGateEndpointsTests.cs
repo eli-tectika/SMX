@@ -170,4 +170,31 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
         Assert.Equal("approved", g.GetProperty("status").GetString());
         Assert.True(g.GetProperty("armable").GetBoolean());
     }
+
+    [Fact]
+    public async Task Approve_Twice_PreservesOriginalApprovedAt()
+    {
+        await SeedVerdict("p1", "cas1", VerdictStatus.Pass);
+        await _client.PostAsJsonAsync("/projects/p1/regulatory/approve", new { });
+        var first = (await _store.GetGateAsync("p1", GateTypes.Regulatory))!.ApprovedAt;
+        await _client.PostAsJsonAsync("/projects/p1/regulatory/approve", new { });
+        var second = (await _store.GetGateAsync("p1", GateTypes.Regulatory))!.ApprovedAt;
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public async Task GetGate_ReportsNotArmableWithIncompleteBlocker_WhenVerdictSetIncomplete()
+    {
+        // A candidate with no verdict → incomplete set. Build candidates directly (SeedVerdict would add a verdict).
+        var proj = ProjectDoc.Create("p1", "Acme", "P", JsonDocument.Parse("{}").RootElement);
+        await _store.UpsertProjectAsync(proj);
+        await _store.UpsertCandidatesAsync(new CandidatesDoc
+        {
+            Id = RecordIds.Candidates("p1"), ProjectId = "p1",
+            Substances = [new CandidateSubstance("bottle", "Zr", "neodec", "cas1", null, null, false, "A", "seed", [])],
+        });
+        var g = await _client.GetFromJsonAsync<JsonElement>("/projects/p1/gate/regulatory");
+        Assert.False(g.GetProperty("armable").GetBoolean());
+        Assert.Contains("incomplete", g.GetProperty("blockers").ToString());
+    }
 }

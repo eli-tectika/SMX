@@ -115,6 +115,9 @@ public sealed class StageDispatcher(IRecordStore store, IAgentRuns agents, int r
 
     private Task OnVerdictAsync(VerdictDoc v, CancellationToken ct) => TryAssembleAsync(v.ProjectId, ct);
 
+    // Trusts the gate record: does NOT re-check arming/completeness here. The false-pass-safety
+    // invariant is that POST /regulatory/approve (armable + IsComplete) is the ONLY writer of an
+    // approved regulatory GateDoc. Do not add another writer without those two checks.
     private async Task OnGateAsync(GateDoc g, CancellationToken ct)
     {
         if (g is { GateType: GateTypes.Regulatory, Status: "approved" })
