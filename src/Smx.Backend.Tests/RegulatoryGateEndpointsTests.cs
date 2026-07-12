@@ -150,4 +150,24 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
         Assert.Contains("incomplete", await resp.Content.ReadAsStringAsync());
         Assert.Null(await _store.GetGateAsync("p1", GateTypes.Regulatory));
     }
+
+    [Fact]
+    public async Task GetGate_ReportsLockedWithBlockers_BeforeApproval()
+    {
+        await SeedVerdict("p1", "cas1", VerdictStatus.Fail);
+        var g = await _client.GetFromJsonAsync<JsonElement>("/projects/p1/gate/regulatory");
+        Assert.Equal("locked", g.GetProperty("status").GetString());
+        Assert.False(g.GetProperty("armable").GetBoolean());
+        Assert.Contains("cas1", g.GetProperty("blockers").ToString());
+    }
+
+    [Fact]
+    public async Task GetGate_ReportsApproved_AfterApproval()
+    {
+        await SeedVerdict("p1", "cas1", VerdictStatus.Pass);
+        await _client.PostAsJsonAsync("/projects/p1/regulatory/approve", new { });
+        var g = await _client.GetFromJsonAsync<JsonElement>("/projects/p1/gate/regulatory");
+        Assert.Equal("approved", g.GetProperty("status").GetString());
+        Assert.True(g.GetProperty("armable").GetBoolean());
+    }
 }

@@ -87,6 +87,20 @@ public static class ProjectEndpoints
             return Results.Ok(new { status = "approved" });
         });
 
+        app.MapGet("/projects/{projectId}/gate/regulatory",
+            async (string projectId, IRecordStore store, CancellationToken ct) =>
+        {
+            var (armable, blockers) = RegulatoryGate.Armable(await store.GetVerdictsAsync(projectId, ct));
+            var gate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
+            return Results.Json(new
+            {
+                status = gate?.Status ?? "locked",
+                armable,
+                blockers,
+                approvedAt = gate?.ApprovedAt,
+            }, Json.Options);
+        });
+
         app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
     }
 }
