@@ -52,6 +52,22 @@ public static class ProjectEndpoints
             return Results.Ok(new { reviewed = true });
         });
 
+        app.MapPost("/projects/{projectId}/regulatory/determination",
+            async (string projectId, DeterminationRequest req, IRecordStore store, CancellationToken ct) =>
+        {
+            if (req.Determination is not ("recommended" or "rejected"))
+                return Results.UnprocessableEntity(new { error = "determination must be 'recommended' or 'rejected'" });
+            if (req.Determination == "rejected" && string.IsNullOrWhiteSpace(req.Reason))
+                return Results.UnprocessableEntity(new { error = "a rejected determination requires a reason" });
+            if (await store.GetVerdictAsync(projectId, req.Cas, req.ComponentId, ct) is not { } v)
+                return Results.NotFound();
+            v.Determination = req.Determination;
+            v.DeterminationReason = req.Reason;
+            v.EvidenceReviewed = true; // recording a ruling implies you reviewed the evidence
+            await store.UpsertVerdictAsync(v, ct);
+            return Results.Ok(new { v.Determination });
+        });
+
         app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
     }
 }

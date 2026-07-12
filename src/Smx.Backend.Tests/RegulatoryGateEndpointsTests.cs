@@ -51,4 +51,35 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
             new { cas = "nope", componentId = "bottle" });
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
+
+    [Fact]
+    public async Task Determination_Recommend_SetsFieldsAndReviewed()
+    {
+        await SeedVerdict("p1", "cas1", VerdictStatus.Conditional);
+        var resp = await _client.PostAsJsonAsync("/projects/p1/regulatory/determination",
+            new { cas = "cas1", componentId = "bottle", determination = "recommended", reason = (string?)null });
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var v = await _store.GetVerdictAsync("p1", "cas1", "bottle");
+        Assert.Equal("recommended", v!.Determination);
+        Assert.True(v.EvidenceReviewed);
+    }
+
+    [Fact]
+    public async Task Determination_RejectWithoutReason_Returns422()
+    {
+        await SeedVerdict("p1", "cas1", VerdictStatus.Fail);
+        var resp = await _client.PostAsJsonAsync("/projects/p1/regulatory/determination",
+            new { cas = "cas1", componentId = "bottle", determination = "rejected", reason = "" });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+        Assert.Null((await _store.GetVerdictAsync("p1", "cas1", "bottle"))!.Determination);
+    }
+
+    [Fact]
+    public async Task Determination_UnknownValue_Returns422()
+    {
+        await SeedVerdict("p1", "cas1", VerdictStatus.Fail);
+        var resp = await _client.PostAsJsonAsync("/projects/p1/regulatory/determination",
+            new { cas = "cas1", componentId = "bottle", determination = "maybe", reason = (string?)null });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+    }
 }
