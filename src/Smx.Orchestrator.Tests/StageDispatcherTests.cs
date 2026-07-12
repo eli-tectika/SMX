@@ -162,6 +162,51 @@ public class StageDispatcherTests
     }
 
     [Fact]
+    public async Task ApprovedNonRegulatoryGate_DoesNotAdvanceRegulatoryStage()
+    {
+        var (d, store, _) = Sut();
+        await d.OnRecordChangedAsync(await Seed(store), default);
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
+        await d.OnRecordChangedAsync((await store.GetCandidatesAsync("p1"))!, default);
+        Assert.Equal("awaiting-RE", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+
+        // A future VP gate flows through the same OnGateAsync — it must NOT advance Regulatory.
+        await store.UpsertGateAsync(new GateDoc { Id = RecordIds.Gate("p1", "vp"), ProjectId = "p1",
+            GateType = "vp", Status = "approved", ApprovedAt = "t" });
+        await d.OnRecordChangedAsync((await store.GetGateAsync("p1", "vp"))!, default);
+        Assert.Equal("awaiting-RE", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+    }
+
+    [Fact]
+    public async Task ApprovedRegulatoryGate_DoesNotOverwriteFailedStage()
+    {
+        var (d, store, _) = Sut();
+        var proj = await Seed(store);
+        proj.Stages[Stages.Regulatory].Status = "failed";
+        await store.UpsertProjectAsync(proj);
+
+        await store.UpsertGateAsync(new GateDoc { Id = RecordIds.Gate("p1", GateTypes.Regulatory), ProjectId = "p1",
+            GateType = GateTypes.Regulatory, Status = "approved", ApprovedAt = "t" });
+        await d.OnRecordChangedAsync((await store.GetGateAsync("p1", GateTypes.Regulatory))!, default);
+        Assert.Equal("failed", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+    }
+
+    [Fact]
+    public async Task ApprovedRegulatoryGate_RedeliveredAfterDone_StaysDone()
+    {
+        var (d, store, _) = Sut();
+        await d.OnRecordChangedAsync(await Seed(store), default);
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
+        await d.OnRecordChangedAsync((await store.GetCandidatesAsync("p1"))!, default);
+        await store.UpsertGateAsync(new GateDoc { Id = RecordIds.Gate("p1", GateTypes.Regulatory), ProjectId = "p1",
+            GateType = GateTypes.Regulatory, Status = "approved", ApprovedAt = "t" });
+        var gate = (await store.GetGateAsync("p1", GateTypes.Regulatory))!;
+        await d.OnRecordChangedAsync(gate, default);
+        await d.OnRecordChangedAsync(gate, default); // at-least-once re-delivery must be a no-op
+        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+    }
+
+    [Fact]
     public async Task IntakeThrow_MarksStageFailed_WithErrorDetail()
     {
         var (d, store, agents) = Sut();
