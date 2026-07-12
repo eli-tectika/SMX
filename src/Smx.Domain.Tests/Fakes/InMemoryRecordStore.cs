@@ -18,9 +18,12 @@ public sealed class InMemoryRecordStore : IRecordStore
     public Task<IReadOnlyList<VerdictDoc>> GetVerdictsAsync(string projectId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<VerdictDoc>>(
             _docs.Values.OfType<VerdictDoc>().Where(v => v.ProjectId == projectId).ToList());
+    public Task<CandidatesDoc?> GetCandidatesAsync(string projectId, CancellationToken ct = default) =>
+        Task.FromResult(_docs.TryGetValue(RecordIds.Candidates(projectId), out var d) ? (CandidatesDoc?)d : null);
 
     public Task UpsertProjectAsync(ProjectDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
     public Task UpsertConstraintsAsync(ConstraintsDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
     public Task UpsertVerdictAsync(VerdictDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
     public Task UpsertMatrixAsync(MatrixDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
+    public Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
 }
