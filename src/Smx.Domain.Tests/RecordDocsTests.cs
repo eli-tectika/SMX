@@ -55,4 +55,27 @@ public class RecordDocsTests
         Assert.Equal(VerdictStatus.Pass, back.Overall);
         Assert.Single(back.Dimensions[0].Citations);
     }
+
+    [Fact]
+    public void CandidatesDoc_HasDeterministicId_AndCandidatesType()
+    {
+        var doc = new CandidatesDoc
+        {
+            Id = RecordIds.Candidates("p1"), ProjectId = "p1",
+            Substances = [new("bottle", "Y", "2-ethylhexanoate", "136-25-4", "sub-micron", "mineral spirits", true, "A", "clean XRF, catalog-available", [new Citation("catalog", "ref-catalog/product|Y|x", "t")])],
+        };
+        Assert.Equal("p1|candidates", doc.Id);
+        Assert.Equal(RecordTypes.Candidates, doc.Type);
+        Assert.Equal("A", doc.Substances[0].Tier);
+        Assert.True(doc.Substances[0].Preferred);
+    }
+
+    [Fact]
+    public void ElementPool_CarriesComponentAndSignalNote()
+    {
+        var pool = new ElementPool("liquid", "Sc", "Kα", "L", "small-amount peak");
+        Assert.Equal("liquid", pool.Component);
+        Assert.Equal("L", pool.Status);
+        Assert.Equal("small-amount peak", pool.SignalNote);
+    }
 }

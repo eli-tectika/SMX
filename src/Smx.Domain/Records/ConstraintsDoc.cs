@@ -6,6 +6,13 @@ public sealed record ComponentSpec(string Id, string Material, string Applicatio
 public sealed record SubstanceSpec(string Element, string Form, string Cas);
 public sealed record AppliedList(string ListId, string ComponentId, string Reason, Citation Citation);
 
+public sealed record ElementPool(string Component, string Element, string Line, string Status, string? SignalNote = null); // Status: "V" | "L"
+
+public sealed record CandidateSubstance(
+    string ComponentId, string Element, string Form, string Cas,
+    string? ParticleSize, string? Solvent, bool Preferred, string Tier, string Rationale,
+    IReadOnlyList<Citation> Citations); // Tier: "A" | "B" | "C"
+
 public sealed class ConstraintsDoc
 {
     public required string Id { get; set; }
