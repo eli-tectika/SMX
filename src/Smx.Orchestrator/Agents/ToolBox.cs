@@ -10,7 +10,9 @@ public sealed class ToolBox(
     ICompatibilityLookup compatibility,
     IRegulatorySearch regulatory,
     ISdsSearch sds,
-    IReferenceSearch reference)
+    IReferenceSearch reference,
+    IKnowledgeStore knowledge,
+    ILearnedConclusionsSearch learnedConclusions)
 {
     public IList<AITool> DiscoveryTools() =>
     [
@@ -20,6 +22,8 @@ public sealed class ToolBox(
             "Exact tabulated element×substrate compatibility verdict. Use as a tiering signal — an incompatible substrate lowers a candidate's tier or excludes it."),
         AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
             "Search SMX reference prose: solubility, XRF cleanliness, marker forms, bibliography-backed notes. Use to justify form ranking and tiering."),
+        AIFunctionFactory.Create(SearchLearnedConclusionsAsync, "search_learned_conclusions",
+            "Search accumulated Learned Conclusions (prior material/regulatory findings with confidence + provenance) relevant to tiering this element/form. Treat them as prior evidence, not fact; a higher-confidence, more recent conclusion supersedes an older one."),
     ];
 
     public IList<AITool> RegulatoryTools() =>
@@ -38,6 +42,10 @@ public sealed class ToolBox(
             "Search the official regulatory corpus to confirm which regulation lists apply to a component given its application and target markets. Cite every list you include."),
         AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
             "Search SMX reference prose for material/application background."),
+        AIFunctionFactory.Create(SearchMarkerLibraryAsync, "search_marker_library",
+            "Search the cross-project Marker Library for a previously approved code that fits this application/material/objective. Prefer reusing a validated code over inventing a new one; cite the source project."),
+        AIFunctionFactory.Create(SearchLearnedConclusionsAsync, "search_learned_conclusions",
+            "Search accumulated Learned Conclusions (prior material/regulatory findings with confidence + provenance) relevant to this intake. Treat them as prior evidence, not fact; a higher-confidence, more recent conclusion supersedes an older one."),
     ];
 
     public async Task<string> SearchCatalogAsync(string element, CancellationToken ct)
@@ -54,6 +62,22 @@ public sealed class ToolBox(
         return card is null
             ? $"{{\"tabulated\":false,\"note\":\"{element}×{substrate} not tabulated — treat as a weak signal\"}}"
             : JsonSerializer.Serialize(new { tabulated = true, card }, Json.Options);
+    }
+
+    public async Task<string> SearchMarkerLibraryAsync(string query, CancellationToken ct)
+    {
+        var markers = await knowledge.QueryMarkersAsync(query, ct);
+        return markers.Count == 0
+            ? "{\"results\":[],\"note\":\"no matches — no prior approved code fits; proceed without reuse, do not invent one\"}"
+            : JsonSerializer.Serialize(new { results = markers }, Json.Options);
+    }
+
+    public async Task<string> SearchLearnedConclusionsAsync(string query, CancellationToken ct)
+    {
+        var chunks = await learnedConclusions.SearchAsync(query, 5, ct);
+        return chunks.Count == 0
+            ? "{\"results\":[],\"note\":\"no matches — no prior conclusions on this; reason from primary sources, do not fabricate a prior finding\"}"
+            : JsonSerializer.Serialize(new { results = chunks }, Json.Options);
     }
 
     public async Task<string> SearchRegulatoryAsync(string query, CancellationToken ct) => Render(await regulatory.SearchAsync(query, ct: ct));
