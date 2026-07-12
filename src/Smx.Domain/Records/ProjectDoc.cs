@@ -27,7 +27,8 @@ public sealed class ProjectDoc
         Stages = new()
         {
             [Records.Stages.Intake] = new StageState(),
-            [Records.Stages.Screening] = new StageState(),
+            [Records.Stages.Discovery] = new StageState(),
+            [Records.Stages.Regulatory] = new StageState(),
             [Records.Stages.Matrix] = new StageState(),
         },
     };

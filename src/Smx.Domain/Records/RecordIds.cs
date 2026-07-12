@@ -12,7 +12,8 @@ public static class RecordTypes
 public static class Stages
 {
     public const string Intake = "intake";
-    public const string Screening = "screening";
+    public const string Discovery = "discovery";
+    public const string Regulatory = "regulatory";
     public const string Matrix = "matrix";
 }
 

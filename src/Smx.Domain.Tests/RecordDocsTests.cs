@@ -78,4 +78,16 @@ public class RecordDocsTests
         Assert.Equal("L", pool.Status);
         Assert.Equal("small-amount peak", pool.SignalNote);
     }
+
+    [Fact]
+    public void ProjectCreate_SeedsIntakeDiscoveryRegulatoryMatrix()
+    {
+        var p = ProjectDoc.Create("p1", "Acme", "P", System.Text.Json.JsonDocument.Parse("{}").RootElement);
+        Assert.True(p.Stages.ContainsKey(Stages.Intake));
+        Assert.True(p.Stages.ContainsKey(Stages.Discovery));
+        Assert.True(p.Stages.ContainsKey(Stages.Regulatory));
+        Assert.True(p.Stages.ContainsKey(Stages.Matrix));
+        Assert.False(p.Stages.ContainsKey("screening"));
+        Assert.Equal(4, p.Stages.Count);
+    }
 }
