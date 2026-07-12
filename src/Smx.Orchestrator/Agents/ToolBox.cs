@@ -6,15 +6,24 @@ using Smx.Domain.Tools;
 namespace Smx.Orchestrator.Agents;
 
 public sealed class ToolBox(
+    ICatalogLookup catalog,
     ICompatibilityLookup compatibility,
     IRegulatorySearch regulatory,
     ISdsSearch sds,
     IReferenceSearch reference)
 {
-    public IList<AITool> ScreeningTools() =>
+    public IList<AITool> DiscoveryTools() =>
     [
+        AIFunctionFactory.Create(SearchCatalogAsync, "search_catalog",
+            "List the catalog products (form, molecule, CAS, purity, supplier) available for an element from the SMX catalog. Use this to specify candidate forms and their CAS numbers; only propose candidates whose CAS you retrieved here."),
         AIFunctionFactory.Create(LookupCompatibilityAsync, "lookup_compatibility",
-            "Exact tabulated element×substrate compatibility verdict from the SMX knowledge base. Call this FIRST for the Compatibility dimension; only reason from search results when the pair is not tabulated."),
+            "Exact tabulated element×substrate compatibility verdict. Use as a tiering signal — an incompatible substrate lowers a candidate's tier or excludes it."),
+        AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
+            "Search SMX reference prose: solubility, XRF cleanliness, marker forms, bibliography-backed notes. Use to justify form ranking and tiering."),
+    ];
+
+    public IList<AITool> RegulatoryTools() =>
+    [
         AIFunctionFactory.Create(SearchRegulatoryAsync, "search_regulatory",
             "Search the official regulatory corpus (REACH/RoHS/PPWR/SVHC/Prop 65/EU Cosmetics/FDA...). Call this for the ElementGate and ApplicationCheck dimensions. Cite every returned reference you rely on."),
         AIFunctionFactory.Create(SearchSdsAsync, "search_sds",
@@ -31,11 +40,19 @@ public sealed class ToolBox(
             "Search SMX reference prose for material/application background."),
     ];
 
+    public async Task<string> SearchCatalogAsync(string element, CancellationToken ct)
+    {
+        var cards = await catalog.LookupAsync(element, ct);
+        return cards.Count == 0
+            ? "{\"results\":[],\"note\":\"no matches — do not invent CAS numbers; exclude this element or mark the candidate lower-confidence\"}"
+            : JsonSerializer.Serialize(new { results = cards }, Json.Options);
+    }
+
     public async Task<string> LookupCompatibilityAsync(string element, string substrate, CancellationToken ct)
     {
         var card = await compatibility.LookupAsync(element, substrate, ct);
         return card is null
-            ? $"{{\"tabulated\":false,\"note\":\"{element}×{substrate} not tabulated — reason from search results and mark confidence accordingly\"}}"
+            ? $"{{\"tabulated\":false,\"note\":\"{element}×{substrate} not tabulated — treat as a weak signal\"}}"
             : JsonSerializer.Serialize(new { tabulated = true, card }, Json.Options);
     }
 

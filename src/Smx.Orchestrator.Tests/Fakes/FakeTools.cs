@@ -2,6 +2,17 @@ using Smx.Domain.Tools;
 
 namespace Smx.Orchestrator.Tests.Fakes;
 
+public sealed class FakeCatalogLookup : ICatalogLookup
+{
+    public Dictionary<string, List<CatalogCard>> Cards { get; } = new();
+    public List<string> Calls { get; } = [];
+    public Task<IReadOnlyList<CatalogCard>> LookupAsync(string element, CancellationToken ct = default)
+    {
+        Calls.Add(element);
+        return Task.FromResult<IReadOnlyList<CatalogCard>>(Cards.TryGetValue(element, out var c) ? c : []);
+    }
+}
+
 public sealed class FakeCompatibilityLookup : ICompatibilityLookup
 {
     public Dictionary<(string, string), CompatibilityCard> Cards { get; } = new();

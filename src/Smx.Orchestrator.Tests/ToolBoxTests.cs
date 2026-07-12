@@ -1,4 +1,3 @@
-using Smx.Domain.Tools;
 using Smx.Orchestrator.Agents;
 using Smx.Orchestrator.Tests.Fakes;
 
@@ -6,28 +5,31 @@ namespace Smx.Orchestrator.Tests;
 
 public class ToolBoxTests
 {
-    [Fact]
-    public void ScreeningTools_ExposeFourNamedFunctions()
+    private static ToolBox Box()
     {
-        var box = new ToolBox(new FakeCompatibilityLookup(), new FakeSearch(), new FakeSearch(), new FakeSearch());
-        var names = box.ScreeningTools().Select(t => t.Name).ToList();
-        Assert.Equal(["lookup_compatibility", "search_regulatory", "search_sds", "search_reference"], names);
+        var search = new FakeSearch();
+        return new ToolBox(new FakeCatalogLookup(), new FakeCompatibilityLookup(), search, search, search);
     }
 
     [Fact]
-    public void IntakeTools_ExposeRegulatoryAndReferenceOnly()
+    public void DiscoveryTools_ExposeCatalogCompatibilityReference()
     {
-        var box = new ToolBox(new FakeCompatibilityLookup(), new FakeSearch(), new FakeSearch(), new FakeSearch());
-        Assert.Equal(["search_regulatory", "search_reference"], box.IntakeTools().Select(t => t.Name).ToList());
+        var names = Box().DiscoveryTools().Select(t => t.Name).OrderBy(x => x).ToArray();
+        Assert.Equal(["lookup_compatibility", "search_catalog", "search_reference"], names);
     }
 
     [Fact]
-    public async Task LookupCompatibility_DelegatesToLookup_AndReportsUntabulated()
+    public void RegulatoryTools_ExposeRegulatorySdsReference_NoCompatibility()
     {
-        var lookup = new FakeCompatibilityLookup();
-        var box = new ToolBox(lookup, new FakeSearch(), new FakeSearch(), new FakeSearch());
-        var result = await box.LookupCompatibilityAsync("Zr", "HDPE", default);
-        Assert.Contains("not tabulated", result);
-        Assert.Single(lookup.Calls);
+        var names = Box().RegulatoryTools().Select(t => t.Name).OrderBy(x => x).ToArray();
+        Assert.Equal(["search_reference", "search_regulatory", "search_sds"], names);
+        Assert.DoesNotContain("lookup_compatibility", names);
+    }
+
+    [Fact]
+    public async Task SearchCatalog_RendersEmptyAsNoMatchNote()
+    {
+        var json = await Box().SearchCatalogAsync("Xx", default);
+        Assert.Contains("no matches", json);
     }
 }
