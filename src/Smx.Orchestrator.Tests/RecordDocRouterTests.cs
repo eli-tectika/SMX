@@ -29,4 +29,17 @@ public class RecordDocRouterTests
     {
         Assert.Null(RecordDocRouter.Route(JsonDocument.Parse("""{"id":"x","type":"lease-ish"}""").RootElement));
     }
+
+    [Fact]
+    public void Route_DeserializesGateDoc_ByDiscriminator()
+    {
+        var json = System.Text.Json.JsonSerializer.SerializeToElement(new GateDoc
+        {
+            Id = RecordIds.Gate("p1", GateTypes.Regulatory), ProjectId = "p1",
+            GateType = GateTypes.Regulatory, Status = "approved",
+        }, Smx.Domain.Json.Options);
+        var routed = RecordDocRouter.Route(json);
+        var gate = Assert.IsType<GateDoc>(routed);
+        Assert.Equal("approved", gate.Status);
+    }
 }
