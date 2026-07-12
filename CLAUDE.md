@@ -111,8 +111,14 @@ Function is the only public egress).
 This project is deployed and run on Azure. The repo must include and **keep maintained** an `infra/` folder
 containing **Bicep** templates and scripts that deploy the **entire** system into a **fresh, empty Azure
 subscription**. Treat infra as a first-class, always-current part of the codebase — when the application or
-its Azure footprint changes, update `infra/` in the same change. This folder does not exist yet; creating it
-is expected work.
+its Azure footprint changes, update `infra/` in the same change.
+
+Every script in [`infra/scripts/`](infra/scripts/) is a **bash + PowerShell twin pair** (`deploy.sh` /
+`deploy.ps1`, …) covering both Azure deploys and the local dev stack (`dev-local-setup.*`, `dev-local.*`).
+They are twins, not alternatives — **fix a bug in one and fix it in the other**. Deploy order, the
+`SMX_SUBSCRIPTION_ID` / `DEPLOYER_IP` guards, and the Windows workarounds (ACR log-stream crash on a
+non-UTF-8 console, missing `zip`, AppLocker vs. the apphost, ASCII-only `.ps1`) are documented in
+[`infra/scripts/README.md`](infra/scripts/README.md) — read it before touching a script.
 
 ## Application code
 

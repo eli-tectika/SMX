@@ -12,10 +12,10 @@ PROJ="${INFRA_DIR}/../src/Smx.Functions"
 OUT="$(mktemp -d)"; ZIP="${OUT}/sds-functions.zip"
 
 require_cmd dotnet
-require_cmd zip
 log "Publishing ${PROJ} -> ${APP} (${RG})"
 dotnet publish "${PROJ}" -c Release -o "${OUT}/publish"
-( cd "${OUT}/publish" && zip -qr "${ZIP}" . )
-az functionapp deployment source config-zip -g "${RG}" -n "${APP}" --src "${ZIP}" --output none
+make_zip "${OUT}/publish" "${ZIP}"
+# az is a native binary on Windows: hand it a Windows path, not /tmp/....
+az functionapp deployment source config-zip -g "${RG}" -n "${APP}" --src "$(to_native_path "${ZIP}")" --output none
 rm -rf "${OUT}"
 log "Published SDS functions to ${APP}. (Run configure-auth.sh next, then harden.sh.)"

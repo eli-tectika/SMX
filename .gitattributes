@@ -1,2 +1,7 @@
 *.xlsx binary
 *.xlsx -diff
+
+# Shell scripts must keep LF: core.autocrlf=true would otherwise check them out with CRLF,
+# and bash reads the shebang as `#!/usr/bin/env bash\r` -> "bad interpreter".
+*.sh text eol=lf
+

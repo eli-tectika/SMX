@@ -6,7 +6,7 @@ ENV="$(require_env_arg "${1:-}")"
 ensure_bicep
 confirm_subscription
 
-DEPLOYER_IP="$(detect_ip)"
+DEPLOYER_IP="${DEPLOYER_IP:-$(require_deployer_ip "$@")}"
 DEPLOY_NAME="smx-${ENV}-$(date +%Y%m%d%H%M%S)"
 log "Deploying env '${ENV}' to ${LOCATION} (deployer IP: ${DEPLOYER_IP:-<none>})..."
 
