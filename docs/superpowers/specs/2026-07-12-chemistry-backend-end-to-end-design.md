@@ -170,7 +170,7 @@ failed`. Parked states named for the spec's pauses: `awaiting-samples`, `awaitin
 
 | Gate | Type | Record captures | Arms only when | Unlocks |
 |---|---|---|---|---|
-| Regulatory | **Hard** | R.E. determination per **substance×component** (recommend/reject + reason-on-reject), evidence-reviewed markers | every low-confidence / `needs_review` item has been opened | compliant set → Dosing |
+| Regulatory | **Hard** | R.E. determination per **substance×component** (recommend/reject, **every determination requires a reason**), evidence-reviewed markers | every low-confidence / `needs_review` item has been opened | compliant set → Dosing |
 | Code finalization | **Soft** | PL/VP/physics review note | — | continue |
 | VP R&D | **Hard** | VP determination + confirmed final code per component | Regulatory cleared + all components have a selected code | procurement + **Marker Library + Learned Conclusions writes** |
 | MSDS-before-order | **Hard precondition** | MSDS Registry state | MSDS current + reviewed for the substance | an individual order |
@@ -193,7 +193,7 @@ up, and the **orchestrator advances the stage** (the two apps still never call e
 **Anti-rubber-stamping — enforced server-side, not just in the UI:**
 - `regulatory/approve` returns **422** if any flagged/low-confidence item is unreviewed — the gate cannot be
   signed while the agent's doubts are open.
-- **Reject requires a non-empty reason** (validation); a conditional (`L`) element-pool entry must carry its
+- **Every determination (recommend *or* reject) requires a non-empty reason** (validation) — a wrong clearance is the headline harm, so recommending a flagged item must be justified, not just rejecting one; a conditional (`L`) element-pool entry must carry its
   signal-character note (validated at intake).
 - Every determination is an **idempotent upsert** (deterministic id) — change-feed redelivery is harmless and
   re-signing is a no-op.
@@ -334,7 +334,7 @@ set, and any uncited claim counts as a failure regardless of agreement.
    **A floor set too low is a harm case** (under-dosed → undetectable), so a floor-plausibility check is
    treated as a false-pass-analog, not a soft warning.
 5. **Gates & async loop → integration tests.** Gate can't arm while low-confidence items are open (422);
-   reject needs a reason; recording a determination advances state via the change feed; awaiting→resume
+   every determination needs a reason; recording a determination advances state via the change feed; awaiting→resume
    round-trips. Plus a **revise-with-reason round-trip**: change a tier with a reason → a Learned Conclusion
    is written → it surfaces on the next project's Discovery read (proving the loop closes from a cold start).
 6. **End-to-end acceptance.** One+ full project driven via API through every stage and gate (R.E./VP

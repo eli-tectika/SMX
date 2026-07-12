@@ -57,8 +57,8 @@ public static class ProjectEndpoints
         {
             if (req.Determination is not ("recommended" or "rejected"))
                 return Results.UnprocessableEntity(new { error = "determination must be 'recommended' or 'rejected'" });
-            if (req.Determination == "rejected" && string.IsNullOrWhiteSpace(req.Reason))
-                return Results.UnprocessableEntity(new { error = "a rejected determination requires a reason" });
+            if (string.IsNullOrWhiteSpace(req.Reason))
+                return Results.UnprocessableEntity(new { error = "every determination requires a reason" });
             if (await store.GetVerdictAsync(projectId, req.Cas, req.ComponentId, ct) is not { } v)
                 return Results.NotFound();
             v.Determination = req.Determination;

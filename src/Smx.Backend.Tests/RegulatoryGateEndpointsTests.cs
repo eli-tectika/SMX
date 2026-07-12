@@ -64,11 +64,23 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
     {
         await SeedVerdict("p1", "cas1", VerdictStatus.Conditional);
         var resp = await _client.PostAsJsonAsync("/projects/p1/regulatory/determination",
-            new { cas = "cas1", componentId = "bottle", determination = "recommended", reason = (string?)null });
+            new { cas = "cas1", componentId = "bottle", determination = "recommended", reason = "supplier COA confirms compliance" });
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         var v = await _store.GetVerdictAsync("p1", "cas1", "bottle");
         Assert.Equal("recommended", v!.Determination);
+        Assert.Equal("supplier COA confirms compliance", v.DeterminationReason);
         Assert.True(v.EvidenceReviewed);
+    }
+
+    [Fact]
+    public async Task Determination_RecommendWithoutReason_Returns422()
+    {
+        // Every determination — including recommending a flagged item — must carry a reason.
+        await SeedVerdict("p1", "cas1", VerdictStatus.Conditional);
+        var resp = await _client.PostAsJsonAsync("/projects/p1/regulatory/determination",
+            new { cas = "cas1", componentId = "bottle", determination = "recommended", reason = "" });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+        Assert.Null((await _store.GetVerdictAsync("p1", "cas1", "bottle"))!.Determination);
     }
 
     [Fact]
@@ -108,7 +120,7 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
     {
         await SeedVerdict("p1", "cas1", VerdictStatus.Fail);
         var resp = await _client.PostAsJsonAsync("/projects/p1/regulatory/determination",
-            new { cas = "nope", componentId = "bottle", determination = "recommended", reason = (string?)null });
+            new { cas = "nope", componentId = "bottle", determination = "recommended", reason = "n/a" });
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 

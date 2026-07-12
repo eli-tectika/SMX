@@ -10,7 +10,7 @@
 
 **Key flow change:** Plan 1 ended `Intake → Discovery → Regulatory → Matrix` with Regulatory going `done`. Plan 2 makes Regulatory park in **`awaiting-RE`** once verdicts complete (the matrix still assembles — it *is* the R.E.'s compliance view), and only an approved `GateDoc` moves it to `done`. Nothing consumes the approved gate yet (Dosing is Plan 4), so approval is the new terminal state.
 
-**Arming rule (the anti-rubber-stamping core, spec §4.4):** the gate arms **iff (a) the verdict set is complete — every non-`C`-tier candidate×component cell has a verdict (`MatrixAssembler.IsComplete`) — and (b) every non-`Pass` verdict (`NeedsReview`/`Conditional`/`Fail`) has `EvidenceReviewed == true`.** Recording a determination implies review (the determination endpoint sets `EvidenceReviewed` too). A `rejected` determination requires a non-empty reason. Rejected cells are excluded from the compliant set (consumed in Plan 4).
+**Arming rule (the anti-rubber-stamping core, spec §4.4):** the gate arms **iff (a) the verdict set is complete — every non-`C`-tier candidate×component cell has a verdict (`MatrixAssembler.IsComplete`) — and (b) every non-`Pass` verdict (`NeedsReview`/`Conditional`/`Fail`) has `EvidenceReviewed == true`.** Recording a determination implies review (the determination endpoint sets `EvidenceReviewed` too). **Every determination (`recommended` or `rejected`) requires a non-empty reason** (tightened post-merge — see the note at Task 8). Rejected cells are excluded from the compliant set (consumed in Plan 4).
 
 > **Deviation recorded during execution (Task 9).** As written, Task 9's `/regulatory/approve` checked only `RegulatoryGate.Armable` (condition (b)). Code review found this could sign the gate over an **empty or partial** verdict set (`Armable([]) == ok`), a false-pass path the dispatcher already guards against (`TryAssembleAsync` won't park `awaiting-RE` until `IsComplete`). The endpoint was hardened to also require `MatrixAssembler.IsComplete` — condition (a) above — before arming, matching the dispatcher's own precondition. See Task 9 below for the shipped code.
 
@@ -675,7 +675,9 @@ git commit -m "feat(api): POST /regulatory/review marks a verdict evidence-revie
 - Modify: `src/Smx.Backend/Api/ProjectEndpoints.cs`
 - Test: `src/Smx.Backend.Tests/RegulatoryGateEndpointsTests.cs`
 
-Records the R.E.'s per-cell ruling. `rejected` requires a non-empty reason (422 otherwise). Recording a determination implies review (sets `EvidenceReviewed` too).
+Records the R.E.'s per-cell ruling. **Every determination requires a non-empty reason** (422 otherwise). Recording a determination implies review (sets `EvidenceReviewed` too).
+
+> **Tightened post-merge (design owner decision, 2026-07-12):** the original plan required a reason only for `rejected`. Per the user, **every** determination must carry a reason — recommending an agent-flagged item is the higher-harm direction and must be justified, not just rejecting one. As shipped, the reason check is `if (string.IsNullOrWhiteSpace(req.Reason)) return 422` for any valid determination (it runs before the verdict lookup, so a reasonless request 422s regardless of whether the cell exists). The `recommended` happy-path test carries a reason; a `Determination_RecommendWithoutReason_Returns422` test locks the rule.
 
 - [ ] **Step 1: Write the failing test** — add to `RegulatoryGateEndpointsTests`:
 
@@ -725,8 +727,8 @@ Expected: FAIL — the `/regulatory/determination` route doesn't exist.
         {
             if (req.Determination is not ("recommended" or "rejected"))
                 return Results.UnprocessableEntity(new { error = "determination must be 'recommended' or 'rejected'" });
-            if (req.Determination == "rejected" && string.IsNullOrWhiteSpace(req.Reason))
-                return Results.UnprocessableEntity(new { error = "a rejected determination requires a reason" });
+            if (string.IsNullOrWhiteSpace(req.Reason))   // tightened post-merge: every determination needs a reason
+                return Results.UnprocessableEntity(new { error = "every determination requires a reason" });
             if (await store.GetVerdictAsync(projectId, req.Cas, req.ComponentId, ct) is not { } v)
                 return Results.NotFound();
             v.Determination = req.Determination;
