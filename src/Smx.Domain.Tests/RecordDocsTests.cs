@@ -90,4 +90,21 @@ public class RecordDocsTests
         Assert.False(p.Stages.ContainsKey("screening"));
         Assert.Equal(4, p.Stages.Count);
     }
+
+    [Fact]
+    public void ConstraintsDoc_CarriesElementPools_AndProvidedCandidates()
+    {
+        var c = new ConstraintsDoc
+        {
+            Id = RecordIds.Constraints("p1"), ProjectId = "p1",
+            Components = [new("bottle", "PET", "packaging", ["EU"], "brand")],
+            ElementPools = [new("bottle", "Y", "Kα", "V", null)],
+            ProvidedCandidates = [new("bottle", "Y", "2-EH", "136-25-4", null, null, true, "A", "provided", [])],
+            ClientRestrictedList = ["Pb"],
+            DerivedScope = [new("reach-annex-xvii", "*", "gate", new Citation("regulatory", "x", "t"))],
+        };
+        Assert.Single(c.ElementPools);
+        Assert.Single(c.ProvidedCandidates);
+        Assert.Equal("V", c.ElementPools[0].Status);
+    }
 }

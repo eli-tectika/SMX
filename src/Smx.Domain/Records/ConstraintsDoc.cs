@@ -19,7 +19,10 @@ public sealed class ConstraintsDoc
     public required string ProjectId { get; set; }
     public string Type { get; set; } = RecordTypes.Constraints;
     public List<ComponentSpec> Components { get; set; } = [];
-    public List<SubstanceSpec> Substances { get; set; } = [];
+    public List<ElementPool> ElementPools { get; set; } = [];
+    /// Known-candidate mode (eval/integration): when non-empty, Discovery is bypassed and these
+    /// become the candidates doc verbatim. Empty ⇒ the Discovery agent generates candidates.
+    public List<CandidateSubstance> ProvidedCandidates { get; set; } = [];
     public List<string> ClientRestrictedList { get; set; } = [];
     /// Derived regulatory scope: which lists apply, per component (element gate entries use ComponentId="*").
     public List<AppliedList> DerivedScope { get; set; } = [];
