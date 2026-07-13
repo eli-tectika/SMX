@@ -139,4 +139,42 @@ public class RecordDocsTests
         Assert.Equal("regulatory", g.GateType);
         Assert.Equal("locked", g.Status);
     }
+
+    [Fact]
+    public void RevisionId_IsScopedToProjectAndStage()
+    {
+        Assert.Equal("proj-1|revision|discovery|a1b2c3d4",
+            RecordIds.Revision("proj-1", Stages.Discovery, "a1b2c3d4"));
+    }
+
+    [Fact]
+    public void RevisionDoc_RoundTrips_WithTypeDiscriminatorOnTheWire()
+    {
+        var r = new RevisionDoc
+        {
+            Id = RecordIds.Revision("proj-1", Stages.Discovery, "a1b2c3d4"), ProjectId = "proj-1",
+            Stage = Stages.Discovery, Target = "Ba tier", Reason = "overlaps the Ti K-beta line",
+            CreatedAt = "2026-07-13T00:00:00Z",
+        };
+        var json = JsonSerializer.Serialize(r, Json.Options);
+        // "type" is the sole key RecordDocRouter.Route switches on: lose it and the change feed
+        // silently stops dispatching revisions. Assert it on the wire, not on the object.
+        Assert.Contains("\"type\":\"revision\"", json);
+        Assert.Contains("\"projectId\":\"proj-1\"", json);
+        Assert.Contains("\"status\":\"pending\"", json);
+
+        var back = JsonSerializer.Deserialize<RevisionDoc>(json, Json.Options)!;
+        Assert.Equal("proj-1|revision|discovery|a1b2c3d4", back.Id);
+        Assert.Equal(Stages.Discovery, back.Stage);
+        Assert.Equal("Ba tier", back.Target);
+        Assert.Equal("overlaps the Ti K-beta line", back.Reason);
+        Assert.Equal("2026-07-13T00:00:00Z", back.CreatedAt);
+        Assert.Equal(RevisionStatus.Pending, back.Status);
+        // Json.Options omits nulls when writing; they must come back null, not "".
+        Assert.Null(back.Cas);
+        Assert.Null(back.ComponentId);
+        Assert.Null(back.ConclusionId);
+        Assert.Null(back.AppliedAt);
+        Assert.Null(back.Error);
+    }
 }
