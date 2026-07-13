@@ -9,7 +9,8 @@ public sealed class CosmosCompatibilityLookup(Container container) : ICompatibil
 {
     // Matches the reference-data seed shape (compatibility-rules.json → ref-compatibility, PK /element):
     // { id, element, docType, dimension, substrate, subject, verdict, reason, refIds[] }.
-    private sealed record Row(string Id, string Element, string Substrate, string Verdict, string? Reason, List<string>? RefIds);
+    // internal (not private) so CosmosQueryTextTests can pin the SQL this row shape generates.
+    internal sealed record Row(string Id, string Element, string Substrate, string Verdict, string? Reason, List<string>? RefIds);
 
     public async Task<CompatibilityCard?> LookupAsync(string element, string substrate, CancellationToken ct = default)
     {

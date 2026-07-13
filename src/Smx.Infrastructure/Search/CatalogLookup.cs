@@ -7,7 +7,8 @@ namespace Smx.Infrastructure.Search;
 /// Reads the ref-catalog container seeded by the reference-data subsystem (PK /element, docType "product").
 public sealed class CosmosCatalogLookup(Container container) : ICatalogLookup
 {
-    private sealed record Row(string Id, string Element, string DocType, string? Molecule, string? Compound, string? Cas, string? Purity, string? Supplier);
+    // internal (not private) so CosmosQueryTextTests can pin the SQL this row shape generates.
+    internal sealed record Row(string Id, string Element, string DocType, string? Molecule, string? Compound, string? Cas, string? Purity, string? Supplier);
 
     public async Task<IReadOnlyList<CatalogCard>> LookupAsync(string element, CancellationToken ct = default)
     {

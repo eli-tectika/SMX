@@ -22,4 +22,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- CosmosQueryTextTests asserts on the SQL the LINQ provider generates for the private row
+         shapes in Search/CatalogLookup.cs and Search/CompatibilityLookup.cs. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Smx.Orchestrator.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>
