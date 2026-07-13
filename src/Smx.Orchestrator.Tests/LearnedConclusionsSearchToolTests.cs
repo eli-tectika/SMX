@@ -4,6 +4,7 @@ using Azure.Core.Pipeline;
 using Azure.Search.Documents;
 using Smx.Domain.Tools;
 using Smx.Infrastructure.Search;
+using Smx.Orchestrator.Tests.Fakes;
 
 namespace Smx.Orchestrator.Tests;
 
@@ -35,20 +36,6 @@ public class LearnedConclusionsSearchToolTests
                 Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
                 RequestMessage = request,
             };
-        }
-    }
-
-    /// The same embedder contract the production FoundryEmbedder implements: one vector per text, 3072
-    /// dims (text-embedding-3-large). Records what it was asked to embed so a test can assert that the
-    /// tool embeds the QUERY — not the empty string, not nothing at all.
-    private sealed class FakeEmbedder : IEmbedder
-    {
-        public List<string> Embedded { get; } = [];
-
-        public Task<IReadOnlyList<float[]>> EmbedAsync(IReadOnlyList<string> texts, CancellationToken ct = default)
-        {
-            Embedded.AddRange(texts);
-            return Task.FromResult<IReadOnlyList<float[]>>(texts.Select(_ => new float[3072]).ToList());
         }
     }
 
