@@ -49,4 +49,30 @@ public class KnowledgeEndpointsTests : IClassFixture<WebApplicationFactory<Progr
         var miss = await _client.GetFromJsonAsync<JsonElement>("/learned-conclusions?search=cadmium");
         Assert.Equal(0, miss.GetArrayLength());
     }
+
+    [Fact]
+    public async Task Msds_Review_FlipsStatus_And404ForUnknown()
+    {
+        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc
+        {
+            Id = KnowledgeIds.Msds("13463-67-7"), Cas = "13463-67-7", Supplier = "Acme", Version = "3", Date = "2025-01-01",
+        });
+        var ok = await _client.PostAsJsonAsync("/msds-registry/13463-67-7/review", new { });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        Assert.Equal("reviewed", (await _knowledge.GetMsdsAsync("13463-67-7"))!.ReviewStatus);
+
+        var missing = await _client.PostAsJsonAsync("/msds-registry/nope/review", new { });
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetMsds_BrowsesAll()
+    {
+        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc
+        {
+            Id = KnowledgeIds.Msds("c1"), Cas = "c1", Supplier = "Acme", Version = "1", Date = "d",
+        });
+        var all = await _client.GetFromJsonAsync<JsonElement>("/msds-registry");
+        Assert.Equal(1, all.GetArrayLength());
+    }
 }

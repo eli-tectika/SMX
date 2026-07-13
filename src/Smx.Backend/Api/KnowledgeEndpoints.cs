@@ -19,6 +19,16 @@ public static class KnowledgeEndpoints
         app.MapGet("/learned-conclusions", async (string? search, [FromServices] IKnowledgeStore store, CancellationToken ct) =>
             Results.Json(await store.QueryLearnedConclusionsAsync(search, ct), Json.Options));
 
-        // /msds-registry (GET + review) added in Task 9.
+        app.MapGet("/msds-registry", async (string? search, [FromServices] IKnowledgeStore store, CancellationToken ct) =>
+            Results.Json(await store.QueryMsdsAsync(search, ct), Json.Options));
+
+        app.MapPost("/msds-registry/{cas}/review", async (string cas, [FromServices] IKnowledgeStore store, CancellationToken ct) =>
+        {
+            if (await store.GetMsdsAsync(cas, ct) is not { } m)
+                return Results.NotFound();
+            m.ReviewStatus = "reviewed";
+            await store.UpsertMsdsAsync(m, ct);
+            return Results.Ok(new { m.Cas, m.ReviewStatus });
+        });
     }
 }
