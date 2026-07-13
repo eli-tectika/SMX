@@ -1,7 +1,10 @@
+using System.Text.Json;
 using Azure.AI.OpenAI;
+using Azure.Core.Serialization;
 using Azure.Identity;
 using Azure.Monitor.OpenTelemetry.Exporter;
 using Azure.Search.Documents;
+using Azure.Search.Documents.Indexes;
 using Microsoft.Azure.Cosmos;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
@@ -13,59 +16,13 @@ using Smx.Orchestrator.Agents;
 using Smx.Orchestrator.Dispatch;
 using Smx.Orchestrator.Knowledge;
 
-var builder = Host.CreateApplicationBuilder(args);
-var opts = BackendOptions.From(builder.Configuration);
-if (string.IsNullOrEmpty(opts.SearchEndpoint))
-    throw new InvalidOperationException("SEARCH_ENDPOINT missing — required for the agent host");
-// FoundryChatClientFactory guards FOUNDRY_ENDPOINT itself.
-Azure.Core.TokenCredential credential = opts.UamiClientId is { } id
-    ? new ManagedIdentityCredential(id)
-    : new DefaultAzureCredential();
+// `LearnedConclusionsIndex` is BOTH a type (the AI Search write side) and a BackendOptions property (the
+// index NAME). Alias the type so `new LcSearchIndex(client, opts.LearnedConclusionsIndex)` reads as what
+// it is — a client over the index called `opts.LearnedConclusionsIndex`.
+using LcSearchIndex = Smx.Infrastructure.Search.LearnedConclusionsIndex;
 
-builder.Services.AddSingleton(opts);
-builder.Services.AddSingleton(credential);
-builder.Services.AddSingleton(new CosmosClient(opts.CosmosAccountEndpoint, credential, new CosmosClientOptions
-{
-    // System.Text.Json (not the SDK's default Newtonsoft) — required to round-trip JsonElement
-    // (ProjectDoc.Payload + the ChangeFeedProcessor<JsonElement>). See SystemTextJsonCosmosSerializer.
-    Serializer = new SystemTextJsonCosmosSerializer(Json.Options),
-}));
-builder.Services.AddSingleton<IRecordStore>(sp => new CosmosRecordStore(
-    sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.RecordContainer)));
-builder.Services.AddSingleton<ICompatibilityLookup>(sp => new CosmosCompatibilityLookup(
-    sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.CompatibilityContainer)));
-builder.Services.AddSingleton<ICatalogLookup>(sp => new CosmosCatalogLookup(
-    sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.CatalogContainer)));
-builder.Services.AddSingleton<IKnowledgeStore>(sp =>
-{
-    var cosmos = sp.GetRequiredService<CosmosClient>();
-    return new CosmosKnowledgeStore(
-        cosmos.GetContainer(opts.CosmosDatabase, opts.LearnedConclusionsContainer),
-        cosmos.GetContainer(opts.CosmosDatabase, opts.MarkerLibraryContainer),
-        cosmos.GetContainer(opts.CosmosDatabase, opts.MsdsRegistryContainer));
-});
-// text-embedding-3-large on the Foundry account — the query half of learned-conclusions hybrid retrieval.
-// The SAME embedder must vectorize the pushed conclusions (Task 16 wires the writer), or the two sides
-// of the index are not comparable.
-builder.Services.AddSingleton<IEmbedder>(new FoundryEmbedder(
-    new AzureOpenAIClient(new Uri(opts.ResolvedOpenAiEndpoint), credential), opts.EmbeddingDeployment));
-builder.Services.AddSingleton<ILearnedConclusionsSearch>(sp => new LearnedConclusionsSearchTool(
-    new SearchClient(new Uri(opts.SearchEndpoint), opts.LearnedConclusionsIndex, credential),
-    sp.GetRequiredService<IEmbedder>()));
-builder.Services.AddSingleton<IRegulatorySearch>(new RegulatorySearchTool(
-    new SearchClient(new Uri(opts.SearchEndpoint), opts.RegulatoryIndex, credential)));
-builder.Services.AddSingleton<ISdsSearch>(new SdsSearchTool(
-    new SearchClient(new Uri(opts.SearchEndpoint), opts.SdsIndex, credential)));
-builder.Services.AddSingleton<IReferenceSearch>(new ReferenceSearchTool(
-    new SearchClient(new Uri(opts.SearchEndpoint), opts.ReferenceIndex, credential)));
-builder.Services.AddSingleton<ToolBox>();
-builder.Services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(sp =>
-    FoundryChatClientFactory.CreateAsync(opts, credential).GetAwaiter().GetResult());
-builder.Services.AddSingleton<IAgentRuns, AgentRuns>();
-builder.Services.AddSingleton(sp => new StageDispatcher(
-    sp.GetRequiredService<IRecordStore>(), sp.GetRequiredService<IAgentRuns>(),
-    sp.GetRequiredService<ILearnedConclusionWriter>(), opts.RegulatoryParallelism));
-builder.Services.AddHostedService<ChangeFeedWorker>();
+var builder = Host.CreateApplicationBuilder(args);
+OrchestratorHost.ConfigureServices(builder.Services, builder.Configuration);
 
 if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] is { Length: > 0 } aiConn)
 {
@@ -78,3 +35,90 @@ if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] is { Length: 
 }
 
 await builder.Build().RunAsync();
+
+/// The agent host's container, in one callable place so a test can actually BUILD it. `dotnet build` proves
+/// nothing about DI: a missing registration is a runtime failure at the first resolve, and this host resolves
+/// StageDispatcher only when the change feed hands it a document — i.e. in production. See
+/// Smx.Orchestrator.Tests/OrchestratorHostWiringTests.
+public static class OrchestratorHost
+{
+    public static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
+    {
+        var opts = BackendOptions.From(configuration);
+        if (string.IsNullOrEmpty(opts.SearchEndpoint))
+            throw new InvalidOperationException("SEARCH_ENDPOINT missing — required for the agent host");
+        // Guarded HERE, not deferred to FoundryChatClientFactory: the embedder's AzureOpenAIClient is
+        // constructed eagerly below and needs a parseable URI, so an unset FOUNDRY_ENDPOINT would surface as
+        // an opaque UriFormatException from a client nobody mentioned instead of the missing setting.
+        if (string.IsNullOrEmpty(opts.FoundryEndpoint))
+            throw new InvalidOperationException("FOUNDRY_ENDPOINT missing — required for the agent host (chat + embeddings)");
+
+        Azure.Core.TokenCredential credential = opts.UamiClientId is { } id
+            ? new ManagedIdentityCredential(id)
+            : new DefaultAzureCredential();
+
+        services.AddSingleton(opts);
+        services.AddSingleton(credential);
+        services.AddSingleton(new CosmosClient(opts.CosmosAccountEndpoint, credential, new CosmosClientOptions
+        {
+            // System.Text.Json (not the SDK's default Newtonsoft) — required to round-trip JsonElement
+            // (ProjectDoc.Payload + the ChangeFeedProcessor<JsonElement>). See SystemTextJsonCosmosSerializer.
+            Serializer = new SystemTextJsonCosmosSerializer(Json.Options),
+        }));
+        services.AddSingleton<IRecordStore>(sp => new CosmosRecordStore(
+            sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.RecordContainer)));
+        services.AddSingleton<ICompatibilityLookup>(sp => new CosmosCompatibilityLookup(
+            sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.CompatibilityContainer)));
+        services.AddSingleton<ICatalogLookup>(sp => new CosmosCatalogLookup(
+            sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.CatalogContainer)));
+        services.AddSingleton<IKnowledgeStore>(sp =>
+        {
+            var cosmos = sp.GetRequiredService<CosmosClient>();
+            return new CosmosKnowledgeStore(
+                cosmos.GetContainer(opts.CosmosDatabase, opts.LearnedConclusionsContainer),
+                cosmos.GetContainer(opts.CosmosDatabase, opts.MarkerLibraryContainer),
+                cosmos.GetContainer(opts.CosmosDatabase, opts.MsdsRegistryContainer));
+        });
+
+        // ONE embedder, resolved from the container on BOTH sides of the learned-conclusions loop:
+        // LearnedConclusionsSearchTool vectorizes the agent's QUERY, LearnedConclusionWriter vectorizes the
+        // CONCLUSION it pushed. Both legs must use the SAME embedding model, or the query vector and the
+        // document vectors live in different spaces: cosine similarity between them is meaningless, the
+        // vector half of every hybrid search returns noise, and nothing errors — retrieval just silently
+        // degrades. A single shared singleton makes that structural instead of conventional; do not
+        // construct a second FoundryEmbedder anywhere.
+        services.AddSingleton<IEmbedder>(new FoundryEmbedder(
+            new AzureOpenAIClient(new Uri(opts.ResolvedOpenAiEndpoint), credential), opts.EmbeddingDeployment));
+
+        services.AddSingleton<ILearnedConclusionsSearch>(sp => new LearnedConclusionsSearchTool(
+            new SearchClient(new Uri(opts.SearchEndpoint), opts.LearnedConclusionsIndex, credential),
+            sp.GetRequiredService<IEmbedder>()));                                   // read side
+        services.AddSingleton<ILearnedConclusionsIndex>(new LcSearchIndex(
+            new SearchIndexClient(new Uri(opts.SearchEndpoint), credential, new SearchClientOptions
+            {
+                // camelCase so LearnedConclusionChunk maps onto the index's field names (id, content,
+                // contentVector, …). The chunk also pins them with [JsonPropertyName], so this is
+                // belt-and-braces — but the Functions writers rely on exactly this, and a mismatch here
+                // means the reader finds nothing, silently.
+                Serializer = new JsonObjectSerializer(
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }),
+            }),
+            opts.LearnedConclusionsIndex));                                          // write side (index name)
+        services.AddSingleton<ILearnedConclusionWriter, LearnedConclusionWriter>();  // Cosmos + index, same IEmbedder
+
+        services.AddSingleton<IRegulatorySearch>(new RegulatorySearchTool(
+            new SearchClient(new Uri(opts.SearchEndpoint), opts.RegulatoryIndex, credential)));
+        services.AddSingleton<ISdsSearch>(new SdsSearchTool(
+            new SearchClient(new Uri(opts.SearchEndpoint), opts.SdsIndex, credential)));
+        services.AddSingleton<IReferenceSearch>(new ReferenceSearchTool(
+            new SearchClient(new Uri(opts.SearchEndpoint), opts.ReferenceIndex, credential)));
+        services.AddSingleton<ToolBox>();
+        services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(sp =>
+            FoundryChatClientFactory.CreateAsync(opts, credential).GetAwaiter().GetResult());
+        services.AddSingleton<IAgentRuns, AgentRuns>();
+        services.AddSingleton(sp => new StageDispatcher(
+            sp.GetRequiredService<IRecordStore>(), sp.GetRequiredService<IAgentRuns>(),
+            sp.GetRequiredService<ILearnedConclusionWriter>(), opts.RegulatoryParallelism));
+        services.AddHostedService<ChangeFeedWorker>();
+    }
+}
