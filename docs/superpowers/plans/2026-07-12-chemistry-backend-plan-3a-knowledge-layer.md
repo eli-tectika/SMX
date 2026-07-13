@@ -23,6 +23,23 @@
 - Endpoints: `src/Smx.Backend/Api/ProjectEndpoints.cs` (`MapProjectEndpoints(this IEndpointRouteBuilder app)`, per-endpoint DI params); tests use `WebApplicationFactory<Program>` + `ConfigureServices(s => s.AddSingleton<IX>(fake))`.
 - Infra: `infra/modules/data.bicep` (containers via a `var xContainers = [...]` + `[for c in xContainers: {...}]` loop) and its **byte-identical twin** `infra/single-rg/modules/data.bicep`; env vars in `infra/modules/compute.bicep` `sharedEnv` + twin.
 
+---
+
+## Deviations recorded during execution (the plan text below is the ORIGINAL; these are what actually shipped)
+
+1. **`search_marker_library` became a structured lookup (important — the planned shape was a latent dead feature).** As planned, the tool took a free-text `query` which the store matched with a single substring `CONTAINS` against each of `validatedFor.application`/`.material`/`.objective` *independently*. But the tool description and the Intake instruction both tell the model to call it *with the application/material/objective* — i.e. a phrase like `"anti-counterfeit label overt"`, which is a substring of **no** single field. The tool would have returned the `"no matches"` sentinel even when a perfectly matching marker existed, silently defeating the reuse-first mechanism (design §6.2). Shipped instead:
+   - `IKnowledgeStore.FindMarkersAsync(application, material, objective)` — **ANDs** the supplied dimensions (a blank dimension is unconstrained), case-insensitive, and returns **approved-only** markers (so a superseded/retired code from Plan 5 can never be offered for reuse). A `MarkerStatus.Approved` constant keeps the doc default, the Cosmos filter, and the fake from drifting.
+   - `ToolBox.SearchMarkerLibraryAsync(application, material, objective)` takes the three as **separate, optional** params (defaults `= null`, so `AIFunctionFactory` emits them as optional — with no defaults they'd be emitted as *required* and a model omitting one would hard-fail the call).
+   - The free-text `QueryMarkersAsync(search)` is retained and still backs the `GET /marker-library` **browse** endpoint (browse shows all statuses; only the agent's reuse lookup filters to approved).
+2. **`[FromServices]` on every store handler param** (`ProjectEndpoints.cs` + `KnowledgeEndpoints.cs`). Minimal APIs resolve service-vs-body params via `IServiceProviderIsService` at endpoint-build time, and that build spans the **whole app's** endpoint data source — so a host that registers only one of the two stores mis-infers the other as a request body and throws, taking down routing for *every* route (including `/healthz`, which is the ACA liveness and App Gateway backend probe). Production always registers both stores together, so prod was never at risk; the attribute converts a total routing collapse into a clean per-route failure.
+3. **`scope.form` is searchable** in `QueryLearnedConclusionsAsync` (both impls) — form is a first-class scope dimension for Discovery tiering and was omitted.
+4. **`MsdsRegistryDoc.ReviewedAt`** added and set by the review endpoint — the MSDS-before-order hard gate (Plan 5) is an operator-signed record, so the review action must carry a timestamp rather than be retro-fitted later. `MsdsReviewStatus` constants prevent status drift.
+5. **The 404 catch in `LearnedConclusionsSearchTool` is now tested** (stubbed HTTP transport → real Azure `RequestFailedException`), *and* guarded against being too broad (403/500 must still throw — a swallowed auth failure would silently let an agent reason with zero prior evidence). Cold-start safety for `search_learned_conclusions` rests entirely on this one line.
+
+**Known follow-up (deferred to Plan 5, not a defect today):** `FindMarkersAsync` has no result cap, so an all-null call would pull the entire approved Marker Library into the agent's context. Academic while the library is empty; add a `top` when Plan 5 starts writing markers.
+
+---
+
 **Build/test commands** (from repo root):
 - Build: `dotnet build src/Smx.Backend.sln`
 - Test all: `dotnet test src/Smx.Backend.sln`
