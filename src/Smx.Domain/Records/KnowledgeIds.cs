@@ -40,4 +40,10 @@ public static class KnowledgeIds
     public static string LearnedConclusion(string kind, string scopeKey) => $"{kind}|{scopeKey}";
     public static string Marker(string key) => $"marker|{key}";
     public static string Msds(string cas) => $"msds|{cas}";
+
+    /// A revise-with-reason conclusion is keyed by the DECISION that produced it, not by its scope.
+    /// Both halves matter: re-delivering the same revision upserts the same doc (idempotent under an
+    /// at-least-once change feed), while a LATER revision on the same scope writes a NEW conclusion
+    /// rather than overwriting the old one — design §6.1 is "accumulation, not overwrite".
+    public static string RevisionConclusion(string kind, string revisionId) => LearnedConclusion(kind, revisionId);
 }
