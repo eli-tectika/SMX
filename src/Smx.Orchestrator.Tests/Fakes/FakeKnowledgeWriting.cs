@@ -40,3 +40,26 @@ public sealed class FakeLearnedConclusionsIndex : ILearnedConclusionsIndex
         return Task.CompletedTask;
     }
 }
+
+/// An ILearnedConclusionsSearch that can see ONLY what the writer actually pushed, and only through the
+/// same keyhole the real reader looks through: `id` and `content`, nothing else.
+///
+/// It scores by term overlap on the content string rather than doing real BM25/vector search — the point
+/// is not to reproduce Azure's ranker, it is to make it IMPOSSIBLE for a round-trip test to pass by
+/// reading a field the production reader never selects. If the writer stops putting the operator's reason
+/// into `content`, this double stops finding it, exactly as production would.
+public sealed class IndexBackedLearnedConclusionsSearch(FakeLearnedConclusionsIndex index) : ILearnedConclusionsSearch
+{
+    public Task<IReadOnlyList<RetrievedChunk>> SearchAsync(string query, int top = 5, CancellationToken ct = default)
+    {
+        var terms = query.Split([' ', '?', ',', '.'], StringSplitOptions.RemoveEmptyEntries);
+        var hits = index.Pushed
+            .Select(c => (chunk: c, score: terms.Count(t => c.Content.Contains(t, StringComparison.OrdinalIgnoreCase))))
+            .Where(x => x.score > 0)
+            .OrderByDescending(x => x.score)
+            .Take(top)
+            .Select(x => new RetrievedChunk("learned-conclusions", $"learned-conclusions/{x.chunk.Id}", x.chunk.Content, x.score))
+            .ToList();
+        return Task.FromResult<IReadOnlyList<RetrievedChunk>>(hits);
+    }
+}
