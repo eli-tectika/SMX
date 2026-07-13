@@ -87,6 +87,10 @@ var sharedEnv = [
   { name: 'SEARCH_ENDPOINT', value: searchEndpoint }
   { name: 'KEYVAULT_URI', value: keyVaultUri }
   { name: 'CLAUDE_DEPLOYMENT', value: 'claude-opus-4-7' }
+  // Both sides of the learned-conclusions loop (query embedding + document push) resolve the model from
+  // this one setting, so they cannot drift apart. Must stay text-embedding-3-large: ai.bicep deploys
+  // exactly that (unconditionally), and the index's vector field is sized to its 3072 dims.
+  { name: 'EMBEDDING_DEPLOYMENT', value: 'text-embedding-3-large' }
   { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
   { name: 'LEARNED_CONCLUSIONS_CONTAINER', value: 'learned-conclusions' }
   { name: 'MARKER_LIBRARY_CONTAINER', value: 'marker-library' }
