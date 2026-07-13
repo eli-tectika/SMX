@@ -27,6 +27,14 @@ if (builder.Configuration["COSMOS_ACCOUNT_ENDPOINT"] is { Length: > 0 })
     }));
     builder.Services.AddSingleton<IRecordStore>(sp => new CosmosRecordStore(
         sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.RecordContainer)));
+    builder.Services.AddSingleton<IKnowledgeStore>(sp =>
+    {
+        var cosmos = sp.GetRequiredService<CosmosClient>();
+        return new CosmosKnowledgeStore(
+            cosmos.GetContainer(opts.CosmosDatabase, opts.LearnedConclusionsContainer),
+            cosmos.GetContainer(opts.CosmosDatabase, opts.MarkerLibraryContainer),
+            cosmos.GetContainer(opts.CosmosDatabase, opts.MsdsRegistryContainer));
+    });
 }
 if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] is { Length: > 0 })
     builder.Services.AddOpenTelemetry().UseAzureMonitor();
