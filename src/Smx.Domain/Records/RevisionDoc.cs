@@ -28,6 +28,11 @@ public sealed class RevisionDoc
     public string Status { get; set; } = RevisionStatus.Pending;
     public string? Error { get; set; }
     public string? ConclusionId { get; set; }             // the Learned Conclusion this revision produced
-    public required string CreatedAt { get; set; }        // ISO-8601 (caller-supplied; domain has no clock)
+    /// ISO-8601, ALWAYS via DateTimeOffset...ToString("O") (caller-supplied; the domain has no clock).
+    /// The revision audit trail is ordered by a LEXICOGRAPHIC sort on this field — in Cosmos it is a
+    /// server-side ORDER BY on a string. That is only chronological while every writer uses the same
+    /// fixed-width format: mix "O" (2026-07-13T10:11:22.1234567+00:00) with a whole-second "…Z" and the
+    /// trail silently misorders, because '.' (0x2E) sorts before 'Z' (0x5A).
+    public required string CreatedAt { get; set; }
     public string? AppliedAt { get; set; }
 }

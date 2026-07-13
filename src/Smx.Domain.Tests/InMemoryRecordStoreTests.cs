@@ -88,14 +88,36 @@ public class RevisionStoreTests
     public async Task GetRevisions_OnColdStart_ReturnsEmpty_NotNull() =>
         Assert.Empty(await new InMemoryRecordStore().GetRevisionsAsync("proj-nothing"));
 
+    /// The other doc types share the project's partition. The fake excludes them with a CLR type check
+    /// (`OfType<RevisionDoc>()`) while Cosmos excludes them with `WHERE root["type"] = "revision"` — the one
+    /// place the twins use genuinely different mechanisms, so pin the behaviour they must agree on.
+    [Fact]
+    public async Task GetRevisions_ExcludesOtherDocTypesInTheSamePartition()
+    {
+        var store = new InMemoryRecordStore();
+        await store.UpsertRevisionAsync(Rev("proj-1", "a", "2026-07-13T01:00:00Z"));
+        await store.UpsertVerdictAsync(new VerdictDoc { Id = RecordIds.Verdict("proj-1", "c1", "bottle"),
+            ProjectId = "proj-1", Cas = "c1", ComponentId = "bottle", Element = "Zr", Form = "f" });
+        await store.UpsertGateAsync(new GateDoc { Id = RecordIds.Gate("proj-1", GateTypes.Regulatory),
+            ProjectId = "proj-1", GateType = GateTypes.Regulatory, Status = "approved" });
+        await store.UpsertCandidatesAsync(new CandidatesDoc { Id = RecordIds.Candidates("proj-1"),
+            ProjectId = "proj-1", Substances = [] });
+
+        var only = Assert.Single(await store.GetRevisionsAsync("proj-1"));
+        Assert.Equal(RecordTypes.Revision, only.Type);
+    }
+
     [Fact]
     public async Task UpsertRevision_ReplacesByIdSoChangeFeedRedeliveryIsHarmless()
     {
         var store = new InMemoryRecordStore();
-        var r = Rev("proj-1", "a", "2026-07-13T01:00:00Z");
-        await store.UpsertRevisionAsync(r);
-        r.Status = RevisionStatus.Applied;
-        await store.UpsertRevisionAsync(r);
+        await store.UpsertRevisionAsync(Rev("proj-1", "a", "2026-07-13T01:00:00Z"));
+
+        // A DISTINCT object with the same id — the dispatcher re-reads the doc from the store before it
+        // marks it applied, so replacement must work by id, not by having mutated the caller's reference.
+        var applied = Rev("proj-1", "a", "2026-07-13T01:00:00Z");
+        applied.Status = RevisionStatus.Applied;
+        await store.UpsertRevisionAsync(applied);
 
         var only = Assert.Single(await store.GetRevisionsAsync("proj-1"));
         Assert.Equal(RevisionStatus.Applied, only.Status);
