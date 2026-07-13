@@ -43,7 +43,7 @@ public sealed class ToolBox(
         AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
             "Search SMX reference prose for material/application background."),
         AIFunctionFactory.Create(SearchMarkerLibraryAsync, "search_marker_library",
-            "Search the cross-project Marker Library for a previously approved code that fits this application/material/objective. Prefer reusing a validated code over inventing a new one; cite the source project."),
+            "Search the cross-project Marker Library for a previously approved code to reuse. Pass the component's application, material, and/or objective as SEPARATE arguments (each is matched independently — do not pass one combined phrase). Omit a dimension to leave it unconstrained. Prefer reusing a validated code over inventing a new one; cite the source project."),
         AIFunctionFactory.Create(SearchLearnedConclusionsAsync, "search_learned_conclusions",
             "Search accumulated Learned Conclusions (prior material/regulatory findings with confidence + provenance) relevant to this intake. Treat them as prior evidence, not fact; a higher-confidence, more recent conclusion supersedes an older one."),
     ];
@@ -64,9 +64,9 @@ public sealed class ToolBox(
             : JsonSerializer.Serialize(new { tabulated = true, card }, Json.Options);
     }
 
-    public async Task<string> SearchMarkerLibraryAsync(string query, CancellationToken ct)
+    public async Task<string> SearchMarkerLibraryAsync(string? application, string? material, string? objective, CancellationToken ct)
     {
-        var markers = await knowledge.QueryMarkersAsync(query, ct);
+        var markers = await knowledge.FindMarkersAsync(application, material, objective, ct);
         return markers.Count == 0
             ? "{\"results\":[],\"note\":\"no matches — no prior approved code fits; proceed without reuse, do not invent one\"}"
             : JsonSerializer.Serialize(new { results = markers }, Json.Options);

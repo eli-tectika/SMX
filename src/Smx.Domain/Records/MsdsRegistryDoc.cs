@@ -11,5 +11,6 @@ public sealed class MsdsRegistryDoc
     public required string Version { get; set; }
     public required string Date { get; set; }              // SDS revision date (ISO-8601)
     public string ReviewStatus { get; set; } = "unreviewed"; // "unreviewed" | "reviewed"
+    public string? ReviewedAt { get; set; }                // ISO-8601, set when the operator signs the review
     public List<string> LinkedProjects { get; set; } = [];
 }

@@ -18,6 +18,14 @@ public static class KnowledgeKinds
     public const string RegulatoryJudgment = "regulatory-judgment";
 }
 
+/// Lifecycle of a Marker Library code. Only `Approved` codes are offered as reuse candidates;
+/// Plan 5 introduces the others. One constant so the doc default, the Cosmos filter and the fake
+/// cannot drift apart on the string that decides whether a retired code can be reused.
+public static class MarkerStatus
+{
+    public const string Approved = "approved";
+}
+
 public static class KnowledgeIds
 {
     public static string LearnedConclusion(string kind, string scopeKey) => $"{kind}|{scopeKey}";

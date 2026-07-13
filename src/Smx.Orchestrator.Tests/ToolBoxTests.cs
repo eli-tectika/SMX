@@ -56,7 +56,7 @@ public class ToolBoxTests
     [Fact]
     public async Task SearchMarkerLibrary_EmptyStore_ReturnsNoMatchesSentinel()
     {
-        var json = await Box().SearchMarkerLibraryAsync("anti-counterfeit", default);
+        var json = await Box().SearchMarkerLibraryAsync("anti-counterfeit", "label", "overt", default);
         Assert.Contains("no matches", json);
     }
 
@@ -67,8 +67,7 @@ public class ToolBoxTests
         Assert.Contains("no matches", json);
     }
 
-    [Fact]
-    public async Task SearchMarkerLibrary_ReturnsSeededMatch()
+    private static async Task<Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore> SeededMarkerStore()
     {
         var knowledge = new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore();
         await knowledge.UpsertMarkerAsync(new Smx.Domain.Records.MarkerLibraryDoc
@@ -77,8 +76,37 @@ public class ToolBoxTests
             Composition = new(["Zr"], 200, "1:0"), ValidatedFor = new("anti-counterfeit", "label", "overt"),
             SourceProject = "p1", CreatedAt = "t",
         });
-        var json = await Box(knowledge: knowledge).SearchMarkerLibraryAsync("anti-counterfeit", default);
+        return knowledge;
+    }
+
+    // The regression guard. This is the exact call shape the tool description + IntakeAgent instructions
+    // induce. It used to return the "no matches" sentinel — the free-text store CONTAINS-ed the combined
+    // phrase against each validatedFor field independently, so a perfectly matching marker was invisible
+    // and the reuse-first feature (design §6.2) was dead on arrival.
+    [Fact]
+    public async Task SearchMarkerLibrary_AllThreeDimensions_FindsSeededMarker()
+    {
+        var json = await Box(knowledge: await SeededMarkerStore())
+            .SearchMarkerLibraryAsync("anti-counterfeit", "label", "overt", default);
         Assert.Contains("anti-counterfeit", json);
         Assert.DoesNotContain("no matches", json);
+    }
+
+    [Fact]
+    public async Task SearchMarkerLibrary_ReturnsSeededMatch()
+    {
+        var json = await Box(knowledge: await SeededMarkerStore())
+            .SearchMarkerLibraryAsync("anti-counterfeit", null, null, default);
+        Assert.Contains("anti-counterfeit", json);
+        Assert.DoesNotContain("no matches", json);
+    }
+
+    [Fact]
+    public async Task SearchMarkerLibrary_NonMatchingDimension_ReturnsNoMatchesSentinel()
+    {
+        // AND semantics: the application matches but the material does not — no reuse candidate.
+        var json = await Box(knowledge: await SeededMarkerStore())
+            .SearchMarkerLibraryAsync("anti-counterfeit", "bottle", null, default);
+        Assert.Contains("no matches", json);
     }
 }

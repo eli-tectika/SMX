@@ -8,7 +8,7 @@ public sealed class MarkerLibraryDoc
     public required MarkerComposition Composition { get; set; }
     public required ValidatedFor ValidatedFor { get; set; }
     public required string SourceProject { get; set; }
-    public string Status { get; set; } = "approved";
+    public string Status { get; set; } = MarkerStatus.Approved;
     public int ReuseCount { get; set; }
     public required string CreatedAt { get; set; }
 }

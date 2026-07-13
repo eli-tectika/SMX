@@ -12,6 +12,14 @@ public interface IKnowledgeStore
 
     Task<MarkerLibraryDoc?> GetMarkerAsync(string id, CancellationToken ct = default);
     Task<IReadOnlyList<MarkerLibraryDoc>> QueryMarkersAsync(string? search, CancellationToken ct = default);
+
+    /// Structured reuse lookup for the Intake agent: ANDs the provided dimensions (a null/blank
+    /// dimension is not constrained) and returns only markers still approved for reuse. Distinct from
+    /// QueryMarkersAsync, which is the operator's free-text browse: a combined phrase like
+    /// "anti-counterfeit label overt" is a substring of NO single field, so a substring browse cannot
+    /// serve the agent's per-dimension reuse question.
+    Task<IReadOnlyList<MarkerLibraryDoc>> FindMarkersAsync(string? application, string? material, string? objective, CancellationToken ct = default);
+
     Task UpsertMarkerAsync(MarkerLibraryDoc doc, CancellationToken ct = default);
 
     Task<MsdsRegistryDoc?> GetMsdsAsync(string cas, CancellationToken ct = default);

@@ -17,7 +17,7 @@ public sealed class CosmosKnowledgeStore(Container conclusions, Container marker
         // correctly treats as non-matching — so the missing-scope-field case needs no coalesce.
         var q = new QueryDefinition(string.IsNullOrWhiteSpace(search)
             ? "SELECT * FROM c WHERE c.type = @t"
-            : "SELECT * FROM c WHERE c.type = @t AND (CONTAINS(c.finding, @s, true) OR CONTAINS(c.scope.element, @s, true) OR CONTAINS(c.scope.material, @s, true) OR CONTAINS(c.scope.application, @s, true) OR CONTAINS(c.scope.market, @s, true) OR CONTAINS(c.scope.substance, @s, true))")
+            : "SELECT * FROM c WHERE c.type = @t AND (CONTAINS(c.finding, @s, true) OR CONTAINS(c.scope.element, @s, true) OR CONTAINS(c.scope.form, @s, true) OR CONTAINS(c.scope.material, @s, true) OR CONTAINS(c.scope.application, @s, true) OR CONTAINS(c.scope.market, @s, true) OR CONTAINS(c.scope.substance, @s, true))")
             .WithParameter("@t", KnowledgeTypes.LearnedConclusion).WithParameter("@s", search ?? "");
         return await RunAsync<LearnedConclusionDoc>(conclusions, q, ct);
     }
@@ -32,6 +32,35 @@ public sealed class CosmosKnowledgeStore(Container conclusions, Container marker
             ? "SELECT * FROM c WHERE c.type = @t"
             : "SELECT * FROM c WHERE c.type = @t AND (CONTAINS(c.validatedFor.application, @s, true) OR CONTAINS(c.validatedFor.material, @s, true) OR CONTAINS(c.validatedFor.objective, @s, true))")
             .WithParameter("@t", KnowledgeTypes.MarkerLibrary).WithParameter("@s", search ?? "");
+        return await RunAsync<MarkerLibraryDoc>(markers, q, ct);
+    }
+    public async Task<IReadOnlyList<MarkerLibraryDoc>> FindMarkersAsync(string? application, string? material, string? objective, CancellationToken ct = default)
+    {
+        // Structured reuse lookup: AND over only the dimensions the caller supplied (a blank one is not
+        // constrained), case-insensitive CONTAINS per dimension so a partial/inflected value still matches.
+        // `status = 'approved'` is load-bearing: a superseded/retired code (Plan 5) must never be offered
+        // for reuse. The WHERE clause is built from the shape of the request; values stay parameterized.
+        var dims = new (string Path, string? Value)[]
+        {
+            ("c.validatedFor.application", application),
+            ("c.validatedFor.material", material),
+            ("c.validatedFor.objective", objective),
+        };
+        var sql = "SELECT * FROM c WHERE c.type = @t AND c.status = @approved";
+        var clauses = new List<string>();
+        var values = new List<(string Name, string Value)>();
+        for (var i = 0; i < dims.Length; i++)
+        {
+            if (string.IsNullOrWhiteSpace(dims[i].Value)) continue;
+            var name = $"@d{i}";
+            clauses.Add($"CONTAINS({dims[i].Path}, {name}, true)");
+            values.Add((name, dims[i].Value!));
+        }
+        if (clauses.Count > 0) sql += " AND " + string.Join(" AND ", clauses);
+        var q = new QueryDefinition(sql)
+            .WithParameter("@t", KnowledgeTypes.MarkerLibrary)
+            .WithParameter("@approved", MarkerStatus.Approved);
+        foreach (var (name, value) in values) q = q.WithParameter(name, value);
         return await RunAsync<MarkerLibraryDoc>(markers, q, ct);
     }
     public Task UpsertMarkerAsync(MarkerLibraryDoc doc, CancellationToken ct = default) =>
