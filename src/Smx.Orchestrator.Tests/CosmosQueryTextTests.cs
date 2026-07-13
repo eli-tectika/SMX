@@ -78,6 +78,33 @@ public sealed class CosmosQueryTextTests
         AssertWireName(sql, "createdAt");   // the ORDER BY: a PascalCase key here silently unsorts the audit trail
     }
 
+    // ---- CosmosRecordStore.GetChatThreadAsync ----------------------------------------------------
+
+    /// The thread is two queries, one per doc type. Both filter on `stage` as well as `type` — a PascalCase
+    /// `root["Stage"]` here would not throw, it would return an empty thread, and the agent would answer the
+    /// operator's follow-up with no memory of the conversation it is in the middle of.
+    [Fact]
+    public void GetChatThread_messages_query_uses_wire_property_names()
+    {
+        var sql = Query<ChatMessageDoc>()
+            .Where(d => d.Type == RecordTypes.ChatMessage && d.Stage == Stages.Discovery)
+            .ToQueryDefinition().QueryText;
+
+        AssertWireName(sql, "type");
+        AssertWireName(sql, "stage");
+    }
+
+    [Fact]
+    public void GetChatThread_replies_query_uses_wire_property_names()
+    {
+        var sql = Query<ChatReplyDoc>()
+            .Where(d => d.Type == RecordTypes.ChatReply && d.Stage == Stages.Discovery)
+            .ToQueryDefinition().QueryText;
+
+        AssertWireName(sql, "type");
+        AssertWireName(sql, "stage");
+    }
+
     // ---- CosmosCatalogLookup ---------------------------------------------------------------------
 
     [Fact]
@@ -128,6 +155,35 @@ public sealed class CosmosQueryTextTests
 
         // Every property the query addresses must be a key that actually exists on the stored document.
         foreach (var member in new[] { nameof(RevisionDoc.Type), nameof(RevisionDoc.CreatedAt) })
+        {
+            var wireName = Json.Options.PropertyNamingPolicy!.ConvertName(member);
+            Assert.True(onDisk.TryGetProperty(wireName, out _),
+                $"serializer did not write a '{wireName}' key; document keys: " +
+                string.Join(", ", onDisk.EnumerateObject().Select(p => p.Name)));
+            Assert.Contains($"root[\"{wireName}\"]", sql);
+        }
+    }
+
+    /// Same loop-closing check for the chat thread: whatever keys the serializer writes for a ChatMessageDoc
+    /// are the keys its query must address.
+    [Fact]
+    public void ChatThread_query_property_names_match_the_keys_the_serializer_actually_writes()
+    {
+        var serializer = new SystemTextJsonCosmosSerializer(Json.Options);
+        var doc = new ChatMessageDoc
+        {
+            Id = RecordIds.ChatMessage("p1", Stages.Discovery, "a"), ProjectId = "p1",
+            Stage = Stages.Discovery, Text = "why is Ba tier B?", CreatedAt = "2026-07-13T01:00:00Z",
+        };
+
+        using var stream = serializer.ToStream(doc);
+        var onDisk = JsonDocument.Parse(stream).RootElement;
+
+        var sql = Query<ChatMessageDoc>()
+            .Where(d => d.Type == RecordTypes.ChatMessage && d.Stage == Stages.Discovery)
+            .ToQueryDefinition().QueryText;
+
+        foreach (var member in new[] { nameof(ChatMessageDoc.Type), nameof(ChatMessageDoc.Stage) })
         {
             var wireName = Json.Options.PropertyNamingPolicy!.ConvertName(member);
             Assert.True(onDisk.TryGetProperty(wireName, out _),

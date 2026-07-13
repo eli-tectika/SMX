@@ -7,6 +7,12 @@ public static class ChatStatus
     public const string Failed = "failed";
 }
 
+public static class ChatRoles
+{
+    public const string Operator = "operator";
+    public const string Agent = "agent";
+}
+
 /// One thing the agent did during a chat turn, for the UI's tool-call/citation trail (design §5:
 /// "the reply carries its tool-call/citation trail"). `RecordId` is set when the call WROTE something —
 /// that is the audit link from a sentence in the chat to the record it changed.
@@ -47,3 +53,8 @@ public sealed class ChatReplyDoc
     public List<ChatToolCall> ToolCalls { get; set; } = [];
     public required string CreatedAt { get; set; }        // see ChatMessageDoc.CreatedAt — same rule
 }
+
+/// One turn in a persisted chat thread — either side of it. The thread is a mixed sequence of messages and
+/// replies, so the store merges the two doc types into this single shape the caller can order and render.
+/// `Role` is <see cref="ChatRoles.Operator"/> | <see cref="ChatRoles.Agent"/>.
+public sealed record ChatTurn(string Role, string Text, string CreatedAt, IReadOnlyList<ChatToolCall> ToolCalls);

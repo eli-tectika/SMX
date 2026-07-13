@@ -123,3 +123,88 @@ public class RevisionStoreTests
         Assert.Equal(RevisionStatus.Applied, only.Status);
     }
 }
+
+public class ChatStoreTests
+{
+    private static ChatMessageDoc Msg(string project, string stage, string key, string at) => new()
+    {
+        Id = RecordIds.ChatMessage(project, stage, key), ProjectId = project,
+        Stage = stage, Text = $"msg {key}", CreatedAt = at,
+    };
+    private static ChatReplyDoc Reply(string project, string stage, string key, string at) => new()
+    {
+        Id = RecordIds.ChatReply(project, stage, key), ProjectId = project, Stage = stage,
+        MessageId = RecordIds.ChatMessage(project, stage, key), Text = $"reply {key}", CreatedAt = at,
+    };
+
+    [Fact]
+    public async Task GetChatThread_IsScopedToOneStage_AndOrderedOldestFirst()
+    {
+        // Chat is PER-STAGE (Law 9: agents don't share a conversation, so neither do their threads).
+        // A Discovery thread must never leak into the Regulatory agent's context.
+        var store = new InMemoryRecordStore();
+        await store.UpsertChatMessageAsync(Msg("proj-1", Stages.Discovery, "b", "2026-07-13T02:00:00Z"));
+        await store.UpsertChatReplyAsync(Reply("proj-1", Stages.Discovery, "a", "2026-07-13T01:30:00Z"));
+        await store.UpsertChatMessageAsync(Msg("proj-1", Stages.Discovery, "a", "2026-07-13T01:00:00Z"));
+        await store.UpsertChatMessageAsync(Msg("proj-1", Stages.Regulatory, "c", "2026-07-13T03:00:00Z"));
+        await store.UpsertChatMessageAsync(Msg("proj-2", Stages.Discovery, "d", "2026-07-13T04:00:00Z"));
+
+        var thread = await store.GetChatThreadAsync("proj-1", Stages.Discovery);
+
+        Assert.Equal(
+            ["2026-07-13T01:00:00Z", "2026-07-13T01:30:00Z", "2026-07-13T02:00:00Z"],
+            thread.Select(t => t.CreatedAt));
+    }
+
+    [Fact]
+    public async Task GetChatThread_OnColdStart_ReturnsEmpty_NotNull() =>
+        Assert.Empty(await new InMemoryRecordStore().GetChatThreadAsync("proj-nothing", Stages.Discovery));
+
+    [Fact]
+    public async Task UpsertChatReply_ReplacesById_SoRedeliveryDoesNotAppendASecondReply()
+    {
+        var store = new InMemoryRecordStore();
+        await store.UpsertChatReplyAsync(Reply("proj-1", Stages.Discovery, "a", "2026-07-13T01:00:00Z"));
+
+        // A DISTINCT object with the same id — the dispatcher re-reads docs from the store, so replacement
+        // must work by id, not by having mutated the caller's reference.
+        var second = Reply("proj-1", Stages.Discovery, "a", "2026-07-13T01:00:00Z");
+        second.Text = "revised reply";
+        await store.UpsertChatReplyAsync(second);
+
+        var only = Assert.Single(await store.GetChatThreadAsync("proj-1", Stages.Discovery));
+        Assert.Equal("agent", only.Role);
+        Assert.Equal("revised reply", only.Text);
+    }
+
+    [Fact]
+    public async Task GetChatThread_ExcludesOtherDocTypesInTheSamePartition()
+    {
+        // The fake filters by CLR type (.OfType<ChatMessageDoc>()) while Cosmos filters by the `type` string
+        // field. That is the one place the twins use different mechanisms, so it is the one place they can
+        // silently diverge.
+        var store = new InMemoryRecordStore();
+        await store.UpsertChatMessageAsync(Msg("proj-1", Stages.Discovery, "a", "2026-07-13T01:00:00Z"));
+        await store.UpsertRevisionAsync(new RevisionDoc
+        {
+            Id = RecordIds.Revision("proj-1", Stages.Discovery, "r1"), ProjectId = "proj-1",
+            Stage = Stages.Discovery, Target = "t", Reason = "r", CreatedAt = "2026-07-13T01:00:00Z",
+        });
+
+        Assert.Single(await store.GetChatThreadAsync("proj-1", Stages.Discovery));
+    }
+
+    /// The dispatcher point-reads the message it was handed by the change feed to re-check its status
+    /// before answering; a missing id must come back null, not throw (the Cosmos twin swallows a 404).
+    [Fact]
+    public async Task GetChatMessage_PointReads_AndIsNullWhenAbsent()
+    {
+        var store = new InMemoryRecordStore();
+        await store.UpsertChatMessageAsync(Msg("proj-1", Stages.Discovery, "a", "2026-07-13T01:00:00Z"));
+
+        var got = await store.GetChatMessageAsync("proj-1", RecordIds.ChatMessage("proj-1", Stages.Discovery, "a"));
+        Assert.NotNull(got);
+        Assert.Equal(ChatStatus.Pending, got!.Status);
+        Assert.Null(await store.GetChatMessageAsync("proj-1", RecordIds.ChatMessage("proj-1", Stages.Discovery, "zz")));
+    }
+}

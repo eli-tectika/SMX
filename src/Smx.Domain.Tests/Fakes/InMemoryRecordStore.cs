@@ -30,6 +30,19 @@ public sealed class InMemoryRecordStore : IRecordStore
             .OrderBy(r => r.CreatedAt, StringComparer.Ordinal)   // twin of the Cosmos ORDER BY
             .ToList());
 
+    public Task<ChatMessageDoc?> GetChatMessageAsync(string projectId, string id, CancellationToken ct = default) =>
+        Task.FromResult(_docs.TryGetValue(id, out var d) ? d as ChatMessageDoc : null);
+    public Task<IReadOnlyList<ChatTurn>> GetChatThreadAsync(string projectId, string stage, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ChatTurn>>(
+            _docs.Values.OfType<ChatMessageDoc>()
+                .Where(m => m.ProjectId == projectId && m.Stage == stage)
+                .Select(m => new ChatTurn(ChatRoles.Operator, m.Text, m.CreatedAt, []))
+            .Concat(_docs.Values.OfType<ChatReplyDoc>()
+                .Where(r => r.ProjectId == projectId && r.Stage == stage)
+                .Select(r => new ChatTurn(ChatRoles.Agent, r.Text, r.CreatedAt, r.ToolCalls)))
+            .OrderBy(t => t.CreatedAt, StringComparer.Ordinal)   // twin of the Cosmos-side merge sort
+            .ToList());
+
     public Task UpsertProjectAsync(ProjectDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
     public Task UpsertConstraintsAsync(ConstraintsDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
     public Task UpsertVerdictAsync(VerdictDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
@@ -37,4 +50,6 @@ public sealed class InMemoryRecordStore : IRecordStore
     public Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
     public Task UpsertGateAsync(GateDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
     public Task UpsertRevisionAsync(RevisionDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
+    public Task UpsertChatMessageAsync(ChatMessageDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
+    public Task UpsertChatReplyAsync(ChatReplyDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
 }
