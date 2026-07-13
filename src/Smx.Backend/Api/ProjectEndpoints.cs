@@ -81,7 +81,9 @@ public static class ProjectEndpoints
             var candidates = await store.GetCandidatesAsync(projectId, ct);
             if (candidates is null || !MatrixAssembler.IsComplete(candidates, verdicts))
                 return Results.UnprocessableEntity(new { error = "regulatory analysis incomplete — every candidate needs a verdict before sign-off" });
-            var (ok, blockers) = RegulatoryGate.Armable(verdicts);
+            // Arm on the LIVE analysis: a revise can leave an orphan verdict behind for a cell that is no
+            // longer screened, and blocking on an item the operator cannot open would deadlock this gate.
+            var (ok, blockers) = RegulatoryGate.Armable(candidates, verdicts);
             if (!ok)
                 return Results.UnprocessableEntity(new { error = "gate not armable — open the flagged items first", blockers });
             var existing = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
@@ -100,7 +102,11 @@ public static class ProjectEndpoints
             var verdicts = await store.GetVerdictsAsync(projectId, ct);
             var candidates = await store.GetCandidatesAsync(projectId, ct);
             var complete = candidates is not null && MatrixAssembler.IsComplete(candidates, verdicts);
-            var (armed, blockers) = RegulatoryGate.Armable(verdicts);
+            // No candidates ⇒ no live cells ⇒ nothing to have reviewed. `complete` already fails below, and
+            // the "incomplete" blocker is the honest reason; inventing verdict blockers here would not be.
+            var (armed, blockers) = candidates is null
+                ? (Ok: false, Blockers: (IReadOnlyList<string>)[])
+                : RegulatoryGate.Armable(candidates, verdicts);
             var armable = complete && armed;
             var allBlockers = complete ? blockers : blockers.Prepend("incomplete: not every candidate has a verdict yet").ToList();
             var gate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);

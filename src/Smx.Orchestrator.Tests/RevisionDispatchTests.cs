@@ -17,17 +17,28 @@ public class RevisionDispatchTests
 {
     private const string P = "p1";
 
-    private static (StageDispatcher Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents, InMemoryKnowledgeStore Knowledge) Sut()
+    private static (StageDispatcher Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents, InMemoryKnowledgeStore Knowledge) Sut(
+        ILearnedConclusionWriter? conclusions = null)
     {
         var store = new InMemoryRecordStore();
         var agents = new FakeAgentRuns();
         var knowledge = new InMemoryKnowledgeStore();
         // The REAL writer over fake dependencies: the conclusion has to land in Cosmos AND in the index,
         // and this is the seam where those two can drift apart.
-        var conclusions = new LearnedConclusionWriter(
+        conclusions ??= new LearnedConclusionWriter(
             knowledge, new FakeLearnedConclusionsIndex(), new FakeEmbedder(),
             NullLogger<LearnedConclusionWriter>.Instance);
         return (new StageDispatcher(store, agents, conclusions, 2), store, agents, knowledge);
+    }
+
+    /// Every real dependency behind ILearnedConclusionWriter can fail on day one: EnsureIndexAsync needs a
+    /// role assignment that takes minutes to propagate after a deploy (403), the embedding deployment is
+    /// provisioned at capacity 1 (429), and the distiller is the third consecutive LLM call on the same
+    /// account. This is not a hypothetical fault — it is the expected first-revision failure.
+    private sealed class ThrowingConclusionWriter(string message) : ILearnedConclusionWriter
+    {
+        public Task WriteAsync(LearnedConclusionDoc doc, CancellationToken ct) =>
+            throw new InvalidOperationException(message);
     }
 
     /// A project driven all the way through Regulatory and SIGNED: the operator opened the one verdict,
@@ -286,6 +297,100 @@ public class RevisionDispatchTests
         Assert.Empty(after.Cells);
         Assert.Empty(after.Rows);
         Assert.NotEqual(before.GeneratedAt, after.GeneratedAt);
+    }
+
+    [Fact]
+    public async Task Revise_WhenTheConclusionWriteFails_LeavesTheAnalysisUNTOUCHED_AndMarksTheRevisionFailed()
+    {
+        // The conclusion write is the MOST failure-prone step in the whole revise path — a third consecutive
+        // LLM call, a Cosmos upsert, an embedding call, a control-plane index create and a search push — and
+        // it used to run LAST, after the candidates had been replaced and the gate voided. A 403 or a 429
+        // there (both expected on day one) left the worst possible state: the revision terminally `failed`
+        // (nothing ever retries it), the change nevertheless LIVE and permanent, the gate voided, and the
+        // operator's reason — the one artifact in this system that exists in no corpus — gone forever. The
+        // audit trail said `failed` about a mutation that had happened. Re-issuing then re-ran the agent over
+        // ALREADY-REVISED output, so a relative directive ("lower it one tier") double-applied.
+        //
+        // Now every fallible step runs first, so a failure here mutates NOTHING.
+        var (d, store, agents, knowledge) = Sut(new ThrowingConclusionWriter("search index create returned 403 (Forbidden)"));
+        await SeedApprovedAsync(d, store);
+        agents.Discovery = (_, _) => Task.FromResult(AgentRunResult<CandidatesDoc>.Ok(Candidates(Substance("C"))));
+
+        await d.OnRecordChangedAsync(Revision(Stages.Discovery, "Zr overlaps the Ti K-beta line in this matrix"), default);
+
+        var failed = Assert.Single(await store.GetRevisionsAsync(P));
+        Assert.Equal(RevisionStatus.Failed, failed.Status);
+        Assert.Contains("403", failed.Error);
+        Assert.Null(failed.ConclusionId);
+        Assert.Null(failed.AppliedAt);
+
+        // The analysis is exactly as it was. The change did NOT land...
+        var substance = Assert.Single((await store.GetCandidatesAsync(P))!.Substances);
+        Assert.Equal("A", substance.Tier);                    // NOT the "C" the re-run produced
+        Assert.Equal("neodecanoate", substance.Form);
+        // ...the operator's signature still stands over the analysis it was actually taken over...
+        Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
+        Assert.Equal("done", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
+        // ...and nothing was half-learned. A `failed` revision the operator can simply re-issue.
+        Assert.Empty(await knowledge.QueryLearnedConclusionsAsync(null));
+    }
+
+    /// A project screened through Regulatory and SIGNED, but whose stage has not yet been promoted to `done`
+    /// — the state POST /regulatory/approve leaves behind between writing the gate and the change feed
+    /// delivering it. This is the window in which a fresh verdict can arrive under an existing signature.
+    private static async Task SeedSignedButNotYetPromotedAsync(StageDispatcher d, InMemoryRecordStore store)
+    {
+        var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
+        await store.UpsertProjectAsync(project);
+        await d.OnRecordChangedAsync(project, default);
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync(P))!, default);
+        await d.OnRecordChangedAsync((await store.GetCandidatesAsync(P))!, default);
+        await store.UpsertGateAsync(new GateDoc
+        {
+            Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
+            Status = "approved", ApprovedAt = "2026-07-13T09:00:00.0000000+00:00",
+        });
+        Assert.Equal("awaiting-RE", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
+    }
+
+    [Fact]
+    public async Task Assemble_RefusesToPromoteRegulatoryToDone_WhenTheApprovedGateNoLongerCoversTheVerdicts()
+    {
+        // THE headline false pass. A GateDoc carries no verdict-set hash and no signed-at watermark, so an
+        // `approved` status is not by itself proof that the CURRENT analysis was reviewed. The only thing
+        // standing between an old signature and a brand-new unreviewed verdict was the ordering inside
+        // ReviseRegulatoryAsync (void the gate, then upsert) — a single guard with nothing behind it, and a
+        // real window: an operator POST /regulatory/approve landing between the two writes sees the OLD
+        // reviewed verdict, arms, signs — and then the new unreviewed verdict arrives and TryAssembleAsync
+        // reads `approved` and marks Regulatory `done`. Over a verdict nobody ever looked at.
+        var (d, store, _, _) = Sut();
+        await SeedSignedButNotYetPromotedAsync(d, store);
+
+        // A fresh, unreviewed, FAILING verdict lands on the live cell under the existing signature.
+        var live = (await store.GetVerdictsAsync(P))[0];
+        await store.UpsertVerdictAsync(new VerdictDoc
+        {
+            Id = live.Id, ProjectId = P, Cas = live.Cas, ComponentId = live.ComponentId,
+            Element = live.Element, Form = live.Form,
+            Dimensions = [new("ElementGate", VerdictStatus.Fail,
+                [new Citation("regulatory", "reach-annex-xvii", "t")], 0.9, "restricted in food contact")],
+        });
+        await d.OnRecordChangedAsync((await store.GetVerdictAsync(P, live.Cas, live.ComponentId))!, default);
+
+        Assert.Equal("awaiting-RE", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
+    }
+
+    [Fact]
+    public async Task Assemble_PromotesRegulatoryToDone_WhenTheApprovedGateStillCoversTheVerdicts()
+    {
+        // ...and the defense must not cost us the ordinary path: an approved gate over a verdict set that is
+        // still armable promotes the stage exactly as before.
+        var (d, store, _, _) = Sut();
+        await SeedSignedButNotYetPromotedAsync(d, store);   // the seeded verdict is a clean Pass ⇒ armable
+
+        await d.OnRecordChangedAsync((await store.GetVerdictsAsync(P))[0], default);
+
+        Assert.Equal("done", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
     }
 
     [Fact]

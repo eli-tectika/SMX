@@ -144,13 +144,30 @@ public sealed class StageDispatcher(
 
         try
         {
-            var stageOutputJson = r.Stage switch
+            // ORDER IS THE WHOLE POINT OF THIS METHOD. Every FALLIBLE step runs before anything is MUTATED.
+            //
+            // 1. Re-run the stage's agent. The new output stays in memory — nothing is persisted yet.
+            var revised = r.Stage switch
             {
                 Stages.Discovery => await ReviseDiscoveryAsync(constraints, r, ct),
                 Stages.Regulatory => await ReviseRegulatoryAsync(constraints, r, ct),
                 _ => throw new InvalidOperationException($"stage '{r.Stage}' is not revisable"),
             };
-            r.ConclusionId = await WriteConclusionAsync(r, constraints, stageOutputJson, ct);
+
+            // 2. Record what was learned. This is the most failure-prone step in the path (a third
+            //    consecutive LLM call, a Cosmos upsert, an embedding call, a control-plane index create and
+            //    a search push), which is exactly why it runs while there is still nothing to roll back. If
+            //    it throws, we land in the catch below with the analysis UNTOUCHED and the revision honestly
+            //    `failed` — the operator simply re-issues it.
+            r.ConclusionId = await WriteConclusionAsync(r, constraints, revised.StageOutputJson, ct);
+
+            // 3 → 4. ORDER MATTERS between these two: void the gate BEFORE the new output lands. The persist
+            //    is a change-feed event that re-enters TryAssembleAsync, and if that found the gate still
+            //    `approved` it would mark Regulatory `done` over the new, unreviewed verdicts.
+            await VoidRegulatoryGateAsync(r, ct);
+            await revised.PersistAsync(ct);
+
+            // 5. Only now is the revision applied.
             r.Status = RevisionStatus.Applied;
             r.AppliedAt = DateTimeOffset.UtcNow.ToString("O");
             r.Error = null;
@@ -158,25 +175,39 @@ public sealed class StageDispatcher(
         }
         catch (Exception e)
         {
+            // RESIDUAL TRADE-OFF, accepted deliberately. If step 3 or 4 fails AFTER the conclusion was
+            // written, we are left with an orphan conclusion describing a change that did not land (the
+            // revision is `failed` and carries its ConclusionId, so the orphan is at least findable). That is
+            // strictly the better failure: the conclusion records the operator's genuine belief, the audit
+            // trail is honest, the gate can only have moved in the SAFE direction (voided), and the
+            // conclusion id is deterministic in the revision id — so re-issuing the same revision converges
+            // rather than duplicating. The inverse — the one this ordering exists to prevent — is a `failed`
+            // revision whose change is nevertheless live and permanent.
             await FailAsync(r, e.Message, ct);
         }
     }
 
-    private async Task<string> ReviseDiscoveryAsync(ConstraintsDoc c, RevisionDoc r, CancellationToken ct)
+    /// The re-run's result, not yet persisted. Revise-with-reason does every FALLIBLE thing (a third LLM
+    /// call, an embedding call, a control-plane index create, a search push) BEFORE it mutates anything:
+    /// a `failed` revision whose change is nevertheless live would be an audit trail that lies, and the
+    /// operator's reason — the one artifact in this system that exists in no corpus — would be lost with
+    /// nothing left to retry it.
+    private sealed record RevisedStage(string StageOutputJson, Func<CancellationToken, Task> PersistAsync);
+
+    private async Task<RevisedStage> ReviseDiscoveryAsync(ConstraintsDoc c, RevisionDoc r, CancellationToken ct)
     {
         var result = await agents.RunDiscoveryAsync(c, r, ct);
         if (!result.Succeeded)
             throw new InvalidOperationException($"the discovery agent could not apply the revision: {result.Error}");
 
-        // ORDER MATTERS. Void the gate BEFORE the new output lands: the upsert below is a change-feed event
-        // that re-enters TryAssembleAsync, and if that found the gate still `approved` it would mark
-        // Regulatory `done` over the new, unreviewed verdicts.
-        await VoidRegulatoryGateAsync(r, ct);
-        await store.UpsertCandidatesAsync(result.Output!, ct);   // same id ⇒ replaces; the feed re-fans Regulatory
-        return JsonSerializer.Serialize(result.Output!.Substances, Json.Options);
+        var candidates = result.Output!;
+        return new RevisedStage(
+            JsonSerializer.Serialize(candidates.Substances, Json.Options),
+            // same id ⇒ replaces; the feed re-fans Regulatory over the new candidate set
+            token => store.UpsertCandidatesAsync(candidates, token));
     }
 
-    private async Task<string> ReviseRegulatoryAsync(ConstraintsDoc c, RevisionDoc r, CancellationToken ct)
+    private async Task<RevisedStage> ReviseRegulatoryAsync(ConstraintsDoc c, RevisionDoc r, CancellationToken ct)
     {
         var candidates = await store.GetCandidatesAsync(r.ProjectId, ct)
             ?? throw new InvalidOperationException("no candidates — Regulatory has not run for this project");
@@ -188,13 +219,14 @@ public sealed class StageDispatcher(
         if (!result.Succeeded)
             throw new InvalidOperationException($"the regulatory agent could not apply the revision: {result.Error}");
 
-        await VoidRegulatoryGateAsync(r, ct);
-        // The agent's fresh VerdictDoc carries EvidenceReviewed=false and Determination=null by default, so
-        // replacing the old one CLEARS the operator's prior ruling — deliberately. That ruling was made
-        // against the verdict this one replaces; RegulatoryGate.Armable will now block the gate until the
-        // operator opens this item again.
-        await store.UpsertVerdictAsync(result.Output!, ct);
-        return JsonSerializer.Serialize(result.Output!, Json.Options);
+        var verdict = result.Output!;
+        return new RevisedStage(
+            JsonSerializer.Serialize(verdict, Json.Options),
+            // The agent's fresh VerdictDoc carries EvidenceReviewed=false and Determination=null by default,
+            // so replacing the old one CLEARS the operator's prior ruling — deliberately. That ruling was
+            // made against the verdict this one replaces; RegulatoryGate.Armable will now block the gate
+            // until the operator opens this item again.
+            token => store.UpsertVerdictAsync(verdict, token));
     }
 
     /// A gate is an operator's signature over a SPECIFIC analysis, and the revision just replaced that
@@ -261,8 +293,15 @@ public sealed class StageDispatcher(
         var verdicts = await store.GetVerdictsAsync(projectId, ct);
         if (!MatrixAssembler.IsComplete(candidates, verdicts)) return;
 
+        // Defense in depth. The gate record carries no binding to the verdicts it was signed over, so an
+        // `approved` status alone is not proof that the CURRENT analysis was reviewed. Re-check it: if a
+        // revision (or a race with POST /approve landing between VoidRegulatoryGateAsync and the verdict
+        // upsert) has introduced an unreviewed non-pass verdict since the signature, the stage must NOT go
+        // `done`. VoidRegulatoryGateAsync is the primary guard; this is the one that holds when the ordering
+        // doesn't — and a stage that reached `done` is never lowered again, so there is no second chance.
         var gate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
-        var regStatus = gate?.Status == "approved" ? "done" : "awaiting-RE";
+        var stillArmable = RegulatoryGate.Armable(candidates, verdicts).Ok;
+        var regStatus = gate?.Status == "approved" && stillArmable ? "done" : "awaiting-RE";
         await SetStageAsync(projectId, Stages.Regulatory,
             s => { if (s.Status is not ("failed" or "done")) s.Status = regStatus; }, ct);
 

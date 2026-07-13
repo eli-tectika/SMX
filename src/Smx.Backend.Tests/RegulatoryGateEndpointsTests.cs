@@ -195,6 +195,45 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
     }
 
     [Fact]
+    public async Task Approve_IsNotBlockedByAnOrphanVerdict_ForACandidateARevisionRetieredToC()
+    {
+        // The bricked-journey regression. A revise ("exclude Ba, it overlaps the Ti K-beta line") re-tiers a
+        // candidate to C but leaves its old unreviewed Fail verdict in the store. Ba is now in no matrix row
+        // and no matrix cell, so the operator has no affordance to open and review it — yet the gate used to
+        // name it as a blocker and return 422 FOREVER. Arm on the live analysis, not on everything ever
+        // written.
+        await SeedVerdict("p1", "cas-ba", VerdictStatus.Fail);   // flagged + unreviewed, tier A
+        var candidates = (await _store.GetCandidatesAsync("p1"))!;
+        candidates.Substances[0] = candidates.Substances[0] with { Tier = "C" };   // the revise
+        await _store.UpsertCandidatesAsync(candidates);
+
+        var resp = await _client.PostAsJsonAsync("/projects/p1/regulatory/approve", new { });
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Equal("approved", (await _store.GetGateAsync("p1", GateTypes.Regulatory))!.Status);
+    }
+
+    [Fact]
+    public async Task Approve_StillBlocks_WhenALiveFlaggedVerdictIsUnreviewed_BesideAnOrphan()
+    {
+        // ...and the narrowing above must not weaken the gate. Zr is still screened, still flagged, still
+        // unreviewed: 422, naming Zr and only Zr.
+        await SeedVerdict("p1", "cas-ba", VerdictStatus.Fail);
+        await SeedVerdict("p1", "cas-zr", VerdictStatus.Fail);
+        var candidates = (await _store.GetCandidatesAsync("p1"))!;
+        candidates.Substances[0] = candidates.Substances[0] with { Tier = "C" };   // Ba re-tiered → orphan
+        await _store.UpsertCandidatesAsync(candidates);
+
+        var resp = await _client.PostAsJsonAsync("/projects/p1/regulatory/approve", new { });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+        var body = await resp.Content.ReadAsStringAsync();
+        Assert.Contains("cas-zr", body);
+        Assert.DoesNotContain("cas-ba", body);
+        Assert.Null(await _store.GetGateAsync("p1", GateTypes.Regulatory));
+    }
+
+    [Fact]
     public async Task GetGate_ReportsNotArmableWithIncompleteBlocker_WhenVerdictSetIncomplete()
     {
         // A candidate with no verdict → incomplete set. Build candidates directly (SeedVerdict would add a verdict).
