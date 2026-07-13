@@ -58,3 +58,21 @@ public sealed class ChatReplyDoc
 /// replies, so the store merges the two doc types into this single shape the caller can order and render.
 /// `Role` is <see cref="ChatRoles.Operator"/> | <see cref="ChatRoles.Agent"/>.
 public sealed record ChatTurn(string Role, string Text, string CreatedAt, IReadOnlyList<ChatToolCall> ToolCalls);
+
+public static class ChatTurns
+{
+    /// The canonical order of a merged thread. It lives HERE, in one place, because both record stores have
+    /// to produce byte-identical transcripts — two independent sorts agreeing is a coincidence, and a
+    /// coincidence is what the fake would certify while production quietly disagreed.
+    ///
+    /// Ordinal, because the Cosmos-side comparison it stands in for is ordinal (a culture-sensitive compare
+    /// would differ on some machines and not others). The tiebreak matters because a reply can carry the SAME
+    /// CreatedAt as the message it answers (same clock tick, or a writer that rounds to the second): without
+    /// it the winner is decided by enumeration order, and an answer printed above its own question is a
+    /// transcript that lies about who said what first.
+    public static IReadOnlyList<ChatTurn> InOrder(IEnumerable<ChatTurn> turns) =>
+        turns
+            .OrderBy(t => t.CreatedAt, StringComparer.Ordinal)
+            .ThenBy(t => t.Role == ChatRoles.Operator ? 0 : 1)
+            .ToList();
+}

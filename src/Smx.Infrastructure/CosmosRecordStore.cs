@@ -51,6 +51,15 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
     /// Two queries, not one: the thread is a mixed sequence of two doc types, and each has to filter on its
     /// own `type` literal. There is no generic shortcut here — a `(dynamic)d` cast or an interface-typed
     /// member does not translate to SQL, it throws at query time.
+    ///
+    /// UNBOUNDED, deliberately: one operator, one stage, a thread measured in tens of turns. But the caller
+    /// re-renders this whole list into the agent's prompt on EVERY turn, so the ceiling is the model's
+    /// context window, and blowing it is not graceful — a provider that silently truncates leaves the agent
+    /// answering from an amputated conversation, which is exactly the kind of confidently-wrong output this
+    /// system exists to prevent. The escape hatch, when a thread gets long enough to need one, is to
+    /// summarise INTO THE RECORD (a `chat-summary` doc that this method returns in place of the turns it
+    /// folds up) — never into in-memory session state, which cannot survive the multi-day re-entry (Law 6)
+    /// that is the whole reason the thread is persisted at all.
     public async Task<IReadOnlyList<ChatTurn>> GetChatThreadAsync(string projectId, string stage, CancellationToken ct = default)
     {
         var turns = new List<ChatTurn>();
@@ -71,9 +80,10 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
             foreach (var r in await replies.ReadNextAsync(ct))
                 turns.Add(new ChatTurn(ChatRoles.Agent, r.Text, r.CreatedAt, r.ToolCalls));
 
-        // Ordered here rather than server-side because the two result sets have to be merged anyway.
-        // Ordinal, to match the ORDER BY Cosmos would have done — and the fake's.
-        return turns.OrderBy(t => t.CreatedAt, StringComparer.Ordinal).ToList();
+        // Sorted here rather than server-side (an ORDER BY per query would buy nothing — the two result sets
+        // have to be merged in memory anyway), and through the SHARED comparer the fake also calls, so the
+        // twins cannot drift on the ordering.
+        return ChatTurns.InOrder(turns);
     }
 
     public Task UpsertProjectAsync(ProjectDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);

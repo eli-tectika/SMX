@@ -180,9 +180,11 @@ public class ChatStoreTests
     [Fact]
     public async Task GetChatThread_ExcludesOtherDocTypesInTheSamePartition()
     {
-        // The fake filters by CLR type (.OfType<ChatMessageDoc>()) while Cosmos filters by the `type` string
-        // field. That is the one place the twins use different mechanisms, so it is the one place they can
-        // silently diverge.
+        // Half the guarantee. This pins the FAKE's half — that a Revision sharing the project's partition
+        // never surfaces as a chat turn. It cannot pin Cosmos's half: the fake filters by CLR type
+        // (.OfType<ChatMessageDoc>()) and Cosmos filters by the `type` string field in SQL, and nothing in a
+        // dictionary emits SQL. The Cosmos half is pinned in CosmosQueryTextTests, which asserts on the
+        // actual query text; the two tests are only meaningful together.
         var store = new InMemoryRecordStore();
         await store.UpsertChatMessageAsync(Msg("proj-1", Stages.Discovery, "a", "2026-07-13T01:00:00Z"));
         await store.UpsertRevisionAsync(new RevisionDoc
@@ -206,5 +208,77 @@ public class ChatStoreTests
         Assert.NotNull(got);
         Assert.Equal(ChatStatus.Pending, got!.Status);
         Assert.Null(await store.GetChatMessageAsync("proj-1", RecordIds.ChatMessage("proj-1", Stages.Discovery, "zz")));
+    }
+
+    /// This is the only point-read that takes a raw id rather than deriving it, so it is the only one where a
+    /// mismatched (projectId, id) pair is constructible. Cosmos reads inside a partition and would return
+    /// null; the fake must not hand back another project's message.
+    [Fact]
+    public async Task GetChatMessage_IsPartitionScoped_AndWillNotCrossProjects()
+    {
+        var store = new InMemoryRecordStore();
+        await store.UpsertChatMessageAsync(Msg("proj-2", Stages.Discovery, "a", "2026-07-13T01:00:00Z"));
+
+        Assert.Null(await store.GetChatMessageAsync(
+            "proj-1", RecordIds.ChatMessage("proj-2", Stages.Discovery, "a")));
+    }
+
+    /// The dispatcher's whole idempotency guard is a read-modify-WRITE: point-read the message, answer it,
+    /// set Status = answered, upsert. If the store handed back the live stored object, a dispatcher that
+    /// forgot that last upsert would still look correct here — while in Cosmos the message stays `pending`,
+    /// the at-least-once change feed redelivers it, and the turn re-runs, queueing a second revision. So the
+    /// fake must snapshot on write and hand back a fresh graph on read, exactly as a JSON round-trip does.
+    [Fact]
+    public async Task Store_SnapshotsOnWrite_AndCopiesOnRead_LikeAJsonRoundTrip()
+    {
+        var store = new InMemoryRecordStore();
+        var msg = Msg("proj-1", Stages.Discovery, "a", "2026-07-13T01:00:00Z");
+        await store.UpsertChatMessageAsync(msg);
+
+        // Mutating the caller's reference AFTER the upsert must not reach the store: no upsert, no write.
+        msg.Status = ChatStatus.Answered;
+        var reread = await store.GetChatMessageAsync("proj-1", msg.Id);
+        Assert.Equal(ChatStatus.Pending, reread!.Status);
+
+        // And mutating what a read handed back must not reach the store either.
+        reread.Status = ChatStatus.Failed;
+        Assert.Equal(ChatStatus.Pending, (await store.GetChatMessageAsync("proj-1", msg.Id))!.Status);
+    }
+
+    /// Same hazard on the collection inside a doc: ChatTurn.ToolCalls must not alias the stored reply's list,
+    /// or an append after the upsert would show up in the fake and be absent in Cosmos — silently truncating
+    /// the trail that links a sentence in the chat to the record it changed.
+    [Fact]
+    public async Task ChatTurn_ToolCalls_DoNotAliasTheStoredReply()
+    {
+        var store = new InMemoryRecordStore();
+        var reply = Reply("proj-1", Stages.Discovery, "a", "2026-07-13T01:00:00Z");
+        reply.ToolCalls.Add(new ChatToolCall("search_regulatory", "REACH Annex XVII", null));
+        await store.UpsertChatReplyAsync(reply);
+
+        reply.ToolCalls.Add(new ChatToolCall("apply_revision", "Ba tier B → C", "proj-1|revision|discovery|x"));
+
+        var only = Assert.Single(await store.GetChatThreadAsync("proj-1", Stages.Discovery));
+        Assert.Single(only.ToolCalls);   // the un-upserted second call was never persisted
+    }
+
+    /// Both stores sort through ChatTurns.InOrder, so the ordering contract is tested once, here, against an
+    /// input the stores themselves cannot produce: an agent turn ARRIVING FIRST with a timestamp equal to the
+    /// operator turn it answers (same clock tick, or a writer that rounds to the second).
+    ///
+    /// That input is the whole point. Asserting this through the fake would be theatre — the fake enumerates
+    /// messages before replies, so a stable sort puts the operator first even with the tiebreak deleted, and
+    /// the test could not fail. Handing InOrder the reply first is what makes the tiebreak load-bearing. An
+    /// answer printed above its own question is a transcript that lies about who said what first.
+    [Fact]
+    public void ChatTurns_InOrder_OnAnEqualTimestamp_PutsTheOperatorTurnBeforeTheAgentsReply()
+    {
+        var ordered = ChatTurns.InOrder([
+            new ChatTurn(ChatRoles.Agent,    "reply",  "2026-07-13T01:00:00Z", []),
+            new ChatTurn(ChatRoles.Operator, "msg",    "2026-07-13T01:00:00Z", []),
+            new ChatTurn(ChatRoles.Operator, "later",  "2026-07-13T02:00:00Z", []),
+        ]);
+
+        Assert.Equal(["msg", "reply", "later"], ordered.Select(t => t.Text));
     }
 }
