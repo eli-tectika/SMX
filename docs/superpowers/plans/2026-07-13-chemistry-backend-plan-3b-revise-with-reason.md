@@ -2734,3 +2734,108 @@ diff infra/modules/compute.bicep infra/single-rg/modules/compute.bicep && echo "
 - **`Supersedes` is left `null`.** Design §6.1 wants a "light supersedes link so later findings refine earlier ones". Linking a new conclusion to the one it refines needs a **scope-keyed query** over the conclusions container, which `IKnowledgeStore` does not have and which nothing yet reads — and with an empty knowledge base there is nothing to supersede. **Plan 5** (project-close writes) is where cross-project accumulation actually begins and where that query has to exist anyway. Until then, two conclusions on the same scope both surface, and the agent instructions' existing rule applies: "a higher-confidence, more recent conclusion supersedes an older one" — which works because `Content` carries both numbers.
 - **`Intake` is not revisable.** Revising intake would recompute the derived regulatory scope, which changes what *every* downstream stage was screened against. It is a bigger blast radius than this plan wants, no journey step asks for it, and Plan 5's §7 read surfaces will make the consequences visible first. `RevisionEffects.IsRevisable` is one line to extend when we want it.
 - **The chat-parity `apply_revision` tool is Plan 3c, not this plan.** §5 says the chat tool and this endpoint are "the same effect by two doors". This plan builds the door; 3c hangs the second one on the same hinges (`RevisionDoc` + `OnRevisionAsync`), which is the whole reason the revise path is a *record*, not a method call.
+
+---
+
+## Deviations recorded during execution (the accurate as-shipped record)
+
+18 tasks, subagent-driven, spec + code-quality review on every one. **231 tests green** (Domain 67, Eval 4,
+Orchestrator 118, Backend 42), up from a 125 baseline. Everything below is a place where the shipped code
+differs from the plan as written — in every case because a review found the plan wrong.
+
+### A critical PRE-EXISTING bug the plan surfaced (fixed here, commit `e37f8f5`)
+
+**Every Cosmos LINQ query in the solution matched zero documents in Azure.** `SystemTextJsonCosmosSerializer`
+derived from `CosmosSerializer`, but the Cosmos LINQ provider only takes member names from a
+**`CosmosLinqSerializer`** (`SerializeMemberName`). With neither that nor an explicit
+`CosmosLinqSerializerOptions`, it emits names **as declared in C# — PascalCase**. Documents are written
+camelCase. So `GetVerdictsAsync` generated `WHERE root["Type"] = "verdict"` against `{"type":"verdict",…}` —
+matching nothing, **silently, with no exception**, while every test passed (the fakes are dictionaries and
+never generate SQL).
+
+Blast radius: `GetVerdictsAsync` always empty ⇒ `TryAssembleAsync` can never satisfy `IsComplete` ⇒ **the
+matrix never assembles and Regulatory never parks in `awaiting-RE` — the pipeline stalls**; `search_catalog`
+returns nothing, so Discovery can propose no candidates. It had gone unnoticed because the chemistry backend
+had never been run end-to-end against Azure Cosmos. Fixed by deriving from `CosmosLinqSerializer`, plus a
+**SQL-text regression test** (`CosmosQueryTextTests` — asserts on `ToQueryDefinition().QueryText`, pure CPU,
+no emulator). That test is the only way a fake-backed suite can ever catch this class of bug.
+
+### Defects the plan itself contained (found in review, fixed before merge)
+
+- **`ToChunk` minted an ILLEGAL AI Search document key.** Search keys allow only letters, digits, `_`, `-`,
+  `=`; the conclusion's Cosmos id is pipe-delimited. Every push would have been **rejected — silently**,
+  since nothing inspected `IndexDocumentsResult` — leaving the index empty and `search_learned_conclusions`
+  answering "no matches" forever. This is *exactly* the dead-on-arrival failure the plan was written to
+  prevent, and the plan had it. Fixed with a domain-local `SearchKey` (slug + SHA-256 suffix, deterministic
+  so redelivery still upserts), and `PushAsync` now **throws on any rejected document**.
+- **The projection tests were vacuous.** `Assert.Contains("Ba", content)` passed on the "Ba" inside
+  "**Ba**rium" in the *finding*; `Assert.Contains("proj-1", content)` passed on the id inside the decisions
+  string. The reviewer deleted the element from the scope line **and** the whole provenance line — suite
+  stayed green. Rewritten to assert the composed lines against non-colliding fixtures.
+- **`ConclusionOutput.Scope` could NRE.** The instructions say "leave the rest null", so a model that obeys
+  replies `"scope": null` → `Validate` dereferences it → `NullReferenceException` → and since
+  `ValidatedAgentRunner` catches only `JsonException`, that **escapes and fails the whole stage** instead of
+  costing one retry. Fixed with a coalescing setter.
+- **`RevisionEffects.BreaksRegulatoryGate` failed OPEN.** `false` is the *dangerous* answer (it leaves an
+  approved gate standing over a changed analysis), and it was the default for every unrecognised input. It
+  now **throws** for a non-revisable stage, and a theory pins the lockstep invariant between the three rules
+  — the one Plan 4 will otherwise break at runtime, *after* the agent has already mutated the analysis.
+- **Hybrid retrieval was necessary, not optional** (plan Finding 3, confirmed). Also: a **404 from the
+  *embedder*** (`DeploymentNotFound` — a typo in `EMBEDDING_DEPLOYMENT`) would, if the embed call sat inside
+  the cold-start `catch`, make every search return `[]` **forever**, reported to agents as "no prior
+  conclusions" while the knowledge layer sat healthy. The embed call is deliberately outside the try; a
+  theory over 404/403/500 pins it.
+- **Agents were shown a score they cannot calibrate.** Hybrid RRF scores (~0.01–0.03) landed in the same
+  context as BM25 scores (~1–10). Nothing in code reads `Score`, but an LLM reads `0.016` as weak evidence —
+  quietly discounting the very conclusions the loop exists to surface. `Score` is no longer serialized to
+  agents; a conclusion's *calibrated* confidence is already in its content, which is what the instructions
+  tell the model to weigh.
+
+### Three defects only the HOLISTIC review could see (commit `85cc2c1`)
+
+Each lived at a **task boundary**, so every per-task review passed it.
+
+1. **A `failed` revision had already applied its change.** `WriteConclusionAsync` ran *last* — but it is the
+   **most failure-prone step in the path** (a third LLM call, an embedding call, a control-plane index
+   create, a push). Any throw marked the revision `failed` **while the tier change was live and the gate was
+   already voided**, with no conclusion written and **nothing to retry** (`OnRevisionAsync` only acts on
+   `Pending`). The audit trail lied, and the operator's natural re-issue would **double-apply** a relative
+   directive. Likely on **day one**: `EnsureIndexAsync` needs Search Service Contributor and role assignments
+   take minutes to propagate; the embedding deployment is `capacity: 1`. **Fixed by reordering: every
+   fallible step now runs before anything is mutated.**
+2. **Revise orphaned VerdictDocs and deadlocked the gate.** Re-tiering a candidate to `C` leaves its old
+   verdict behind. `RegulatoryGate.Armable` iterated *every* verdict ever written, so an orphan unreviewed
+   `Fail` blocked the gate **forever** — on a cell present in no matrix and no UI, which the operator could
+   not open to clear. Fails safe, but bricks the primary journey, and **this plan is what made it reachable**.
+   `Armable` now arms on the **live analysis** (the screened cells).
+3. **`TryAssembleAsync` trusted an `approved` gate that carries no binding to the verdicts it signed.** The
+   gate-before-upsert ordering was the *sole* defense. It now **re-checks `Armable` against the current
+   verdict set** before promoting Regulatory to `done` — defense in depth against a revise (or a race with
+   `POST /approve`) sliding an unreviewed verdict under an existing signature.
+
+### Deferred follow-ups (real, not in the repo — capture them or they are lost)
+
+- **`GateDoc` has no verdict-set hash / signed-at watermark.** Fix 3 above is a re-check, not a *binding*. A
+  hash over the signed verdict set would make the gate self-verifying and let `OnGateAsync` stop trusting the
+  record too. The right shape for Plan 5, when the VP gate reuses this machinery.
+- **`SetStageAsync` does a read-modify-write on `ProjectDoc` with no ETag.** Concurrent stage updates can
+  lose an update. Pre-existing; it is also what turns the gate-void ordering from "belt" into "the only belt".
+- **The three `Smx.Functions` index writers still ignore `IndexDocumentsResult`** and still carry the
+  incorrect "Search Index Data Contributor creates indexes" rationale (it is **Search Service Contributor**;
+  the data role *cannot* modify object definitions). Same silent-rejection exposure that Task 8 closed here.
+- **No reconciliation for a conclusion that lands in Cosmos but fails to index** — it is stored but
+  unfindable, and the operator gets no signal.
+- **The round-trip proof is structural, not semantic.** The test double matches by term overlap, so nothing
+  proves the *vector* leg bridges a genuinely zero-overlap gap (which is the whole reason retrieval is
+  hybrid). Needs a live index.
+
+### Verify at first live deploy
+
+- **The stopword premise.** `LearnedConclusionsIndex` relies on Azure's `standard` analyzer wiring its stop
+  filter with an **empty** list (unlike Lucene's own no-arg `StandardAnalyzer`, which uses the English set —
+  and Microsoft's docs *link to that javadoc*, so the obvious "verification" appears to contradict us).
+  Doc-verified, not measured. One call settles it forever:
+  `POST /indexes/learned-conclusions/analyze {"text":"As Be In No At","analyzer":"standard.lucene"}` → expect
+  **5 tokens, not 0**. If it returns 0, BM25 retrieval by element symbol is silently broken for **arsenic,
+  beryllium, indium, astatine and nobelium** — switch `content` to a `CustomAnalyzer` with no stop filter.
+- That a query against a **non-existent** index really returns 404 (the whole cold-start path rests on it).
