@@ -88,6 +88,10 @@ var sharedEnv = [
   { name: 'KEYVAULT_URI', value: keyVaultUri }
   { name: 'CLAUDE_DEPLOYMENT', value: 'claude-opus-4-7' }
   { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
+  { name: 'LEARNED_CONCLUSIONS_CONTAINER', value: 'learned-conclusions' }
+  { name: 'MARKER_LIBRARY_CONTAINER', value: 'marker-library' }
+  { name: 'MSDS_REGISTRY_CONTAINER', value: 'msds-registry' }
+  { name: 'LEARNED_CONCLUSIONS_SEARCH_INDEX', value: 'learned-conclusions' }
 ]
 
 var registries = empty(acrLoginServer) ? [] : [

@@ -188,6 +188,23 @@ resource refCosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases
   }
 }]
 
+// Cross-project knowledge layer: Marker Library, Learned Conclusions, MSDS Registry.
+var knowledgeContainers = [
+  { name: 'learned-conclusions', pk: '/kind' }
+  { name: 'marker-library', pk: '/id' }
+  { name: 'msds-registry', pk: '/cas' }
+]
+resource knowledgeCosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = [for c in knowledgeContainers: {
+  parent: cosmosDb
+  name: c.name
+  properties: {
+    resource: {
+      id: c.name
+      partitionKey: { paths: [ c.pk ], kind: 'Hash' }
+    }
+  }
+}]
+
 // Agent-backend structured record — the record-as-bus. One container, discriminated
 // document types, partitioned by project.
 resource record 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
