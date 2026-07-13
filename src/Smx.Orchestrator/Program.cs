@@ -1,3 +1,4 @@
+using Azure.AI.OpenAI;
 using Azure.Identity;
 using Azure.Monitor.OpenTelemetry.Exporter;
 using Azure.Search.Documents;
@@ -42,8 +43,14 @@ builder.Services.AddSingleton<IKnowledgeStore>(sp =>
         cosmos.GetContainer(opts.CosmosDatabase, opts.MarkerLibraryContainer),
         cosmos.GetContainer(opts.CosmosDatabase, opts.MsdsRegistryContainer));
 });
-builder.Services.AddSingleton<ILearnedConclusionsSearch>(new LearnedConclusionsSearchTool(
-    new SearchClient(new Uri(opts.SearchEndpoint), opts.LearnedConclusionsIndex, credential)));
+// text-embedding-3-large on the Foundry account — the query half of learned-conclusions hybrid retrieval.
+// The SAME embedder must vectorize the pushed conclusions (Task 16 wires the writer), or the two sides
+// of the index are not comparable.
+builder.Services.AddSingleton<IEmbedder>(new FoundryEmbedder(
+    new AzureOpenAIClient(new Uri(opts.ResolvedOpenAiEndpoint), credential), opts.EmbeddingDeployment));
+builder.Services.AddSingleton<ILearnedConclusionsSearch>(sp => new LearnedConclusionsSearchTool(
+    new SearchClient(new Uri(opts.SearchEndpoint), opts.LearnedConclusionsIndex, credential),
+    sp.GetRequiredService<IEmbedder>()));
 builder.Services.AddSingleton<IRegulatorySearch>(new RegulatorySearchTool(
     new SearchClient(new Uri(opts.SearchEndpoint), opts.RegulatoryIndex, credential)));
 builder.Services.AddSingleton<ISdsSearch>(new SdsSearchTool(
