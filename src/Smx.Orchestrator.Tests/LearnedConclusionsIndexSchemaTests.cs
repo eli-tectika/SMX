@@ -1,4 +1,7 @@
 using System.Text.Json;
+using Azure;
+using Azure.Core.Serialization;
+using Azure.Search.Documents.Indexes;
 using Azure.Search.Documents.Indexes.Models;
 using Smx.Domain;
 using Smx.Infrastructure.Search;
@@ -20,12 +23,16 @@ public class LearnedConclusionsIndexSchemaTests
         Application: "bottle", Market: "EU", Substance: "arsenic trioxide",
         Confidence: 0.9, CreatedAt: "2026-07-13T00:00:00Z");
 
-    /// The wire names the push actually sends. Smx.Orchestrator builds bare SearchClients, so the
-    /// serializer is the default one — exactly what is reconstructed here.
+    /// The wire names the push actually sends — produced by the REAL serializer, not a stand-in.
+    /// Smx.Orchestrator builds bare SearchClients, so SearchClientOptions.Serializer is the default
+    /// JsonObjectSerializer; using it here means the test cannot pass while production disagrees.
     private static HashSet<string> ChunkJsonKeys()
     {
-        var json = JsonSerializer.Serialize(SampleChunk(), new JsonSerializerOptions());
-        using var doc = JsonDocument.Parse(json);
+        using var stream = new MemoryStream();
+        new JsonObjectSerializer().Serialize(stream, SampleChunk(), typeof(LearnedConclusionChunk), default);
+        stream.Position = 0;
+
+        using var doc = JsonDocument.Parse(stream);
         return doc.RootElement.EnumerateObject().Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
     }
 
@@ -94,5 +101,77 @@ public class LearnedConclusionsIndexSchemaTests
         // a dangling name is only caught when CreateOrUpdateIndex is called against a live service.
         var profile = Assert.Single(index.VectorSearch.Profiles, p => p.Name == vector.VectorSearchProfileName);
         Assert.Contains(index.VectorSearch.Algorithms, a => a.Name == profile.AlgorithmConfigurationName);
+    }
+
+    [Fact]
+    public void Vector_field_is_hidden_so_hits_do_not_drag_3072_floats_back_to_the_orchestrator()
+    {
+        var vector = LearnedConclusionsIndex.BuildIndex(IndexName).Fields.Single(f => f.Name == "contentVector");
+
+        // Hidden ≠ unsearchable: the vector is still queryable, it is just never RETURNED. The read tool
+        // selects no projection, so a retrievable vector would ship ~50 KB of JSON per hit for data it
+        // immediately discards. Both properties must hold together.
+        Assert.True(vector.IsHidden);
+        Assert.True(vector.IsSearchable);
+    }
+}
+
+/// EnsureIndexAsync must issue exactly ONE control-plane CreateOrUpdateIndex per process however often the
+/// conclusion writer calls it — but must NOT latch a failure, or one transient 429 at startup would wedge
+/// the knowledge layer forever. SearchIndexClient ships a mocking constructor and virtual methods, so both
+/// are observable by counting real calls; no seam had to be invented.
+public class LearnedConclusionsIndexEnsureTests
+{
+    private sealed class CountingIndexClient : SearchIndexClient
+    {
+        public int Creates;
+        public Func<int, bool> FailOn = _ => false;
+
+        public override Task<Response<SearchIndex>> CreateOrUpdateIndexAsync(
+            SearchIndex index, bool allowIndexDowntime = false, bool onlyIfUnchanged = false,
+            CancellationToken cancellationToken = default)
+        {
+            var n = Interlocked.Increment(ref Creates);
+            if (FailOn(n)) throw new InvalidOperationException("transient 429");
+            return Task.FromResult(Response.FromValue(index, null!));
+        }
+    }
+
+    [Fact]
+    public async Task Repeated_calls_create_the_index_exactly_once()
+    {
+        var client = new CountingIndexClient();
+        var sut = new LearnedConclusionsIndex(client, "learned-conclusions");
+
+        for (var i = 0; i < 25; i++) await sut.EnsureIndexAsync();
+
+        Assert.Equal(1, client.Creates);
+    }
+
+    [Fact]
+    public async Task Concurrent_calls_create_the_index_exactly_once()
+    {
+        // The change-feed handler runs concurrently, so an unguarded latch would race here.
+        var client = new CountingIndexClient();
+        var sut = new LearnedConclusionsIndex(client, "learned-conclusions");
+
+        await Task.WhenAll(Enumerable.Range(0, 32).Select(_ => Task.Run(() => sut.EnsureIndexAsync())));
+
+        Assert.Equal(1, client.Creates);
+    }
+
+    [Fact]
+    public async Task A_failed_create_is_not_latched_so_the_next_write_retries()
+    {
+        // If a failure latched, one transient 429 would make every later push write into an index that
+        // does not exist — and search_learned_conclusions would answer "no matches" forever.
+        var client = new CountingIndexClient { FailOn = n => n == 1 };
+        var sut = new LearnedConclusionsIndex(client, "learned-conclusions");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => sut.EnsureIndexAsync());
+
+        await sut.EnsureIndexAsync();   // retried and succeeded
+        await sut.EnsureIndexAsync();   // and NOW it is latched
+        Assert.Equal(2, client.Creates);
     }
 }

@@ -34,8 +34,15 @@ public interface IEmbedder
 }
 
 /// Write side of the `learned-conclusions` AI Search index; ILearnedConclusionsSearch is the read side.
-/// AI Search indexes have no ARM/Bicep resource type, so the index is created in code on first push
-/// (data-plane; the workload identity holds Search Index Data Contributor).
+/// AI Search indexes have no ARM/Bicep resource type, so the index is created in code.
+///
+/// Two calls, two roles — they are not interchangeable:
+///   • EnsureIndexAsync creates/updates the index DEFINITION (control plane) → Search Service Contributor.
+///     Callers must call it before their first PushAsync; PushAsync does not call it. Implementations latch
+///     it, so calling it before every push costs nothing after the first.
+///   • PushAsync writes DOCUMENTS (data plane) → Search Index Data Contributor.
+/// Search Index Data Contributor cannot modify object definitions, so it alone cannot create the index.
+/// infra/modules/ai.bicep grants the workload identity both.
 public interface ILearnedConclusionsIndex
 {
     Task EnsureIndexAsync(CancellationToken ct = default);

@@ -8,9 +8,16 @@ namespace Smx.Infrastructure.Search;
 
 /// The write side of the `learned-conclusions` AI Search index — the retrievable projection of the
 /// Cosmos learned-conclusions container (Cosmos stays authoritative). Mirrors
-/// Smx.Functions/Reg/Ingestion/RegSearchClient: the index is created in code on first push, because
-/// AI Search indexes have no ARM/Bicep resource type (data-plane; the workload identity holds
-/// Search Index Data Contributor). ILearnedConclusionsSearch is the read side.
+/// Smx.Functions/Reg/Ingestion/RegSearchClient: the index is created in code, because AI Search indexes
+/// have no ARM/Bicep resource type. ILearnedConclusionsSearch is the read side.
+///
+/// RBAC — two DIFFERENT roles, and conflating them is a live trap:
+///   • EnsureIndexAsync (create/update the index DEFINITION) needs **Search Service Contributor**.
+///   • PushAsync (write DOCUMENTS) needs **Search Index Data Contributor**.
+/// Search Index Data Contributor explicitly CANNOT modify object definitions, so it alone is not enough
+/// to stand this index up. infra/modules/ai.bicep grants the UAMI both. Do not "least-privilege" the
+/// service-contributor grant away on the theory that a data-plane role covers index creation — it does
+/// not, and every EnsureIndexAsync would 403, taking the knowledge layer down.
 public sealed class LearnedConclusionsIndex : ILearnedConclusionsIndex
 {
     private const int VectorDims = 3072; // text-embedding-3-large — see BackendOptions.EmbeddingDeployment
@@ -19,6 +26,17 @@ public sealed class LearnedConclusionsIndex : ILearnedConclusionsIndex
 
     private readonly SearchIndexClient _indexClient;
     private readonly string _indexName;
+
+    // CreateOrUpdateIndex is a CONTROL-plane call. The conclusion writer calls EnsureIndexAsync before
+    // every push, and a control-plane op per conclusion write invites throttling for no benefit — the
+    // index only has to be created once per process. Latch it: first call creates, all later calls are
+    // free (no network). Guarded because the change-feed handler runs concurrently.
+    //
+    // A FAILED create is deliberately NOT latched. If it were, a single transient 429 at startup would
+    // wedge the knowledge layer permanently — every later write would skip the create and then push into
+    // an index that does not exist.
+    private readonly SemaphoreSlim _ensureGate = new(1, 1);
+    private volatile bool _ensured;
 
     public LearnedConclusionsIndex(SearchIndexClient indexClient, string indexName)
     { _indexClient = indexClient; _indexName = indexName; }
@@ -56,7 +74,19 @@ public sealed class LearnedConclusionsIndex : ILearnedConclusionsIndex
             // inverted-index example for a default-analyzer field visibly retains the/and/of/on/to/with
             // (learn.microsoft.com/azure/search/search-lucene-query-architecture). Language analyzers are
             // documented as *adding* stopword removal on top of Standard. Both sides lowercase, so "As" → `as`
-            // on index and on query, and matches. Verified against the docs, not measured against a live index.
+            // on index and on query, and matches.
+            //
+            // READ THIS BEFORE YOU "CORRECT" THE ABOVE. Apache Lucene's own no-arg StandardAnalyzer() javadoc
+            // says it "builds an analyzer with the default stop words (STOP_WORDS_SET)" — the ENGLISH list —
+            // and that javadoc is what Microsoft's docs link to as the definition of the default analyzer. So
+            // the obvious "verification" of this comment lands on a page that appears to contradict it. It does
+            // not: Azure constructs the same analyzer with the stopword set overridden to EMPTY. Lucene-with-
+            // defaults strips them; Azure's `standard` does not. Do not reverse this from the Lucene javadoc.
+            //
+            // One-shot confirmation on a live service (do it at first deploy):
+            //   POST /indexes/learned-conclusions/analyze  {"text":"As Be In No At","analyzer":"standard.lucene"}
+            //   → expect 5 tokens. Zero tokens means the premise here is wrong and retrieval by element symbol
+            //     is broken; switch `content` to a CustomAnalyzer (standard tokenizer + lowercase, NO stop filter).
             new SearchableField("content"),
 
             // Scope + metadata. Filterable siblings of facts that also live inside `content` (the reader only
@@ -71,9 +101,16 @@ public sealed class LearnedConclusionsIndex : ILearnedConclusionsIndex
             new SimpleField("confidence", SearchFieldDataType.Double) { IsFilterable = true, IsSortable = true },
             new SimpleField("createdAt", SearchFieldDataType.String) { IsFilterable = true, IsSortable = true },
 
+            // Searchable AND hidden — not a contradiction. IsHidden only means "never returned in results";
+            // the vector is still fully searchable for vector/hybrid queries, which is the only thing anyone
+            // wants from it. Without this the field is retrievable, and since LearnedConclusionsSearchTool
+            // does SearchAsync<Dictionary<string, object>> with no Select projection, every hit would drag
+            // 3072 floats (~50 KB of JSON) back to the orchestrator — ~250 KB of pure waste per
+            // search_learned_conclusions call, on a hot agent path, for data the reader discards.
             new SearchField("contentVector", SearchFieldDataType.Collection(SearchFieldDataType.Single))
             {
-                IsSearchable = true, VectorSearchDimensions = VectorDims, VectorSearchProfileName = VectorProfile
+                IsSearchable = true, IsHidden = true,
+                VectorSearchDimensions = VectorDims, VectorSearchProfileName = VectorProfile
             }
         };
 
@@ -87,13 +124,32 @@ public sealed class LearnedConclusionsIndex : ILearnedConclusionsIndex
         };
     }
 
-    public Task EnsureIndexAsync(CancellationToken ct = default) =>
-        _indexClient.CreateOrUpdateIndexAsync(BuildIndex(_indexName), cancellationToken: ct);
+    /// Creates the index if it is not there. Idempotent, and latched: exactly one CreateOrUpdateIndex per
+    /// process, however many times the writer calls this. Callers must call it before their first PushAsync
+    /// (PushAsync does not call it — that would put the control-plane call back on the write path).
+    public async Task EnsureIndexAsync(CancellationToken ct = default)
+    {
+        if (_ensured) return;                                     // the common case: free, no network
+        await _ensureGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (_ensured) return;                                 // lost the race; someone else created it
+            await _indexClient.CreateOrUpdateIndexAsync(BuildIndex(_indexName), cancellationToken: ct)
+                              .ConfigureAwait(false);
+            _ensured = true;                                      // set ONLY on success — see the field comment
+        }
+        finally { _ensureGate.Release(); }
+    }
 
     // AI Search caps a request at ~16 MB; a 3072-dim vector is ~12 KB, so a large push must be chunked
     // or the whole upload fails with HTTP 413 (learned on real data in the regulatory ingest).
     private const int PushBatch = 100;
 
+    /// Partial-batch semantics, deliberately: if batch 3 of 5 is rejected we throw, and batches 1–2 stay in
+    /// the index while 4–5 are never sent. That is safe only because LearnedConclusionProjection.SearchKey is
+    /// DETERMINISTIC and MergeOrUpload is idempotent — re-running the push after the fix re-sends every chunk
+    /// and converges on the same documents rather than duplicating them. If either of those two properties
+    /// ever changes, this loop needs a real transaction story.
     public async Task PushAsync(IReadOnlyList<LearnedConclusionChunk> chunks, CancellationToken ct = default)
     {
         if (chunks.Count == 0) return;
