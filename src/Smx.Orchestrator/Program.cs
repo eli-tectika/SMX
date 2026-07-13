@@ -11,6 +11,7 @@ using Smx.Infrastructure;
 using Smx.Infrastructure.Search;
 using Smx.Orchestrator.Agents;
 using Smx.Orchestrator.Dispatch;
+using Smx.Orchestrator.Knowledge;
 
 var builder = Host.CreateApplicationBuilder(args);
 var opts = BackendOptions.From(builder.Configuration);
@@ -62,7 +63,8 @@ builder.Services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(sp =>
     FoundryChatClientFactory.CreateAsync(opts, credential).GetAwaiter().GetResult());
 builder.Services.AddSingleton<IAgentRuns, AgentRuns>();
 builder.Services.AddSingleton(sp => new StageDispatcher(
-    sp.GetRequiredService<IRecordStore>(), sp.GetRequiredService<IAgentRuns>(), opts.RegulatoryParallelism));
+    sp.GetRequiredService<IRecordStore>(), sp.GetRequiredService<IAgentRuns>(),
+    sp.GetRequiredService<ILearnedConclusionWriter>(), opts.RegulatoryParallelism));
 builder.Services.AddHostedService<ChangeFeedWorker>();
 
 if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] is { Length: > 0 } aiConn)

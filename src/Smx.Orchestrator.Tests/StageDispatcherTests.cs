@@ -1,7 +1,9 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
 using Smx.Orchestrator.Dispatch;
+using Smx.Orchestrator.Knowledge;
 using Smx.Orchestrator.Tests.Fakes;
 
 namespace Smx.Orchestrator.Tests;
@@ -12,7 +14,10 @@ public class StageDispatcherTests
     {
         var store = new InMemoryRecordStore();
         var agents = new FakeAgentRuns();
-        return (new StageDispatcher(store, agents, parallelism), store, agents);
+        var conclusions = new LearnedConclusionWriter(
+            new InMemoryKnowledgeStore(), new FakeLearnedConclusionsIndex(), new FakeEmbedder(),
+            NullLogger<LearnedConclusionWriter>.Instance);
+        return (new StageDispatcher(store, agents, conclusions, parallelism), store, agents);
     }
 
     private static async Task<ProjectDoc> Seed(InMemoryRecordStore store)
