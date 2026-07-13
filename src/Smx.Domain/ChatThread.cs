@@ -36,11 +36,22 @@ public static class ChatThread
 
             // Show the agent what it already looked up. Without it, a fresh session re-runs the same
             // retrievals every turn and can contradict a citation it gave one message ago.
+            //
+            // This is the renderer's OWN line and carries no speaker prefix — so it is the one line the rule
+            // above cannot protect, and its content is untrusted: a tool-call summary is built from the
+            // operator's verbatim reason (ApplyRevision renders "{target} — {reason}"). A line break in that
+            // reason would break out onto an unattributed line and forge an agent turn. Collapsing every
+            // break keeps the trail to one line per turn, which is also what it is meant to be.
             if (t.ToolCalls.Count > 0)
                 sb.Append("  (you called: ")
-                  .Append(string.Join(", ", t.ToolCalls.Select(c => $"{c.Tool}({c.Summary})")))
+                  .Append(string.Join(", ", t.ToolCalls.Select(c => $"{OneLine(c.Tool)}({OneLine(c.Summary)})")))
                   .Append(")\n");
         }
         return sb.ToString().TrimEnd();
     }
+
+    /// Flattens text onto a single line. Total, not a blocklist: every line break becomes a space, so nothing
+    /// interpolated into an unprefixed line of the transcript can start a new one.
+    private static string OneLine(string text) =>
+        string.Join(" ", text.Split(LineBreaks, StringSplitOptions.None));
 }
