@@ -24,3 +24,20 @@ public interface ICatalogLookup
     /// All catalog products for an element (single-partition read of ref-catalog by /element).
     Task<IReadOnlyList<CatalogCard>> LookupAsync(string element, CancellationToken ct = default);
 }
+
+/// Text → vector. Backs BOTH the learned-conclusions index push and its hybrid retrieval — the same
+/// model must embed both sides or the vectors are not comparable. text-embedding-3-large, 3072 dims,
+/// on the same Foundry account (and the same Entra credential) as the chat model.
+public interface IEmbedder
+{
+    Task<IReadOnlyList<float[]>> EmbedAsync(IReadOnlyList<string> texts, CancellationToken ct = default);
+}
+
+/// Write side of the `learned-conclusions` AI Search index; ILearnedConclusionsSearch is the read side.
+/// AI Search indexes have no ARM/Bicep resource type, so the index is created in code on first push
+/// (data-plane; the workload identity holds Search Index Data Contributor).
+public interface ILearnedConclusionsIndex
+{
+    Task EnsureIndexAsync(CancellationToken ct = default);
+    Task PushAsync(IReadOnlyList<LearnedConclusionChunk> chunks, CancellationToken ct = default);
+}

@@ -5,6 +5,7 @@ namespace Smx.Infrastructure;
 public sealed record BackendOptions(
     string FoundryEndpoint,
     string ClaudeDeployment,
+    string EmbeddingDeployment,
     string CosmosAccountEndpoint,
     string CosmosDatabase,
     string RecordContainer,
@@ -42,6 +43,10 @@ public sealed record BackendOptions(
     public static BackendOptions From(IConfiguration c) => new(
         FoundryEndpoint: c["FOUNDRY_ENDPOINT"] ?? "",
         ClaudeDeployment: c["CLAUDE_DEPLOYMENT"] ?? "claude-opus-4-7",
+        // infra/modules/ai.bicep deploys text-embedding-3-large unconditionally under exactly this name,
+        // so an unset EMBEDDING_DEPLOYMENT lands on the deployment that actually exists — the default is
+        // correct, not merely tolerated. Must stay the model the index's 3072-dim vector field was sized for.
+        EmbeddingDeployment: c["EMBEDDING_DEPLOYMENT"] ?? "text-embedding-3-large",
         CosmosAccountEndpoint: c["COSMOS_ACCOUNT_ENDPOINT"] ?? throw new InvalidOperationException("COSMOS_ACCOUNT_ENDPOINT missing"),
         CosmosDatabase: c["COSMOS_DATABASE"] ?? "smx",
         RecordContainer: c["RECORD_CONTAINER"] ?? "record",
