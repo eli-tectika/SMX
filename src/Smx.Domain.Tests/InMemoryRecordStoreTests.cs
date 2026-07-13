@@ -61,3 +61,43 @@ public class InMemoryRecordStoreTests
         Assert.Null(await store.GetVerdictAsync("p1", "nope", "bottle"));
     }
 }
+
+public class RevisionStoreTests
+{
+    private static RevisionDoc Rev(string project, string key, string createdAt) => new()
+    {
+        Id = RecordIds.Revision(project, Stages.Discovery, key), ProjectId = project,
+        Stage = Stages.Discovery, Target = "Ba tier", Reason = "overlaps Ti", CreatedAt = createdAt,
+    };
+
+    [Fact]
+    public async Task GetRevisions_ReturnsThisProjectsRevisions_OldestFirst()
+    {
+        var store = new InMemoryRecordStore();
+        await store.UpsertRevisionAsync(Rev("proj-1", "b", "2026-07-13T02:00:00Z"));
+        await store.UpsertRevisionAsync(Rev("proj-1", "a", "2026-07-13T01:00:00Z"));
+        await store.UpsertRevisionAsync(Rev("proj-2", "c", "2026-07-13T03:00:00Z"));
+
+        var revisions = await store.GetRevisionsAsync("proj-1");
+
+        Assert.Equal(2, revisions.Count);
+        Assert.Equal(["2026-07-13T01:00:00Z", "2026-07-13T02:00:00Z"], revisions.Select(r => r.CreatedAt));
+    }
+
+    [Fact]
+    public async Task GetRevisions_OnColdStart_ReturnsEmpty_NotNull() =>
+        Assert.Empty(await new InMemoryRecordStore().GetRevisionsAsync("proj-nothing"));
+
+    [Fact]
+    public async Task UpsertRevision_ReplacesByIdSoChangeFeedRedeliveryIsHarmless()
+    {
+        var store = new InMemoryRecordStore();
+        var r = Rev("proj-1", "a", "2026-07-13T01:00:00Z");
+        await store.UpsertRevisionAsync(r);
+        r.Status = RevisionStatus.Applied;
+        await store.UpsertRevisionAsync(r);
+
+        var only = Assert.Single(await store.GetRevisionsAsync("proj-1"));
+        Assert.Equal(RevisionStatus.Applied, only.Status);
+    }
+}

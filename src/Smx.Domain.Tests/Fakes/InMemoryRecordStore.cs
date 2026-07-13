@@ -24,6 +24,11 @@ public sealed class InMemoryRecordStore : IRecordStore
         Task.FromResult(_docs.TryGetValue(RecordIds.Gate(projectId, gateType), out var d) ? (GateDoc?)d : null);
     public Task<VerdictDoc?> GetVerdictAsync(string projectId, string cas, string componentId, CancellationToken ct = default) =>
         Task.FromResult(_docs.TryGetValue(RecordIds.Verdict(projectId, cas, componentId), out var d) ? (VerdictDoc?)d : null);
+    public Task<IReadOnlyList<RevisionDoc>> GetRevisionsAsync(string projectId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<RevisionDoc>>(_docs.Values.OfType<RevisionDoc>()
+            .Where(r => r.ProjectId == projectId)
+            .OrderBy(r => r.CreatedAt, StringComparer.Ordinal)   // twin of the Cosmos ORDER BY
+            .ToList());
 
     public Task UpsertProjectAsync(ProjectDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
     public Task UpsertConstraintsAsync(ConstraintsDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
@@ -31,4 +36,5 @@ public sealed class InMemoryRecordStore : IRecordStore
     public Task UpsertMatrixAsync(MatrixDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
     public Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
     public Task UpsertGateAsync(GateDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
+    public Task UpsertRevisionAsync(RevisionDoc doc, CancellationToken ct = default) { _docs[doc.Id] = doc; return Task.CompletedTask; }
 }

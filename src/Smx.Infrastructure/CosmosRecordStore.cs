@@ -32,12 +32,26 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
         return results;
     }
 
+    public async Task<IReadOnlyList<RevisionDoc>> GetRevisionsAsync(string projectId, CancellationToken ct = default)
+    {
+        var results = new List<RevisionDoc>();
+        var query = container.GetItemLinqQueryable<RevisionDoc>(
+                requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(projectId) })
+            .Where(d => d.Type == RecordTypes.Revision)
+            .OrderBy(d => d.CreatedAt)   // the audit trail reads oldest-first
+            .ToFeedIterator();
+        while (query.HasMoreResults)
+            results.AddRange(await query.ReadNextAsync(ct));
+        return results;
+    }
+
     public Task UpsertProjectAsync(ProjectDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertConstraintsAsync(ConstraintsDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertVerdictAsync(VerdictDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertMatrixAsync(MatrixDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertGateAsync(GateDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
+    public Task UpsertRevisionAsync(RevisionDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
 
     private async Task<T?> ReadAsync<T>(string id, string pk, CancellationToken ct) where T : class
     {
