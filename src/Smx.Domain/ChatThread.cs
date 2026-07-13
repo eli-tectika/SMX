@@ -12,6 +12,10 @@ namespace Smx.Domain;
 /// orchestrator restart mid-conversation without losing it.
 public static class ChatThread
 {
+    /// The line breaks a turn's text can arrive with. \r\n comes from anything pasted out of a Windows
+    /// document; the lone \r is here so the set is exhaustive rather than merely likely.
+    private static readonly string[] LineBreaks = ["\r\n", "\n", "\r"];
+
     public static string Render(IReadOnlyList<ChatTurn> turns)
     {
         if (turns.Count == 0)
@@ -20,13 +24,22 @@ public static class ChatThread
         var sb = new StringBuilder();
         foreach (var t in turns)
         {
-            sb.Append(t.Role == ChatRoles.Agent ? "You: " : "Operator: ").AppendLine(t.Text);
+            var speaker = t.Role == ChatRoles.Agent ? "You: " : "Operator: ";
+            // EVERY line of the turn carries the speaker prefix, not just the first. Pasting an R.E.
+            // determination or a supplier email into chat is the expected workflow, and a pasted line
+            // beginning "You:" would otherwise render as the agent's OWN prior turn — after which the agent
+            // will defend a claim it never made, in a system whose premise is that every claim traces to a
+            // cited source. Prefixing every line is total: no line of the transcript is unattributed, so no
+            // text inside a turn can forge one. (An escape/strip list would be a blocklist, and eventually wrong.)
+            foreach (var line in t.Text.Split(LineBreaks, StringSplitOptions.None))
+                sb.Append(speaker).Append(line).Append('\n');
+
             // Show the agent what it already looked up. Without it, a fresh session re-runs the same
             // retrievals every turn and can contradict a citation it gave one message ago.
             if (t.ToolCalls.Count > 0)
                 sb.Append("  (you called: ")
                   .Append(string.Join(", ", t.ToolCalls.Select(c => $"{c.Tool}({c.Summary})")))
-                  .AppendLine(")");
+                  .Append(")\n");
         }
         return sb.ToString().TrimEnd();
     }
