@@ -177,4 +177,43 @@ public class RecordDocsTests
         Assert.Null(back.AppliedAt);
         Assert.Null(back.Error);
     }
+
+    [Fact]
+    public void ChatDocs_RoundTrip_WithTheirTypeDiscriminatorsOnTheWire()
+    {
+        var msg = new ChatMessageDoc
+        {
+            Id = RecordIds.ChatMessage("proj-1", Stages.Discovery, "aaaa1111"), ProjectId = "proj-1",
+            Stage = Stages.Discovery, Text = "why is Ba tier A?", CreatedAt = "2026-07-13T10:00:00Z",
+        };
+        var json = JsonSerializer.Serialize(msg, Json.Options);
+        // The change feed routes on this string and nothing else (RecordDocRouter).
+        Assert.Contains("\"type\":\"chat-message\"", json);
+        // `status` must reach the wire: the change-feed idempotency guard reads it back from Cosmos, and a
+        // status that silently didn't serialize would let a redelivered message re-run its agent.
+        Assert.Contains("\"status\":\"pending\"", json);
+        Assert.Equal(ChatStatus.Pending, JsonSerializer.Deserialize<ChatMessageDoc>(json, Json.Options)!.Status);
+
+        var reply = new ChatReplyDoc
+        {
+            Id = RecordIds.ChatReply("proj-1", Stages.Discovery, "aaaa1111"), ProjectId = "proj-1",
+            Stage = Stages.Discovery, MessageId = msg.Id, Text = "Because the catalog lists it clean.",
+            ToolCalls = [new ChatToolCall("search_catalog", "element=Ba", null)],
+            CreatedAt = "2026-07-13T10:00:05Z",
+        };
+        var replyJson = JsonSerializer.Serialize(reply, Json.Options);
+        Assert.Contains("\"type\":\"chat-reply\"", replyJson);
+        var back = JsonSerializer.Deserialize<ChatReplyDoc>(replyJson, Json.Options)!;
+        Assert.Equal(msg.Id, back.MessageId);
+        Assert.Equal("search_catalog", Assert.Single(back.ToolCalls).Tool);
+    }
+
+    [Fact]
+    public void ChatIds_PairAReplyToItsMessage()
+    {
+        // A reply's id is derived from its message's key, so a redelivered chat-message cannot produce a
+        // second reply doc — it upserts the same one.
+        Assert.Equal("proj-1|chat-message|discovery|aaaa1111", RecordIds.ChatMessage("proj-1", Stages.Discovery, "aaaa1111"));
+        Assert.Equal("proj-1|chat-reply|discovery|aaaa1111", RecordIds.ChatReply("proj-1", Stages.Discovery, "aaaa1111"));
+    }
 }
