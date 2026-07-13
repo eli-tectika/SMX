@@ -265,6 +265,30 @@ public class RevisionDispatchTests
     }
 
     [Fact]
+    public async Task Revise_RebuildsTheMatrix_RatherThanLeavingThePreRevisionOne()
+    {
+        // The matrix is the artifact the operator reads and the XLSX export ships. TryAssembleAsync used to
+        // write it only when there wasn't one, so after a revise it kept showing the tiers and verdicts the
+        // revision REPLACED — a stale compliance artifact that looks perfectly current, which is the single
+        // most dangerous thing this system could hand someone.
+        var (d, store, agents, _) = Sut();
+        await SeedApprovedAsync(d, store);
+        var before = (await store.GetMatrixAsync(P))!;
+        Assert.Single(before.Cells);                                  // Zr is tier A ⇒ it has a screened cell
+
+        // The revision drops Zr to tier C: it is no longer a screened candidate, so it must LEAVE the matrix.
+        agents.Discovery = (_, _) => Task.FromResult(AgentRunResult<CandidatesDoc>.Ok(Candidates(Substance("C"))));
+
+        await d.OnRecordChangedAsync(Revision(Stages.Discovery, "Zr is tier C here — the bottle already contains it"), default);
+        await d.OnRecordChangedAsync((await store.GetCandidatesAsync(P))!, default);   // what the change feed delivers next
+
+        var after = (await store.GetMatrixAsync(P))!;
+        Assert.Empty(after.Cells);
+        Assert.Empty(after.Rows);
+        Assert.NotEqual(before.GeneratedAt, after.GeneratedAt);
+    }
+
+    [Fact]
     public void Router_RoutesARevisionDoc()
     {
         // The revision only reaches the dispatcher if the router knows the discriminator. Miss this and the

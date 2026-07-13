@@ -266,12 +266,14 @@ public sealed class StageDispatcher(
         await SetStageAsync(projectId, Stages.Regulatory,
             s => { if (s.Status is not ("failed" or "done")) s.Status = regStatus; }, ct);
 
-        if (await store.GetMatrixAsync(projectId, ct) is null)
-        {
-            var componentIds = constraints.Components.Select(k => k.Id).ToList();
-            await store.UpsertMatrixAsync(
-                MatrixAssembler.Assemble(candidates, componentIds, verdicts, DateTimeOffset.UtcNow.ToString("O")), ct);
-        }
+        // Always re-assemble. The old `if (matrix is null)` guard left the matrix STALE after a revise: it
+        // kept showing the tiers and verdicts the revision had replaced, and a compliance artifact that is
+        // wrong but looks current is exactly what this system must never produce. Assemble is pure over
+        // (candidates, verdicts) so re-writing is idempotent, and the MatrixDoc change-feed branch is
+        // terminal (`case MatrixDoc: break;`), so this cannot loop.
+        var componentIds = constraints.Components.Select(k => k.Id).ToList();
+        await store.UpsertMatrixAsync(
+            MatrixAssembler.Assemble(candidates, componentIds, verdicts, DateTimeOffset.UtcNow.ToString("O")), ct);
         await SetStageAsync(projectId, Stages.Matrix, s => s.Status = "done", ct);
     }
 
