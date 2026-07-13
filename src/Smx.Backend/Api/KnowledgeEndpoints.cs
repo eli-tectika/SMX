@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Smx.Domain;
+using Smx.Domain.Records;
 
 namespace Smx.Backend.Api;
 
@@ -26,7 +27,7 @@ public static class KnowledgeEndpoints
         {
             if (await store.GetMsdsAsync(cas, ct) is not { } m)
                 return Results.NotFound();
-            m.ReviewStatus = "reviewed";
+            m.ReviewStatus = MsdsReviewStatus.Reviewed;
             // The MSDS review is a signed record, not a flag: the MSDS-before-order hard gate (Plan 5)
             // reads it, so when it was signed must be recoverable.
             m.ReviewedAt = DateTimeOffset.UtcNow.ToString("O");

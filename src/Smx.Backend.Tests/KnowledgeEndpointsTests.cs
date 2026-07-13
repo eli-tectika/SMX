@@ -60,7 +60,7 @@ public class KnowledgeEndpointsTests : IClassFixture<WebApplicationFactory<Progr
         var ok = await _client.PostAsJsonAsync("/msds-registry/13463-67-7/review", new { });
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         var reviewed = (await _knowledge.GetMsdsAsync("13463-67-7"))!;
-        Assert.Equal("reviewed", reviewed.ReviewStatus);
+        Assert.Equal(MsdsReviewStatus.Reviewed, reviewed.ReviewStatus);
         // A gate record must carry when it was signed, not just that it was.
         Assert.NotNull(reviewed.ReviewedAt);
         Assert.InRange(DateTimeOffset.Parse(reviewed.ReviewedAt!), DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(1));

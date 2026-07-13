@@ -1,3 +1,4 @@
+using Microsoft.Extensions.AI;
 using Smx.Orchestrator.Agents;
 using Smx.Orchestrator.Tests.Fakes;
 
@@ -99,6 +100,36 @@ public class ToolBoxTests
             .SearchMarkerLibraryAsync("anti-counterfeit", null, null, default);
         Assert.Contains("anti-counterfeit", json);
         Assert.DoesNotContain("no matches", json);
+    }
+
+    // The tests above call the C# method directly, which cannot catch a schema/binding defect: the model
+    // does not call the method, it calls the AIFunction. These two drive the real AIFunction from
+    // IntakeTools() with an argument dictionary, exactly as the agent runtime does.
+    private static AIFunction MarkerTool(ToolBox box) =>
+        (AIFunction)box.IntakeTools().Single(t => t.Name == "search_marker_library");
+
+    [Fact]
+    public async Task SearchMarkerLibraryTool_PartialArguments_BindsAndFindsMarker()
+    {
+        // The tool description tells the model "omit a dimension to leave it unconstrained", and an intake
+        // with an application + material but no objective is ordinary. If those params are not optional in
+        // the emitted schema, this call throws and reuse-first dies in exactly the path FIX 1 resurrected.
+        var tool = MarkerTool(Box(knowledge: await SeededMarkerStore()));
+        var result = await tool.InvokeAsync(new AIFunctionArguments { ["application"] = "anti-counterfeit" });
+        Assert.DoesNotContain("no matches", result?.ToString());
+        Assert.Contains("anti-counterfeit", result?.ToString());
+    }
+
+    [Fact]
+    public async Task SearchMarkerLibraryTool_AllArguments_BindsAndFindsMarker()
+    {
+        var tool = MarkerTool(Box(knowledge: await SeededMarkerStore()));
+        var result = await tool.InvokeAsync(new AIFunctionArguments
+        {
+            ["application"] = "anti-counterfeit", ["material"] = "label", ["objective"] = "overt",
+        });
+        Assert.DoesNotContain("no matches", result?.ToString());
+        Assert.Contains("anti-counterfeit", result?.ToString());
     }
 
     [Fact]

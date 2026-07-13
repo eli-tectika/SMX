@@ -68,11 +68,12 @@ public class KnowledgeDocsTests
         };
         Assert.Equal("msds|13463-67-7", s.Id);
         Assert.Equal(KnowledgeTypes.MsdsRegistry, s.Type);
-        Assert.Equal("unreviewed", s.ReviewStatus);
+        Assert.Equal("unreviewed", s.ReviewStatus);        // the constant must not drift from the wire value
+        Assert.Equal(MsdsReviewStatus.Unreviewed, s.ReviewStatus);
         Assert.Null(s.ReviewedAt);
         Assert.Empty(s.LinkedProjects);
 
-        s.ReviewStatus = "reviewed";
+        s.ReviewStatus = MsdsReviewStatus.Reviewed;
         s.ReviewedAt = "2026-07-12T09:30:00.0000000+00:00";
         s.LinkedProjects.Add("p1");
         var back = JsonSerializer.Deserialize<MsdsRegistryDoc>(JsonSerializer.Serialize(s, Json.Options), Json.Options)!;
@@ -80,7 +81,7 @@ public class KnowledgeDocsTests
         Assert.Equal("Acme", back.Supplier);
         Assert.Equal("3", back.Version);
         Assert.Equal("2025-01-01", back.Date);
-        Assert.Equal("reviewed", back.ReviewStatus);
+        Assert.Equal(MsdsReviewStatus.Reviewed, back.ReviewStatus);
         Assert.Equal("2026-07-12T09:30:00.0000000+00:00", back.ReviewedAt);   // the gate's signature must survive Cosmos
         Assert.Equal(["p1"], back.LinkedProjects);
     }

@@ -64,7 +64,11 @@ public sealed class ToolBox(
             : JsonSerializer.Serialize(new { tabulated = true, card }, Json.Options);
     }
 
-    public async Task<string> SearchMarkerLibraryAsync(string? application, string? material, string? objective, CancellationToken ct)
+    /// The defaults are not decoration: AIFunctionFactory emits a parameter without one as REQUIRED in the
+    /// tool's JSON schema. Without them the binding rejects the very call the description invites ("omit a
+    /// dimension to leave it unconstrained") — e.g. an intake with an application + material but no objective.
+    public async Task<string> SearchMarkerLibraryAsync(
+        string? application = null, string? material = null, string? objective = null, CancellationToken ct = default)
     {
         var markers = await knowledge.FindMarkersAsync(application, material, objective, ct);
         return markers.Count == 0

@@ -26,6 +26,15 @@ public static class MarkerStatus
     public const string Approved = "approved";
 }
 
+/// Review state of an MSDS Registry entry. This gates procurement (the MSDS-before-order hard gate,
+/// Plan 5), so — as with MarkerStatus — the doc default, the endpoint that signs the review, and any
+/// future reader must share one literal rather than three.
+public static class MsdsReviewStatus
+{
+    public const string Unreviewed = "unreviewed";
+    public const string Reviewed = "reviewed";
+}
+
 public static class KnowledgeIds
 {
     public static string LearnedConclusion(string kind, string scopeKey) => $"{kind}|{scopeKey}";
