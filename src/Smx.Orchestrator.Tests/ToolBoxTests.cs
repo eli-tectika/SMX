@@ -68,6 +68,49 @@ public class ToolBoxTests
         Assert.Contains("no matches", json);
     }
 
+    // The agent must never see a retrieval score. search_learned_conclusions is a HYBRID query, so its score is
+    // RRF (~0.01-0.03); search_regulatory / search_sds / search_reference are BM25 (~1-10). Both land in the same
+    // context window, on incomparable scales, with nothing to tell the model so — it reads 0.016 as weak evidence
+    // and discounts the prior conclusion the knowledge loop exists to surface. It cites by reference and weighs the
+    // calibrated `confidence:` inside a conclusion's own content, so it needs no score at all.
+    [Fact]
+    public async Task SearchRegulatory_RendersReferenceAndContent_ButNeverTheScore()
+    {
+        var search = new FakeSearch
+        {
+            Results = [new Smx.Domain.Tools.RetrievedChunk(
+                "regulatory", "regulatory-corpus/reach-svhc-12", "Barium sulfate is not on the SVHC candidate list.", 4.2)],
+        };
+        var box = new ToolBox(
+            new FakeCatalogLookup(), new FakeCompatibilityLookup(), search, search, search,
+            new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore(), new FakeLearnedConclusionsSearch());
+
+        var json = await box.SearchRegulatoryAsync("is Ba an SVHC?", default);
+
+        Assert.Contains("regulatory-corpus/reach-svhc-12", json);
+        Assert.Contains("not on the SVHC candidate list", json);
+        Assert.DoesNotContain("score", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("4.2", json);
+    }
+
+    [Fact]
+    public async Task SearchLearnedConclusions_RendersReferenceAndContent_ButNeverTheRrfScore()
+    {
+        var learned = new FakeLearnedConclusionsSearch();
+        learned.Results.Add(new Smx.Domain.Tools.RetrievedChunk(
+            "learned-conclusions", "learned-conclusions/lc-42",
+            "[material] Ba · HDPE\nBarium overlaps the Ti K-beta line.\nconfidence: 0.70 · recorded: 2026-07-13T10:00:00Z",
+            0.0163));
+
+        var json = await Box(learnedConclusions: learned).SearchLearnedConclusionsAsync("zr bottle", default);
+
+        Assert.Contains("learned-conclusions/lc-42", json);
+        Assert.Contains("Ti K-beta", json);
+        Assert.Contains("confidence: 0.70", json);            // the calibrated number the agent SHOULD weigh
+        Assert.DoesNotContain("score", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("0.0163", json);                // the RRF number it cannot calibrate
+    }
+
     private static async Task<Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore> SeededMarkerStore()
     {
         var knowledge = new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore();

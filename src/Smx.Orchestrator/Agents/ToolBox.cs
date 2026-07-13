@@ -81,15 +81,26 @@ public sealed class ToolBox(
         var chunks = await learnedConclusions.SearchAsync(query, 5, ct);
         return chunks.Count == 0
             ? "{\"results\":[],\"note\":\"no matches — no prior conclusions on this; reason from primary sources, do not fabricate a prior finding\"}"
-            : JsonSerializer.Serialize(new { results = chunks }, Json.Options);
+            : Render(chunks);
     }
 
     public async Task<string> SearchRegulatoryAsync(string query, CancellationToken ct) => Render(await regulatory.SearchAsync(query, ct: ct));
     public async Task<string> SearchSdsAsync(string query, CancellationToken ct) => Render(await sds.SearchAsync(query, ct: ct));
     public async Task<string> SearchReferenceAsync(string query, CancellationToken ct) => Render(await reference.SearchAsync(query, ct: ct));
 
+    /// What an agent is shown for one hit — RetrievedChunk MINUS its Score. Deliberate: search_learned_conclusions
+    /// is a HYBRID query, so its score is RRF (~0.01–0.03), while search_regulatory / search_sds / search_reference
+    /// are BM25 (~1–10). Both land in the same context window on incomparable scales, and an LLM has no way to know
+    /// that — it reads 0.016 as "weak evidence" and quietly discounts the very prior conclusion the knowledge loop
+    /// exists to surface, in favour of a raw corpus hit. Nothing in C# reads Score, and an agent does not need it:
+    /// it cites by Reference, and a Learned Conclusion carries its own calibrated `confidence: 0.70` INSIDE its
+    /// content (LearnedConclusionProjection.Content) — which is what the Intake/Discovery instructions tell the
+    /// model to weigh. Score stays on RetrievedChunk for logging/eval; it just never reaches the model.
+    private sealed record AgentVisibleChunk(string Source, string Reference, string Content);
+
     private static string Render(IReadOnlyList<RetrievedChunk> chunks) =>
         chunks.Count == 0
             ? "{\"results\":[],\"note\":\"no matches — do not invent facts; lower confidence or mark NeedsReview\"}"
-            : JsonSerializer.Serialize(new { results = chunks }, Json.Options);
+            : JsonSerializer.Serialize(
+                new { results = chunks.Select(c => new AgentVisibleChunk(c.Source, c.Reference, c.Content)) }, Json.Options);
 }
