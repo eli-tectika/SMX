@@ -1,4 +1,5 @@
 using Smx.Domain.Records;
+using Smx.Orchestrator.Agents;
 using Smx.Orchestrator.Dispatch;
 
 namespace Smx.Orchestrator.Tests.Fakes;
@@ -15,28 +16,38 @@ public sealed class FakeAgentRuns : IAgentRuns
             DerivedScope = [new("reach-annex-xvii", "*", "r", new Citation("regulatory", "x", "t"))],
         }));
 
-    public Func<ConstraintsDoc, Task<Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>>> Discovery { get; set; } =
-        c => Task.FromResult(Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>.Ok(new CandidatesDoc
+    public Func<ConstraintsDoc, RevisionDoc?, Task<Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>>> Discovery { get; set; } =
+        (c, _) => Task.FromResult(Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>.Ok(new CandidatesDoc
         {
             Id = RecordIds.Candidates(c.ProjectId), ProjectId = c.ProjectId,
             Substances = [new("bottle", "Zr", "neodecanoate", "cas-zr", null, null, true, "A", "ok",
                 [new Citation("catalog", "ref-catalog/x", "t")])],
         }));
 
-    public Func<ConstraintsDoc, CandidateSubstance, Task<Smx.Orchestrator.Agents.AgentRunResult<VerdictDoc>>> Regulatory { get; set; } =
-        (c, cand) => Task.FromResult(Smx.Orchestrator.Agents.AgentRunResult<VerdictDoc>.Ok(new VerdictDoc
+    public Func<ConstraintsDoc, CandidateSubstance, RevisionDoc?, Task<Smx.Orchestrator.Agents.AgentRunResult<VerdictDoc>>> Regulatory { get; set; } =
+        (c, cand, _) => Task.FromResult(Smx.Orchestrator.Agents.AgentRunResult<VerdictDoc>.Ok(new VerdictDoc
         {
             Id = RecordIds.Verdict(c.ProjectId, cand.Cas, cand.ComponentId), ProjectId = c.ProjectId,
             Cas = cand.Cas, ComponentId = cand.ComponentId, Element = cand.Element, Form = cand.Form,
             Dimensions = [new("ElementGate", VerdictStatus.Pass, [new Citation("regulatory", "x", "t")], 0.9, "ok")],
         }));
 
-    public int IntakeCalls; public int DiscoveryCalls; public int RegulatoryCalls;
+    public Func<RevisionDoc, ConstraintsDoc, string, Task<AgentRunResult<ConclusionOutput>>> Conclusion { get; set; } =
+        (r, _, _) => Task.FromResult(AgentRunResult<ConclusionOutput>.Ok(new ConclusionOutput
+        {
+            Scope = new(null, null, null, null, null, null),
+            Finding = $"Distilled: {r.Reason}",
+            Confidence = 0.6,
+        }));
+
+    public int IntakeCalls; public int DiscoveryCalls; public int RegulatoryCalls; public int ConclusionCalls;
 
     Task<Smx.Orchestrator.Agents.AgentRunResult<ConstraintsDoc>> IAgentRuns.RunIntakeAsync(ProjectDoc p, CancellationToken ct)
     { Interlocked.Increment(ref IntakeCalls); return Intake(p); }
-    Task<Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>> IAgentRuns.RunDiscoveryAsync(ConstraintsDoc c, CancellationToken ct)
-    { Interlocked.Increment(ref DiscoveryCalls); return Discovery(c); }
-    Task<Smx.Orchestrator.Agents.AgentRunResult<VerdictDoc>> IAgentRuns.RunRegulatoryAsync(ConstraintsDoc c, CandidateSubstance cand, CancellationToken ct)
-    { Interlocked.Increment(ref RegulatoryCalls); return Regulatory(c, cand); }
+    Task<Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>> IAgentRuns.RunDiscoveryAsync(ConstraintsDoc c, RevisionDoc? revision, CancellationToken ct)
+    { Interlocked.Increment(ref DiscoveryCalls); return Discovery(c, revision); }
+    Task<Smx.Orchestrator.Agents.AgentRunResult<VerdictDoc>> IAgentRuns.RunRegulatoryAsync(ConstraintsDoc c, CandidateSubstance cand, RevisionDoc? revision, CancellationToken ct)
+    { Interlocked.Increment(ref RegulatoryCalls); return Regulatory(c, cand, revision); }
+    Task<AgentRunResult<ConclusionOutput>> IAgentRuns.RunConclusionAsync(RevisionDoc revision, ConstraintsDoc c, string stageOutputJson, CancellationToken ct)
+    { Interlocked.Increment(ref ConclusionCalls); return Conclusion(revision, c, stageOutputJson); }
 }

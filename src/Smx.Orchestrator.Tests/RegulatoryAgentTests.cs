@@ -34,7 +34,7 @@ public class RegulatoryAgentTests
     [Fact]
     public async Task ValidResponse_BecomesVerdictDoc_ThreeDimensions()
     {
-        var result = await RegulatoryAgent.RunAsync(new ScriptedAgent(Valid), Constraints(), Candidate(), default);
+        var result = await RegulatoryAgent.RunAsync(new ScriptedAgent(Valid), Constraints(), Candidate(), null, default);
         Assert.True(result.Succeeded);
         Assert.Equal("p1|verdict|1306-23-6|bottle", result.Output!.Id);
         Assert.Equal(VerdictStatus.Fail, result.Output.Overall);
@@ -46,7 +46,7 @@ public class RegulatoryAgentTests
     {
         var bad = Valid.Replace("\"dimension\": \"Hazard\"", "\"dimension\": \"Compatibility\"");
         var agent = new ScriptedAgent(bad, Valid);
-        var result = await RegulatoryAgent.RunAsync(agent, Constraints(), Candidate(), default);
+        var result = await RegulatoryAgent.RunAsync(agent, Constraints(), Candidate(), null, default);
         Assert.True(result.Succeeded);
         Assert.Contains("exactly the three dimensions", agent.Received[1]);
     }
@@ -58,7 +58,7 @@ public class RegulatoryAgentTests
             "\"citations\": [{ \"source\": \"sds\", \"reference\": \"sds-index/cd-ghs\", \"retrievedAt\": \"t\" }]",
             "\"citations\": []");
         var agent = new ScriptedAgent(bad, bad, bad);
-        var result = await RegulatoryAgent.RunAsync(agent, Constraints(), Candidate(), default);
+        var result = await RegulatoryAgent.RunAsync(agent, Constraints(), Candidate(), null, default);
         Assert.False(result.Succeeded);
         Assert.Contains("citation", result.Error);
     }
@@ -67,7 +67,7 @@ public class RegulatoryAgentTests
     public async Task PromptCarriesCandidate_ScopeAndRestrictedList()
     {
         var agent = new ScriptedAgent(Valid);
-        await RegulatoryAgent.RunAsync(agent, Constraints(), Candidate(), default);
+        await RegulatoryAgent.RunAsync(agent, Constraints(), Candidate(), null, default);
         var prompt = agent.Received[0];
         Assert.Contains("1306-23-6", prompt);
         Assert.Contains("reach-annex-xvii", prompt);

@@ -94,7 +94,7 @@ public class StageDispatcherTests
     public async Task DiscoveryNeedsReview_MarksStage_DoesNotCascade()
     {
         var (d, store, agents) = Sut();
-        agents.Discovery = _ => Task.FromResult(
+        agents.Discovery = (_, _) => Task.FromResult(
             Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>.NeedsReview("no catalog hits"));
         await d.OnRecordChangedAsync(await Seed(store), default);
         await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
@@ -107,7 +107,7 @@ public class StageDispatcherTests
     public async Task RegulatoryNeedsReview_WritesPlaceholderVerdict_MatrixStillAssembles()
     {
         var (d, store, agents) = Sut();
-        agents.Regulatory = (c, cand) => Task.FromResult(
+        agents.Regulatory = (c, cand, _) => Task.FromResult(
             Smx.Orchestrator.Agents.AgentRunResult<VerdictDoc>.NeedsReview("no retrieval"));
         await d.OnRecordChangedAsync(await Seed(store), default);
         await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);

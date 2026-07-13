@@ -59,7 +59,7 @@ public sealed class StageDispatcher(IRecordStore store, IAgentRuns agents, int r
                 await SetStageAsync(c.ProjectId, Stages.Discovery, s => { s.Status = "done"; s.Error = null; }, ct);
                 return;
             }
-            var result = await agents.RunDiscoveryAsync(c, ct);
+            var result = await agents.RunDiscoveryAsync(c, null, ct);
             if (result.Succeeded)
             {
                 await store.UpsertCandidatesAsync(result.Output!, ct);
@@ -91,7 +91,7 @@ public sealed class StageDispatcher(IRecordStore store, IAgentRuns agents, int r
             {
                 try
                 {
-                    var result = await agents.RunRegulatoryAsync(constraints, candidate, ct);
+                    var result = await agents.RunRegulatoryAsync(constraints, candidate, null, ct);
                     var verdict = result.Succeeded ? result.Output! : new VerdictDoc
                     {
                         Id = RecordIds.Verdict(cd.ProjectId, candidate.Cas, candidate.ComponentId),

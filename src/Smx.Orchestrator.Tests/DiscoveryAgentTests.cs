@@ -26,7 +26,7 @@ public class DiscoveryAgentTests
     [Fact]
     public async Task ValidResponse_BecomesCandidatesDoc()
     {
-        var result = await DiscoveryAgent.RunAsync(new ScriptedAgent(Valid), Constraints(), default);
+        var result = await DiscoveryAgent.RunAsync(new ScriptedAgent(Valid), Constraints(), null, default);
         Assert.True(result.Succeeded);
         Assert.Equal("p1|candidates", result.Output!.Id);
         Assert.Single(result.Output.Substances);
@@ -38,7 +38,7 @@ public class DiscoveryAgentTests
     {
         var bad = Valid.Replace("\"componentId\": \"bottle\"", "\"componentId\": \"lid\"");
         var agent = new ScriptedAgent(bad, bad, bad);
-        var result = await DiscoveryAgent.RunAsync(agent, Constraints(), default);
+        var result = await DiscoveryAgent.RunAsync(agent, Constraints(), null, default);
         Assert.False(result.Succeeded);
         Assert.Contains("unknown component", result.Error);
     }
@@ -48,7 +48,7 @@ public class DiscoveryAgentTests
     {
         var bad = Valid.Replace("\"element\": \"Y\"", "\"element\": \"Cd\"");
         var agent = new ScriptedAgent(bad, bad, bad);
-        var result = await DiscoveryAgent.RunAsync(agent, Constraints(), default);
+        var result = await DiscoveryAgent.RunAsync(agent, Constraints(), null, default);
         Assert.False(result.Succeeded);
         Assert.Contains("not in the element pool", result.Error);
     }
@@ -60,7 +60,7 @@ public class DiscoveryAgentTests
             "\"citations\": [{ \"source\": \"catalog\", \"reference\": \"ref-catalog/product|Y|x\", \"retrievedAt\": \"t\" }]",
             "\"citations\": []");
         var agent = new ScriptedAgent(bad, bad, bad);
-        var result = await DiscoveryAgent.RunAsync(agent, Constraints(), default);
+        var result = await DiscoveryAgent.RunAsync(agent, Constraints(), null, default);
         Assert.False(result.Succeeded);
         Assert.Contains("citation", result.Error);
     }

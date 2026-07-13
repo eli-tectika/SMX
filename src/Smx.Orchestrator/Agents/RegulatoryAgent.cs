@@ -32,8 +32,12 @@ public static class RegulatoryAgent
         [{ "source", "reference", "retrievedAt" }], "confidence", "rationale" }] }
         """;
 
+    /// <param name="revision">null for an ordinary run; non-null re-screens this cell APPLYING the operator's
+    /// revise-with-reason (Law 4). It is an explicit parameter rather than an overload on purpose: a caller
+    /// who forgets it gets a compile error instead of an agent that quietly ignores the operator.</param>
     public static async Task<AgentRunResult<VerdictDoc>> RunAsync(
-        ISmxAgent agent, ConstraintsDoc constraints, CandidateSubstance candidate, CancellationToken ct)
+        ISmxAgent agent, ConstraintsDoc constraints, CandidateSubstance candidate, RevisionDoc? revision,
+        CancellationToken ct)
     {
         var component = constraints.Components.Single(c => c.Id == candidate.ComponentId);
         var scope = constraints.DerivedScope.Where(s => s.ComponentId is "*" || s.ComponentId == candidate.ComponentId).ToList();
@@ -45,8 +49,8 @@ public static class RegulatoryAgent
             clientRestrictedList = constraints.ClientRestrictedList,
         }, Json.Options);
 
-        var result = await ValidatedAgentRunner.RunAsync<RegulatoryOutput>(agent,
-            $"Screen this cell:\n{prompt}", Validate, ct);
+        var task = revision is null ? $"Screen this cell:\n{prompt}" : RevisionTask(revision, prompt);
+        var result = await ValidatedAgentRunner.RunAsync<RegulatoryOutput>(agent, task, Validate, ct);
         if (!result.Succeeded) return AgentRunResult<VerdictDoc>.NeedsReview(result.Error!);
         return AgentRunResult<VerdictDoc>.Ok(new VerdictDoc
         {
@@ -56,6 +60,23 @@ public static class RegulatoryAgent
             Dimensions = result.Output!.Dimensions,
         });
     }
+
+    /// The operator's instruction is authoritative — but "apply it" is not "manufacture support for it".
+    /// The standing rule (Instructions) still binds: never guess, never assume clean, cite every dimension.
+    /// Where the instruction outruns the corpus, the agent applies it AND says so, so the gap lands in the
+    /// rationale and the confidence — visible to the R.E. at the gate — instead of being papered over.
+    private static string RevisionTask(RevisionDoc revision, string prompt) => $"""
+        Re-screen this cell, APPLYING the operator's revision below.
+        The operator's instruction is authoritative: apply it. You still may not invent facts — call your
+        tools and cite every reference you rely on. If the regulatory or SDS corpus does not support the
+        instruction, apply it anyway, say exactly that in the affected dimension's rationale, and lower that
+        dimension's confidence accordingly.
+
+        REVISION — target: {revision.Target}
+        REVISION — reason: {revision.Reason}
+
+        {prompt}
+        """;
 
     internal static string? Validate(RegulatoryOutput o)
     {

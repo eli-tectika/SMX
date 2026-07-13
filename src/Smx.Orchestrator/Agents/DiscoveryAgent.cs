@@ -38,15 +38,21 @@ public static class DiscoveryAgent
           "tier" ("A"|"B"|"C"), "rationale", "citations": [{ "source", "reference", "retrievedAt" }] }] }
         """;
 
-    public static async Task<AgentRunResult<CandidatesDoc>> RunAsync(ISmxAgent agent, ConstraintsDoc constraints, CancellationToken ct)
+    /// <param name="revision">null for an ordinary run; non-null re-runs the stage APPLYING the operator's
+    /// revise-with-reason (Law 4). It is an explicit parameter rather than an overload on purpose: a caller
+    /// who forgets it gets a compile error instead of an agent that quietly ignores the operator.</param>
+    public static async Task<AgentRunResult<CandidatesDoc>> RunAsync(
+        ISmxAgent agent, ConstraintsDoc constraints, RevisionDoc? revision, CancellationToken ct)
     {
         var prompt = JsonSerializer.Serialize(new
         {
             components = constraints.Components,
             elementPools = constraints.ElementPools,
         }, Json.Options);
-        var result = await ValidatedAgentRunner.RunAsync<DiscoveryOutput>(agent,
-            $"Discover candidate substances for these components and pools:\n{prompt}",
+        var task = revision is null
+            ? $"Discover candidate substances for these components and pools:\n{prompt}"
+            : RevisionTask(revision, prompt);
+        var result = await ValidatedAgentRunner.RunAsync<DiscoveryOutput>(agent, task,
             o => Validate(o, constraints), ct);
         if (!result.Succeeded) return AgentRunResult<CandidatesDoc>.NeedsReview(result.Error!);
         return AgentRunResult<CandidatesDoc>.Ok(new CandidatesDoc
@@ -55,6 +61,22 @@ public static class DiscoveryAgent
             Substances = result.Output!.Substances,
         });
     }
+
+    /// The operator's instruction is authoritative — but "apply it" is not "make something up to justify
+    /// it". The agent still answers only from retrieved sources; where the instruction cannot be supported
+    /// by evidence it must apply it AND say so, so the gap is visible in the rationale rather than papered
+    /// over with an invented citation.
+    private static string RevisionTask(RevisionDoc revision, string prompt) => $"""
+        Re-run discovery for these components and pools, APPLYING the operator's revision below.
+        The operator's instruction is authoritative: apply it. You still may not invent facts — re-check
+        your tools and cite them, and if the instruction cannot be supported by retrieved evidence, apply
+        it anyway and say exactly that in the affected candidate's rationale.
+
+        REVISION — target: {revision.Target}
+        REVISION — reason: {revision.Reason}
+
+        {prompt}
+        """;
 
     internal static string? Validate(DiscoveryOutput o, ConstraintsDoc constraints)
     {
