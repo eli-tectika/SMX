@@ -44,6 +44,7 @@ var app = builder.Build();
 if (app.Configuration["PATH_BASE"] is { Length: > 0 } pathBase)
     app.UsePathBase(pathBase);
 app.MapProjectEndpoints();
+app.MapKnowledgeEndpoints();
 app.Run();
 
 public partial class Program { } // WebApplicationFactory hook

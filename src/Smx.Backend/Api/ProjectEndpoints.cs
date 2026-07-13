@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 using Smx.Domain;
 using Smx.Domain.Records;
 
@@ -8,7 +9,12 @@ public static class ProjectEndpoints
 {
     public static void MapProjectEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/projects", async (CreateProjectRequest req, IRecordStore store, CancellationToken ct) =>
+        // [FromServices] on every IRecordStore param below is required, not decorative: without it,
+        // minimal APIs infer whether a param is a service via IServiceProviderIsService at endpoint-build
+        // time (shared across the WHOLE app's composite endpoint data source). A test host that registers
+        // only IKnowledgeStore (e.g. KnowledgeEndpointsTests) and not IRecordStore would otherwise fail to
+        // build these routes, which breaks routing for every endpoint in the app, not just these.
+        app.MapPost("/projects", async (CreateProjectRequest req, [FromServices] IRecordStore store, CancellationToken ct) =>
         {
             if (req.Validate() is { } error) return Results.BadRequest(new { error });
             var projectId = $"proj-{Guid.NewGuid():N}"[..17];
@@ -25,13 +31,13 @@ public static class ProjectEndpoints
             return Results.Accepted($"/projects/{projectId}", new { projectId });
         });
 
-        app.MapGet("/projects/{projectId}", async (string projectId, IRecordStore store, CancellationToken ct) =>
+        app.MapGet("/projects/{projectId}", async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
             await store.GetProjectAsync(projectId, ct) is { } doc
                 ? Results.Json(new { doc.ProjectId, doc.Client, doc.Product, doc.Stages }, Json.Options)
                 : Results.NotFound());
 
         app.MapGet("/projects/{projectId}/matrix",
-            async (string projectId, string? format, IRecordStore store, CancellationToken ct) =>
+            async (string projectId, string? format, [FromServices] IRecordStore store, CancellationToken ct) =>
         {
             if (await store.GetMatrixAsync(projectId, ct) is not { } matrix) return Results.NotFound();
             if (!string.Equals(format, "xlsx", StringComparison.OrdinalIgnoreCase))
@@ -43,7 +49,7 @@ public static class ProjectEndpoints
         });
 
         app.MapPost("/projects/{projectId}/regulatory/review",
-            async (string projectId, ReviewRequest req, IRecordStore store, CancellationToken ct) =>
+            async (string projectId, ReviewRequest req, [FromServices] IRecordStore store, CancellationToken ct) =>
         {
             if (await store.GetVerdictAsync(projectId, req.Cas, req.ComponentId, ct) is not { } v)
                 return Results.NotFound();
@@ -53,7 +59,7 @@ public static class ProjectEndpoints
         });
 
         app.MapPost("/projects/{projectId}/regulatory/determination",
-            async (string projectId, DeterminationRequest req, IRecordStore store, CancellationToken ct) =>
+            async (string projectId, DeterminationRequest req, [FromServices] IRecordStore store, CancellationToken ct) =>
         {
             if (req.Determination is not ("recommended" or "rejected"))
                 return Results.UnprocessableEntity(new { error = "determination must be 'recommended' or 'rejected'" });
@@ -69,7 +75,7 @@ public static class ProjectEndpoints
         });
 
         app.MapPost("/projects/{projectId}/regulatory/approve",
-            async (string projectId, IRecordStore store, CancellationToken ct) =>
+            async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
         {
             var verdicts = await store.GetVerdictsAsync(projectId, ct);
             var candidates = await store.GetCandidatesAsync(projectId, ct);
@@ -89,7 +95,7 @@ public static class ProjectEndpoints
         });
 
         app.MapGet("/projects/{projectId}/gate/regulatory",
-            async (string projectId, IRecordStore store, CancellationToken ct) =>
+            async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
         {
             var verdicts = await store.GetVerdictsAsync(projectId, ct);
             var candidates = await store.GetCandidatesAsync(projectId, ct);

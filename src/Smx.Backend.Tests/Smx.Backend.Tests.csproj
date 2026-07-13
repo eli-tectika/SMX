@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryRecordStore.cs" Link="Fakes/InMemoryRecordStore.cs" />
+    <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryKnowledgeStore.cs" Link="Fakes/InMemoryKnowledgeStore.cs" />
   </ItemGroup>
 
 </Project>
