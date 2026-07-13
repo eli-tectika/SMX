@@ -84,11 +84,21 @@ public static class IntakeAnswers
         return (null, $"'{field}' is not an answerable field. You may set only: {AllowedFields}.");
     }
 
-    /// A blank answer fills no gap — and a blank `markets` would silently leave the component with ZERO
-    /// target markets, which empties its regulatory screen. Refuse rather than record nothing.
-    private static string BlankValue(string field) =>
-        $"'{field}' needs a real value — an empty answer would blank an intake input rather than fill it " +
-        "(zero target markets, for one, would empty the regulatory screen). Ask the operator for the value.";
+    /// A blank answer fills no gap, so it is refused rather than written. The reason is stated PER FIELD:
+    /// these strings exist to teach a model to self-correct, and a true rationale attached to the wrong
+    /// field is a worse signal than a plain refusal.
+    private static string BlankValue(string field) => field switch
+    {
+        // The one blank that is not merely useless but unsafe: zero target markets empties the component's
+        // regulatory screen, which is a false-pass mechanism. Say so out loud.
+        "markets" => "'markets' needs at least one target market. Recording none would leave this component " +
+                     "with ZERO target markets, which empties its regulatory screen — ask the operator which " +
+                     "markets the product ships to.",
+        "clientRestrictedList" => "'clientRestrictedList' needs at least one entry (comma-separated). If the " +
+                     "client imposes no restrictions, leave the list as it is rather than recording a blank.",
+        _ => $"'{field}' needs a real value — an empty answer would blank this intake input rather than fill " +
+             "it. Ask the operator for the value.",
+    };
 
     private static string KnownComponents(JsonArray? components)
     {
@@ -107,12 +117,22 @@ public static class IntakeAnswers
     private static (JsonElement?, string?) Rebuild(JsonObject node) =>
         (JsonSerializer.Deserialize<JsonElement>(node.ToJsonString()), null);
 
-    /// The payload as an object, or null for anything else — a default/Undefined element (GetRawText throws),
-    /// a JSON `null`, an array, a scalar. Nothing here may escape as an exception.
+    /// The payload as an object, or null for anything else — a default/Undefined element (whose ValueKind
+    /// check catches it before GetRawText throws), a JSON `null`, an array, a scalar.
+    ///
+    /// The live exception here is ObjectDisposedException, NOT JsonException: a JsonElement is a view over a
+    /// JsonDocument, and once that document is disposed every read — GetRawText included — throws
+    /// ObjectDisposedException. ProjectDoc.Create defends against this by Clone()ing its payload; a payload
+    /// reaching us from anywhere else may not have been. JsonException, by contrast, is effectively dead:
+    /// ValueKind is already Object, so GetRawText hands JsonNode.Parse text that STJ itself just parsed. It
+    /// is caught anyway because "never throws" must not rest on that reasoning staying true.
     private static JsonObject? Root(JsonElement payload)
     {
-        if (payload.ValueKind is not JsonValueKind.Object) return null;
-        try { return JsonNode.Parse(payload.GetRawText()) as JsonObject; }
-        catch (JsonException) { return null; }
+        try
+        {
+            if (payload.ValueKind is not JsonValueKind.Object) return null;
+            return JsonNode.Parse(payload.GetRawText()) as JsonObject;
+        }
+        catch (Exception e) when (e is ObjectDisposedException or JsonException) { return null; }
     }
 }

@@ -172,6 +172,21 @@ public class IntakeAnswersTests
         Assert.NotNull(error);
     }
 
+    [Fact]
+    public void Patch_NeverThrowsOnAPayloadWhoseDocumentWasDisposed()
+    {
+        // A JsonElement is a view over a JsonDocument: once that document is disposed, every read throws
+        // ObjectDisposedException — which is NOT a JsonException. Unhandled, it escapes the tool call and
+        // fails the whole stage.
+        JsonElement payload;
+        using (var doc = JsonDocument.Parse("""{"components":[{"id":"bottle","objective":""}]}"""))
+            payload = doc.RootElement;   // the document is disposed on the way out; the element outlives it
+
+        var (patched, error) = IntakeAnswers.Patch(payload, "components.bottle.objective", "brand protection");
+        Assert.Null(patched);
+        Assert.NotNull(error);
+    }
+
     [Theory]
     [InlineData("components.bottle.markets", "")]
     [InlineData("components.bottle.markets", " , ")]   // parses to zero markets
@@ -179,11 +194,29 @@ public class IntakeAnswersTests
     [InlineData("clientRestrictedList", "")]
     public void Patch_RefusesToRecordABlankAnswer(string field, string value)
     {
-        // Zero target markets would silently empty the regulatory screen — a false-pass mechanism. A blank
-        // answer fills no gap, so it is refused rather than written.
+        // A blank answer fills no gap, so it is refused rather than written.
         var (patched, error) = IntakeAnswers.Patch(Payload(), field, value);
         Assert.Null(patched);
         Assert.NotNull(error);
+    }
+
+    [Fact]
+    public void Patch_SaysWhyABlankMarketsIsUnsafe()
+    {
+        // The one blank that is not merely useless: zero markets empties the regulatory screen.
+        var (_, error) = IntakeAnswers.Patch(Payload(), "components.bottle.markets", "");
+        Assert.Contains("regulatory screen", error!);
+    }
+
+    [Fact]
+    public void Patch_DoesNotAttachTheMarketsRationaleToOtherFields()
+    {
+        // These strings teach a model to self-correct. Telling it a blank `material` "would empty the
+        // regulatory screen" is a true sentence about the wrong field — a worse signal than a plain refusal.
+        var (_, error) = IntakeAnswers.Patch(Payload(), "components.bottle.material", " ");
+        Assert.Contains("material", error!);
+        Assert.DoesNotContain("regulatory screen", error!);
+        Assert.DoesNotContain("markets", error!);
     }
 
     [Fact]
