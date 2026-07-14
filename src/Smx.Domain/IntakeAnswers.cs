@@ -17,8 +17,10 @@ public static class IntakeAnswers
 {
     private static readonly string[] ComponentFields = ["material", "application", "objective", "markets"];
 
-    /// Fields whose value is a comma-separated list rather than a scalar.
-    private static readonly string[] ListFields = ["markets", "clientRestrictedList"];
+    /// The COMPONENT fields whose value is a comma-separated list rather than a scalar. Only consulted on the
+    /// component branch below — `clientRestrictedList` is a ROOT field and parses its own list before `parts`
+    /// is ever destructured, so naming it here would be a dead entry that reads like a second code path.
+    private static readonly string[] ListFields = ["markets"];
 
     private static string AllowedFields =>
         $"components.{{componentId}}.{{{string.Join("|", ComponentFields)}}}, or clientRestrictedList";
