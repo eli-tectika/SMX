@@ -1,6 +1,8 @@
 using Smx.Domain;
 using Smx.Domain.Records;
+using Smx.Domain.Tests.Fakes;
 using Smx.Orchestrator.Agents;
+using Smx.Orchestrator.Dispatch;
 using Smx.Orchestrator.Tests.Fakes;
 
 namespace Smx.Orchestrator.Tests;
@@ -76,5 +78,44 @@ public class ChatAgentTests
     {
         Assert.Empty(Box().ReadToolsFor(Stages.Matrix));
         Assert.Empty(Box().ReadToolsFor("dosing"));
+    }
+
+    // The FULL tool surface of a real chat turn — the only place read + mutating are put together, and a
+    // place FakeAgentRuns can never reach (it fakes the whole run). Untested, dropping `chatTools.Tools()`
+    // from that one line would leave every dispatch test green while the model silently LOST apply_revision:
+    // the operator asks for a change and gives their reason, and the agent — told the tool is the only way
+    // to change anything — either cannot comply or says it did. Both are Law 4 failures.
+    private static IList<Microsoft.Extensions.AI.AITool> TurnTools(string stage) =>
+        AgentRuns.ChatTurnTools(Box(), new ChatTools(new InMemoryRecordStore(), "p1", stage, "k1"), stage);
+
+    [Fact]
+    public void ChatTurnTools_AreTheStagesReadTools_PlusThisTurnsMutatingTools()
+    {
+        Assert.Equal(
+            ["apply_revision", "lookup_compatibility", "search_catalog", "search_learned_conclusions", "search_reference"],
+            TurnTools(Stages.Discovery).Select(t => t.Name).OrderBy(x => x));
+
+        // Intake cannot be revised (it has produced no analytical result to revise) — it gap-fills instead.
+        Assert.Equal(
+            ["record_answer", "search_learned_conclusions", "search_marker_library", "search_reference", "search_regulatory"],
+            TurnTools(Stages.Intake).Select(t => t.Name).OrderBy(x => x));
+    }
+
+    // Law 9, asserted where it is actually decided: over the model's WHOLE capability list for a turn. Chat
+    // cannot sign a gate, approve, or record a determination because no such tool is reachable from here —
+    // not because the Instructions say so. Prose cannot be tested; this can, and it fails the moment someone
+    // adds the tool. Matrix is included because it is the stage nearest the final approval.
+    [Theory]
+    [InlineData(Stages.Intake)]
+    [InlineData(Stages.Discovery)]
+    [InlineData(Stages.Regulatory)]
+    [InlineData(Stages.Matrix)]
+    public void ChatTurnTools_ContainNothingThatCouldSignAGateOrApproveAnything(string stage)
+    {
+        string[] forbidden = ["approve", "gate", "sign", "determination", "finalize", "release"];
+        foreach (var name in TurnTools(stage).Select(t => t.Name))
+            Assert.False(
+                forbidden.Any(f => name.Contains(f, StringComparison.OrdinalIgnoreCase)),
+                $"chat has no gate capability by construction, but the '{stage}' turn offers a tool named '{name}'");
     }
 }
