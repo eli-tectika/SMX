@@ -5,9 +5,10 @@ using Smx.Domain.Records;
 
 namespace Smx.Infrastructure;
 
-/// IKnowledgeStore over three cross-project Cosmos containers. PKs: learned-conclusions /kind,
-/// marker-library /id, msds-registry /cas. Query* does a Cosmos CONTAINS (case-insensitive) browse.
-public sealed class CosmosKnowledgeStore(Container conclusions, Container markers, Container msds) : IKnowledgeStore
+/// IKnowledgeStore over four cross-project Cosmos containers. PKs: learned-conclusions /kind,
+/// marker-library /id, msds-registry /cas, substance-properties /cas. Query* does a Cosmos CONTAINS
+/// (case-insensitive) browse.
+public sealed class CosmosKnowledgeStore(Container conclusions, Container markers, Container msds, Container substances) : IKnowledgeStore
 {
     public Task<LearnedConclusionDoc?> GetLearnedConclusionAsync(string kind, string scopeKey, CancellationToken ct = default) =>
         ReadAsync<LearnedConclusionDoc>(conclusions, KnowledgeIds.LearnedConclusion(kind, scopeKey), kind, ct);
@@ -78,6 +79,15 @@ public sealed class CosmosKnowledgeStore(Container conclusions, Container marker
     }
     public Task UpsertMsdsAsync(MsdsRegistryDoc doc, CancellationToken ct = default) =>
         msds.UpsertItemAsync(doc, new PartitionKey(doc.Cas), cancellationToken: ct);
+
+    // A point-read on the /cas partition and an upsert — no LINQ, so no query text to get wrong. The 404 →
+    // null in ReadAsync is what Dosing reads as "the operator has not entered this loading yet" and parks on.
+    // That is also why the container has to EXIST in both Bicep twins: a missing container 404s identically,
+    // and a cold knowledge layer and a misdeployed one would be indistinguishable.
+    public Task<SubstancePropertyDoc?> GetSubstancePropertyAsync(string cas, CancellationToken ct = default) =>
+        ReadAsync<SubstancePropertyDoc>(substances, KnowledgeIds.SubstanceProperty(cas), cas, ct);
+    public Task UpsertSubstancePropertyAsync(SubstancePropertyDoc doc, CancellationToken ct = default) =>
+        substances.UpsertItemAsync(doc, new PartitionKey(doc.Cas), cancellationToken: ct);
 
     private static async Task<T?> ReadAsync<T>(Container c, string id, string pk, CancellationToken ct) where T : class
     {

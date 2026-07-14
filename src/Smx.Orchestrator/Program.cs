@@ -77,7 +77,8 @@ public static class OrchestratorHost
             return new CosmosKnowledgeStore(
                 cosmos.GetContainer(opts.CosmosDatabase, opts.LearnedConclusionsContainer),
                 cosmos.GetContainer(opts.CosmosDatabase, opts.MarkerLibraryContainer),
-                cosmos.GetContainer(opts.CosmosDatabase, opts.MsdsRegistryContainer));
+                cosmos.GetContainer(opts.CosmosDatabase, opts.MsdsRegistryContainer),
+                cosmos.GetContainer(opts.CosmosDatabase, opts.SubstancePropertiesContainer));
         });
 
         // ONE embedder, resolved from the container on BOTH sides of the learned-conclusions loop:

@@ -188,11 +188,16 @@ resource refCosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases
   }
 }]
 
-// Cross-project knowledge layer: Marker Library, Learned Conclusions, MSDS Registry.
+// Cross-project knowledge layer: Marker Library, Learned Conclusions, MSDS Registry, Substance Properties.
+// substance-properties holds the operator-entered metal loading (mass fraction of the marker element in a
+// compound) keyed by CAS, so it is entered once and reused by every later project. If this container is
+// absent, the point-read 404s and Dosing reads that as "not entered yet" and parks forever — the failure is
+// silent, which is why it must actually be deployed.
 var knowledgeContainers = [
   { name: 'learned-conclusions', pk: '/kind' }
   { name: 'marker-library', pk: '/id' }
   { name: 'msds-registry', pk: '/cas' }
+  { name: 'substance-properties', pk: '/cas' }
 ]
 resource knowledgeCosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = [for c in knowledgeContainers: {
   parent: cosmosDb

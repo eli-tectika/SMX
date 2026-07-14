@@ -96,4 +96,98 @@ public class InMemoryKnowledgeStoreTests
         Assert.Single(await store.QueryMsdsAsync(null));
         Assert.Null(await store.GetMsdsAsync("nope"));
     }
+
+    /// The fake used to hand out the STORED instance. That is not what Cosmos does — Cosmos round-trips
+    /// through JSON, so a read hands back a fresh graph and a mutation of it persists only if you upsert it.
+    /// A fake that aliases certifies read-modify-writes that production silently drops (the whole reason
+    /// InMemoryRecordStore deep-copies). Pinned here on MSDS because the bug was general to all four types.
+    [Fact]
+    public async Task Msds_Get_ReturnsASnapshot_SoMutatingItDoesNotWriteBackToTheStore()
+    {
+        var store = new InMemoryKnowledgeStore();
+        await store.UpsertMsdsAsync(new MsdsRegistryDoc { Id = KnowledgeIds.Msds("c1"), Cas = "c1", Supplier = "Acme", Version = "1", Date = "d" });
+
+        (await store.GetMsdsAsync("c1"))!.ReviewStatus = MsdsReviewStatus.Reviewed;   // no upsert follows
+
+        // In Cosmos this MSDS is still unreviewed — and it gates procurement.
+        Assert.Equal(MsdsReviewStatus.Unreviewed, (await store.GetMsdsAsync("c1"))!.ReviewStatus);
+    }
+}
+
+public class SubstancePropertyStoreTests
+{
+    private static SubstancePropertyDoc Y2O3() => new()
+    {
+        Id = KnowledgeIds.SubstanceProperty("1314-36-9"), Cas = "1314-36-9", Element = "Y", Form = "oxide",
+        MetalLoading = 0.787, Basis = "2×M(Y)/M(Y2O3)", EnteredAt = "2026-07-14T10:00:00.0000000+00:00",
+    };
+
+    [Fact]
+    public async Task Get_OnAColdStore_ReturnsNull_NotAnException()
+    {
+        // Cold-start safety: the very first project has an empty knowledge layer, and Dosing must PARK on
+        // that, not crash on it.
+        Assert.Null(await new InMemoryKnowledgeStore().GetSubstancePropertyAsync("1314-36-9"));
+    }
+
+    [Fact]
+    public async Task Upsert_ThenGet_RoundTripsByCas()
+    {
+        var store = new InMemoryKnowledgeStore();
+        await store.UpsertSubstancePropertyAsync(Y2O3());
+
+        var got = (await store.GetSubstancePropertyAsync("1314-36-9"))!;
+        Assert.Equal(0.787, got.MetalLoading);
+        Assert.Equal("2×M(Y)/M(Y2O3)", got.Basis);   // the number is worthless without the basis that backs it
+        Assert.Equal("Y", got.Element);
+
+        // Keyed by CAS, and only by CAS: a different compound is a miss, not a lucky hit.
+        Assert.Null(await store.GetSubstancePropertyAsync("1314-23-4"));
+    }
+
+    [Fact]
+    public async Task Upsert_ReplacesByCas_SoACorrectionOverwritesRatherThanDuplicates()
+    {
+        var store = new InMemoryKnowledgeStore();
+        await store.UpsertSubstancePropertyAsync(Y2O3());
+
+        // A SEPARATELY constructed doc for the same CAS — never an alias of the first, so passing this test
+        // cannot be an artifact of two names for one object. It is a genuine second write to the same key.
+        var corrected = Y2O3();
+        corrected.MetalLoading = 0.7874;
+        corrected.Basis = "recomputed from IUPAC 2021 masses";
+        await store.UpsertSubstancePropertyAsync(corrected);
+
+        // Last write wins on every field — this kills an insert-only (TryAdd) store, which would silently
+        // keep serving the WRONG loading forever with the correction sitting right there unused.
+        var got = (await store.GetSubstancePropertyAsync("1314-36-9"))!;
+        Assert.Equal(0.7874, got.MetalLoading);
+        Assert.Equal("recomputed from IUPAC 2021 masses", got.Basis);
+    }
+
+    [Fact]
+    public async Task Get_ReturnsASnapshot_SoMutatingItDoesNotSilentlyRewriteTheStore()
+    {
+        var store = new InMemoryKnowledgeStore();
+        await store.UpsertSubstancePropertyAsync(Y2O3());
+
+        (await store.GetSubstancePropertyAsync("1314-36-9"))!.MetalLoading = 0.5;   // no upsert follows
+
+        // Cosmos hands back a fresh deserialization, so that mutation went nowhere. The fake must agree, or
+        // a read-modify-forget-to-write bug goes green here and mis-doses in Azure.
+        Assert.Equal(0.787, (await store.GetSubstancePropertyAsync("1314-36-9"))!.MetalLoading);
+    }
+
+    [Fact]
+    public async Task Upsert_SnapshotsTheDoc_SoLaterMutationsOfTheCallersObjectDoNotLeakIn()
+    {
+        var store = new InMemoryKnowledgeStore();
+        var doc = Y2O3();
+        await store.UpsertSubstancePropertyAsync(doc);
+
+        doc.MetalLoading = 0.5;   // the caller keeps using its object; no second upsert
+
+        // An upsert SNAPSHOTS. In Cosmos this change never left the process.
+        Assert.Equal(0.787, (await store.GetSubstancePropertyAsync("1314-36-9"))!.MetalLoading);
+    }
 }

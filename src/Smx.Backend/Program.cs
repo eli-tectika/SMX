@@ -33,7 +33,8 @@ if (builder.Configuration["COSMOS_ACCOUNT_ENDPOINT"] is { Length: > 0 })
         return new CosmosKnowledgeStore(
             cosmos.GetContainer(opts.CosmosDatabase, opts.LearnedConclusionsContainer),
             cosmos.GetContainer(opts.CosmosDatabase, opts.MarkerLibraryContainer),
-            cosmos.GetContainer(opts.CosmosDatabase, opts.MsdsRegistryContainer));
+            cosmos.GetContainer(opts.CosmosDatabase, opts.MsdsRegistryContainer),
+            cosmos.GetContainer(opts.CosmosDatabase, opts.SubstancePropertiesContainer));
     });
 }
 if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] is { Length: > 0 })

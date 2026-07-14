@@ -25,4 +25,9 @@ public interface IKnowledgeStore
     Task<MsdsRegistryDoc?> GetMsdsAsync(string cas, CancellationToken ct = default);
     Task<IReadOnlyList<MsdsRegistryDoc>> QueryMsdsAsync(string? search, CancellationToken ct = default);
     Task UpsertMsdsAsync(MsdsRegistryDoc doc, CancellationToken ct = default);
+
+    /// Metal loading, keyed by CAS and shared by every project (design §6). Null on a cold store —
+    /// Dosing parks and asks the operator, and the answer is kept forever.
+    Task<SubstancePropertyDoc?> GetSubstancePropertyAsync(string cas, CancellationToken ct = default);
+    Task UpsertSubstancePropertyAsync(SubstancePropertyDoc doc, CancellationToken ct = default);
 }

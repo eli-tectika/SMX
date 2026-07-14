@@ -24,6 +24,9 @@ public class BackendOptionsTests
         Assert.Equal("smx-reference", o.ReferenceIndex);                // default
         Assert.Equal("regulatory-index", o.RegulatoryIndex);            // default; overridden when team schema lands
         Assert.Equal("ref-compatibility", o.CompatibilityContainer);    // default
+        // Must match the container name deployed by BOTH infra data.bicep twins, or the point-read 404s and
+        // Dosing parks forever on a loading the operator already entered.
+        Assert.Equal("substance-properties", o.SubstancePropertiesContainer);
         Assert.Equal(4, o.RegulatoryParallelism);                       // default
         Assert.Equal("https://aif-smx-dev.services.ai.azure.com/anthropic/v1", o.AnthropicBaseUrl);
         Assert.Equal("anthropic", o.ModelProvider);                     // default — SOW target

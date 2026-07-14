@@ -164,6 +164,56 @@ public sealed class CosmosQueryTextTests
         }
     }
 
+    // ---- CosmosKnowledgeStore: the /cas partition-key path ---------------------------------------
+
+    /// SubstancePropertyDoc has NO LINQ query — CosmosKnowledgeStore reads it with a point-read and writes it
+    /// with an upsert, so there is no SQL text to get wrong and none is invented here. But it does have a
+    /// Cosmos-level naming contract that nothing else pins, and it fails the same way: the container's
+    /// partition-key path is the literal string `/cas` (declared in BOTH infra/modules/data.bicep twins),
+    /// while the upsert passes `new PartitionKey(doc.Cas)`. Cosmos extracts the key from the DOCUMENT at
+    /// `/cas` and compares. If the serializer writes `Cas` — a rename, a stray [JsonPropertyName], a change
+    /// to Json.Options' naming policy — the paths disagree and Cosmos rejects every write, while the
+    /// dictionary-backed fake stays green. This asserts the key the production serializer actually emits.
+    [Theory]
+    [InlineData("cas")]        // the partition-key path
+    [InlineData("metalLoading")]
+    [InlineData("basis")]      // the provenance that makes the loading checkable
+    public void SubstanceProperty_serializes_the_keys_its_container_and_readers_address(string wireName)
+    {
+        var serializer = new SystemTextJsonCosmosSerializer(Json.Options);
+        var doc = new SubstancePropertyDoc
+        {
+            Id = KnowledgeIds.SubstanceProperty("1314-36-9"), Cas = "1314-36-9", Element = "Y", Form = "oxide",
+            MetalLoading = 0.787, Basis = "2xM(Y)/M(Y2O3)", EnteredAt = "2026-07-14T10:00:00.0000000+00:00",
+        };
+
+        using var stream = serializer.ToStream(doc);
+        var onDisk = JsonDocument.Parse(stream).RootElement;
+
+        Assert.True(onDisk.TryGetProperty(wireName, out _),
+            $"serializer did not write a '{wireName}' key; document keys: " +
+            string.Join(", ", onDisk.EnumerateObject().Select(p => p.Name)));
+    }
+
+    /// The PK path is a string in Bicep and a property on the doc; this pins the two together so the doc
+    /// cannot be renamed out from under the deployed container.
+    [Fact]
+    public void SubstanceProperty_partition_key_value_is_the_cas_the_document_carries()
+    {
+        var doc = new SubstancePropertyDoc
+        {
+            Id = KnowledgeIds.SubstanceProperty("1314-36-9"), Cas = "1314-36-9", Element = "Y", Form = "oxide",
+            MetalLoading = 0.787, Basis = "2xM(Y)/M(Y2O3)", EnteredAt = "2026-07-14T10:00:00.0000000+00:00",
+        };
+
+        using var stream = new SystemTextJsonCosmosSerializer(Json.Options).ToStream(doc);
+        var onDisk = JsonDocument.Parse(stream).RootElement;
+
+        // What CosmosKnowledgeStore.UpsertSubstancePropertyAsync passes as the PartitionKey must be exactly
+        // what Cosmos will read out of the document at /cas.
+        Assert.Equal(doc.Cas, onDisk.GetProperty("cas").GetString());
+    }
+
     /// Same loop-closing check for the chat thread: whatever keys the serializer writes for a ChatMessageDoc
     /// are the keys its query must address.
     [Fact]
