@@ -67,8 +67,10 @@ public static class ProjectEndpoints
         app.MapPost("/projects/{projectId}/regulatory/determination",
             async (string projectId, DeterminationRequest req, [FromServices] IRecordStore store, CancellationToken ct) =>
         {
-            if (req.Determination is not ("recommended" or "rejected"))
-                return Results.UnprocessableEntity(new { error = "determination must be 'recommended' or 'rejected'" });
+            // Ordinal, exact, and the ONLY writer of VerdictDoc.Determination: "Recommended", " recommended "
+            // and "approved" are all 422s, so the string CompliantSet reads is always one of the two constants.
+            if (req.Determination is not (Determinations.Recommended or Determinations.Rejected))
+                return Results.UnprocessableEntity(new { error = $"determination must be '{Determinations.Recommended}' or '{Determinations.Rejected}'" });
             if (string.IsNullOrWhiteSpace(req.Reason))
                 return Results.UnprocessableEntity(new { error = "every determination requires a reason" });
             if (await store.GetVerdictAsync(projectId, req.Cas, req.ComponentId, ct) is not { } v)
