@@ -11,7 +11,9 @@ deploy.*                         deploy the environment (subscription-scoped Bic
 build-images.*                   build frontend + backend + orchestrator images in ACR
 swap-images.*                    repoint one Container App at an image (stopgap — see below)
 publish-functions.*              build + zip-deploy Smx.Functions to the regsync Function App
-configure-auth.*                 Entra app registration + Easy Auth on the Function App
+publish-searchproxy.*            build + zip-deploy Smx.SearchProxy to the searchproxy Function App
+set-search-key.*                 put the search provider API key in Key Vault, print its secret URI
+configure-auth.*                 Entra app registrations + Easy Auth (regsync AND searchproxy)
 seed-reference-data.*            upload the workbooks to Bronze + invoke the seeder
 harden.*                         lock data/AI services down to private endpoints
 smoke.*                          post-deploy health check
@@ -20,30 +22,64 @@ dev-local-setup.*                one-time local dev config, read from the deploy
 dev-local.*                      run the stack locally (up / down / status / logs / restart)
 ```
 
+`publish-searchproxy` is deliberately **not** folded into `publish-functions`: the Search Proxy is a
+separate Function App with a separate managed identity that holds **zero corpus RBAC**. That separation
+is the point — a compromise of the internet-facing component must not reach the regulatory corpus — and
+shipping `Smx.Functions` into it would drag Cosmos/Bronze/Search dependencies onto the exposed app.
+
 ## Deploying to Azure
 
-Order matters. `seed-reference-data` needs public reach and an Entra token, so it must run
-**before** `harden`, which is what takes that reach away.
+Order matters, and two of the steps below exist only because of a chicken-and-egg in the Bicep:
+
+- **`set-search-key` before the redeploy that passes `deploySearchKeyRbac=true`.** The proxy's Key Vault
+  grant is scoped to the *one* secret it reads, not to the vault. A role assignment scoped to a secret
+  that does not exist fails the deploy, so the grant is off by default and you turn it on only once the
+  secret is there.
+- **`configure-auth` before the redeploy that passes `proxyAuthClientId`.** Entra app objects are Graph
+  resources, not ARM, so a script has to create them first. That redeploy is not cosmetic: it is also
+  what sets the orchestrator's `SEARCH_PROXY_AUDIENCE`, which stays **empty** until you pass the id —
+  and an orchestrator with no audience cannot call the proxy at all.
+
+Both also have to happen **before `harden`**, along with `seed-reference-data`: all three need public
+reach (Key Vault, Storage, an Entra token), and `harden` is what takes that reach away.
 
 ```bash
 ./preflight.sh dev                 # 0. dry run  (.\preflight.ps1 dev)
-./deploy.sh dev                    # 1. infrastructure
+./deploy.sh dev                    # 1. infrastructure (proxy: no key, no auth, RBAC off — all by design)
 ./build-images.sh dev              # 2. images -> ACR, tagged with the short git SHA
-./deploy.sh dev \
+./publish-functions.sh dev         # 3. regsync code   (SDS / Reg / Reference)
+./publish-searchproxy.sh dev       # 4. search proxy code
+./set-search-key.sh dev <brave-key>  # 5. key -> Key Vault; prints the secret URI  <-- before harden
+./configure-auth.sh dev            # 6. BOTH Entra app registrations + Easy Auth; prints both client ids
+./deploy.sh dev \                  # 7. one redeploy that wires steps 2/5/6 in
   -p frontendImage=<acr>.azurecr.io/smx-frontend:<tag> \
   -p backendImage=<acr>.azurecr.io/smx-backend:<tag> \
-  -p orchestratorImage=<acr>.azurecr.io/smx-orchestrator:<tag>
-./publish-functions.sh dev         # 3. function code
-./configure-auth.sh dev            # 4. Entra + Easy Auth
-./seed-reference-data.sh dev       # 5. reference data   <-- before harden
-./harden.sh dev                    # 6. private endpoints only
-./smoke.sh dev                     # 7. verify
+  -p orchestratorImage=<acr>.azurecr.io/smx-orchestrator:<tag> \
+  -p authClientId=<regsync-client-id> \
+  -p proxyAuthClientId=<searchproxy-client-id> \
+  -p proxySearchKeySecretUri=<uri from step 5> \
+  -p deploySearchKeyRbac=true
+./seed-reference-data.sh dev       # 8. reference data   <-- before harden
+./harden.sh dev                    # 9. private endpoints only
+./smoke.sh dev                     # 10. verify
 ```
+
+Step 7 is one redeploy only because steps 5 and 6 both ran first. Split it if you prefer — the only
+hard rules are the two dependencies above (secret before its grant, app registration before its client
+id). `keyVaultName` is **not** a parameter you pass: `main.bicep` wires it from the security module's
+output, because the vault's name carries a `uniqueString()` suffix.
+
+Until step 7 the proxy is provisioned but inert: `PROXY_SEARCH_API_KEY` is empty (it answers 503) and
+Easy Auth is off. That is the intended state of a fresh deploy, not a failure.
+
+**Rotating the search key** is a re-run of `set-search-key` alone. It writes a new version of the same
+secret, and the app setting is an *unversioned* Key Vault reference, so App Service picks the new value
+up without a redeploy.
 
 In PowerShell the extra Bicep parameters go through `-Parameters`:
 
 ```powershell
-.\deploy.ps1 dev -Parameters @("frontendImage=$acr.azurecr.io/smx-frontend:$tag")
+.\deploy.ps1 dev -Parameters @("frontendImage=$acr.azurecr.io/smx-frontend:$tag", 'deploySearchKeyRbac=true')
 ```
 
 **Container images are Bicep parameters, not live edits.** `swap-images.*` mutates only the

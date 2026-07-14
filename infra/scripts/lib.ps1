@@ -106,6 +106,24 @@ function Get-RegSyncApp  { param([string]$Env) "func-$($script:NamePrefix)-$Env-
 function Get-AppRegName  { param([string]$Env) "$($script:NamePrefix)-$Env-regsync-auth" }
 function Get-ContainerApp { param([string]$Env, [string]$App) "ca-$($script:NamePrefix)-$Env-$App-$($script:RegionShort)" }
 
+# The Search Proxy is a SEPARATE app with a SEPARATE identity and its OWN app registration - never
+# regsync's. Sharing an audience would hand the internet-facing proxy a token the corpus-writing app
+# accepts, which is exactly the boundary the two identities exist to hold.
+function Get-SearchProxyApp   { param([string]$Env) "func-$($script:NamePrefix)-$Env-searchproxy-$($script:RegionShort)" }
+function Get-ProxyAppRegName  { param([string]$Env) "$($script:NamePrefix)-$Env-searchproxy-auth" }
+
+# The Key Vault name carries a Bicep uniqueString() suffix (security.bicep:
+# kv-${namePrefix}-${env}-${uniqueSuffix}), seeded from the subscription id here and the resource-group
+# id in the single-rg variant - so discover it rather than reconstruct it.
+function Get-KeyVaultName {
+    param([Parameter(Mandatory)][string]$Env)
+    $rg = Get-EnvRg $Env
+    $prefix = "kv-$($script:NamePrefix)-$Env-"
+    $name = az keyvault list -g $rg --query "[?starts_with(name, '$prefix')].name | [0]" -o tsv
+    if ([string]::IsNullOrWhiteSpace($name)) { Die "No Key Vault found in $rg with prefix '$prefix' (is env '$Env' deployed?)" }
+    return $name
+}
+
 # ACR name carries a Bicep uniqueString() suffix, so discover it rather than reconstruct it.
 function Get-AcrName {
     param([Parameter(Mandatory)][string]$Env)
