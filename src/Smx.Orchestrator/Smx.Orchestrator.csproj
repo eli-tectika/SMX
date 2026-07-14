@@ -22,4 +22,12 @@
     <ProjectReference Include="..\Smx.Domain\Smx.Domain.csproj" />
     <ProjectReference Include="..\Smx.Infrastructure\Smx.Infrastructure.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- DiscoveryAgentTests drives the internal DiscoveryAgent.Validate directly: the web-evidence rails are
+         deterministic code, so they are tested as code rather than through a scripted agent round-trip. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Smx.Orchestrator.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>

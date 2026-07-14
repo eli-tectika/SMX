@@ -18,13 +18,21 @@ public static class DiscoveryAgent
         (V = clean, L = conditional) plus material, application and objective. Turn each pooled element into
         one or more FULLY-SPECIFIED candidate substances: element + molecular form + CAS + (particle size,
         solvent when known). You may only use facts from your tools:
-        - search_catalog(element) FIRST — propose only forms/CAS you retrieved there; never invent a CAS.
+        - search_catalog(element) FIRST — the SMX catalog is the authoritative source for a CAS.
+        - search_web(query, intent) ONLY when the catalog does not carry a form you have good reason to
+          believe exists. It is a starting point, not an authority. Its results may suggest a candidate; they
+          may never endorse one. Corroborate anything you find against search_catalog / search_reference.
+          The query must contain NO client, product or project name — only chemistry.
         - search_reference for solubility / XRF cleanliness / form ranking evidence.
         - lookup_compatibility(element, substrate) as a tiering signal (incompatible ⇒ lower tier or C).
-        - search_learned_conclusions when tiering an element/form (e.g. to reuse a prior overlap finding or a
-          preferred-form conclusion). A higher-confidence, more recent conclusion supersedes an older one. If
-          the tool returns no matches, tier from the primary sources (catalog + compatibility + reference) —
+        - search_learned_conclusions when tiering an element/form. A higher-confidence, more recent
+          conclusion supersedes an older one. If the tool returns no matches, tier from the primary sources —
           do not fabricate a prior finding.
+        NEVER state a CAS you did not read from a retrieved source; a CAS is check-digit validated and a
+        wrong one will be rejected. A candidate whose citations are ALL web sources must be Tier B, must not
+        be preferred, and must name that limitation in its rationale.
+        If a tool tells you the external search failed or was refused, that is NOT evidence that no such
+        marker exists — say so, and continue from the catalog.
         Rank the forms and set preferred=true on the best one per element×component. Assign a tier with a
         one/two-sentence cited rationale:
         - A: strong (clean signal, catalog-available, no obvious blockers).
@@ -95,6 +103,25 @@ public static class DiscoveryAgent
             if (string.IsNullOrWhiteSpace(s.Cas)) return $"candidate '{s.Element}/{s.Form}' is missing a CAS number";
             if (s.Citations.Count == 0 || s.Citations.Any(c => string.IsNullOrWhiteSpace(c.Source) || string.IsNullOrWhiteSpace(c.Reference)))
                 return $"candidate '{s.Element}/{s.Form}' is missing a usable citation — every candidate must cite a retrieved source";
+
+            // RAIL 1 — the web may SUGGEST a marker; only the catalog and the reference corpus may ENDORSE
+            // one. Tier A and `preferred` are endorsements. Enforced here, in code, rather than in the
+            // prompt: Citation is four free-form strings and nothing else in the pipeline would ever notice.
+            // "web:" is the prefix ToolBox.SearchWebAsync stamps on every hit ("web:<host>").
+            var webOnly = s.Citations.All(c => c.Source.StartsWith("web:", StringComparison.OrdinalIgnoreCase));
+            if (webOnly && s.Tier == "A")
+                return $"candidate '{s.Element}/{s.Form}' is cited only by web sources and cannot be Tier A — " +
+                       "corroborate it with search_catalog or search_reference, or tier it B with the limitation named in the rationale";
+            if (webOnly && s.Preferred)
+                return $"candidate '{s.Element}/{s.Form}' is cited only by web sources and cannot be marked preferred — " +
+                       "a preferred form must rest on a catalog or reference source";
+
+            // RAIL 2 — a CAS carries a check digit, so a transposed digit is PROVABLY wrong. A wrong CAS
+            // clears the wrong substance through the regulatory gate, doses against the wrong molecular
+            // weight, and gets ordered. This is the cheapest guard we have against the headline harm.
+            if (!CasNumber.IsValid(s.Cas))
+                return $"candidate '{s.Element}/{s.Form}' has CAS '{s.Cas}', which fails its check digit — " +
+                       "re-read the CAS from a retrieved source; do not transcribe it from memory";
         }
         return null;
     }

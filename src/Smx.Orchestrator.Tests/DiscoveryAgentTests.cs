@@ -64,4 +64,66 @@ public class DiscoveryAgentTests
         Assert.False(result.Succeeded);
         Assert.Contains("citation", result.Error);
     }
+
+    private static CandidateSubstance Candidate(string tier, bool preferred, string cas, params Citation[] citations) =>
+        new("bottle", "Y", "2-ethylhexanoate", cas, null, null, preferred, tier, "because", citations);
+
+    // "web:<host>" is exactly what ToolBox.SearchWebAsync stamps on a hit, which is what makes a web-derived
+    // citation machine-identifiable this far downstream.
+    private static readonly Citation WebCite = new("web:pubchem.ncbi.nlm.nih.gov", "https://pubchem.ncbi.nlm.nih.gov/compound/1", "2026-07-13T10:00:00Z");
+    private static readonly Citation CatalogCite = new("catalog", "ref-catalog/product|Y|y-2eh", "2026-07-13T10:00:00Z");
+
+    // RAIL 1. The web can SUGGEST a marker; only the catalog and the reference corpus can ENDORSE one.
+    // Tier A is an endorsement.
+    [Fact]
+    public void WebOnlyCitations_CannotBeTierA()
+    {
+        var output = new DiscoveryOutput { Substances = [Candidate("A", false, "80326-98-3", WebCite)] };
+        var error = DiscoveryAgent.Validate(output, Constraints());
+        Assert.NotNull(error);
+        Assert.Contains("Tier A", error);
+    }
+
+    [Fact]
+    public void WebOnlyCitations_CannotBePreferred()
+    {
+        var output = new DiscoveryOutput { Substances = [Candidate("B", true, "80326-98-3", WebCite)] };
+        var error = DiscoveryAgent.Validate(output, Constraints());
+        Assert.NotNull(error);
+        Assert.Contains("preferred", error);
+    }
+
+    [Fact]
+    public void WebOnlyCitations_AreFineAtTierB()
+    {
+        var output = new DiscoveryOutput { Substances = [Candidate("B", false, "80326-98-3", WebCite)] };
+        Assert.Null(DiscoveryAgent.Validate(output, Constraints()));
+    }
+
+    // A web hit that is CORROBORATED by the catalog is no longer a web-only claim — that is exactly the
+    // behaviour the tool description asks for, so it must be allowed at Tier A.
+    [Fact]
+    public void WebCitationCorroboratedByTheCatalog_MayBeTierA()
+    {
+        var output = new DiscoveryOutput { Substances = [Candidate("A", true, "80326-98-3", WebCite, CatalogCite)] };
+        Assert.Null(DiscoveryAgent.Validate(output, Constraints()));
+    }
+
+    // RAIL 2. A CAS with a bad check digit is provably wrong, and a wrong CAS silently clears the WRONG
+    // substance through the regulatory gate.
+    [Fact]
+    public void InvalidCasCheckDigit_IsRejected()
+    {
+        var output = new DiscoveryOutput { Substances = [Candidate("B", false, "80326-98-4", CatalogCite)] };
+        var error = DiscoveryAgent.Validate(output, Constraints());
+        Assert.NotNull(error);
+        Assert.Contains("check digit", error);
+    }
+
+    [Fact]
+    public void ValidCas_Passes()
+    {
+        var output = new DiscoveryOutput { Substances = [Candidate("A", true, "80326-98-3", CatalogCite)] };
+        Assert.Null(DiscoveryAgent.Validate(output, Constraints()));
+    }
 }
