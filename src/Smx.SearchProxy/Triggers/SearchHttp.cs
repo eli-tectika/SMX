@@ -40,7 +40,11 @@ public sealed class SearchHttp(SearchPipeline pipeline, ILogger<SearchHttp> log)
                 new SearchError("malformed_or_unknown_field", Explain("malformed_or_unknown_field")));
         }
         if (body is null)
+        {
+            // Invariant 6: every request is audited — including the ones rejected before the pipeline runs.
+            log.LogWarning("SearchProxyAudit decision={Decision} reason={Reason}", "blocked", "empty_body");
             return await Error(req, HttpStatusCode.BadRequest, new SearchError("empty_body", Explain("empty_body")));
+        }
 
         var result = await ExecuteAsync(body, DateTimeOffset.UtcNow.ToString("O"), ct);
 
