@@ -55,6 +55,30 @@ public sealed class StageDispatcher(
             // Known-candidate mode: bypass the Discovery agent when the operator/eval supplied candidates.
             if (c.ProvidedCandidates.Count > 0)
             {
+                // This is the ONE door into the record that no agent validates. DiscoveryAgent.Validate
+                // check-digits every CAS a model proposes, but these candidates never reach it — they land in
+                // the CandidatesDoc verbatim and carry exactly the authority of a candidate an agent cited.
+                // From here a wrong CAS flows into the regulatory screen, into dosing (against the wrong
+                // molecular weight) and into procurement. A check digit makes a transposed digit PROVABLY
+                // wrong, so refuse it at the door.
+                //
+                // Only the CAS is re-checked. Validate's other rails (the web-evidence Tier/preferred ceiling)
+                // are about a MODEL's claims; these candidates come from the operator or an eval fixture, so a
+                // hallucinated tier is not the failure mode here. A mistyped CAS is.
+                var invalid = c.ProvidedCandidates.Where(s => !CasNumber.IsValid(s.Cas)).ToList();
+                if (invalid.Count > 0)
+                {
+                    var named = string.Join("; ", invalid.Select(s => $"'{s.Element}/{s.Form}' has CAS '{s.Cas}'"));
+                    await SetStageAsync(c.ProjectId, Stages.Discovery, s =>
+                    {
+                        s.Status = "needs-review";
+                        s.Error = $"provided candidate {named} — which fails its CAS check digit. " +
+                                  "Correct the CAS against a primary source and re-submit; it is not safe to " +
+                                  "screen, dose or order a substance identified by a CAS that is provably wrong.";
+                    }, ct);
+                    return;
+                }
+
                 await store.UpsertCandidatesAsync(new CandidatesDoc
                 {
                     Id = RecordIds.Candidates(c.ProjectId), ProjectId = c.ProjectId,

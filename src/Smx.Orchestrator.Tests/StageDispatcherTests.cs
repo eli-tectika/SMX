@@ -69,22 +69,65 @@ public class StageDispatcherTests
         Assert.Equal("P", handedToDiscovery.Product);
     }
 
-    [Fact]
-    public async Task ConstraintsWithProvidedCandidates_BypassesDiscoveryAgent()
-    {
-        var (d, store, agents) = Sut();
+    /// Constraints carrying operator-supplied candidates, ready to hand to the dispatcher. `cas` is a
+    /// parameter because the CAS is the one thing this door has to check.
+    private static void ProvideCandidates(FakeAgentRuns agents, string cas) =>
         agents.Intake = p => Task.FromResult(Smx.Orchestrator.Agents.AgentRunResult<ConstraintsDoc>.Ok(new ConstraintsDoc
         {
             Id = RecordIds.Constraints(p.ProjectId), ProjectId = p.ProjectId,
             Components = [new("bottle", "HDPE", "packaging", ["EU"], "brand")],
-            ProvidedCandidates = [new("bottle", "Zr", "neodec", "cas-zr", null, null, true, "A", "provided",
+            ProvidedCandidates = [new("bottle", "Zr", "oxide", cas, null, null, true, "A", "provided",
                 [new Citation("catalog", "x", "t")])],
             DerivedScope = [new("reach-annex-xvii", "*", "r", new Citation("regulatory", "x", "t"))],
         }));
+
+    [Fact]
+    public async Task ConstraintsWithProvidedCandidates_BypassesDiscoveryAgent()
+    {
+        var (d, store, agents) = Sut();
+        ProvideCandidates(agents, "1314-23-4");                 // zirconium dioxide — a REAL, valid CAS
         await d.OnRecordChangedAsync(await Seed(store), default);
         await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
         Assert.Equal(0, agents.DiscoveryCalls);                 // bypassed
         Assert.Single((await store.GetCandidatesAsync("p1"))!.Substances);
+        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Discovery].Status);
+    }
+
+    /// The known-candidate door is the ONE path into the record that no agent validates. DiscoveryAgent.Validate
+    /// check-digits every CAS a model proposes — but ProvidedCandidates skips Discovery entirely and lands in
+    /// the CandidatesDoc verbatim, so that rail never runs. From there the CAS flows into the regulatory screen,
+    /// into dosing (against the wrong molecular weight) and into procurement, carrying exactly the authority of
+    /// a candidate an agent had cited.
+    ///
+    /// A CAS check digit makes a transposed digit PROVABLY wrong, so there is no reason to let one through.
+    /// The rest of Validate's rails are deliberately NOT applied here: these candidates come from the operator
+    /// or an eval fixture, not from a model, so a hallucinated tier is not the risk. A mistyped CAS is.
+    [Fact]
+    public async Task ProvidedCandidateWithABadCheckDigit_IsRefused_NotWrittenAsCandidates()
+    {
+        var (d, store, agents) = Sut();
+        ProvideCandidates(agents, "1314-23-5");                 // one digit off: the check digit is 4, not 5
+        await d.OnRecordChangedAsync(await Seed(store), default);
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
+
+        Assert.Null(await store.GetCandidatesAsync("p1"));      // it must NOT become the candidate set
+        var stage = (await store.GetProjectAsync("p1"))!.Stages[Stages.Discovery];
+        Assert.Equal("needs-review", stage.Status);             // parked for the operator, the file's convention
+        Assert.Contains("1314-23-5", stage.Error);              // and the record says which one and why
+        Assert.Contains("check digit", stage.Error);
+    }
+
+    /// Non-numeric junk is the same defect wearing different clothes (the old fixture here said "cas-zr").
+    [Fact]
+    public async Task ProvidedCandidateWithAMalformedCas_IsRefused()
+    {
+        var (d, store, agents) = Sut();
+        ProvideCandidates(agents, "cas-zr");
+        await d.OnRecordChangedAsync(await Seed(store), default);
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
+
+        Assert.Null(await store.GetCandidatesAsync("p1"));
+        Assert.Equal("needs-review", (await store.GetProjectAsync("p1"))!.Stages[Stages.Discovery].Status);
     }
 
     [Fact]
