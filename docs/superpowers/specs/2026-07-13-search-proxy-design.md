@@ -346,6 +346,16 @@ on.
 5. **The tier ceiling is only as good as the citation.** A model that cites the catalog for a candidate it
    actually found on the web would evade rail #2. Rail #3 (CAS check digit) is the backstop, and the
    Regulatory gate still screens every candidate regardless of origin.
+6. **A novel-element query blends worst — and it is the common case.** The cover corpus is generated from the
+   seeded catalog (~45–85 element/compound tokens). `search_web` exists precisely to reach *beyond* the
+   catalog, so a query about an element not in that set stands out from its decoys by subject. **Accepted, by
+   decision (2026-07-13): search-result quality is prioritized over anonymity strength for now** — the real
+   query is issued verbatim and precise, never generalized to an element class, because a class-level query
+   returns broader, less-targeted results and the whole point of the tool is to find a specific novel marker.
+   The blend still holds fully for in-catalog queries, and even a novel query is hidden among decoys of the
+   *same shape* (forms/properties/suppliers), just not the same element. The mitigation, if the priority ever
+   flips, is the synthetic-decoy fallback in §12 — it preserves query precision *and* improves the blend, at
+   the cost of new logic on the internet-facing component.
 
 ---
 
@@ -365,6 +375,11 @@ on.
 - **An operator-facing search box.** Deferred. The argument *for* it is real and should be revisited: an
   operator who cannot search through the proxy will search from their laptop, which leaks worse and leaves no
   audit trail.
+- **Synthetic-decoy fallback (future).** When a real query's key tokens are not in the cover corpus (a
+  genuinely novel element — the very case §11.6 flags), the proxy could generate on-the-fly sibling decoys
+  from neighbouring periodic-table elements, restoring the blend *without* generalizing the real query.
+  Deferred by the 2026-07-13 quality-first decision (§11.6): it is net-new logic on the internet-facing
+  component and needs its own tests. The `intent` enum and `CoverBatch` seam are already shaped to accept it.
 - **IP rotation, Tor, multi-provider federation.** Over-engineering against this threat model.
 
 ---
