@@ -157,15 +157,26 @@ public class RecordDocsTests
         Assert.False(v.EvidenceReviewed);
         Assert.Null(v.Determination);
         Assert.Null(v.DeterminationReason);
+        Assert.Null(v.ProposedDetermination);
+        Assert.Null(v.ProposedReason);
 
         v.EvidenceReviewed = true;
-        v.Determination = "rejected";
+        v.Determination = Determinations.Rejected;
         v.DeterminationReason = "EU Cosmetics Annex III";
+        // The agent's proposal round-trips as a SEPARATE field. Pinned because it is invisible when it
+        // breaks: a [JsonIgnore] or a Cosmos member-name quirk would silently delete the whole proposal
+        // feature — the operator would see an empty field and go back to authoring every determination by
+        // hand, with a green test suite the entire time.
+        v.ProposedDetermination = Determinations.Recommended;
+        v.ProposedReason = "clean on all four dimensions";
+
         var back = System.Text.Json.JsonSerializer.Deserialize<VerdictDoc>(
             System.Text.Json.JsonSerializer.Serialize(v, Json.Options), Json.Options)!;
         Assert.True(back.EvidenceReviewed);
-        Assert.Equal("rejected", back.Determination);
+        Assert.Equal(Determinations.Rejected, back.Determination);
         Assert.Equal("EU Cosmetics Annex III", back.DeterminationReason);
+        Assert.Equal(Determinations.Recommended, back.ProposedDetermination);
+        Assert.Equal("clean on all four dimensions", back.ProposedReason);
     }
 
     [Fact]

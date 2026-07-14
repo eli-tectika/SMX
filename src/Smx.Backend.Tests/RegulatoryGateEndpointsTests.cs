@@ -93,12 +93,21 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
         Assert.Null((await _store.GetVerdictAsync("p1", "cas1", "bottle"))!.Determination);
     }
 
-    [Fact]
-    public async Task Determination_UnknownValue_Returns422()
+    [Theory]
+    [InlineData("maybe")]
+    [InlineData("approved")]      // a plausible synonym is still not the word
+    [InlineData("Recommended")]   // CASE. CompliantSet's filter is ordinal, so a capital R would never be
+    [InlineData(" recommended ")] // WHITESPACE. Same: an untrimmed string matches nothing downstream.
+    public async Task Determination_ThatIsNotExactlyOneOfTheTwoConstants_Returns422(string determination)
     {
+        // This endpoint is the ONLY writer of VerdictDoc.Determination, and CompliantSet reads that field
+        // with an ordinal ==. So this 422 is what guarantees the string CompliantSet sees is always one of
+        // the two constants. A future "helpful" OrdinalIgnoreCase or .Trim() here would let a determination
+        // be persisted that the compliant-set filter cannot recognise — the operator signs, and the
+        // substance silently never gets dosed. Fails closed, but it fails silently, which is worse to debug.
         await SeedVerdict("p1", "cas1", VerdictStatus.Fail);
         var resp = await _client.PostAsJsonAsync("/projects/p1/regulatory/determination",
-            new { cas = "cas1", componentId = "bottle", determination = "maybe", reason = (string?)null });
+            new { cas = "cas1", componentId = "bottle", determination, reason = "a reason" });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
     }
 

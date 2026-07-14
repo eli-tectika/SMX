@@ -55,7 +55,7 @@ public class RevisionDispatchTests
 
         var verdict = (await store.GetVerdictsAsync(P))[0];
         verdict.EvidenceReviewed = true;
-        verdict.Determination = "recommended";
+        verdict.Determination = Determinations.Recommended;
         await store.UpsertVerdictAsync(verdict);
 
         await store.UpsertGateAsync(new GateDoc
@@ -146,7 +146,7 @@ public class RevisionDispatchTests
         await SeedApprovedAsync(d, store);
         var before = (await store.GetVerdictsAsync(P))[0];
         Assert.True(before.EvidenceReviewed);
-        Assert.Equal("recommended", before.Determination);
+        Assert.Equal(Determinations.Recommended, before.Determination);
 
         CandidateSubstance? targeted = null;
         agents.Regulatory = (c, cand, _) =>
