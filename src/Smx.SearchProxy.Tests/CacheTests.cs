@@ -26,6 +26,18 @@ public class CacheTests
         Assert.NotEqual(a, CacheKey.For("q", SearchIntents.CandidateForms, 5));
     }
 
+    // Two requests differing only in freshness window must not collide — otherwise one is served the other's
+    // cached (differently-scoped) results.
+    [Fact]
+    public void Key_DiffersByFreshnessDays()
+    {
+        var noFreshness = CacheKey.For("q", SearchIntents.CandidateForms, 10);
+        Assert.NotEqual(noFreshness, CacheKey.For("q", SearchIntents.CandidateForms, 10, 30));
+        Assert.NotEqual(
+            CacheKey.For("q", SearchIntents.CandidateForms, 10, 7),
+            CacheKey.For("q", SearchIntents.CandidateForms, 10, 30));
+    }
+
     [Fact]
     public async Task RoundTripsWithinTtl()
     {

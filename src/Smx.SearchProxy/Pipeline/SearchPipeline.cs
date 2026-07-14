@@ -41,7 +41,7 @@ public sealed class SearchPipeline(
             return new PipelineResult(null, 503, "provider_not_configured");
         }
 
-        var key = CacheKey.For(req.Query, req.Intent, req.MaxResults);
+        var key = CacheKey.For(req.Query, req.Intent, req.MaxResults, req.FreshnessDays);
         var cached = await cache.GetAsync(key, nowUtc, ct);
         if (cached is not null)
         {
@@ -66,7 +66,7 @@ public sealed class SearchPipeline(
         foreach (var (query, hits) in answers)
         {
             if (hits is null) continue;
-            await cache.SetAsync(CacheKey.For(query, req.Intent, req.MaxResults), hits, nowUtc, ct);
+            await cache.SetAsync(CacheKey.For(query, req.Intent, req.MaxResults, req.FreshnessDays), hits, nowUtc, ct);
         }
 
         var real = answers.First(a => a.Query == req.Query).Hits;
