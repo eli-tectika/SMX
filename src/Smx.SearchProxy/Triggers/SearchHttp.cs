@@ -85,7 +85,10 @@ public sealed class SearchHttp(SearchPipeline pipeline, ILogger<SearchHttp> log)
         "query_empty" => "The query was empty. Ask a specific chemical question.",
         "query_too_long" => "The query was too long. Shorten it to a focused chemical question.",
         "unknown_intent" => "Unknown intent. Use discovery.candidate_forms, discovery.form_properties or discovery.supplier_availability.",
-        "max_results_out_of_range" => "maxResults must be between 1 and 20.",
+        // Deliberately does NOT quote the ceiling: it is the operator's (PROXY_MAX_RESULTS), so a hardcoded
+        // "between 1 and 20" would tell the model to retry with a number that is still refused — a loop.
+        "max_results_out_of_range" =>
+            "maxResults was outside the range this proxy accepts. Ask for fewer results; 10 is a sensible default.",
         "contains_guid" or "contains_email" or "contains_url" or "contains_digit_run" =>
             "The query contained an identifier (an id, an address, a URL or a long number). Rephrase it in generic chemical terms — " +
             "the external search must never carry anything that identifies this project.",
