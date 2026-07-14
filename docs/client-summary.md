@@ -64,9 +64,11 @@ giving up the safety gate.
 
 ### Principles that guided the work
 
-**Official sources only.** The system performs no open web search. It pulls exclusively from a maintained
-list of official regulators. This is a substantive line of defence against ingesting non-authoritative or
-outdated material.
+**Official sources decide the law.** No regulatory verdict rests on an open web search: compliance draws
+exclusively from a maintained list of official regulators — a substantive line of defence against treating
+non-authoritative or outdated material as regulation. Candidate *discovery* may consult the open web to
+surface markers beyond the internal catalogue, but only through a single anonymizing, controlled egress, and
+a web-sourced candidate is flagged for validation and can never clear a compliance gate on that basis alone.
 
 **Precision before coverage.** Where an official source did not supply the full updated text, we declined
 to populate the corpus with partial information. In a system where a wrong marker recommendation causes
