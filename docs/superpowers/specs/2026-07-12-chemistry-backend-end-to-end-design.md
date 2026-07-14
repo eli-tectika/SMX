@@ -56,7 +56,8 @@ INTAKE  agent → constraints        normalize · derive reg scope (cited) · re
   ▼ per component
 DISCOVERY agent → candidates        element pools → fully-specified substances {element+form+CAS+size+solvent},
   │                                 form-variant ranking, A/B/C tiers + cited rationale.
-  │                                 Universe = seeded catalog + knowledge layer. NO open web (HLD).
+  │                                 Universe = seeded catalog + knowledge layer + anonymized web search
+  │                                 via the Search Proxy (HLD).
   ▼ per substance × component
 REGULATORY agent → verdicts + gate  element-gate (product-wide) + application (per-comp) + hazard, cited w/ corpus date
   │  ⏸ HARD GATE  awaiting R.E. determination · per substance×component approvals · won't arm until low-confidence reviewed
@@ -112,10 +113,25 @@ retry budget lands in `needs_review` (a first-class terminal state) — never si
   authoritative** — Discovery does not adjudicate compliance.
 - **Tools:** `search_reference`, `lookup_compatibility` (the substrate signal — where the old compatibility
   dimension lands), `search_catalog` (available forms/CAS/loadings), `search_learned_conclusions`,
-  `search_marker_library`.
+  `search_marker_library`, `search_web` (the Search Proxy — **Discovery only**; see the note below).
 - **Out:** `candidates`.
-- **Correctness rails:** universe bounded to catalog + knowledge layer (**no open web**, HLD); every candidate
-  cited; re-tiering only via the revise-with-reason path (§6).
+- **Correctness rails:** universe bounded to catalog + knowledge layer, extended by anonymized web search
+  through the Search Proxy (HLD). Web-only candidates are capped at Tier B and can never be `preferred`;
+  Regulatory has no web tool at all. Every candidate cited; re-tiering only via the revise-with-reason
+  path (§6).
+
+> **Correction (2026-07-13) — "NO open web" was a misreading of the HLD.** Earlier revisions of this
+> document bounded Discovery's universe to the catalog + knowledge layer and attributed the ban to the HLD.
+> The HLD says the opposite: it provisions an **anonymizing Search Proxy** ("anonymized public search") as a
+> first-class component and the system's *single public egress*. It does not forbid open search — it routes
+> it through an anonymizing chokepoint. What the design actually protects is the crown-jewel IP: *which
+> candidate marker chemistry a live client project is evaluating*. The proxy holds that by construction — a
+> project-blind request contract, each real query egressing inside a shuffled batch of decoys
+> (k-anonymity), no fetch interface, and a dedicated identity with zero corpus RBAC — while deterministic
+> rails in `DiscoveryAgent.Validate` stop a web-only citation from ever producing a Tier A or `preferred`
+> candidate. **Regulatory genuinely has no web tool and never will**: a regulatory verdict must trace to the
+> synced corpus, not to a search result. See
+> [`2026-07-13-search-proxy-design.md`](2026-07-13-search-proxy-design.md).
 
 ### 3.2 Regulatory — *agent → hard gate* (the refactor target, §4.4)
 - **In:** `candidates` (A/B substances; C already excluded).

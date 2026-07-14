@@ -145,6 +145,27 @@ The first application code now lives under `src/` (this is no longer a pure-infr
   - Deferred follow-ons: the XRF Lines mapper, the Compatibility Matrix rollup and Element×Form coverage
     matrix, the supplementary supplier lists, RD7 class/pair expansion, and a few unresolved source citation
     tokens (e.g. a rule whose `Key Ref(s)` cell is literally `-`).
+- **Search Proxy** (`src/Smx.SearchProxy`, .NET 8 isolated worker; deployed into the `searchproxy`
+  Function App — a **separate app and identity from `regsync`, with zero corpus RBAC**) — the anonymizing
+  external-search egress, and the system's **single public egress**. It answers *live search queries* and
+  deliberately has **no fetch interface**, so third-party hosts never see us. Each real query egresses
+  inside a shuffled batch of decoys drawn from a git-versioned corpus of the catalog's chemistry
+  (k-anonymity); the request contract is **project-blind** (there is no field a project id could travel in,
+  and strict binding rejects one); every request is audited to App Insights. The IP it exists to protect is
+  *which candidate marker chemistry a live client project is evaluating*. Its only consumer is the
+  **Discovery** agent's `search_web` tool — the **Regulatory agent has no web tool and never will**, because
+  a regulatory verdict must trace to the synced corpus. Deterministic rails in `DiscoveryAgent.Validate` cap
+  a web-only candidate at Tier B and forbid `preferred`. Design + plan:
+  [`docs/superpowers/specs/2026-07-13-search-proxy-design.md`](docs/superpowers/specs/2026-07-13-search-proxy-design.md),
+  [`docs/superpowers/plans/2026-07-13-search-proxy.md`](docs/superpowers/plans/2026-07-13-search-proxy.md).
+  - Build: `dotnet build src/Smx.Functions.sln` · Test: `dotnet test src/Smx.Functions.sln`
+  - Regenerate the decoy corpus (git-versioned, PR-reviewed):
+    `dotnet run --project tools/Smx.CoverCorpus -- src/Smx.Functions/Reference/Seed src/Smx.SearchProxy/Config/cover-corpus.json`
+  - Deploy: `infra/scripts/publish-searchproxy.sh <env>` (its **own** publish script — never
+    `publish-functions.sh`, which targets `regsync`), then `set-search-key.sh <env> <key>` and
+    `configure-auth.sh <env>`, then a redeploy passing `proxySearchKeySecretUri` + `deploySearchKeyRbac=true`
+    + `proxyAuthClientId`. The order is not arbitrary — see [`infra/scripts/README.md`](infra/scripts/README.md).
+  - Run with no key and no egress: `PROXY_DRY_RUN=true`.
 - **Frontend** (`src/smx-web`, React + Vite + TypeScript) — the single-operator UI. See
   [`src/smx-web/README.md`](src/smx-web/README.md).
   - `npm install && npm run dev` (`:5173`, proxies `/api` → the backend on `:5169`); `npm run build`; `npm test`.

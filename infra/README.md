@@ -97,3 +97,54 @@ The SDS pre-seed library runs as .NET 8 isolated functions inside the **regsync*
 **Configure cadence + allowlist:** the `SDS_SWEEP_CRON` app setting; edit the ordered
 `src/Smx.Functions/Sds/Config/suppliers.allowlist.json` (git-reviewed). Run the sweep without real egress
 by setting `SDS_DRY_RUN=true`.
+
+## Search Proxy (functions code)
+
+The anonymizing external-search egress — the system's **single public egress** — runs as .NET 8 isolated
+functions (`src/Smx.SearchProxy`) in the **searchproxy** Function App. It is a *separate app with a separate
+managed identity that holds **zero corpus RBAC***, and that separation is the whole point: a compromise of
+the internet-facing component must not be able to reach the regulatory corpus. It therefore has its own
+publish script — **never** use `publish-functions.*`, which targets `regsync`.
+
+Its only consumer is the Discovery agent's `search_web` tool. **Regulatory has no web tool and never will.**
+
+```bash
+./scripts/deploy.sh dev                       # app shell: no key, no auth, RBAC off (all by design)
+./scripts/publish-searchproxy.sh dev          # proxy code
+./scripts/set-search-key.sh dev <brave-key>   # key -> Key Vault; prints the secret URI   <-- before harden
+./scripts/configure-auth.sh dev               # the proxy's OWN Entra app registration + Easy Auth
+./scripts/deploy.sh dev \                     # wire the key + the audience in
+  -p proxySearchKeySecretUri=<uri> -p deploySearchKeyRbac=true -p proxyAuthClientId=<id>
+./scripts/harden.sh dev                       # private endpoints only
+```
+
+The ordering is forced, not stylistic:
+
+- **The key exists before its grant.** The proxy's Key Vault grant is scoped to the *one* secret it reads,
+  never to the vault. A role assignment scoped to a secret that does not exist fails the deploy, so
+  `deploySearchKeyRbac` defaults to `false` and you flip it to `true` on the redeploy *after*
+  `set-search-key`.
+- **The app registration exists before its client id.** Entra app objects are Graph, not ARM. The redeploy
+  that passes `proxyAuthClientId` is also what sets the orchestrator's `SEARCH_PROXY_AUDIENCE` — empty until
+  you pass it, and an orchestrator with no audience cannot call the proxy.
+- **Both before `harden`**, which closes Key Vault's public access.
+
+**The key is never a plaintext app setting.** `PROXY_SEARCH_API_KEY` is a Key Vault *reference*
+(`@Microsoft.KeyVault(SecretUri=...)`) resolved by the proxy's own UAMI. `set-search-key` prints an
+**unversioned** secret URI, so rotating the key is a re-run of that script alone — no redeploy.
+
+Until the key is wired the proxy is provisioned but inert (it answers 503). That is the intended state of a
+fresh deploy, not a failure.
+
+| setting | Bicep param | default | |
+|---|---|---|---|
+| `PROXY_DRY_RUN` | `proxyDryRun` | `false` | canned results, zero egress — runs with no key at all |
+| `PROXY_COVER_COUNT` | `proxyCoverCount` | `4` | batch size: the real query + N−1 decoys, shuffled (k-anonymity) |
+| `PROXY_MONTHLY_QUERY_CAP` | `proxyMonthlyQueryCap` | `5000` | monthly cap; a per-minute bucket sits alongside |
+| `PROXY_SEARCH_API_KEY` | `proxySearchKeySecretUri` | *(empty → 503)* | Key Vault reference, never a literal |
+| `PROXY_PROVIDER` | — | `brave` | single upstream host, allowlisted |
+| `PROXY_COVER_CORPUS_PATH` | — | `Config/cover-corpus.json` | git-versioned decoys; the app throws if it is thin |
+| `PROXY_CACHE_CONTAINER` | — | `search-cache` | result cache + quota counter, on the proxy's own storage |
+
+Lowering `PROXY_COVER_COUNT` to `1` would send every real query out alone and defeat the anonymity set —
+the whole reason the proxy exists. Treat it as a security control, not a cost knob.
