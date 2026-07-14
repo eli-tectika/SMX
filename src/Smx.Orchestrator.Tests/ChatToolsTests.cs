@@ -271,10 +271,10 @@ public class ChatToolsTests
         Assert.Single(await store.GetRevisionsAsync(P));
     }
 
-    /// ...and the ordinal is what keeps that from over-correcting. One message may legitimately ask for two
-    /// changes ("drop Ba, and re-tier Zr to A"), and the model then calls apply_revision twice IN THE SAME
-    /// TURN. Those are two decisions and both belong in the audit trail — so within a turn the ids must
-    /// differ, while across a replay of that turn they must repeat.
+    /// ...and content-addressing is what keeps that from over-correcting, with no ordinal needed. One message
+    /// may legitimately ask for two changes ("drop Ba, and re-tier Zr to A"), and the model then calls
+    /// apply_revision twice IN THE SAME TURN. Those are two decisions and both belong in the audit trail — so
+    /// within a turn the ids must differ, while across a replay of that turn they must repeat.
     [Fact]
     public async Task ApplyRevision_TwiceInOneTurn_WritesTwoDistinctRevisions()
     {
@@ -310,6 +310,114 @@ public class ChatToolsTests
         Assert.Equal(2, (await store.GetRevisionsAsync(P)).Count);
     }
 
+    /// THE BUG THE FIRST DESIGN HAD. The change feed is at-least-once, and a replayed turn sees DIFFERENT
+    /// record state than the original — revision -0 already applied, the Ba candidate already gone — which
+    /// actively pushes a sampled model toward a DIFFERENT set of calls. If the id were keyed on the call's
+    /// POSITION in the turn, that different call would land on the applied revision's id, blind-upsert a
+    /// `Pending` over it, and OnRevisionAsync (whose only idempotency guard is that status) would re-enter
+    /// and re-run it: ReviseDiscoveryAsync re-derives candidates from constraints + that revision, so the
+    /// candidate the operator eliminated for a stated spectral-overlap reason silently RETURNS to the set,
+    /// their verbatim reason is destroyed in the audit trail, and the Learned Conclusion — whose id derives
+    /// from the revision id — is overwritten with it.
+    ///
+    /// Content-addressed ids make it unreachable: a different call is a different id, and a different id
+    /// cannot touch the applied doc.
+    [Fact]
+    public async Task ApplyRevision_OnADivergentReplay_CannotOverwriteAnAlreadyAppliedRevision()
+    {
+        var store = await SeedAsync();
+
+        // The original turn, and the dispatcher applying what it queued.
+        await InvokeAsync(Tool(Tools(store, Stages.Discovery), "apply_revision"), new AIFunctionArguments
+        {
+            ["target"] = "drop the Ba candidate", ["reason"] = "it overlaps the Ti K-beta line",
+        });
+        var applied = Assert.Single(await store.GetRevisionsAsync(P));
+        applied.Status = RevisionStatus.Applied;
+        applied.AppliedAt = "2026-07-14T09:00:00.0000000+00:00";
+        applied.ConclusionId = "material|conclusion-1";
+        await store.UpsertRevisionAsync(applied);
+
+        // The crash lands before the message's status flip, so the turn re-runs — and the model, now seeing
+        // a candidate set with no Ba in it, asks for something else entirely.
+        await InvokeAsync(Tool(Tools(store, Stages.Discovery), "apply_revision"), new AIFunctionArguments
+        {
+            ["target"] = "re-tier Zr to A", ["reason"] = "the compatibility table backs it on HDPE",
+        });
+
+        var revisions = await store.GetRevisionsAsync(P);
+        Assert.Equal(2, revisions.Count);                                   // a new doc, not an overwrite
+
+        var survivor = revisions.Single(r => r.Id == applied.Id);
+        Assert.Equal("drop the Ba candidate", survivor.Target);             // the operator's words, intact
+        Assert.Equal("it overlaps the Ti K-beta line", survivor.Reason);    // the reason that exists in no corpus
+        Assert.Equal(RevisionStatus.Applied, survivor.Status);              // NOT reset to pending ⇒ not re-run
+        Assert.Equal("2026-07-14T09:00:00.0000000+00:00", survivor.AppliedAt);
+        Assert.Equal("material|conclusion-1", survivor.ConclusionId);       // its Learned Conclusion still keyed
+    }
+
+    /// The other half of Fix 2: an IDENTICAL call on replay converges on the same id — but that id already
+    /// holds an APPLIED doc, and re-upserting a `Pending` over it would resurrect a change that has already
+    /// run. So the applied doc is left untouched and the model is told the change is already done. The Trail
+    /// entry is still added: the reply's audit link must point at the record this sentence produced whether
+    /// or not this delivery is the one that wrote it.
+    [Fact]
+    public async Task ApplyRevision_ReplayOfAnAppliedRevision_DoesNotResurrectIt()
+    {
+        var store = await SeedAsync();
+        var args = () => new AIFunctionArguments
+        {
+            ["target"] = "drop the Ba candidate", ["reason"] = "it overlaps the Ti K-beta line",
+        };
+
+        await InvokeAsync(Tool(Tools(store, Stages.Discovery), "apply_revision"), args());
+        var applied = Assert.Single(await store.GetRevisionsAsync(P));
+        applied.Status = RevisionStatus.Applied;
+        applied.AppliedAt = "2026-07-14T09:00:00.0000000+00:00";
+        await store.UpsertRevisionAsync(applied);
+
+        var replay = Tools(store, Stages.Discovery);
+        var result = await InvokeAsync(Tool(replay, "apply_revision"), args());
+
+        var survivor = Assert.Single(await store.GetRevisionsAsync(P));
+        Assert.Equal(RevisionStatus.Applied, survivor.Status);              // NOT reset to pending
+        Assert.Equal("2026-07-14T09:00:00.0000000+00:00", survivor.AppliedAt);
+        Assert.Contains("already", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(survivor.Id, Assert.Single(replay.Trail).RecordId);    // audit link intact
+    }
+
+    /// The revision id must be reproducible ACROSS PROCESSES — the replay it exists for happens after a
+    /// crash. string.GetHashCode is randomised per process, so a GetHashCode-derived id would differ on the
+    /// restarted host and fail in exactly the scenario it is for, while passing every same-process test
+    /// above. Only a GOLDEN id catches that swap: this value was computed independently (SHA-256 over the
+    /// length-prefixed call tuple), not read back out of the implementation.
+    [Fact]
+    public async Task TheRevisionId_IsAStableContentHash_NotAPerProcessHashCode()
+    {
+        var store = await SeedAsync();
+        await InvokeAsync(Tool(Tools(store, Stages.Discovery), "apply_revision"), new AIFunctionArguments
+        {
+            ["target"] = "drop the Ba candidate", ["reason"] = "it overlaps the Ti K-beta line",
+        });
+
+        // sha256("21:drop the Ba candidate30:it overlaps the Ti K-beta line0:0:")[..12]
+        Assert.Equal("p1|revision|discovery|aaaa1111-4eabf2592cde",
+            Assert.Single(await store.GetRevisionsAsync(P)).Id);
+    }
+
+    /// chatKey is concatenated into a Cosmos item id, and Cosmos rejects an id containing '/', '\', '?' or
+    /// '#' with a 400 — while the in-memory store, a plain dictionary, accepts every one of them. Green in
+    /// tests, broken in Azure is the exact shape of bugs this repo has already shipped, so a malformed key
+    /// fails loudly at construction instead.
+    [Theory]
+    [InlineData("aaaa/1111")]
+    [InlineData("aaaa\\1111")]
+    [InlineData("aaaa?1111")]
+    [InlineData("aaaa#1111")]
+    [InlineData("")]
+    public void AnIdUnsafeChatKey_ThrowsAtConstruction_NotAtTheCosmosWrite(string key) =>
+        Assert.Throws<ArgumentException>(() => new ChatTools(new InMemoryRecordStore(), P, Stages.Discovery, key));
+
     /// Two DIFFERENT messages must never collide onto one revision id — that would silently overwrite the
     /// earlier operator instruction (and its Learned Conclusion) with the later one.
     [Fact]
@@ -321,6 +429,57 @@ public class ChatToolsTests
                 new AIFunctionArguments { ["target"] = "drop Ba", ["reason"] = "same words, different turn" });
 
         Assert.Equal(2, (await store.GetRevisionsAsync(P)).Count);
+    }
+
+    /// Two different calls must never hash to one id — a collision is one revision silently overwriting
+    /// another, which is the whole failure content-addressing exists to prevent. These two calls concatenate
+    /// to the same bytes under a naive join ("ab" + "c" == "a" + "bc"); the length-prefixed encoding keeps
+    /// them apart. Not a hypothetical: any delimiter that can occur inside a field has this hole, and both
+    /// fields here are free operator text.
+    [Fact]
+    public async Task ApplyRevision_CallsThatWouldCollideUnderANaiveJoin_GetDistinctIds()
+    {
+        var store = await SeedAsync();
+        var tools = Tools(store, Stages.Discovery);
+        var tool = Tool(tools, "apply_revision");
+
+        await InvokeAsync(tool, new AIFunctionArguments { ["target"] = "ab", ["reason"] = "c" });
+        await InvokeAsync(tool, new AIFunctionArguments { ["target"] = "a", ["reason"] = "bc" });
+
+        Assert.Equal(2, (await store.GetRevisionsAsync(P)).Select(r => r.Id).Distinct().Count());
+    }
+
+    /// Endpoint parity (RevisionEndpoints checks the project exists before writing). Reachable only from C#,
+    /// not from the model — but a chat-queued revision must be the SAME doc POST /revise would have written,
+    /// under the same preconditions, or the two front doors of Law 4 have quietly diverged.
+    [Fact]
+    public async Task ApplyRevision_OnAProjectThatDoesNotExist_IsRefused_AndWritesNothing()
+    {
+        var store = new InMemoryRecordStore();
+        var result = await InvokeAsync(Tool(Tools(store, Stages.Discovery), "apply_revision"),
+            new AIFunctionArguments { ["target"] = "drop Ba", ["reason"] = "it overlaps Ti" });
+
+        Assert.Contains("project not found", result);
+        Assert.Empty(await store.GetRevisionsAsync(P));
+    }
+
+    /// Fail-closed, house style. Tools() never offers apply_revision on a non-revisable stage, so this is
+    /// unreachable BY THE MODEL — the construction gate stops it. This guard stops the next C# caller: a
+    /// RevisionDoc on a stage the dispatcher cannot revise is one it can only throw on, and `false` is the
+    /// dangerous answer here (compare RevisionEffects.BreaksRegulatoryGate, which throws rather than
+    /// returning it). Called directly, because there is no tool to invoke — that is the point.
+    [Fact]
+    public async Task ApplyRevision_CalledDirectlyOnANonRevisableStage_IsRefused_AndWritesNothing()
+    {
+        var store = await SeedAsync();
+        // Every argument passed explicitly, so that REMOVING the `= null` defaults on cas/componentId (the
+        // schema-binding bug ApplyRevision_OnDiscovery_WorksWithNoCasOrComponentId exists to catch) surfaces
+        // there, as a red test, rather than here as a compile error that hides it.
+        var result = await Tools(store, Stages.Matrix)
+            .ApplyRevisionAsync("re-order the columns", "the VP prefers it", null, null, default);
+
+        Assert.Contains("cannot be revised", result);
+        Assert.Empty(await store.GetRevisionsAsync(P));
     }
 
     // ---------------------------------------------------------------- record_answer
