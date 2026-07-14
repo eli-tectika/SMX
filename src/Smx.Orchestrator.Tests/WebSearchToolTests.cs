@@ -34,6 +34,46 @@ public class SensitiveTermGuardTests
         Assert.True(SensitiveTermGuard.IsClean("ionic solubility of yttrium", terms, out _));
         Assert.False(SensitiveTermGuard.IsClean("markers for Ion beverages", terms, out _));
     }
+
+    // A multi-word client name is identifying by its distinctive individual words too: a query need only
+    // carry "Acme" to reveal which project "Acme Bottling Company" is being evaluated.
+    [Theory]
+    [InlineData("Acme marker candidates")]
+    [InlineData("Bottling line taggant forms")]
+    public void ADistinctiveWordOfAMultiWordClient_IsRejected(string query)
+    {
+        var terms = new SensitiveTerms(["Acme Bottling Company"]);
+        Assert.False(SensitiveTermGuard.IsClean(query, terms, out var offender));
+        Assert.NotNull(offender);
+    }
+
+    // Ubiquitous corporate words are matched only inside the full phrase, never on their own — otherwise
+    // every "...Company"/"...International" client would nuke legitimate chemistry queries.
+    [Theory]
+    [InlineData("company-wide taggant solubility study")]
+    [InlineData("international standards for taggant dosing")]
+    public void AUbiquitousCorporateWord_IsNotRejectedOnItsOwn(string query)
+    {
+        var terms = new SensitiveTerms(["Acme Bottling Company", "Globex International"]);
+        Assert.True(SensitiveTermGuard.IsClean(query, terms, out _));
+    }
+
+    // The token-boundary rule holds for per-word matching too: a client word "Ferro" must not blacklist
+    // "ferrocene".
+    [Fact]
+    public void PerWordMatching_IsStillTokenBoundaryAware()
+    {
+        var terms = new SensitiveTerms(["Ferro Labs"]);
+        Assert.True(SensitiveTermGuard.IsClean("ferrocene synthesis conditions", terms, out _));
+    }
+
+    // The whole point: an ordinary chemistry query with a multi-word client is still clean.
+    [Fact]
+    public void OrdinaryChemistryQuery_WithAMultiWordClient_IsClean()
+    {
+        var terms = new SensitiveTerms(["Acme Bottling Company"]);
+        Assert.True(SensitiveTermGuard.IsClean("ytterbium neodecanoate solubility in polyethylene", terms, out _));
+    }
 }
 
 public class WebSearchToolTests
