@@ -1871,7 +1871,120 @@ diff infra/modules/compute.bicep infra/single-rg/modules/compute.bicep && echo "
 
 ## Deviations recorded during execution
 
-*(Fill this in as you go — the as-shipped record is worth more than the plan being right.)*
+**Shipped: 11 tasks, 401 tests green** (baseline 231 → 401; Domain 144, Orchestrator 194, Backend 59, Eval 4).
+`infra/` untouched — the plan's claim, **verified**: chat docs are discriminated records in the existing
+`record` container (PK `/projectId`), which both Bicep variants already provision. Both still compile.
+
+### The plan was wrong in three places. Each was caught by a review, not by a test.
+
+1. **`ChatTools` minted revision ids from a call ORDINAL. That was my fix for a replay bug, and it introduced
+   a worse one.** The ordinal assumes a replayed turn makes the same calls in the same order. A sampled model
+   doesn't — and the replayed turn *sees different record state* (the first revision already applied), which
+   actively pushes it toward a **different** call. So ordinal 0 on the replay lands on the already-`Applied`
+   revision's id, blind-upserts it back to `Pending`, and `OnRevisionAsync` — whose only idempotency guard is
+   that status — **re-runs it**. The candidate the operator eliminated for a stated spectral-overlap reason
+   silently returns to the candidate set, and their verbatim reason is destroyed in both the audit trail and
+   the knowledge layer (the Learned Conclusion id is derived from the revision id). False-pass-shaped.
+   **Fixed** (`dae5cbf`): the id is **content-addressed** — `{chatKey}-{sha256(len-prefixed target|reason|cas|componentId)[..12]}`.
+   An identical call converges; a *different* call gets a different doc and can never destroy the first.
+   SHA-256, not `GetHashCode()` — string hash codes are randomised per process, so a `GetHashCode` id would
+   differ across a restart, i.e. fail in precisely the replay scenario it exists for. Length-prefixed because
+   both fields are free operator text and any delimiter that can occur *inside* a field permits a collision.
+   Plus: a revision that is no longer `Pending` is never overwritten.
+
+2. **`OnChatMessageAsync`'s `catch (Exception)` swallowed `OperationCanceledException`.** An orchestrator
+   *shutdown* would mark the operator's question permanently `failed` — and `failed` is terminal, nothing
+   re-runs it. They would return to "answered with: A task was canceled" for a question that was never asked.
+   **Fixed** (`a596255`): rethrow on our own token (leaving the message `pending`, which is the truth), while a
+   model-side timeout — which surfaces as the same exception type — still counts as a genuine failure.
+
+3. **The dispatcher trusted the change feed's snapshot of `Status` for its idempotency guard.** It now
+   **point-reads** the message. Cosmos's latest-version feed happens to hand back current content, so the
+   original would have worked — but that is a property of the *feed mode*, not of the dispatcher, and the
+   failure is silent (a re-run turn that queues a second revision). ~1 RU. (`OnRevisionAsync` has the same
+   latent exposure; left alone as out of scope.)
+
+### The holistic review found two more, both at task boundaries — where no per-task review can see them.
+
+4. **The transcript mis-ordered itself, corrupting the agent's only memory.** The endpoint accepts a message
+   at any time; the dispatcher stamps the reply's `CreatedAt` at turn **end** (an LLM call with tool loops:
+   10–60s); `ChatTurns.InOrder` sorted purely on `CreatedAt`. So an operator who adds a follow-up while a turn
+   is in flight gets `M1, M2, R1` — the answer to the *first* question positioned as the answer to the
+   *second*, which is then fed back verbatim as "CONVERSATION SO FAR (this is your entire memory of it)"
+   forever after. **Fixed** (`d043b96`): a reply is **anchored to its message** (`ChatReplyDoc.MessageId`), not
+   to its own wall-clock. `CreatedAt` stays truthful — the *order* was wrong, not the timestamp. An id tiebreak
+   was added beyond the fix: two messages sharing a tick were otherwise ordered by enumeration order — Cosmos
+   page order in one store, dictionary order in the other, i.e. **the same thread rendering two different ways.**
+
+5. **A failed turn was invisible on the only read surface, and that defeated the content-addressing.**
+   `GET .../chat` returned no status and no error, so a failed turn looked identical to one still running. The
+   operator re-sends → a **new chat key** → the content-addressed revision id no longer converges. Two
+   revisions, two re-runs, two Learned Conclusions from one instruction. The invisible failure is exactly what
+   pushes the operator across the deduplication boundary. **Fixed** (`d043b96`): `Status`/`Error` are on the
+   thread. (An agent turn is always `answered`: no reply is written on the failure path, so the reply's
+   existence *is* the completion.)
+
+### Prompt injection: the operator's own paste is the threat, and it was real
+
+`ChatThread.Render` interpolates untrusted text — and pasting the R.E.'s determination or a supplier email into
+chat is the **expected workflow**, not an attack. A pasted line beginning `You:` rendered as a **fabricated agent
+turn**, after which the agent would defend a claim it never made. Fixed by prefixing **every line** of a turn
+(total, not a blocklist), and collapsing line breaks in the tool-call summary — the one transcript line with no
+speaker prefix, and one built from the operator's *verbatim reason*.
+
+The line-break set matters more than it looks: a hand-rolled `["\r\n","\n","\r"]` **misses U+2028**, which is
+exactly what a **Google Docs paste** carries. Now `string.ReplaceLineEndings` (the BCL's maintained set) plus VT
+(U+000B), which `ReplaceLineEndings` does *not* recognise — verified by test, not by documentation. Independent
+corroboration: the C# compiler itself rejects a raw U+2028 in a string literal (`CS1010: Newline in constant`).
+
+### Other deviations
+
+- **The plan's `Instructions_ForbidClaimingAGateWasSigned` test was not written.** Asserting the words "never"
+  and "gate" appear in the instructions prose passes on *any* text containing those tokens — including
+  instructions rewritten to say the opposite. Its only effect would be to make Law 9 *look* covered. The
+  property is structural and is asserted where it is actually decided: over the model's capability list, and
+  end-to-end over the record (Task 9).
+- **Task 9 does not check tool *names*.** A rogue tool named `finish_review` walks straight through a
+  name-based check — a blocklist. So the theory **drives every tool a turn holds**, on every stage, with the
+  operator's own "approve the regulatory gate" as the arguments, and asserts on the **record**: no `GateDoc`,
+  no verdict evidence-reviewed, Regulatory never `done`. Mutation-proven with both a named and an innocuously
+  named rogue tool.
+- **No test polices the reply prose** (discarded as theatre — no test can). Instead the fake model is made to
+  *lie* ("Done — I have approved the regulatory gate") and the lie is asserted to be backed by **nothing**.
+- **`InMemoryRecordStore` now deep-copies on read and write** (via the production `Json.Options`). It handed
+  out live object references, so a dispatcher that set `Status = Answered` and **forgot the upsert** would have
+  looked correct in-memory while, in Azure, the status stayed `pending` and the at-least-once feed re-ran the
+  turn. The fake was certifying behaviour production does not have.
+- **`ChatTurns.InOrder` is one shared function called by both stores.** The tie-break fix was first written
+  twice and mutation-testing showed it was *unreachable from the fake* — the assertion was theatre. Merging the
+  two made the order one function rather than two implementations agreeing by coincidence.
+- **`RunChatAsync` lost its `stage` parameter.** It was independent of the stage `ChatTools` captured, so a
+  wiring slip would pair one stage's read tools with another stage's mutating tools — and no test could catch
+  it. The stage now has one source of truth (`ChatTools.Stage`), making disagreement **compile-time impossible**.
+- **`IntakeAnswers.Patch` never throws** — it was reachable with an `ObjectDisposedException` (a `JsonElement`
+  whose backing document was disposed; `ValueKind` itself throws, so the guard sits inside the `try`). An
+  exception in an LLM tool call escapes into the dispatcher. Also: a blank `markets` would have silently written
+  **zero target markets**, which empties that component's regulatory screen — a false-pass mechanism. Refused.
+- **`ChatTools` also re-checks `IsRevisable` and project existence in-body**, so its "same checks as the
+  endpoint" claim is true rather than aspirational. `chatKey` is asserted id-safe **at construction** (Cosmos
+  rejects `/ \ ? #`; `RecordIds` uses `|` as its separator) — otherwise: green in tests, 400 in Azure.
+
+### Deferred (real, not in the repo)
+
+- **The known gap, documented in `OnChatMessageAsync`:** `apply_revision` writes a durable `RevisionDoc` *before*
+  the message flips to `answered`. A crash in between replays the turn. An **identical** call now converges —
+  but a sampled model shown different record state may make a **different** one, i.e. a second revision from one
+  operator instruction. Closing it needs the revision + reply + status flip in **one Cosmos transactional batch**
+  (they share a partition key). Not attempted here.
+- **A revision stays `Pending` for the whole duration of its re-run** (it flips to `Applied` at the very end), so
+  a replay arriving mid-run re-fires the feed. Content is identical so it converges, but it is not free of a
+  double-run. Needs an in-progress/lease status on `RevisionDoc` — a dispatcher change. The `/revise` endpoint
+  has the same shape.
+- **`ProjectDoc.Create`'s stage dictionary is now pinned to `Stages.All`** (the Plan-4 tripwire) — but when
+  Dosing/Cost land, `POST /stages/dosing/chat` starts accepting messages *the same commit*, and the dispatcher
+  would run a turn with zero tools over `"{}"` inputs: a confident conversation about nothing. Extend
+  `ToolBox.ReadToolsFor` and `StageInputsJsonAsync` in that same change.
+- `SetStageAsync` and `RecordAnswerAsync` are read-modify-writes on `ProjectDoc` with **no ETag** (pre-existing).
 
 **Known at authoring time (deliberate):**
 
