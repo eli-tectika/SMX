@@ -53,7 +53,7 @@ param keyVaultUri string = ''
 @description('Search Proxy base URL (https://<app>.azurewebsites.net), reached over its private endpoint.')
 param searchProxyEndpoint string = ''
 
-@description('Entra audience of the Search Proxy (api://<proxyAuthClientId>). Empty = the tool stays fail-safe OFF.')
+@description('Entra audience of the Search Proxy (api://<proxyAuthClientId>). Web search is gated on SEARCH_PROXY_ENDPOINT, not this: with an endpoint set but no audience the tool is ON but every call fails safe at token acquisition.')
 param searchProxyAudience string = ''
 
 @description('Operator kill switch for external web search, and its per-stage query budget.')
