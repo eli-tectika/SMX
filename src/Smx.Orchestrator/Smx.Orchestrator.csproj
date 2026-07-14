@@ -19,6 +19,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The agents' `internal static string? Validate(...)` functions are pure and are the cheapest place to
+         pin an invariant exhaustively (RegulatoryAgentTests): the runner feeds their error string back to the
+         model, so a rule that lives here is a rule no model output can slip past. Tested directly rather than
+         through a scripted agent, and internal rather than public, because they are not an API. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Smx.Orchestrator.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Smx.Domain\Smx.Domain.csproj" />
     <ProjectReference Include="..\Smx.Infrastructure\Smx.Infrastructure.csproj" />
   </ItemGroup>
