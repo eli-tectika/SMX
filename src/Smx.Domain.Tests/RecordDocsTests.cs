@@ -265,4 +265,30 @@ public class RecordDocsTests
         Assert.Equal("proj-1|chat-message|discovery|aaaa1111", RecordIds.ChatMessage("proj-1", Stages.Discovery, "aaaa1111"));
         Assert.Equal("proj-1|chat-reply|discovery|aaaa1111", RecordIds.ChatReply("proj-1", Stages.Discovery, "aaaa1111"));
     }
+
+    [Fact]
+    public void SubstanceProperty_RoundTrips_AndIsKeyedByCasSoItIsReusedAcrossProjects()
+    {
+        var doc = new SubstancePropertyDoc
+        {
+            Id = KnowledgeIds.SubstanceProperty("1314-36-9"), Cas = "1314-36-9",
+            Element = "Y", Form = "oxide", MetalLoading = 0.787,
+            Basis = "Y2O3, M(Y)=88.906, M(Y2O3)=225.81 → 2×88.906/225.81",
+            EnteredAt = "2026-07-14T10:00:00.0000000+00:00",
+        };
+        var json = JsonSerializer.Serialize(doc, Json.Options);
+        Assert.Contains("\"type\":\"substance-property\"", json);
+        Assert.Equal("substance-property|1314-36-9", doc.Id);
+
+        // The `/cas` Cosmos partition-key path is a string declared in Bicep; this is the C# half of that
+        // contract. If the serialized key is not exactly `cas`, Cosmos cannot extract the partition key from
+        // the document and rejects EVERY upsert — a failure no fake-backed test can see.
+        Assert.Contains("\"cas\":\"1314-36-9\"", json);
+
+        var back = JsonSerializer.Deserialize<SubstancePropertyDoc>(json, Json.Options)!;
+        Assert.Equal(0.787, back.MetalLoading);
+        // Basis is what makes the number checkable; a loading that survives the round-trip without its
+        // provenance is an unauditable number on a purchase order.
+        Assert.Equal(doc.Basis, back.Basis);
+    }
 }

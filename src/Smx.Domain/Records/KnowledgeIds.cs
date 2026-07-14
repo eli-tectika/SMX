@@ -7,6 +7,7 @@ public static class KnowledgeTypes
     public const string LearnedConclusion = "learned-conclusion";
     public const string MarkerLibrary = "marker-library";
     public const string MsdsRegistry = "msds-registry";
+    public const string SubstanceProperty = "substance-property";
 }
 
 /// The kind of a Learned Conclusion — also its Cosmos partition key (/kind). Distinct from the
@@ -16,6 +17,7 @@ public static class KnowledgeKinds
     public const string Material = "material";
     public const string XrfBackground = "xrf-background";
     public const string RegulatoryJudgment = "regulatory-judgment";
+    public const string Dosing = "dosing";
 }
 
 /// Lifecycle of a Marker Library code. Only `Approved` codes are offered as reuse candidates;
@@ -40,6 +42,10 @@ public static class KnowledgeIds
     public static string LearnedConclusion(string kind, string scopeKey) => $"{kind}|{scopeKey}";
     public static string Marker(string key) => $"marker|{key}";
     public static string Msds(string cas) => $"msds|{cas}";
+
+    /// Keyed by CAS alone — deliberately NOT by project. The whole point is that project B's Dosing finds
+    /// the loading project A entered.
+    public static string SubstanceProperty(string cas) => $"substance-property|{cas}";
 
     /// A revise-with-reason conclusion is keyed by the DECISION that produced it, not by its scope.
     /// Both halves matter: re-delivering the same revision upserts the same doc (idempotent under an
