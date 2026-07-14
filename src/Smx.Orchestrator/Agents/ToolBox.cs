@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Smx.Domain;
+using Smx.Domain.Records;
 using Smx.Domain.Tools;
 
 namespace Smx.Orchestrator.Agents;
@@ -23,14 +24,7 @@ public sealed class ToolBox(
         var web = webSearchFactory(terms);
         return
         [
-            AIFunctionFactory.Create(SearchCatalogAsync, "search_catalog",
-                "List the catalog products (form, molecule, CAS, purity, supplier) available for an element from the SMX catalog. Call this FIRST — it is the authoritative source for a candidate's CAS."),
-            AIFunctionFactory.Create(LookupCompatibilityAsync, "lookup_compatibility",
-                "Exact tabulated element×substrate compatibility verdict. Use as a tiering signal — an incompatible substrate lowers a candidate's tier or excludes it."),
-            AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
-                "Search SMX reference prose: solubility, XRF cleanliness, marker forms, bibliography-backed notes. Use to justify form ranking and tiering."),
-            AIFunctionFactory.Create(SearchLearnedConclusionsAsync, "search_learned_conclusions",
-                "Search accumulated Learned Conclusions (prior material/regulatory findings with confidence + provenance) relevant to tiering this element/form. Treat them as prior evidence, not fact; a higher-confidence, more recent conclusion supersedes an older one."),
+            .. DiscoveryReadTools(),
             AIFunctionFactory.Create(
                 (string query, string intent, CancellationToken ct) => SearchWebAsync(query, intent, ct, web),
                 "search_web",
@@ -41,6 +35,23 @@ public sealed class ToolBox(
                 "intent must be one of: discovery.candidate_forms, discovery.form_properties, discovery.supplier_availability."),
         ];
     }
+
+    /// The Discovery retrieval tools MINUS search_web — the read surface with no egress. A CHAT turn for
+    /// the Discovery stage gets exactly this (ReadToolsFor): the operator's conversational surface can
+    /// look a candidate up in the catalog and the corpus, but it is deliberately NOT a second web-egress
+    /// trigger. Egress stays confined to the autonomous Discovery run — the single anonymized channel the
+    /// Search Proxy exists to control. A web search a chat turn wants, the operator asks the run to make.
+    public IList<AITool> DiscoveryReadTools() =>
+    [
+        AIFunctionFactory.Create(SearchCatalogAsync, "search_catalog",
+            "List the catalog products (form, molecule, CAS, purity, supplier) available for an element from the SMX catalog. Call this FIRST — it is the authoritative source for a candidate's CAS."),
+        AIFunctionFactory.Create(LookupCompatibilityAsync, "lookup_compatibility",
+            "Exact tabulated element×substrate compatibility verdict. Use as a tiering signal — an incompatible substrate lowers a candidate's tier or excludes it."),
+        AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
+            "Search SMX reference prose: solubility, XRF cleanliness, marker forms, bibliography-backed notes. Use to justify form ranking and tiering."),
+        AIFunctionFactory.Create(SearchLearnedConclusionsAsync, "search_learned_conclusions",
+            "Search accumulated Learned Conclusions (prior material/regulatory findings with confidence + provenance) relevant to tiering this element/form. Treat them as prior evidence, not fact; a higher-confidence, more recent conclusion supersedes an older one."),
+    ];
 
     public IList<AITool> RegulatoryTools() =>
     [
@@ -63,6 +74,27 @@ public sealed class ToolBox(
         AIFunctionFactory.Create(SearchLearnedConclusionsAsync, "search_learned_conclusions",
             "Search accumulated Learned Conclusions (prior material/regulatory findings with confidence + provenance) relevant to this intake. Treat them as prior evidence, not fact; a higher-confidence, more recent conclusion supersedes an older one."),
     ];
+
+    /// The READ tools a CHAT turn gets for a stage (ChatAgent, design §5) — deliberately the same retrieval
+    /// surface the stage's own agent reasoned with, so chat can answer for what the stage produced FROM ITS
+    /// SOURCES rather than from the model's memory. A switch over the existing sets, never a new set: chat
+    /// must not be able to retrieve what the stage itself could not, nor to miss what it could.
+    ///
+    /// Note what no branch can return: nothing here writes, approves or signs. The mutating half of a chat
+    /// turn comes from ChatTools, which is bound to one project and offers no gate tool at all — so chat
+    /// cannot sign a gate because the capability does not exist, not because it was told not to (Law 9).
+    ///
+    /// Matrix — and any stage we do not recognise — gets NOTHING, which is fail-closed. Matrix derives its
+    /// output from the record it is handed, so there is no corpus to search; an unknown stage is a bug
+    /// upstream, and the safe response to a bug is no capability. A tool-less chat agent can still answer
+    /// from the stage inputs in its prompt, or say it has no source — which is the answer we want anyway.
+    public IList<AITool> ReadToolsFor(string stage) => stage switch
+    {
+        Stages.Intake => IntakeTools(),
+        Stages.Discovery => DiscoveryReadTools(),
+        Stages.Regulatory => RegulatoryTools(),
+        _ => [],
+    };
 
     public async Task<string> SearchCatalogAsync(string element, CancellationToken ct)
     {

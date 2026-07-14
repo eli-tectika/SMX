@@ -140,6 +140,23 @@ public static class OrchestratorHost
         services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(sp =>
             FoundryChatClientFactory.CreateAsync(opts, credential).GetAwaiter().GetResult());
         services.AddSingleton<IAgentRuns, AgentRuns>();
+
+        // ChatTools IS DELIBERATELY NOT REGISTERED HERE, and that absence is a safety property — do not
+        // "tidy" it into the container.
+        //
+        // StageDispatcher.OnChatMessageAsync constructs one PER TURN, closed over the (projectId, stage,
+        // chatKey) of the chat-message the change feed just delivered. That closure is the cross-project write
+        // guard: because the project is captured rather than passed, the model's tool schema offers no
+        // parameter with which to NAME a project — so it can only act on the one it is talking about. A
+        // singleton would have to take the project from somewhere ambient, and one hallucinated id would then
+        // mutate a DIFFERENT project's analysis: a revision queued against records the operator never asked
+        // about, no undo, and no reason for anyone to look. The per-turn binding turns "must not" into
+        // "cannot", which is the only form of that rule worth having.
+        //
+        // (ChatAgent is static and needs nothing; AgentRuns already holds the IChatClient and the ToolBox a
+        // chat turn reads with. So there is genuinely nothing else for chat to register — see
+        // OrchestratorHostWiringTests.AChatTurnsTools_BuildFromTheRealGraph_ForEveryChattableStage, which
+        // builds a real turn's tool list out of this container rather than taking that on trust.)
         services.AddSingleton(sp => new StageDispatcher(
             sp.GetRequiredService<IRecordStore>(), sp.GetRequiredService<IAgentRuns>(),
             sp.GetRequiredService<ILearnedConclusionWriter>(), opts.RegulatoryParallelism));

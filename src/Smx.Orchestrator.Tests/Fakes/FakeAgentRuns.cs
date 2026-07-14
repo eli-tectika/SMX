@@ -42,7 +42,15 @@ public sealed class FakeAgentRuns : IAgentRuns
             Confidence = 0.6,
         }));
 
+    /// Echoes the operator's message, so a dispatch test can prove the RIGHT message reached the agent
+    /// rather than merely that a reply came back. The ChatTools instance is handed through untouched: a
+    /// test that wants the mutating half exercised scripts this to call it. The stage is not a separate
+    /// argument — it is `chatTools.Stage`, the one the mutating tools are actually bound to.
+    public Func<ChatTools, string, string, string, Task<string>> Chat { get; set; } =
+        (_, _, _, message) => Task.FromResult($"Echo: {message}");
+
     public int IntakeCalls; public int DiscoveryCalls; public int RegulatoryCalls; public int ConclusionCalls;
+    public int ChatCalls;
 
     Task<Smx.Orchestrator.Agents.AgentRunResult<ConstraintsDoc>> IAgentRuns.RunIntakeAsync(ProjectDoc p, CancellationToken ct)
     { Interlocked.Increment(ref IntakeCalls); return Intake(p); }
@@ -53,4 +61,7 @@ public sealed class FakeAgentRuns : IAgentRuns
     { Interlocked.Increment(ref RegulatoryCalls); return Regulatory(c, cand, revision); }
     Task<AgentRunResult<ConclusionOutput>> IAgentRuns.RunConclusionAsync(RevisionDoc revision, ConstraintsDoc c, string stageOutputJson, CancellationToken ct)
     { Interlocked.Increment(ref ConclusionCalls); return Conclusion(revision, c, stageOutputJson); }
+    Task<string> IAgentRuns.RunChatAsync(ChatTools chatTools, string thread, string stageInputsJson,
+        string message, CancellationToken ct)
+    { Interlocked.Increment(ref ChatCalls); return Chat(chatTools, thread, stageInputsJson, message); }
 }

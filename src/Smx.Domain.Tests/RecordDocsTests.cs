@@ -25,6 +25,25 @@ public class RecordDocsTests
         Assert.Equal("pending", back.Stages["intake"].Status);
     }
 
+    /// THE TRIPWIRE FOR PLAN 4. `ProjectDoc.Create`'s stage dictionary is a fourth, hand-maintained
+    /// enumeration of the stages, and it was the only one nothing pinned. The other three are safe: Stages.All
+    /// is reflection-tested against the constants (ChatEndpointsTests), and ToolBox.ReadToolsFor and
+    /// StageDispatcher.StageInputsJsonAsync both fail CLOSED on a stage they do not know.
+    ///
+    /// This one fails OPEN, in both directions. Add `Stages.Dosing` and forget this dictionary and:
+    ///   - Stages.All gains it the same commit (the reflection test forces that), so POST /stages/dosing/chat
+    ///     starts accepting messages immediately — and the dispatcher runs the turn with no tools over "{}"
+    ///     inputs: a confident conversation about nothing;
+    ///   - SetStageAsync(projectId, "dosing", …) does `p.Stages[stage]` and throws KeyNotFoundException on
+    ///     every project created before the change.
+    /// Neither shows up as a compile error. This assertion is what shows up instead.
+    [Fact]
+    public void ProjectDoc_Create_SeedsExactlyTheStagesInStagesAll()
+    {
+        var doc = ProjectDoc.Create("p1", "Acme", "Shampoo bottle", JsonDocument.Parse("{}").RootElement);
+        Assert.Equal([.. Stages.All.Order()], [.. doc.Stages.Keys.Order()]);
+    }
+
     [Theory]
     [InlineData(new[] { "Pass", "Pass" }, "Pass")]
     [InlineData(new[] { "Pass", "Conditional" }, "Conditional")]
@@ -176,5 +195,44 @@ public class RecordDocsTests
         Assert.Null(back.ConclusionId);
         Assert.Null(back.AppliedAt);
         Assert.Null(back.Error);
+    }
+
+    [Fact]
+    public void ChatDocs_RoundTrip_WithTheirTypeDiscriminatorsOnTheWire()
+    {
+        var msg = new ChatMessageDoc
+        {
+            Id = RecordIds.ChatMessage("proj-1", Stages.Discovery, "aaaa1111"), ProjectId = "proj-1",
+            Stage = Stages.Discovery, Text = "why is Ba tier A?", CreatedAt = "2026-07-13T10:00:00Z",
+        };
+        var json = JsonSerializer.Serialize(msg, Json.Options);
+        // The change feed routes on this string and nothing else (RecordDocRouter).
+        Assert.Contains("\"type\":\"chat-message\"", json);
+        // `status` must reach the wire: the change-feed idempotency guard reads it back from Cosmos, and a
+        // status that silently didn't serialize would let a redelivered message re-run its agent.
+        Assert.Contains("\"status\":\"pending\"", json);
+        Assert.Equal(ChatStatus.Pending, JsonSerializer.Deserialize<ChatMessageDoc>(json, Json.Options)!.Status);
+
+        var reply = new ChatReplyDoc
+        {
+            Id = RecordIds.ChatReply("proj-1", Stages.Discovery, "aaaa1111"), ProjectId = "proj-1",
+            Stage = Stages.Discovery, MessageId = msg.Id, Text = "Because the catalog lists it clean.",
+            ToolCalls = [new ChatToolCall("search_catalog", "element=Ba", null)],
+            CreatedAt = "2026-07-13T10:00:05Z",
+        };
+        var replyJson = JsonSerializer.Serialize(reply, Json.Options);
+        Assert.Contains("\"type\":\"chat-reply\"", replyJson);
+        var back = JsonSerializer.Deserialize<ChatReplyDoc>(replyJson, Json.Options)!;
+        Assert.Equal(msg.Id, back.MessageId);
+        Assert.Equal("search_catalog", Assert.Single(back.ToolCalls).Tool);
+    }
+
+    [Fact]
+    public void ChatIds_PairAReplyToItsMessage()
+    {
+        // A reply's id is derived from its message's key, so a redelivered chat-message cannot produce a
+        // second reply doc — it upserts the same one.
+        Assert.Equal("proj-1|chat-message|discovery|aaaa1111", RecordIds.ChatMessage("proj-1", Stages.Discovery, "aaaa1111"));
+        Assert.Equal("proj-1|chat-reply|discovery|aaaa1111", RecordIds.ChatReply("proj-1", Stages.Discovery, "aaaa1111"));
     }
 }

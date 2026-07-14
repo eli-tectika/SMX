@@ -1,8 +1,11 @@
 using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Smx.Domain;
+using Smx.Domain.Records;
 using Smx.Domain.Tools;
 using Smx.Infrastructure;
+using Smx.Orchestrator.Agents;
 using Smx.Orchestrator.Dispatch;
 using Smx.Orchestrator.Knowledge;
 
@@ -62,6 +65,78 @@ public class OrchestratorHostWiringTests
         Assert.NotNull(sp.GetRequiredService<ILearnedConclusionsIndex>());
         Assert.NotNull(sp.GetRequiredService<ILearnedConclusionWriter>());
         Assert.NotNull(sp.GetRequiredService<IEmbedder>());
+    }
+
+    /// The chat turn, built from the REAL container — the exact path that runs when the change feed hands the
+    /// orchestrator its first ChatMessageDoc in Azure.
+    ///
+    /// Resolving StageDispatcher above proves the DISPATCH graph; it does not prove this one. A chat turn
+    /// reaches further: StageDispatcher constructs a ChatTools, and AgentRuns.RunChatAsync pairs the stage's
+    /// READ tools (ToolBox, seven injected dependencies of its own) with that turn's MUTATING tools. A read
+    /// tool whose dependency nobody registered is a container that builds, a host that starts, an intake that
+    /// runs — and a crash on the first thing the operator ever says. That failure is invisible to every test
+    /// that fakes IAgentRuns, which is all of them.
+    [Fact]
+    public void AChatTurnsTools_BuildFromTheRealGraph_ForEveryChattableStage()
+    {
+        using var sp = Build(Config());
+        var toolBox = sp.GetRequiredService<ToolBox>();
+        var store = sp.GetRequiredService<IRecordStore>();
+
+        foreach (var stage in Stages.All)
+        {
+            // Exactly what StageDispatcher.OnChatMessageAsync constructs: bound to one project, one stage, and
+            // the key of the message being answered.
+            var chatTools = new ChatTools(store, "p1", stage, "abcd1234");
+            var readTools = toolBox.ReadToolsFor(stage);
+            var tools = AgentRuns.ChatTurnTools(toolBox, chatTools);
+
+            // The READ half is asserted SEPARATELY, and that is the whole point of this loop. Asserting only
+            // that the combined list is non-empty proves nothing: on a revisable stage ChatTools contributes
+            // `apply_revision` on its own, so the entire retrieval surface could vanish and the combined list
+            // would still be non-empty. (Mutation-tested: deleting `Stages.Discovery => DiscoveryTools()` from
+            // ReadToolsFor left the combined-list assertion green.) An agent that can still CHANGE the analysis
+            // but can no longer LOOK ANYTHING UP is the worst reachable state in this system — it answers, and
+            // acts, from memory.
+            if (stage == Stages.Matrix)
+            {
+                // Fail-closed by design: Matrix derives its output from the record it is handed, so there is no
+                // corpus to search, and it is not revisable — a Matrix turn holds no capability at all.
+                Assert.Empty(readTools);
+                Assert.Empty(tools);
+            }
+            else
+            {
+                Assert.NotEmpty(readTools);
+            }
+
+            // Nothing is dropped on the floor between the two halves — the turn gets exactly what ToolBox and
+            // ChatTools each hand over, out of THIS container.
+            Assert.Equal(readTools.Count + chatTools.Tools().Count, tools.Count);
+        }
+    }
+
+    /// ChatTools is NOT in the container, and that absence is a SAFETY property — see the comment on its
+    /// registration-that-isn't in OrchestratorHost.ConfigureServices.
+    ///
+    /// It is constructed per turn, closed over (projectId, stage, chatKey), which is the cross-project write
+    /// guard: the model is offered no parameter with which to name a project, so a hallucinated id cannot
+    /// mutate a different project's analysis. A singleton would have to take those from somewhere ambient —
+    /// and the day it did, one turn's tools would be able to write another project's records, silently, with
+    /// no undo and no reason for anyone to look. This test is what stops that being "tidied" in.
+    [Fact]
+    public void ChatTools_IsNotAContainerService_ItIsConstructedPerTurn()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        OrchestratorHost.ConfigureServices(services, Config());
+
+        // Asserted on the DESCRIPTORS, not just on a null resolve: a resolve can come back null for reasons
+        // that have nothing to do with intent, but a descriptor is somebody having deliberately registered it.
+        Assert.DoesNotContain(services, d => d.ServiceType == typeof(ChatTools));
+
+        using var sp = services.BuildServiceProvider();
+        Assert.Null(sp.GetService<ChatTools>());
     }
 
     [Fact]
