@@ -41,6 +41,21 @@ param orchestratorImage string = ''
 @description('Entra app-registration client id for Function App Easy Auth. Empty = auth OFF (first deploy); configure-auth.sh fills it in.')
 param authClientId string = ''
 
+@description('Entra app-registration client id for the Search Proxy — its OWN registration, never regsync\'s. Empty = auth OFF (first deploy); configure-auth.sh fills it in.')
+param proxyAuthClientId string = ''
+
+@description('Key Vault secret URI holding the search provider API key (set-search-key.sh prints it). Empty = the proxy answers 503.')
+param proxySearchKeySecretUri string = ''
+
+@description('Grant the proxy identity read on the search-key secret. Leave false on a fresh subscription — the secret does not exist yet; set-search-key.sh creates it, then redeploy with true.')
+param deploySearchKeyRbac bool = false
+
+@description('Run the Search Proxy with no egress and no API key (dry-run twin).')
+param proxyDryRun bool = false
+
+@description('Operator kill switch for the Discovery agent\'s external web search.')
+param webSearchEnabled bool = true
+
 @description('Extra tags merged onto every resource.')
 param tags object = {}
 
@@ -184,6 +199,11 @@ module compute 'modules/compute.bicep' = {
     searchEndpoint: 'https://${ai.outputs.searchName}.search.windows.net'
     keyVaultUri: security.outputs.keyVaultUri
     appInsightsConnectionString: observability.outputs.appInsightsConnectionString
+    // The orchestrator reaches the proxy over its private endpoint; nothing here consumes compute's
+    // outputs, so this dependency on functions does not close a cycle.
+    searchProxyEndpoint: 'https://${functions.outputs.searchProxyDefaultHostName}'
+    searchProxyAudience: empty(proxyAuthClientId) ? '' : 'api://${proxyAuthClientId}'
+    webSearchEnabled: webSearchEnabled
   }
 }
 
@@ -209,6 +229,11 @@ module functions 'modules/functions.bicep' = {
     searchEndpoint: 'https://${ai.outputs.searchName}.search.windows.net'
     foundryEndpoint: ai.outputs.foundryEndpoint
     authClientId: authClientId
+    proxyAuthClientId: proxyAuthClientId
+    proxySearchKeySecretUri: proxySearchKeySecretUri
+    keyVaultName: security.outputs.keyVaultName
+    deploySearchKeyRbac: deploySearchKeyRbac
+    proxyDryRun: proxyDryRun
   }
 }
 

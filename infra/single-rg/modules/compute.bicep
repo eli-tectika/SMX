@@ -50,6 +50,16 @@ param appInsightsConnectionString string = ''
 @description('Key Vault URI for the Foundry Anthropic key fallback (empty = Entra-only).')
 param keyVaultUri string = ''
 
+@description('Search Proxy base URL (https://<app>.azurewebsites.net), reached over its private endpoint.')
+param searchProxyEndpoint string = ''
+
+@description('Entra audience of the Search Proxy (api://<proxyAuthClientId>). Empty = the tool stays fail-safe OFF.')
+param searchProxyAudience string = ''
+
+@description('Operator kill switch for external web search, and its per-stage query budget.')
+param webSearchEnabled bool = true
+param webSearchMaxPerStage int = 8
+
 var caeName = 'cae-${namePrefix}-${env}-${regionShort}'
 var consumptionProfile = [
   {
@@ -98,6 +108,15 @@ var sharedEnv = [
   { name: 'LEARNED_CONCLUSIONS_SEARCH_INDEX', value: 'learned-conclusions' }
 ]
 
+// Only the orchestrator hosts the Discovery agent's search_web tool, so only it is told where the proxy is:
+// the API has no reason to hold an audience for the one component that egresses to the public internet.
+var orchestratorEnv = concat(sharedEnv, [
+  { name: 'SEARCH_PROXY_ENDPOINT', value: searchProxyEndpoint }
+  { name: 'SEARCH_PROXY_AUDIENCE', value: searchProxyAudience }
+  { name: 'WEB_SEARCH_ENABLED', value: string(webSearchEnabled) }
+  { name: 'WEB_SEARCH_MAX_PER_STAGE', value: string(webSearchMaxPerStage) }
+])
+
 var registries = empty(acrLoginServer) ? [] : [
   {
     server: acrLoginServer
@@ -139,7 +158,7 @@ var apps = [
     hasIngress: empty(orchestratorImage) // placeholder needs ingress to be healthy; real worker has none
     targetPort: 80
     minReplicas: empty(orchestratorImage) ? 0 : 1 // change-feed processor must be running to dispatch
-    env: sharedEnv
+    env: orchestratorEnv
     probes: []
   }
 ]

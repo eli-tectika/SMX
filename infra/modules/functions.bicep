@@ -66,6 +66,26 @@ param regAnomalyPct int = 25
 @description('Entra app-registration client id for Easy Auth. Empty = auth stays OFF (first deploy).')
 param authClientId string = ''
 
+@description('Entra app-registration client id for the Search Proxy Easy Auth. Empty = auth stays OFF (first deploy).')
+param proxyAuthClientId string = ''
+
+@description('Key Vault secret URI holding the search provider API key. Empty = the proxy answers 503 until it is set.')
+param proxySearchKeySecretUri string = ''
+
+@description('Key Vault name — the proxy is granted read on the ONE search-key secret inside it, never on the vault.')
+param keyVaultName string = ''
+
+@description('Name of the Key Vault secret holding the search provider API key.')
+param searchKeySecretName string = 'search-provider-key'
+
+@description('Grant the proxy identity read on the search-key secret. OFF on a fresh deploy — the secret does not exist yet (set-search-key.sh creates it); flip to true on the redeploy that follows.')
+param deploySearchKeyRbac bool = false
+
+@description('Search Proxy knobs.')
+param proxyCoverCount int = 4
+param proxyMonthlyQueryCap int = 5000
+param proxyDryRun bool = false
+
 // --- Security separation: the public-egress Search Proxy and the corpus-writing
 // Regulatory Sync are SEPARATE apps with SEPARATE identities, so a compromise of the
 // exposed proxy cannot touch the regulatory corpus. Both reach their runtime storage
@@ -81,11 +101,13 @@ var syncPlanName = 'plan-${namePrefix}-${env}-sync-${regionShort}'
 var searchProxyAppName = 'func-${namePrefix}-${env}-searchproxy-${regionShort}'
 var regSyncAppName = 'func-${namePrefix}-${env}-regsync-${regionShort}'
 var deployContainer = 'deploy'
+var cacheContainer = 'search-cache'
 
 // Runtime-storage data-plane roles (identity-based AzureWebJobsStorage + Durable providers).
 var blobOwnerRoleId = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b' // Storage Blob Data Owner
 var queueContribRoleId = '974c5e8b-45b9-4653-ba55-5f855dd0fb88' // Storage Queue Data Contributor
 var tableContribRoleId = '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3' // Storage Table Data Contributor
+var kvSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6' // Key Vault Secrets User
 
 var ipRules = empty(deployerIpAddress) ? [] : [ { value: deployerIpAddress, action: 'Allow' } ]
 
@@ -124,6 +146,13 @@ resource spBlob 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
 resource spDeploy 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   parent: spBlob
   name: deployContainer
+}
+
+// The search-result cache AND the monthly quota counter. On the proxy's OWN storage account, where its
+// identity already holds Blob Data Owner — no new RBAC, and in particular no path to the corpus.
+resource spCache 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: spBlob
+  name: cacheContainer
 }
 
 resource rsStorage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
@@ -213,6 +242,9 @@ resource searchProxyApp 'Microsoft.Web/sites@2024-04-01' = {
     virtualNetworkSubnetId: functionsSubnetId
     httpsOnly: true
     publicNetworkAccess: publicNetworkAccess
+    // The app has no system-assigned identity, so a Key Vault reference would otherwise resolve as one
+    // and fail. Point it at the proxy's own UAMI — the identity that holds the single-secret grant below.
+    keyVaultReferenceIdentity: searchProxyUami.id
     functionAppConfig: {
       deployment: {
         storage: {
@@ -240,6 +272,15 @@ resource searchProxyApp 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'AzureWebJobsStorage__accountName', value: spStorage.name }
         { name: 'AzureWebJobsStorage__credential', value: 'managedidentity' }
         { name: 'AzureWebJobsStorage__clientId', value: searchProxyUami.properties.clientId }
+        { name: 'WORKLOAD_UAMI_CLIENT_ID', value: searchProxyUami.properties.clientId }
+        { name: 'PROXY_PROVIDER', value: 'brave' }
+        // A Key Vault reference — the key is never a plaintext app setting. Empty until set-search-key.sh runs.
+        { name: 'PROXY_SEARCH_API_KEY', value: empty(proxySearchKeySecretUri) ? '' : '@Microsoft.KeyVault(SecretUri=${proxySearchKeySecretUri})' }
+        { name: 'PROXY_DRY_RUN', value: string(proxyDryRun) }
+        { name: 'PROXY_COVER_COUNT', value: string(proxyCoverCount) }
+        { name: 'PROXY_COVER_CORPUS_PATH', value: 'Config/cover-corpus.json' }
+        { name: 'PROXY_CACHE_CONTAINER', value: cacheContainer }
+        { name: 'PROXY_MONTHLY_QUERY_CAP', value: string(proxyMonthlyQueryCap) }
       ]
     }
   }
@@ -352,7 +393,61 @@ resource regSyncAuth 'Microsoft.Web/sites/config@2024-04-01' = if (!empty(authCl
   }
 }
 
+// The Search Proxy gets its OWN app registration, not regsync's: they are separate apps with separate
+// identities precisely so a compromise of the internet-facing one cannot reach the corpus, and sharing an
+// audience would hand it a token the other accepts.
+resource searchProxyAuth 'Microsoft.Web/sites/config@2024-04-01' = if (!empty(proxyAuthClientId)) {
+  parent: searchProxyApp
+  name: 'authsettingsV2'
+  properties: {
+    platform: { enabled: true }
+    globalValidation: {
+      requireAuthentication: true
+      unauthenticatedClientAction: 'Return401'
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        enabled: true
+        registration: {
+          openIdIssuer: 'https://login.microsoftonline.com/${subscription().tenantId}/v2.0'
+          clientId: proxyAuthClientId
+        }
+        validation: {
+          allowedAudiences: [ 'api://${proxyAuthClientId}' ]
+        }
+      }
+    }
+    login: { tokenStore: { enabled: false } }
+  }
+}
+
+// --- The proxy's ONE secret. The grant below is scoped to the secret, not to the vault: the proxy is the
+// internet-facing component, and the point of its dedicated identity is that a compromise reaches nothing
+// else. (It lives here, not in security.bicep, because functions.bicep already consumes that module's
+// UAMI outputs — feeding the proxy principal id back the other way would close a module cycle.) ---
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
+  name: keyVaultName
+}
+
+resource searchKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' existing = {
+  parent: keyVault
+  name: searchKeySecretName
+}
+
+// Gated: the secret does not exist on a fresh subscription, and a role assignment scoped to a missing
+// resource fails the deploy. set-search-key.sh creates it; the next deploy passes deploySearchKeyRbac=true.
+resource proxySecretRead 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deploySearchKeyRbac && !empty(keyVaultName)) {
+  name: guid(searchKeySecret.id, searchProxyUami.id, kvSecretsUserRoleId)
+  scope: searchKeySecret
+  properties: {
+    principalId: searchProxyUami.properties.principalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
+    principalType: 'ServicePrincipal'
+  }
+}
+
 output searchProxyAppName string = searchProxyApp.name
+output searchProxyDefaultHostName string = searchProxyApp.properties.defaultHostName
 output searchProxyUamiPrincipalId string = searchProxyUami.properties.principalId
 output regSyncAppName string = regSyncApp.name
 output spStorageId string = spStorage.id
