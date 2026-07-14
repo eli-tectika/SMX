@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Smx.Domain;
 using Smx.Domain.Records;
+using Smx.Orchestrator.Agents;
 using Smx.Orchestrator.Knowledge;
 
 namespace Smx.Orchestrator.Dispatch;
@@ -20,6 +21,7 @@ public sealed class StageDispatcher(
             case VerdictDoc v: await OnVerdictAsync(v, ct); break;
             case GateDoc g: await OnGateAsync(g, ct); break;
             case RevisionDoc r: await OnRevisionAsync(r, ct); break;
+            case ChatMessageDoc m: await OnChatMessageAsync(m, ct); break;
             case MatrixDoc: break; // terminal
         }
     }
@@ -284,6 +286,107 @@ public sealed class StageDispatcher(
         r.Error = error;
         await store.UpsertRevisionAsync(r, ct);
     }
+
+    /// A chat turn (design §5). The reply is a record, so the conversation survives a restart and a
+    /// multi-day re-entry (Law 6) — the agent itself remembers nothing.
+    private async Task OnChatMessageAsync(ChatMessageDoc fed, CancellationToken ct)
+    {
+        // RE-READ rather than trust the doc the feed handed us. The feed's element is a SNAPSHOT of the
+        // message at some change, and the idempotency of this whole handler rests on the status being the
+        // CURRENT one — a stale `pending` re-runs a turn that may already have queued a revision. Cosmos's
+        // latest-version feed happens to hand back current content, but that is a property of the feed MODE,
+        // not of this code: switch it to all-versions-and-deletes, replay an element off a log, or hand this
+        // method an object held from earlier, and the snapshot is genuinely old. A partition-scoped point read
+        // costs about one RU and removes the dependency on that mode altogether.
+        //
+        // It is also what makes the read-modify-write below sound: `m` is the store's own current doc, so
+        // flipping its status writes back what is actually there instead of blind-overwriting Cosmos with a
+        // stale payload. And a message the feed delivered that the store does not have cannot exist — if it
+        // somehow does, upserting it would CONJURE a message nobody sent, so do nothing.
+        if (await store.GetChatMessageAsync(fed.ProjectId, fed.Id, ct) is not { } m) return;
+
+        // At-least-once feed: only the first delivery acts. A redelivered message must not re-run an agent
+        // that may already have queued a revision. Answering is itself a change, so this handler is re-entered
+        // on its own write — that too is what this guard absorbs.
+        if (m.Status != ChatStatus.Pending) return;
+
+        try
+        {
+            var thread = ChatThread.Render(await store.GetChatThreadAsync(m.ProjectId, m.Stage, ct));
+            var inputs = await StageInputsJsonAsync(m.ProjectId, m.Stage, ct);
+
+            // Bound to THIS project and THIS stage. The model has no parameter with which to name another.
+            var chatTools = new ChatTools(store, m.ProjectId, m.Stage, KeyOf(m.Id));
+            var text = await agents.RunChatAsync(chatTools, thread, inputs, m.Text, ct);
+
+            // KNOWN GAP, left open deliberately. By the time we reach this line an `apply_revision` call has
+            // already written a DURABLE RevisionDoc, and the message does not leave `pending` until the two
+            // writes below land. A crash in that window redelivers a still-`pending` message and the turn
+            // RE-RUNS.
+            //
+            // GUARANTEED: an identical apply_revision call converges. ChatTools content-addresses the revision
+            // id from (chat key + call content) and refuses to overwrite one that has already left `pending`,
+            // so the same call cannot queue a second revision or file a second Learned Conclusion.
+            // NOT GUARANTEED: that the replay makes the same call. It is a sampled model shown DIFFERENT
+            // record state (the first revision may already be applied, the candidate already dropped), so it
+            // may make a genuinely different one — a second revision out of one operator instruction. Closing
+            // that requires the revision, the reply and the status flip to commit together (a Cosmos
+            // transactional batch is possible — they share a partition key), which is a change to the write
+            // path, not to this handler.
+            await store.UpsertChatReplyAsync(new ChatReplyDoc
+            {
+                // Derived from the message's key, so redelivery upserts one reply instead of appending.
+                Id = RecordIds.ChatReply(m.ProjectId, m.Stage, KeyOf(m.Id)),
+                ProjectId = m.ProjectId, Stage = m.Stage, MessageId = m.Id,
+                Text = text,
+                // COPIED, not aliased: `Trail` is a live List the ChatTools instance still owns. ChatToolCall
+                // is an immutable record, so a shallow copy is a complete one, and the reply's audit trail is
+                // frozen at the instant the turn ended rather than tracking a list someone could still append to.
+                ToolCalls = [.. chatTools.Trail],
+                CreatedAt = DateTimeOffset.UtcNow.ToString("O"),
+            }, ct);
+
+            m.Status = ChatStatus.Answered;
+            m.Error = null;
+            await store.UpsertChatMessageAsync(m, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The ORCHESTRATOR is stopping — the agent did not fail. `failed` is terminal (nothing re-runs a
+            // failed message), so recording a shutdown as one would tell the operator permanently that their
+            // question came back as "A task was canceled". Leave it `pending`: that is the truth — it was
+            // never answered — and it is the only status a redelivery or a re-send can act on. Rethrow so the
+            // worker logs a stop rather than swallowing it as an answered turn.
+            //
+            // The `when` filter is load-bearing: an OperationCanceledException NOT tied to our token is a real
+            // failure (an HTTP timeout inside the model call surfaces as exactly this type) and belongs below.
+            throw;
+        }
+        catch (Exception e)
+        {
+            // No half-written reply: the operator must never read a partial answer as the agent's word. The
+            // prefix is there for the same reason — this text is rendered in the conversation, and a bare
+            // "429" or "The SSL connection could not be established" reads as something the AGENT said.
+            m.Status = ChatStatus.Failed;
+            m.Error = $"the agent could not complete this turn: {e.Message}";
+            await store.UpsertChatMessageAsync(m, ct);
+        }
+    }
+
+    /// The stage's current record inputs — what the agent is answering ABOUT. Without them the turn is an
+    /// agent reasoning from a transcript alone, about an analysis it cannot see.
+    private async Task<string> StageInputsJsonAsync(string projectId, string stage, CancellationToken ct) => stage switch
+    {
+        Stages.Intake => JsonSerializer.Serialize(await store.GetProjectAsync(projectId, ct), Json.Options),
+        Stages.Discovery => JsonSerializer.Serialize(await store.GetCandidatesAsync(projectId, ct), Json.Options),
+        Stages.Regulatory => JsonSerializer.Serialize(await store.GetVerdictsAsync(projectId, ct), Json.Options),
+        Stages.Matrix => JsonSerializer.Serialize(await store.GetMatrixAsync(projectId, ct), Json.Options),
+        _ => "{}",
+    };
+
+    /// The message's KEY — the suffix RecordIds.ChatMessage was minted with, not the whole id. ChatTools
+    /// concatenates it into further Cosmos ids and asserts it is an id-safe token; the full id contains '|'.
+    private static string KeyOf(string chatMessageId) => chatMessageId.Split('|')[^1];
 
     private async Task TryAssembleAsync(string projectId, CancellationToken ct)
     {
