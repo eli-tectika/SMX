@@ -21,5 +21,12 @@ public static class ProxyHttp
     public static SocketsHttpHandler CreateHandler() => new()
     {
         ActivityHeadersPropagator = DistributedContextPropagator.CreateNoOutputPropagator(),
+
+        // DNS. SearchPipeline is a singleton and captures the typed client, so this handler is built once and
+        // lives as long as the instance does — indefinitely on an always-ready Flex Consumption instance. At
+        // the default (infinite) lifetime the connection to the provider is never recycled, so its hostname is
+        // resolved exactly once, at startup, and a provider IP change is never picked up: every search then
+        // fails against a stale address until someone notices and restarts the app.
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
     };
 }
