@@ -23,6 +23,7 @@ This codebase has strong, deliberate conventions. Match them; do not invent new 
 - **HTTP triggers are `AuthorizationLevel.Anonymous`** with a comment that Easy Auth is the infra-layer control.
 - **Git-versioned JSON for security-critical data**, loaded by a provider that **throws if empty**. Model: `src/Smx.Functions/Sds/Sourcing/AllowlistProvider.cs`.
 - **Tests:** xUnit + hand-written fakes in a `Fakes/` folder. `NullLogger<T>.Instance` for loggers. Stub `HttpMessageHandler` when you must exercise a real client pipeline (model: `src/Smx.Orchestrator.Tests/LearnedConclusionsSearchToolTests.cs:26-40`).
+- **`using Xunit;` — the test snippets below omit it, and half of them need it.** `Smx.Domain.Tests` and `Smx.Orchestrator.Tests` declare a global `<Using Include="Xunit" />` in their `.csproj`, so adding the using there is redundant (and a duplicate-using warning). **`Smx.SearchProxy.Tests` — the new project created in Task 2 — does not**, so every snippet destined for it needs `using Xunit;` at the top or it will not compile. Either add the global using to the new `.csproj` and keep the snippets as written, or add the `using` per file; do not do neither.
 
 **Build/test commands:**
 ```bash
@@ -787,12 +788,21 @@ public sealed class CoverCorpus
         var raw = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(json)
                   ?? throw new InvalidOperationException("cover corpus is empty or unparseable");
 
+        // TWO PASSES, and the order matters — a single pass fails ThrowsWhenAnIntentHasNoFamily above. That
+        // test's corpus has candidate_forms present-but-thin and form_properties MISSING; a single pass hits
+        // the thin family first and throws about IT, so the missing family — the far more serious fault, an
+        // intent shipping with no cover at all — is never reported. Check presence of EVERY family first.
+        foreach (var intent in SearchIntents.All)
+        {
+            if (!raw.ContainsKey(intent))
+                throw new InvalidOperationException(
+                    $"cover corpus has no decoy family for intent '{intent}' — a real query for it would egress naked");
+        }
+
         var families = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         foreach (var intent in SearchIntents.All)
         {
-            if (!raw.TryGetValue(intent, out var qs))
-                throw new InvalidOperationException(
-                    $"cover corpus has no decoy family for intent '{intent}' — a real query for it would egress naked");
+            var qs = raw[intent];
             if (qs.Count < MinimumPerFamily)
                 throw new InvalidOperationException(
                     $"cover corpus family '{intent}' has {qs.Count} decoys; at least {MinimumPerFamily} are required to hide a query");
@@ -1665,7 +1675,8 @@ namespace Smx.SearchProxy.Pipeline;
 /// Both are deliberately crude. They are a backstop against our own bugs, not a billing system.
 public sealed class QuotaGuard(IQuotaStore store, ProxyOptions opts)
 {
-    private readonly Lock _gate = new();
+    // System.Threading.Lock is .NET 9+; this app targets net8.0, so the gate is a plain object.
+    private readonly object _gate = new();
     private string _minute = "";
     private int _minuteCount;
 
@@ -1691,7 +1702,7 @@ public sealed class QuotaGuard(IQuotaStore store, ProxyOptions opts)
 }
 ```
 
-> **Note on `Lock`:** `System.Threading.Lock` is .NET 9+. On **net8.0**, use `private readonly object _gate = new();` — the `lock (_gate)` statement is unchanged. Write it with `object`.
+> **Note on `Lock`:** `System.Threading.Lock` is .NET 9+, and this app targets **net8.0** — the snippet above uses `object` for that reason. The `lock (_gate)` statement is identical either way. (An earlier draft of this plan showed `private readonly Lock _gate = new();`, which does not compile here.)
 
 `src/Smx.SearchProxy/Pipeline/BlobQuotaStore.cs`:
 ```csharp
@@ -2416,6 +2427,24 @@ namespace Smx.SearchProxy
     }
 }
 ```
+
+> **The registration alone is DEAD — you must resolve it.** `StartupWarning` logs from its constructor, and a
+> singleton's constructor does not run until something asks for it. Nothing does: no other component takes an
+> `IStartupWarning` dependency, so as written the clamp warning is never emitted and a silently-corrected
+> `PROXY_COVER_COUNT` stays silent — which is the whole thing the warning exists to prevent. In the top-level
+> statements, **after `.Build()`**, force the resolve:
+> ```csharp
+> var host = new HostBuilder()
+>     .ConfigureFunctionsWebApplication()
+>     .ConfigureServices((ctx, services) => ProxyHost.ConfigureServices(services, ctx.Configuration))
+>     .Build();
+>
+> // Forces the singleton's constructor, which is what logs. GetService, not GetRequiredService: the warning
+> // is only registered when the operator's PROXY_COVER_COUNT actually needed clamping.
+> host.Services.GetService<IStartupWarning>();
+>
+> host.Run();
+> ```
 
 Add the two dry-run stores next to the real ones — `src/Smx.SearchProxy/Pipeline/NullStores.cs`:
 ```csharp
@@ -3210,10 +3239,13 @@ And the implementation:
     /// The project's own identifiers. These are exactly the strings that must never reach an external search:
     /// each one, in an outbound query, tells the provider which client is evaluating which chemistry.
     private static SensitiveTerms TermsFor(ProjectDoc p) =>
-        new([p.Client, p.Product, p.ProjectId]
+        new(new[] { p.Client, p.Product, p.ProjectId }
             .Where(t => !string.IsNullOrWhiteSpace(t))
             .ToList());
 ```
+> **`new[] { … }`, not `[…]`.** A collection expression needs a target type, and here the receiver is
+> `.Where(…)` — an extension method — so there is nothing to infer from: `[p.Client, p.Product, p.ProjectId].Where(…)`
+> does not compile ("no target type"). Spell the array out.
 
 - [ ] **Step 2: Update the two call sites in `StageDispatcher`**
 
@@ -3270,7 +3302,20 @@ Two deterministic rails in `Validate`, where the error string is fed back to the
 
 **Files:**
 - Modify: `src/Smx.Orchestrator/Agents/DiscoveryAgent.cs`
+- Modify: `src/Smx.Orchestrator/Smx.Orchestrator.csproj` — see below
 - Test: `src/Smx.Orchestrator.Tests/DiscoveryAgentTests.cs` (add to the existing file)
+
+> **`Validate` is `internal`,** so the tests below cannot see it until `Smx.Orchestrator` says they may. Add to
+> `src/Smx.Orchestrator/Smx.Orchestrator.csproj`:
+> ```xml
+>   <ItemGroup>
+>     <!-- DiscoveryAgentTests drives the internal DiscoveryAgent.Validate directly: the web-evidence rails are
+>          deterministic code, so they are tested as code rather than through a scripted agent round-trip. -->
+>     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+>       <_Parameter1>Smx.Orchestrator.Tests</_Parameter1>
+>     </AssemblyAttribute>
+>   </ItemGroup>
+> ```
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3604,16 +3649,25 @@ output searchProxyDefaultHostName string = searchProxyApp.properties.defaultHost
 
 - [ ] **Step 2: Grant the proxy identity read on the ONE Key Vault secret**
 
-The proxy needs the Brave key and nothing else. Grant `Key Vault Secrets User` **scoped to the secret**, not the vault. Put this in whichever module owns the Key Vault (`security.bicep`), taking `searchProxyUamiPrincipalId` as a param — `functions.bicep` already outputs it:
+The proxy needs the Brave key and nothing else. Grant `Key Vault Secrets User` **scoped to the secret**, not the vault.
+
+> **Put this in `functions.bicep`, NOT in `security.bicep`.** The obvious home is the module that owns the vault
+> — but `functions` already consumes `security`'s outputs, so a `security` that took `searchProxyUamiPrincipalId`
+> from `functions` would close a **module cycle** and Bicep refuses to compile it. The proxy's UAMI is declared
+> in `functions.bicep` anyway, so the grant goes there and reaches across to the vault with an `existing`
+> reference. Declare the vault by name (`param keyVaultName string`, passed from `main.bicep`) and parent the
+> secret to it:
 
 ```bicep
-@description('Principal id of the Search Proxy identity — granted read on the search-key secret ONLY.')
-param searchProxyUamiPrincipalId string = ''
+@description('Name of the Key Vault holding the search provider API key (from the security module).')
+param keyVaultName string = ''
 
 @description('Name of the secret holding the search provider API key.')
 param searchKeySecretName string = 'search-provider-key'
 
 var kvSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6' // Key Vault Secrets User
+
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = { name: keyVaultName }
 
 resource searchKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' existing = {
   parent: keyVault
@@ -3622,17 +3676,30 @@ resource searchKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' existing
 
 // Scoped to the SECRET, not the vault. The proxy is the internet-facing component; it gets the one value it
 // needs and no read on anything else in the vault.
-resource proxySecretRead 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(searchProxyUamiPrincipalId)) {
-  name: guid(searchKeySecret.id, searchProxyUamiPrincipalId, kvSecretsUserRoleId)
+resource proxySecretRead 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(keyVaultName)) {
+  name: guid(searchKeySecret.id, searchProxyUami.id, kvSecretsUserRoleId)
   scope: searchKeySecret
   properties: {
-    principalId: searchProxyUamiPrincipalId
+    principalId: searchProxyUami.properties.principalId
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
     principalType: 'ServicePrincipal'
   }
 }
 ```
 > The `existing` secret reference requires the secret to be created first — `set-search-key.sh` (Task 18) does that. Guard the whole block on a `deploySearchKeyRbac bool = false` param if a fresh subscription would otherwise fail on the missing secret, and set it to `true` on the redeploy after the key is set. **Read `security.bicep` first and match how it names the vault resource.**
+
+> **The grant is not enough — set `keyVaultReferenceIdentity` too.** `PROXY_SEARCH_API_KEY` is a Key Vault
+> *reference* (`@Microsoft.KeyVault(SecretUri=…)`), and the platform resolves those with the app's
+> **system-assigned** identity unless told otherwise. This app has none — it has a user-assigned one, which is
+> what the role assignment above grants. Without the line below the reference resolves as a non-existent
+> identity, the setting arrives at the worker as the literal `@Microsoft.KeyVault(...)` string, and the app
+> fails at startup with an unauthorized Brave key. On the site resource:
+> ```bicep
+> properties: {
+>   keyVaultReferenceIdentity: searchProxyUami.id
+>   // …
+> }
+> ```
 
 - [ ] **Step 3: Orchestrator env vars**
 
@@ -3728,7 +3795,10 @@ KEY="${2:-}"
 [ -n "${KEY}" ] || { echo "usage: set-search-key.sh <env> <brave-api-key>" >&2; exit 1; }
 confirm_subscription
 
-KV="kv-${NAME_PREFIX}-${ENV}-${REGION_SHORT}"   # confirm against infra/modules/security.bicep
+# The vault name carries a Bicep uniqueString() suffix (security.bicep: kv-${namePrefix}-${env}-${uniqueSuffix}),
+# which is NOT the region short-code and cannot be reconstructed here. DISCOVER it, do not build it.
+KV="$(az keyvault list -g "${RG}" --query "[?starts_with(name, 'kv-${NAME_PREFIX}-${ENV}-')].name | [0]" -o tsv)"
+[ -n "${KV}" ] || die "No Key Vault found in ${RG} with prefix 'kv-${NAME_PREFIX}-${ENV}-' (is env '${ENV}' deployed?)"
 SECRET="search-provider-key"
 
 log "Storing the search provider key in ${KV}/${SECRET}..."
@@ -3736,7 +3806,10 @@ URI="$(az keyvault secret set --vault-name "${KV}" --name "${SECRET}" --value "$
 log "Secret URI: ${URI}"
 warn "Redeploy with -p proxySearchKeySecretUri=${URI} -p deploySearchKeyRbac=true, then re-run harden.sh."
 ```
-> Read `infra/modules/security.bicep` and use the **actual** Key Vault name pattern; do not guess it.
+> **The vault name is `kv-{prefix}-{env}-{uniqueString(...)}`** (see `infra/modules/security.bicep`), where the
+> last segment is a Bicep `uniqueString()` hash — **not** the region short-code. It cannot be reconstructed in a
+> script, so the script must **look it up by prefix**, as above. Guessing it yields a vault that does not exist
+> and a confusing `SecretNotFound`.
 
 Write the `.ps1` twin.
 
@@ -3752,21 +3825,33 @@ PROXY_REG_NAME="${NAME_PREFIX}-${ENV}-searchproxy-auth"
 log "Ensuring Entra app registration '${PROXY_REG_NAME}'..."
 PROXY_CLIENT_ID="$(az ad app list --display-name "${PROXY_REG_NAME}" --query '[0].appId' -o tsv)"
 if [ -z "${PROXY_CLIENT_ID}" ]; then
-  PROXY_CLIENT_ID="$(az ad app create --display-name "${PROXY_REG_NAME}" \
-    --identifier-uris "api://${PROXY_REG_NAME}" --query appId -o tsv)"
+  PROXY_CLIENT_ID="$(az ad app create --display-name "${PROXY_REG_NAME}" --query appId -o tsv)"
   log "Created app registration ${PROXY_CLIENT_ID}"
 fi
 
-log "Enforcing Easy Auth on ${PROXY_APP} (audience api://${PROXY_REG_NAME})..."
+# The audience is api://<appId>, NOT api://<display-name>: functions.bicep pins the proxy's allowed audience
+# to 'api://${proxyAuthClientId}', and the orchestrator requests a token for that same string. An identifier
+# URI built from the display name would not match either, and every call would 401 at Easy Auth.
+PROXY_AUDIENCE="api://${PROXY_CLIENT_ID}"
+az ad app update --id "${PROXY_CLIENT_ID}" --identifier-uris "${PROXY_AUDIENCE}" --output none
+
+log "Enforcing Easy Auth on ${PROXY_APP} (audience ${PROXY_AUDIENCE})..."
 az webapp auth update -g "${RG}" -n "${PROXY_APP}" \
   --enabled true --action Return401 \
-  --aad-allowed-token-audiences "api://${PROXY_REG_NAME}" \
+  --aad-allowed-token-audiences "${PROXY_AUDIENCE}" \
   --aad-client-id "${PROXY_CLIENT_ID}" \
   --aad-token-issuer-url "https://login.microsoftonline.com/${TENANT_ID}/v2.0" --output none
 
-warn "The ACA orchestrator must present a token for audience api://${PROXY_REG_NAME} (SEARCH_PROXY_AUDIENCE)."
+warn "The ACA orchestrator must present a token for audience ${PROXY_AUDIENCE} (SEARCH_PROXY_AUDIENCE)."
 log "Keep Bicep in sync: redeploy with -p proxyAuthClientId=${PROXY_CLIENT_ID}."
 ```
+> **`api://<appId>`, not `api://<display-name>`.** The regsync block above uses the display name, and copying
+> that pattern here breaks: `functions.bicep` pins the proxy's `allowedAudiences` to `'api://${proxyAuthClientId}'`
+> — an **app id** — and the orchestrator asks its credential for a token scoped to that same string. A
+> display-name identifier URI matches neither, so every orchestrator call returns 401 from Easy Auth with
+> nothing in the app's own logs to explain it. Set the identifier URI in a second call (`az ad app update`),
+> since the app id is not known until the app is created.
+
 Mirror it in the `.ps1`.
 
 - [ ] **Step 4: Verify the twins**
