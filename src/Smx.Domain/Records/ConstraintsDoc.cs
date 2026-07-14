@@ -14,17 +14,20 @@ public sealed record AppliedList(string ListId, string ComponentId, string Reaso
 
 public sealed record ElementPool(string Component, string Element, string Line, string Status, string? SignalNote = null); // Status: "V" | "L"
 
-/// The physicist's MEASURED background for one element in one component, in ppm. Together with the device
-/// LOD this is what the ppm detection floor is computed from (DetectionFloor). It is measured data: like
-/// ElementPool, it is not writable through chat (IntakeAnswers).
+/// The physicist's MEASURED background for one element in one component. Together with the device LOD this
+/// is what the ppm detection floor is computed from (DetectionFloor). It is measured data: like ElementPool,
+/// it is not writable through chat (IntakeAnswers).
 ///
-/// `Unit` is carried, not assumed. DetectionFloor REFUSES to add a background to a LOD whose unit differs —
-/// mixing counts with ppm yields a number that looks perfectly reasonable and is simply wrong.
-public sealed record MeasuredBackground(string Component, string Element, double LevelPpm, string Unit);
+/// `Unit` is carried, not assumed — which is exactly why `Level` is NOT called `LevelPpm`. A field named for
+/// one unit, sitting beside the field that says which unit it is in, is the very confusion this type exists
+/// to prevent: DetectionFloor REFUSES to add a background to a LOD whose unit differs, because mixing counts
+/// with ppm yields a number that looks perfectly reasonable and is simply wrong.
+public sealed record MeasuredBackground(string Component, string Element, double Level, string Unit);
 
-/// The XRF device the marker must be READ BY in deployment, and its per-element limit of detection.
+/// The XRF device the marker must be READ BY in deployment, and its per-element limit of detection (`Lod`,
+/// unit-free for the same reason as `Level` above; `Unit` says what it is in).
 /// The floor targets THIS device (UX spec §8: deployment-device-targeted floor), not an assumed lab unit.
-public sealed record DeviceLod(string Element, double LodPpm, string Unit);
+public sealed record DeviceLod(string Element, double Lod, string Unit);
 public sealed record XrfDevice(string Model, IReadOnlyList<DeviceLod> Lods);
 
 public sealed record CandidateSubstance(
@@ -39,9 +42,9 @@ public sealed class ConstraintsDoc
     public string Type { get; set; } = RecordTypes.Constraints;
     public List<ComponentSpec> Components { get; set; } = [];
     public List<ElementPool> ElementPools { get; set; } = [];
-    /// The physicist's measured background, and the deployment device whose LODs the ppm floor targets.
-    /// Both are MEASURED inputs echoed from intake — never chat-writable (IntakeAnswers).
-    public List<MeasuredBackground> MeasuredBackground { get; set; } = [];
+    /// The two inputs of the ppm detection floor. Copied from the payload by code, never taken from the
+    /// model's echo (IntakeAgent.RunAsync) — see MeasuredBackground above for what they are and why.
+    public List<MeasuredBackground> MeasuredBackgrounds { get; set; } = [];
     public XrfDevice? Device { get; set; }
     /// Known-candidate mode (eval/integration): when non-empty, Discovery is bypassed and these
     /// become the candidates doc verbatim. Empty ⇒ the Discovery agent generates candidates.

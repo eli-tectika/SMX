@@ -36,8 +36,8 @@ public class ProjectEndpointsTests : IClassFixture<WebApplicationFactory<Program
         client = "Acme", product = "Shampoo bottle",
         components = new[] { new { id = "bottle", material = "HDPE", application = "packaging", markets = new[] { "EU" }, objective = "brand", batchMassKg = 250.0 } },
         elementPools = new[] { new { component = "bottle", element = "Zr", line = "Kα", status = "V" } },
-        measuredBackground = new[] { new { component = backgroundComponent, element = "Zr", levelPpm = 4.0, unit = "ppm" } },
-        device = new { model = "Olympus Vanta M", lods = new[] { new { element = "Zr", lodPpm = 1.5, unit = "ppm" } } },
+        measuredBackground = new[] { new { component = backgroundComponent, element = "Zr", level = 4.0, unit = "ppm" } },
+        device = new { model = "Olympus Vanta M", lods = new[] { new { element = "Zr", lod = 1.5, unit = "ppm" } } },
     };
 
     private async Task<JsonElement> PostAndReadPayloadAsync(object body)
@@ -56,10 +56,10 @@ public class ProjectEndpointsTests : IClassFixture<WebApplicationFactory<Program
         // physically readable in the field never gets computed.
         var payload = await PostAndReadPayloadAsync(PhysicsBody());
 
-        Assert.Equal(4.0, payload.GetProperty("measuredBackground")[0].GetProperty("levelPpm").GetDouble());
+        Assert.Equal(4.0, payload.GetProperty("measuredBackground")[0].GetProperty("level").GetDouble());
         Assert.Equal("ppm", payload.GetProperty("measuredBackground")[0].GetProperty("unit").GetString());
         Assert.Equal("Olympus Vanta M", payload.GetProperty("device").GetProperty("model").GetString());
-        Assert.Equal(1.5, payload.GetProperty("device").GetProperty("lods")[0].GetProperty("lodPpm").GetDouble());
+        Assert.Equal(1.5, payload.GetProperty("device").GetProperty("lods")[0].GetProperty("lod").GetDouble());
         Assert.Equal(250.0, payload.GetProperty("components")[0].GetProperty("batchMassKg").GetDouble());
     }
 

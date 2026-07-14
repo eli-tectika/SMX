@@ -553,6 +553,30 @@ public class ChatToolsTests
         Assert.Equal(reloaded.Id, call.RecordId);
     }
 
+    /// THE DRIFT GUARD. The description used to hand-list the writable fields, kept in step with
+    /// IntakeAnswers.ComponentFields by nothing but a comment — and the comment lost: `batchMassKg` was added
+    /// to the allowlist and not to the sentence. A model reads "`field` is one of: ..." as EXHAUSTIVE, so it
+    /// would never have offered to record the batch mass; the operator would have said "the batch is 250 kg",
+    /// the agent would have thanked them, and a DOSING MULTIPLIER would have been silently dropped.
+    ///
+    /// The list is now derived from the allowlist itself, and this pins the derivation on the real AIFunction
+    /// — the Description here is the string the model is actually shown.
+    [Fact]
+    public async Task RecordAnswer_Description_NamesEveryFieldTheAllowlistWillAccept()
+    {
+        var tool = Tool(Tools(await StalledIntakeAsync(), Stages.Intake), "record_answer");
+
+        // The allowlist's OWN sentence, verbatim — not a copy of it that happens to agree today. Asserting
+        // only that each field name appears SOMEWHERE in the description would be vacuous for `batchMassKg`:
+        // the hand-written kg-not-litres prose names it too, so the drifted hand-list still passed. What must
+        // hold is that the enumerated list IS the allowlist, so a field added to IntakeAnswers cannot fail to
+        // reach the model. (IntakeAnswersTests pins that AllowedFields itself names every ComponentFields
+        // entry — the other half of the chain.)
+        Assert.Contains(IntakeAnswers.AllowedFields, tool.Description, StringComparison.Ordinal);
+        foreach (var field in IntakeAnswers.ComponentFields)
+            Assert.Contains(field, tool.Description, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task RecordAnswer_UnknownField_IsRefused_AndWritesNothing()
     {

@@ -16,6 +16,11 @@ internal sealed class IntakePayload
     public List<CandidateSubstance> ProvidedCandidates { get; set; } = [];
     public List<string> ClientRestrictedList { get; set; } = [];
     /// Absent until the physicist's XRF run lands (Law 6), so both stay at their empty defaults.
+    ///
+    /// SINGULAR, unlike ConstraintsDoc.MeasuredBackgrounds: this name is not a style choice, it is the
+    /// PAYLOAD'S KEY (`measuredBackground`, the one ProjectEndpoints writes) which STJ binds by name. Rename
+    /// it to match the doc and the binding misses — the physicist's background deserializes to an empty list
+    /// and the ppm floor is computed without it, silently.
     public List<MeasuredBackground> MeasuredBackground { get; set; } = [];
     public XrfDevice? Device { get; set; }
 }
@@ -94,7 +99,7 @@ public static class IntakeAgent
             ElementPools = payload.ElementPools,
             ProvidedCandidates = payload.ProvidedCandidates,
             ClientRestrictedList = payload.ClientRestrictedList,
-            MeasuredBackground = payload.MeasuredBackground,
+            MeasuredBackgrounds = payload.MeasuredBackground,
             Device = payload.Device,
             DerivedScope = result.Output!.DerivedScope,   // the model's, and only the model's
         });

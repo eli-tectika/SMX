@@ -18,7 +18,12 @@ namespace Smx.Domain;
 /// and the error text is the only thing that teaches the model to correct itself.
 public static class IntakeAnswers
 {
-    private static readonly string[] ComponentFields = ["material", "application", "objective", "markets", "batchMassKg"];
+    /// PUBLIC because `record_answer`'s tool DESCRIPTION is derived from it (ChatTools.Tools) rather than
+    /// hand-listed beside it. A field this allowlist accepts but that description omits is a field the model
+    /// never offers to record — it reads "is one of" as exhaustive — so the operator's answer is silently
+    /// lost. That drift has already happened once, to `batchMassKg`, a dosing multiplier.
+    public static readonly IReadOnlyList<string> ComponentFields =
+        ["material", "application", "objective", "markets", "batchMassKg"];
 
     /// The COMPONENT fields whose value is a comma-separated list rather than a scalar. Only consulted on the
     /// component branch below — `clientRestrictedList` is a ROOT field and parses its own list before `parts`
@@ -29,7 +34,8 @@ public static class IntakeAnswers
     /// verbatim; a number cannot. See ParseNumber for why this is a parse and not a copy.
     private static readonly string[] NumberFields = ["batchMassKg"];
 
-    private static string AllowedFields =>
+    /// The writable paths, in the words the model is shown — see ComponentFields for why this is derived.
+    public static string AllowedFields =>
         $"components.{{componentId}}.{{{string.Join("|", ComponentFields)}}}, or clientRestrictedList";
 
     public static (JsonElement? Patched, string? Error) Patch(JsonElement payload, string field, string value)
@@ -45,11 +51,8 @@ public static class IntakeAnswers
                           "must re-enter them at intake.");
         if (field.StartsWith("providedCandidates", StringComparison.OrdinalIgnoreCase))
             return (null, "provided candidates are an input seam and cannot be changed through chat.");
-        // Note what this refusal is and is not. It does not CLOSE a hole: the allowlist below already accepts
-        // only `components.{id}.{field}` and `clientRestrictedList`, so these paths were refused already —
-        // with a generic "not an answerable field". It exists because the generic message teaches the model
-        // nothing, and a model that reads "not answerable" retries with a rephrasing. The boundary here is not
-        // a typo to be worked around: it is measured data. Say so.
+        // The allowlist below already refuses these paths, generically. This exists for the MESSAGE: "not an
+        // answerable field" invites a rephrasing, "the physicist's measured data" does not.
         if (field.StartsWith("measuredBackground", StringComparison.OrdinalIgnoreCase)
          || field.StartsWith("device", StringComparison.OrdinalIgnoreCase))
             return (null, "the measured background and the device LODs are the physicist's measured data — " +
@@ -87,20 +90,25 @@ public static class IntakeAnswers
                 return (null, $"there is no component '{componentId}' in this project. Its components are: " +
                               $"{KnownComponents(components)}.");
 
+            // A blank is refused ONCE, above the value-shape arms, so no arm can forget it. Duplicated into
+            // the arms, the numeric one's copy was untestable: a blank falls into ParseNumber and comes back
+            // as an error anyway, so deleting the check changed nothing but the message the model reads — and
+            // "must be a plain number of KILOGRAMS" is the wrong thing to tell someone who said nothing.
+            if (string.IsNullOrWhiteSpace(value)) return (null, BlankValue(componentField));
+
             if (ListFields.Contains(componentField, StringComparer.Ordinal))
             {
+                // Still its own check: " , " is not whitespace, and it parses to zero entries.
                 if (ParseList(value) is not { Length: > 0 } entries) return (null, BlankValue(componentField));
                 component[componentField] = ToJsonArray(entries);
             }
             else if (NumberFields.Contains(componentField, StringComparer.Ordinal))
             {
-                if (string.IsNullOrWhiteSpace(value)) return (null, BlankValue(componentField));
                 if (ParseNumber(value) is not { } number) return (null, NotANumber(componentField, value));
                 component[componentField] = JsonValue.Create(number);
             }
             else
             {
-                if (string.IsNullOrWhiteSpace(value)) return (null, BlankValue(componentField));
                 component[componentField] = value.Trim();
             }
             return Rebuild(node);
@@ -141,11 +149,25 @@ public static class IntakeAnswers
         double.TryParse(value.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d)
         && double.IsFinite(d) ? d : null;
 
-    private static string NotANumber(string field, string value) =>
-        $"'{field}' must be a plain number of KILOGRAMS (e.g. 250 or 12.5) — '{value.Trim()}' is not one. " +
-        "Do not include units, thousands separators or words. ppm is mg/kg, so the batch is recorded as MASS: " +
-        "if the operator gave you a VOLUME, ask them for the mass (volume × the material's density). Never " +
-        "guess a density, and never treat litres as kilograms.";
+    /// PER FIELD, for the same reason BlankValue is: NumberFields is a general mechanism, and the kilograms
+    /// advice below is true of exactly one field. Told about a ppm target or a unit price it would be a true
+    /// rationale on the wrong field — which teaches a model to correct itself in the wrong direction, and is
+    /// a worse signal than a plain refusal (see Patch_DoesNotAttachTheMarketsRationaleToOtherFields).
+    ///
+    /// `internal` so the generic branch can be pinned: batchMassKg is the only numeric field today, so
+    /// nothing else can reach it through Patch.
+    internal static string NotANumber(string field, string value) => field switch
+    {
+        // The unit is in the NAME, so a value carrying its own is not a number. And ppm is mg/kg, so the batch
+        // is recorded as MASS: a volume read as a mass mis-doses the batch by the material's density.
+        "batchMassKg" =>
+            $"'batchMassKg' must be a plain number of KILOGRAMS (e.g. 250 or 12.5) — '{value.Trim()}' is not " +
+            "one. Do not include units, thousands separators or words. ppm is mg/kg, so the batch is recorded " +
+            "as MASS: if the operator gave you a VOLUME, ask them for the mass (volume × the material's " +
+            "density). Never guess a density, and never treat litres as kilograms.",
+        _ => $"'{field}' must be a plain number (e.g. 250 or 12.5) — '{value.Trim()}' is not one. Do not " +
+             "include units, thousands separators or words; ask the operator for a plain number.",
+    };
 
     private static string KnownComponents(JsonArray? components)
     {

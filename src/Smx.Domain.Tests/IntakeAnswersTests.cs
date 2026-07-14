@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Smx.Domain;
-using Smx.Domain.Records;
 
 namespace Smx.Domain.Tests;
 
@@ -45,19 +44,17 @@ public class IntakeAnswersTests
 
     [Theory]
     [InlineData("measuredBackground.0.level")]
-    [InlineData("device.lods.0.lodPpm")]
+    [InlineData("device.lods.0.lod")]
     [InlineData("device.model")]
     public void Patch_REFUSES_ToTouchTheMeasuredPhysicsInputs(string field)
     {
-        // Same law as the element pools, and for the same reason: these are MEASURED values, and the ppm
-        // detection floor is computed from them. A floor that reads low ships a marker nobody can detect in
-        // the field, and there is no downstream check that catches it. A chat tool that can write them is a
-        // mechanism by which a language model can silently alter measured data.
+        // Same law as the element pools, and for the same reason — IntakeAnswers' own comments carry it.
         //
-        // NOTE the assertions. `Contains("measured")` alone would be VACUOUS: the generic off-allowlist
-        // message ECHOES the field name back ("'measuredBackground.0.level' is not an answerable field"), so
-        // that assertion passes with the refusal deleted. What must hold is that the model is told WHAT these
-        // inputs are and WHY they are closed — sentences only the named refusal produces.
+        // NOTE the assertions, which are this test's own business. `Contains("measured")` alone would be
+        // VACUOUS: the generic off-allowlist message ECHOES the field name back ("'measuredBackground.0.level'
+        // is not an answerable field"), so that assertion passes with the named refusal deleted. What must
+        // hold is that the model is told WHAT these inputs are and WHY they are closed — sentences only the
+        // named refusal produces.
         var (patched, error) = IntakeAnswers.Patch(Payload(), field, "0.001");
         Assert.Null(patched);
         Assert.Contains("measured data", error, StringComparison.OrdinalIgnoreCase);
@@ -66,25 +63,21 @@ public class IntakeAnswersTests
     }
 
     [Fact]
-    public void Patch_AllowsBatchMassKg_BecauseItIsAnOperatorKnownProductFact()
+    public void Patch_AllowsBatchMassKg_AndWritesItAsAJsonNUMBER()
     {
         // Batch mass is not a measurement — it is a production fact the operator knows and may well supply
         // in conversation. It IS answerable. (Its VALIDITY is enforced by OrderAmount, not here.)
+        //
+        // ValueKind.Number is asserted OUT LOUD, and that is the only assertion here that bites. Reading the
+        // value back through the typed record (ComponentSpec.BatchMassKg) does NOT pin the parse: Json.Options
+        // is built from JsonSerializerDefaults.Web, so NumberHandling allows reading a number from a STRING —
+        // store the raw text "250" and the typed record still hands back 250.0. A test that checked only that
+        // would pass with the whole numeric branch of Patch deleted. (It was there; it did.)
         var (patched, error) = IntakeAnswers.Patch(Payload(), "components.bottle.batchMassKg", "250");
         Assert.Null(error);
-        Assert.Equal(250.0, patched!.Value.GetProperty("components")[0].GetProperty("batchMassKg").GetDouble());
-    }
-
-    [Fact]
-    public void Patch_WritesBatchMassKg_AsANumberTheTypedRecordCanRead()
-    {
-        // The seam this field crosses: chat writes into the raw payload, and IntakeAgent.Validate then
-        // deserializes that same payload into typed components (double? BatchMassKg). So the written value
-        // must be READABLE as a number, which is why Patch parses it instead of storing the raw text.
-        var (patched, _) = IntakeAnswers.Patch(Payload(), "components.bottle.batchMassKg", "250");
-        var component = JsonSerializer.Deserialize<List<ComponentSpec>>(
-            patched!.Value.GetProperty("components").GetRawText(), Json.Options)!.Single();
-        Assert.Equal(250.0, component.BatchMassKg);
+        var written = patched!.Value.GetProperty("components")[0].GetProperty("batchMassKg");
+        Assert.Equal(JsonValueKind.Number, written.ValueKind);
+        Assert.Equal(250.0, written.GetDouble());
     }
 
     [Theory]
@@ -95,14 +88,47 @@ public class IntakeAnswersTests
     [InlineData("Infinity")]
     public void Patch_RefusesABatchMassThatIsNotAPlainFiniteNumber(string value)
     {
-        // batchMassKg is the first NUMERIC answerable field, and an unparseable one is not merely useless:
-        // stored as text it deserializes into `double? BatchMassKg` only by luck. "a lot" throws
-        // JsonException from inside IntakeAgent.Validate — which reports it as the AGENT's reply being
-        // malformed, so the agent retries a reply that was fine and intake dies on a payload it cannot fix.
-        // NaN/Infinity are worse: they parse, and then STJ refuses to WRITE them, so Patch itself would throw.
+        // THIS is what the parse is actually for. Non-numeric text is rejected HERE, at the chat turn, with a
+        // message the model can act on — rather than being written verbatim and blowing up later inside
+        // IntakeAgent (which deserializes the payload on every run), where a JsonException is reported as the
+        // AGENT's reply being malformed: the agent retries a reply that was fine, and intake dies on a payload
+        // it has no tool to repair. NaN/Infinity are worse: they PARSE as doubles, and then STJ refuses to
+        // WRITE them (not valid JSON), so Patch itself would throw — and Patch must never throw.
         var (patched, error) = IntakeAnswers.Patch(Payload(), "components.bottle.batchMassKg", value);
         Assert.Null(patched);
         Assert.Contains("kilograms", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TheNotANumberRefusal_DoesNotTellEveryNumericFieldItIsMeasuredInKilograms()
+    {
+        // NumberFields is a GENERAL mechanism; the kilograms/density/litres advice is true of exactly one
+        // field. Plan 4 adds a ppm target, a metal loading and a unit price — told that a ppm target "must be
+        // a plain number of KILOGRAMS", a model corrects itself in the wrong direction. A true rationale
+        // attached to the wrong field is a worse signal than a plain refusal (see the markets test below).
+        //
+        // Driven on the message rather than through Patch because batchMassKg is the only numeric field TODAY,
+        // so nothing else can reach this branch yet — which is exactly why it needs pinning now.
+        Assert.Contains("KILOGRAMS", IntakeAnswers.NotANumber("batchMassKg", "a lot"));
+
+        var other = IntakeAnswers.NotANumber("ppmTarget", "a lot");
+        Assert.Contains("ppmTarget", other);
+        Assert.Contains("plain number", other);
+        Assert.DoesNotContain("kilogram", other, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("density", other, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("litres", other, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AllowedFields_NamesEveryFieldTheAllowlistAccepts_BecauseItIsWhatTheModelIsShown()
+    {
+        // record_answer's tool DESCRIPTION is built from this string (ChatTools), so a field the allowlist
+        // accepts but this sentence omits is a field the model never offers to record — it reads "is one of"
+        // as exhaustive, and the operator's answer is silently lost. That happened to batchMassKg, a dosing
+        // multiplier, when the list was hand-written in two places. Derived here; pinned here.
+        foreach (var field in IntakeAnswers.ComponentFields)
+            Assert.Contains(field, IntakeAnswers.AllowedFields, StringComparison.Ordinal);
+        Assert.Contains("clientRestrictedList", IntakeAnswers.AllowedFields, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -260,10 +286,14 @@ public class IntakeAnswersTests
     [InlineData("clientRestrictedList", "")]
     public void Patch_RefusesToRecordABlankAnswer(string field, string value)
     {
-        // A blank answer fills no gap, so it is refused rather than written.
+        // A blank answer fills no gap, so it is refused rather than written — and it is refused AS A BLANK.
+        // `Assert.NotNull(error)` alone would not pin that on a numeric field: delete the blank check and a
+        // blank mass falls into the number parse, which returns an error too, so the case stays green while
+        // the model is told its silence "must be a plain number of KILOGRAMS". Every blank message says the
+        // field NEEDS a value; no other refusal in this class does.
         var (patched, error) = IntakeAnswers.Patch(Payload(), field, value);
         Assert.Null(patched);
-        Assert.NotNull(error);
+        Assert.Contains("needs", error!);
     }
 
     [Fact]

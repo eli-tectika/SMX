@@ -58,14 +58,16 @@ public sealed class ChatTools(IRecordStore store, string projectId, string stage
                 "`cas` and `componentId` of the verdict to re-run, because a verdict is per substance x component."));
 
         if (stage == Stages.Intake)
-            // The field list must stay in step with IntakeAnswers.ComponentFields — the allowlist that
-            // actually enforces it. A field the allowlist accepts but this sentence omits is a field the
-            // model will never offer to record: it reads "is one of" as exhaustive, and the operator's
-            // answer is silently lost. batchMassKg is exactly that field, and it is a dosing multiplier.
+            // The field list is DERIVED from IntakeAnswers.AllowedFields — the allowlist that actually
+            // enforces it — and not hand-written beside it. A field the allowlist accepts but this sentence
+            // omits is a field the model never offers to record: it reads "is one of" as exhaustive, and the
+            // operator's answer is silently lost. That is not hypothetical — batchMassKg, a dosing multiplier,
+            // was added to the allowlist and missed here, and a comment saying "keep these in step" is what
+            // failed to stop it. Only the PROSE below is hand-written, because none of it can be derived.
             tools.Add(AIFunctionFactory.Create(RecordAnswerAsync, "record_answer",
                 "Fill in a missing project input the operator has just told you, while intake is still gathering them. " +
-                "`field` is one of: components.{componentId}.material, .application, .objective, .markets, .batchMassKg, " +
-                "or clientRestrictedList. batchMassKg is the batch MASS in KILOGRAMS as a plain number (ppm is mg/kg): " +
+                $"`field` is one of: {IntakeAnswers.AllowedFields}. " +
+                "batchMassKg is the batch MASS in KILOGRAMS as a plain number (ppm is mg/kg): " +
                 "if the operator gives you a VOLUME, ask them for the mass — never guess a density. " +
                 "Element pools, the measured background and the device LODs are NOT answerable — they are the " +
                 "physicist's measured data — and neither are provided candidates. " +

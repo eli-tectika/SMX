@@ -37,8 +37,8 @@ public class IntakeAgentTests
           "elementPools": [{ "component": "bottle", "element": "Zr", "line": "Kα", "status": "V", "signalNote": null }],
           "providedCandidates": [],
           "clientRestrictedList": ["Pb"],
-          "measuredBackground": [{ "component": "bottle", "element": "Zr", "levelPpm": 4.0, "unit": "ppm" }],
-          "device": { "model": "Olympus Vanta M", "lods": [{ "element": "Zr", "lodPpm": 1.5, "unit": "ppm" }] } }
+          "measuredBackground": [{ "component": "bottle", "element": "Zr", "level": 4.0, "unit": "ppm" }],
+          "device": { "model": "Olympus Vanta M", "lods": [{ "element": "Zr", "lod": 1.5, "unit": "ppm" }] } }
         """).RootElement;
         return ProjectDoc.Create("p1", "Acme", "MUFE", payload);
     }
@@ -67,11 +67,11 @@ public class IntakeAgentTests
 
         Assert.True(result.Succeeded, result.Error);
         Assert.Equal(250.0, Assert.Single(result.Output!.Components).BatchMassKg);   // NOT the model's 25
-        var background = Assert.Single(result.Output.MeasuredBackground);
-        Assert.Equal(4.0, background.LevelPpm);
+        var background = Assert.Single(result.Output.MeasuredBackgrounds);
+        Assert.Equal(4.0, background.Level);
         Assert.Equal("ppm", background.Unit);
         Assert.Equal("Olympus Vanta M", result.Output.Device!.Model);
-        Assert.Equal(1.5, Assert.Single(result.Output.Device.Lods).LodPpm);
+        Assert.Equal(1.5, Assert.Single(result.Output.Device.Lods).Lod);
     }
 
     [Fact]

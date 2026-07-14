@@ -6,4 +6,13 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- IntakeAnswersTests pins IntakeAnswers.NotANumber's GENERIC branch: batchMassKg is the only numeric
+         answerable field today, so no call to Patch can reach it, and an untested branch is how a mass-only
+         message ends up telling a model that a ppm target is measured in kilograms. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Smx.Domain.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>
