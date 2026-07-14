@@ -23,6 +23,10 @@ public sealed class BraveSearchProvider(HttpClient http, ProxyOptions opts, ILog
         if (freshnessDays is > 0) qs += $"&freshness=pd{freshnessDays}";
         var target = new Uri(url, ApiPath + qs);
 
+        // Defence-in-depth against a FUTURE edit, not a live guard: `target` is built from the hardcoded
+        // ApiHost + a fully-escaped query, so with today's code this can never fire. Invariant 1 is enforced
+        // by the `ApiHost` constant + full query escaping above — not by this check. Kept anyway: if someone
+        // later makes the base URI configurable, this stops a redirected host from egressing silently.
         if (target.Host != ApiHost)
         {
             log.LogError("Provider egress blocked: host {Host} is not the single allowed upstream", target.Host);
