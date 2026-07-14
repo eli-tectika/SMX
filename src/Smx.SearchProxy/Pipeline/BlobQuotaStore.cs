@@ -39,10 +39,10 @@ public sealed class BlobQuotaStore(BlobContainerClient container, ILogger<BlobQu
                 // Another instance won the race; re-read and try again.
             }
         }
-        // Failing OPEN here would silently uncap spend. Fail closed: the caller sees "quota unavailable"
-        // and returns 429, which is the safe direction for both the bill and the egress volume.
+        // Failing OPEN here would silently uncap spend. Fail closed: SearchHttp maps this to a 429
+        // (quota_unavailable), which is the safe direction for both the bill and the egress volume.
         log.LogError("Quota CAS failed for {Month} after 5 attempts", month);
-        throw new InvalidOperationException($"quota store contention for {month}");
+        throw new QuotaUnavailableException($"quota store contention for {month}");
     }
 
     private static string Name(string month) => $"quota/{month}.json";
