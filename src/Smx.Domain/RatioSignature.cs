@@ -59,6 +59,11 @@ public static class RatioSignature
         // codes the READER could not tell apart in deployment. The collision is therefore real, and a future
         // code-uniqueness check should treat it as a conflict to REJECT, never resolve it by refining the
         // rendering (which would mint two "distinct" codes that read identically in the field).
+        //
+        // But "1% apart" is an ASSUMPTION about SMX's readers, not a measurement — and these two decimals
+        // silently DEFINE the resolution limit of a code's identity. CONFIRM THE PRECISION WITH SMX PHYSICS
+        // AT FIRST LIVE USE, exactly as DetectionFloor's 3σ/10σ must be confirmed. If SMX's readers resolve
+        // finer, this format string is the only thing that changes.
         return string.Join(":", parts.Select(m => m.Element)) + " = " +
                string.Join(":", parts.Select(m => (m.Ppm / max).ToString("0.00", CultureInfo.InvariantCulture)));
     }

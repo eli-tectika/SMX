@@ -14,11 +14,21 @@ public class OrderAmountTests
         Assert.Null(error);
         Assert.Equal(2500.0, amount!.ElementMassMg, 3);
         Assert.Equal(2500.0 / 0.787, amount.CompoundMassMg, 3);
-        // The compound mass is strictly MORE than the element mass — the direction the whole function exists
-        // to get right. A `*` where the `/` belongs still passes the two equalities' tolerances for a loading
-        // near 1, and it is exactly the mutation that under-orders.
-        Assert.True(amount.CompoundMassMg > amount.ElementMassMg);
         Assert.Equal(amount.CompoundMassMg / 1000.0, amount.CompoundMassG, 6);
+    }
+
+    [Theory]
+    [InlineData(0.787, 2500.0 / 0.787)]   // an oxide: you must buy MORE compound than element
+    [InlineData(1.0, 2500.0)]             // a pure-metal marker: the legal upper bound of the (0, 1] guard,
+                                          // where compound mass EQUALS element mass. A `>` invariant here
+                                          // would be false on correct code.
+    public void Compute_NeverOrdersLessCompoundThanElement_AtAnyLegalLoading(double loading, double expected)
+    {
+        var (amount, _) = OrderAmount.Compute(10.0, 250.0, loading);
+
+        Assert.Equal(expected, amount!.CompoundMassMg, 3);
+        Assert.True(amount.CompoundMassMg >= amount.ElementMassMg,
+            "under-ordering is the direction nobody checks: it lands the batch below the detection floor");
     }
 
     [Fact]
