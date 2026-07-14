@@ -174,15 +174,15 @@ Add to `src/Smx.Domain.Tests/RecordDocsTests.cs`:
         {
             Id = RecordIds.Constraints("proj-1"), ProjectId = "proj-1",
             Components = [new ComponentSpec("bottle", "HDPE", "packaging", ["EU"], "brand", 250.0)],
-            MeasuredBackground = [new MeasuredBackground("bottle", "Zr", 4.0, "ppm")],
+            MeasuredBackgrounds = [new MeasuredBackground("bottle", "Zr", 4.0, "ppm")],
             Device = new XrfDevice("Olympus Vanta M", [new DeviceLod("Zr", 1.5, "ppm")]),
         };
         var json = JsonSerializer.Serialize(c, Json.Options);
         var back = JsonSerializer.Deserialize<ConstraintsDoc>(json, Json.Options)!;
 
-        Assert.Equal(4.0, Assert.Single(back.MeasuredBackground).LevelPpm);
-        Assert.Equal("ppm", Assert.Single(back.MeasuredBackground).Unit);
-        Assert.Equal(1.5, Assert.Single(back.Device!.Lods).LodPpm);
+        Assert.Equal(4.0, Assert.Single(back.MeasuredBackgrounds).Level);
+        Assert.Equal("ppm", Assert.Single(back.MeasuredBackgrounds).Unit);
+        Assert.Equal(1.5, Assert.Single(back.Device!.Lods).Lod);
         Assert.Equal(250.0, Assert.Single(back.Components).BatchMassKg);
     }
 ```
@@ -204,24 +204,25 @@ public sealed record ComponentSpec(
     string Id, string Material, string Application, IReadOnlyList<string> Markets, string Objective,
     double? BatchMassKg = null);
 
-/// The physicist's MEASURED background for one element in one component, in ppm. Together with the device
-/// LOD this is what the ppm detection floor is computed from (DetectionFloor). It is measured data: like
-/// ElementPool, it is not writable through chat (IntakeAnswers).
+/// The physicist's MEASURED background for one element in one component. Together with the device LOD this
+/// is what the ppm detection floor is computed from (DetectionFloor). It is measured data: like ElementPool,
+/// it is not writable through chat (IntakeAnswers).
 ///
-/// `Unit` is carried, not assumed. DetectionFloor REFUSES to add a background to a LOD whose unit differs —
-/// mixing counts with ppm yields a number that looks perfectly reasonable and is simply wrong.
-public sealed record MeasuredBackground(string Component, string Element, double LevelPpm, string Unit);
+/// `Unit` is carried, not assumed — which is exactly why `Level` is NOT called `LevelPpm`. A field named for
+/// one unit, sitting beside the field that says which unit it is in, is the very confusion this type exists
+/// to prevent: mixing counts with ppm yields a number that looks perfectly reasonable and is simply wrong.
+public sealed record MeasuredBackground(string Component, string Element, double Level, string Unit);
 
 /// The XRF device the marker must be READ BY in deployment, and its per-element limit of detection.
 /// The floor targets THIS device (UX spec §8: deployment-device-targeted floor), not an assumed lab unit.
-public sealed record DeviceLod(string Element, double LodPpm, string Unit);
+public sealed record DeviceLod(string Element, double Lod, string Unit);
 public sealed record XrfDevice(string Model, IReadOnlyList<DeviceLod> Lods);
 ```
 
 and on `ConstraintsDoc`:
 
 ```csharp
-    public List<MeasuredBackground> MeasuredBackground { get; set; } = [];
+    public List<MeasuredBackground> MeasuredBackgrounds { get; set; } = [];
     public XrfDevice? Device { get; set; }
 ```
 
@@ -244,6 +245,166 @@ In `IntakeAnswers.cs`: add `"batchMassKg"` to `ComponentFields`, and refuse `mea
 ```bash
 git add src/Smx.Domain src/Smx.Domain.Tests
 git commit -m "feat(domain): measured background + device LODs + batch MASS — the floor's inputs, unwritable by chat"
+```
+
+---
+
+## Task 1b: The physics inputs must be *written* by something — and the model must not be it
+
+**Added during execution.** Task 1 gave `ConstraintsDoc` the fields; **nothing populates them.** `CreateProjectRequest`
+has no such fields, `ProjectEndpoints` builds the payload from four keys, and `IntakeOutput` never echoes them.
+Without this task `DetectionFloor` can never get its inputs, Dosing parks forever in `awaiting-physics`, and Task 20's
+end-to-end is impossible.
+
+Wiring it exposed a second thing, and it is the more serious one:
+
+> **`ConstraintsDoc` today is built entirely from the *model's* `IntakeOutput`** (`IntakeAgent.RunAsync`), and
+> `Validate` checks only that the component **ids** echo the payload. It never checks the field *values*. So a model
+> that transcribes `batchMassKg: 250` as `25` — or drops it — produces a **10× dosing error**, silently, with a green
+> suite. That was harmless while the payload carried only strings the model reasoned over. It stops being harmless
+> the moment the payload carries a **number that becomes a multiplier**, which is exactly what Task 1 just added.
+
+**So: the factual half of the constraints is copied from the PAYLOAD by code. Only `derivedScope` — the agent's
+actual added value, and the only field it is asked to *think* about — comes from the model.** The agent's own
+instructions already say components, pools, candidates and the restricted list *"must EXACTLY echo the input"*. This
+makes that structurally true instead of hopefully true, and it deletes a whole class of transcription bug rather than
+guarding one field of it.
+
+**Files:**
+- Modify: `src/Smx.Backend/Api/CreateProjectRequest.cs`, `src/Smx.Backend/Api/ProjectEndpoints.cs`,
+  `src/Smx.Orchestrator/Agents/IntakeAgent.cs`
+- Test: `src/Smx.Backend.Tests/ProjectEndpointsTests.cs`, `src/Smx.Orchestrator.Tests/IntakeAgentTests.cs`
+
+- [ ] **Step 1: Write the failing tests**
+
+In `src/Smx.Orchestrator.Tests/IntakeAgentTests.cs` — **the load-bearing one**:
+
+```csharp
+    [Fact]
+    public async Task Run_TakesTheMeasuredPhysicsInputs_FromThePayload_NeverFromTheModel()
+    {
+        // The model is handed the payload and could echo it back altered — or not at all. It must not matter.
+        // A measured background is the physicist's data and a batch mass is a DOSING MULTIPLIER: a model that
+        // re-types 250 as 25 mis-doses the batch by 10×, and Validate only checks that component IDS echo.
+        // So code copies these from the payload. The agent's job is derivedScope; it is not a transcriptionist.
+        var project = ProjectWithPhysics();          // bottle, batchMassKg 250, Zr bg 4.0 ppm, Vanta LOD 1.5
+        var agent = new ScriptedAgent(/* echoes components with batchMassKg = 25 (a typo), and no device */);
+
+        var result = await IntakeAgent.RunAsync(agent, project, default);
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal(250.0, Assert.Single(result.Output!.Components).BatchMassKg);   // NOT 25
+        Assert.Equal(4.0, Assert.Single(result.Output.MeasuredBackgrounds).Level);
+        Assert.Equal("Olympus Vanta M", result.Output.Device!.Model);
+    }
+
+    [Fact]
+    public async Task Run_StillTakesDerivedScope_FromTheModel_BecauseThatIsItsActualJob()
+    {
+        // The other half of the law. Code owns the facts; the agent owns the judgment.
+        var result = await IntakeAgent.RunAsync(new ScriptedAgent(/* one derivedScope entry, cited */),
+            ProjectWithPhysics(), default);
+        Assert.Single(result.Output!.DerivedScope);
+    }
+```
+
+In `src/Smx.Backend.Tests/ProjectEndpointsTests.cs`:
+
+```csharp
+    [Fact]
+    public async Task PostProject_CarriesTheMeasuredBackgroundAndTheDevice_IntoThePayload()
+    {
+        // Without this the floor has no inputs and Dosing parks forever.
+        var res = await _client.PostAsJsonAsync("/projects", new
+        {
+            client = "c", product = "p",
+            components = new[] { new { id = "bottle", material = "HDPE", application = "packaging",
+                markets = new[] { "EU" }, objective = "brand", batchMassKg = 250.0 } },
+            elementPools = new[] { new { component = "bottle", element = "Zr", line = "Ka", status = "V" } },
+            measuredBackground = new[] { new { component = "bottle", element = "Zr", levelPpm = 4.0, unit = "ppm" } },
+            device = new { model = "Olympus Vanta M", lods = new[] { new { element = "Zr", lodPpm = 1.5, unit = "ppm" } } },
+        });
+        Assert.Equal(HttpStatusCode.Accepted, res.StatusCode);
+
+        var payload = (await _store.GetProjectAsync(await ProjectIdOf(res)))!.Payload;
+        Assert.Equal(4.0, payload.GetProperty("measuredBackground")[0].GetProperty("levelPpm").GetDouble());
+        Assert.Equal("Olympus Vanta M", payload.GetProperty("device").GetProperty("model").GetString());
+    }
+
+    [Fact]
+    public async Task PostProject_RefusesAMeasuredBackgroundForAnUndeclaredComponent()
+    {
+        // The same law the element pools already obey: a measurement that names no component is a measurement
+        // of nothing, and it would sit in the payload looking like data.
+        var res = await _client.PostAsJsonAsync("/projects", RequestWith(
+            measuredBackground: new[] { new { component = "ghost", element = "Zr", levelPpm = 4.0, unit = "ppm" } }));
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostProject_IsStillAcceptedWithNoPhysicsAtAll_BecauseItArrivesLater()
+    {
+        // Law 6 — the physicist's XRF run happens OFFLINE and lands days later. Intake must not demand it up
+        // front; Dosing PARKS on its absence, which is the whole point of the awaiting-physics state.
+        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsJsonAsync("/projects", RequestWith())).StatusCode);
+    }
+```
+
+- [ ] **Step 2: Run to verify they fail.**
+
+- [ ] **Step 3: Implement.**
+
+`CreateProjectRequest` gains two **optional** members (physics arrives later — see the Law-6 test):
+
+```csharp
+    List<MeasuredBackground>? MeasuredBackground,
+    XrfDevice? Device,
+```
+
+and `Validate()` gains, mirroring the element-pool check it sits next to:
+
+```csharp
+        if (MeasuredBackground is { Count: > 0 } && MeasuredBackground.Any(b => !componentIds.Contains(b.Component)))
+            return "every measured background must reference a declared component";
+```
+
+`ProjectEndpoints` adds both keys to the payload object.
+
+`IntakeAgent.RunAsync` — **the change that matters.** Deserialize the payload once, and build the `ConstraintsDoc`'s
+factual fields from *it*, not from `o`:
+
+```csharp
+        // The agent's added value is derivedScope, and that is ALL we take from it. Everything else is the
+        // operator's and the physicist's data, and it is copied from the payload by code — because a model that
+        // re-types a batch mass or a measured background is a silent 10× dosing error that Validate (which checks
+        // only that component IDS echo) will not catch. Its instructions already say "EXACTLY echo the input";
+        // this makes that structurally true rather than hopefully true.
+        var payload = JsonSerializer.Deserialize<IntakePayload>(project.Payload.GetRawText(), Json.Options)!;
+        return AgentRunResult<ConstraintsDoc>.Ok(new ConstraintsDoc
+        {
+            Id = RecordIds.Constraints(project.ProjectId), ProjectId = project.ProjectId,
+            Components = payload.Components, ElementPools = payload.ElementPools,
+            ProvidedCandidates = payload.ProvidedCandidates, ClientRestrictedList = payload.ClientRestrictedList,
+            MeasuredBackgrounds = payload.MeasuredBackgrounds, Device = payload.Device,
+            DerivedScope = o.DerivedScope,          // the model's, and only the model's
+        });
+```
+
+Introduce `IntakePayload` as the payload's own DTO (it is **not** the agent's output shape — conflating the two is
+how the model's copy got authority in the first place). `IntakeOutput` keeps its echo fields, because `Validate`'s
+echo checks stay: a model that cannot echo its input is confused, and that is worth catching even though the echo is
+no longer trusted for data.
+
+- [ ] **Step 4: Run the full suite.** Existing intake tests that assert the constraints carry what the *agent*
+      returned will go red — that is this task working. Fix them to assert the payload's values.
+
+- [ ] **Step 5: Mutation-test.** Point `Components` back at `o.Components` → `Run_TakesTheMeasuredPhysicsInputs_FromThePayload_NeverFromTheModel` must go red. Restore.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/Smx.Backend src/Smx.Orchestrator src/Smx.Backend.Tests src/Smx.Orchestrator.Tests
+git commit -m "fix(intake): the facts come from the payload, the judgment comes from the agent"
 ```
 
 ---
@@ -395,15 +556,15 @@ public static class DetectionFloor
         if (!string.Equals(lod.Unit, Ppm, StringComparison.OrdinalIgnoreCase))
             return (null, $"the LOD for {element} is in '{lod.Unit}', not '{Ppm}'.");
 
-        if (bg.LevelPpm < 0) return (null, $"the measured background for {element} is negative ({bg.LevelPpm}).");
-        if (lod.LodPpm <= 0) return (null, $"the LOD for {element} must be positive; it is {lod.LodPpm}. A " +
-                                          $"non-positive LOD would put the floor at or below the background " +
-                                          $"the marker has to be seen against.");
+        if (bg.Level < 0) return (null, $"the measured background for {element} is negative ({bg.Level}).");
+        if (lod.Lod <= 0) return (null, $"the LOD for {element} must be positive; it is {lod.Lod}. A " +
+                                        $"non-positive LOD would put the floor at or below the background " +
+                                        $"the marker has to be seen against.");
 
         return (new Floor(
-            bg.LevelPpm + DetectionSigma * lod.LodPpm,
-            bg.LevelPpm + QuantificationSigma * lod.LodPpm,
-            $"{device.Model}: LOD {lod.LodPpm} ppm ({element}) over a measured background of {bg.LevelPpm} ppm " +
+            bg.Level + DetectionSigma * lod.Lod,
+            bg.Level + QuantificationSigma * lod.Lod,
+            $"{device.Model}: LOD {lod.Lod} ppm ({element}) over a measured background of {bg.Level} ppm " +
             $"in '{componentId}'; detection = bg + {DetectionSigma}σ, quantification = bg + {QuantificationSigma}σ (IUPAC)"),
             null);
     }
@@ -1527,6 +1688,7 @@ It serializes the compliant set + the **already-computed floors** into the promp
 - a code CAS not in `CompliantSet` → *"'{cas}' is not in the compliant set"*
 - a code CAS whose verdict's `ComponentId` differs from the code's `ComponentId`
 - a code CAS with no window
+- **two markers of the SAME ELEMENT in one code** (e.g. an yttrium oxide + an yttrium carbonate) → *"a code cannot carry two markers of the same element"*. **XRF sees the element, not the compound**: the reader measures one combined Y peak and cannot decompose it back into the two ppms, so the ratio — the code's entire identity — is unrecoverable. Such a code passes every other check and `RatioSignature` renders it happily as `"Y:Y = 1.00:0.50"`. It is unidentifiable **by construction** while looking perfectly valid. (Found while implementing Task 3.)
 
 `Instructions` must say plainly:
 
@@ -1668,7 +1830,7 @@ git commit -m "feat(agents): DosingAgent — it picks the ppm; the code owns the
         foreach (var v in compliant)
         {
             var (floor, error) = DetectionFloor.Compute(
-                constraints.MeasuredBackground, constraints.Device, v.ComponentId, v.Element);
+                constraints.MeasuredBackgrounds, constraints.Device, v.ComponentId, v.Element);
             if (floor is null) physicsGaps.Add(error!);
             else floors[(v.ComponentId, v.Element)] = floor;
         }
