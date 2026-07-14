@@ -16,6 +16,12 @@ public static class RecordDocRouter
             RecordTypes.Matrix => element.Deserialize<MatrixDoc>(Json.Options),
             RecordTypes.Gate => element.Deserialize<GateDoc>(Json.Options),
             RecordTypes.Revision => element.Deserialize<RevisionDoc>(Json.Options),
+            RecordTypes.ChatMessage => element.Deserialize<ChatMessageDoc>(Json.Options),
+            // Terminal: a reply is an OUTPUT, not a trigger. Routing it to a doc type would have the
+            // dispatcher re-enter on its own output — an agent in an infinite conversation with itself,
+            // billed per turn. (ChangeFeedWorker skips a null.) The arm is spelled out rather than left to
+            // `_` so the decision is visible to whoever adds the next chat doc type.
+            RecordTypes.ChatReply => null,
             _ => null,
         } : null;
 }

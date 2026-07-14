@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Smx.Domain;
+using Smx.Domain.Records;
 using Smx.Domain.Tools;
 
 namespace Smx.Orchestrator.Agents;
@@ -47,6 +48,27 @@ public sealed class ToolBox(
         AIFunctionFactory.Create(SearchLearnedConclusionsAsync, "search_learned_conclusions",
             "Search accumulated Learned Conclusions (prior material/regulatory findings with confidence + provenance) relevant to this intake. Treat them as prior evidence, not fact; a higher-confidence, more recent conclusion supersedes an older one."),
     ];
+
+    /// The READ tools a CHAT turn gets for a stage (ChatAgent, design §5) — deliberately the same retrieval
+    /// surface the stage's own agent reasoned with, so chat can answer for what the stage produced FROM ITS
+    /// SOURCES rather than from the model's memory. A switch over the existing sets, never a new set: chat
+    /// must not be able to retrieve what the stage itself could not, nor to miss what it could.
+    ///
+    /// Note what no branch can return: nothing here writes, approves or signs. The mutating half of a chat
+    /// turn comes from ChatTools, which is bound to one project and offers no gate tool at all — so chat
+    /// cannot sign a gate because the capability does not exist, not because it was told not to (Law 9).
+    ///
+    /// Matrix — and any stage we do not recognise — gets NOTHING, which is fail-closed. Matrix derives its
+    /// output from the record it is handed, so there is no corpus to search; an unknown stage is a bug
+    /// upstream, and the safe response to a bug is no capability. A tool-less chat agent can still answer
+    /// from the stage inputs in its prompt, or say it has no source — which is the answer we want anyway.
+    public IList<AITool> ReadToolsFor(string stage) => stage switch
+    {
+        Stages.Intake => IntakeTools(),
+        Stages.Discovery => DiscoveryTools(),
+        Stages.Regulatory => RegulatoryTools(),
+        _ => [],
+    };
 
     public async Task<string> SearchCatalogAsync(string element, CancellationToken ct)
     {

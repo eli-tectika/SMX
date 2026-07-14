@@ -45,6 +45,7 @@ if (app.Configuration["PATH_BASE"] is { Length: > 0 } pathBase)
     app.UsePathBase(pathBase);
 app.MapProjectEndpoints();
 app.MapRevisionEndpoints();
+app.MapChatEndpoints();
 app.MapKnowledgeEndpoints();
 app.Run();
 

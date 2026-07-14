@@ -9,6 +9,8 @@ public static class RecordTypes
     public const string Matrix = "matrix";
     public const string Gate = "gate";
     public const string Revision = "revision";
+    public const string ChatMessage = "chat-message";
+    public const string ChatReply = "chat-reply";
 }
 
 public static class Stages
@@ -17,6 +19,12 @@ public static class Stages
     public const string Discovery = "discovery";
     public const string Regulatory = "regulatory";
     public const string Matrix = "matrix";
+
+    /// Every stage there is — and therefore every stage the operator can TALK to (ChatEndpoints validates
+    /// against it). Hand-maintained beside the constants, so ChatEndpointsTests reflects over the class and
+    /// fails if the two ever part company: a stage added above but not here is silently un-chattable, and
+    /// nobody finds out until an operator gets a 422 for a stage the product says exists.
+    public static readonly string[] All = [Intake, Discovery, Regulatory, Matrix];
 }
 
 public static class RecordIds
@@ -32,4 +40,16 @@ public static class RecordIds
     /// RevisionDoc.Status, not from the id.
     public static string Revision(string projectId, string stage, string key) =>
         $"{projectId}|revision|{stage}|{key}";
+
+    /// `key` is a per-message unique suffix, not a hash of the text: two identical questions asked at
+    /// different times are two distinct turns and both belong in the transcript. A colliding key silently
+    /// overwrites an earlier turn on upsert — and its reply with it.
+    public static string ChatMessage(string projectId, string stage, string key) =>
+        $"{projectId}|chat-message|{stage}|{key}";
+
+    /// Derived from the MESSAGE's key, deliberately: the reply is a function of the message, so an
+    /// at-least-once change feed re-delivering the message upserts one reply instead of appending a
+    /// second one to the transcript.
+    public static string ChatReply(string projectId, string stage, string key) =>
+        $"{projectId}|chat-reply|{stage}|{key}";
 }
