@@ -62,28 +62,28 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
     /// that is the whole reason the thread is persisted at all.
     public async Task<IReadOnlyList<ChatTurn>> GetChatThreadAsync(string projectId, string stage, CancellationToken ct = default)
     {
-        var turns = new List<ChatTurn>();
-
-        var messages = container.GetItemLinqQueryable<ChatMessageDoc>(
+        var messages = new List<ChatMessageDoc>();
+        var messageQuery = container.GetItemLinqQueryable<ChatMessageDoc>(
                 requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(projectId) })
             .Where(d => d.Type == RecordTypes.ChatMessage && d.Stage == stage)
             .ToFeedIterator();
-        while (messages.HasMoreResults)
-            foreach (var m in await messages.ReadNextAsync(ct))
-                turns.Add(new ChatTurn(m.Id, ChatRoles.Operator, m.Text, m.CreatedAt, []));
+        while (messageQuery.HasMoreResults)
+            messages.AddRange(await messageQuery.ReadNextAsync(ct));
 
-        var replies = container.GetItemLinqQueryable<ChatReplyDoc>(
+        var replies = new List<ChatReplyDoc>();
+        var replyQuery = container.GetItemLinqQueryable<ChatReplyDoc>(
                 requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(projectId) })
             .Where(d => d.Type == RecordTypes.ChatReply && d.Stage == stage)
             .ToFeedIterator();
-        while (replies.HasMoreResults)
-            foreach (var r in await replies.ReadNextAsync(ct))
-                turns.Add(new ChatTurn(r.Id, ChatRoles.Agent, r.Text, r.CreatedAt, r.ToolCalls));
+        while (replyQuery.HasMoreResults)
+            replies.AddRange(await replyQuery.ReadNextAsync(ct));
 
-        // Sorted here rather than server-side (an ORDER BY per query would buy nothing — the two result sets
-        // have to be merged in memory anyway), and through the SHARED comparer the fake also calls, so the
-        // twins cannot drift on the ordering.
-        return ChatTurns.InOrder(turns);
+        // The DOCS go to InOrder, not turns built here: it merges, maps and orders in one place, and it needs
+        // both sides at once — a reply is positioned by the message it answers (ChatReplyDoc.MessageId), not by
+        // its own clock. Sorting here rather than server-side buys nothing to give up: an ORDER BY per query
+        // would still leave the two result sets to be merged in memory. Going through the SHARED function the
+        // fake also calls is what stops the twins drifting on the one thing the transcript's meaning rests on.
+        return ChatTurns.InOrder(messages, replies);
     }
 
     public Task UpsertProjectAsync(ProjectDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);

@@ -262,23 +262,109 @@ public class ChatStoreTests
         Assert.Single(only.ToolCalls);   // the un-upserted second call was never persisted
     }
 
-    /// Both stores sort through ChatTurns.InOrder, so the ordering contract is tested once, here, against an
-    /// input the stores themselves cannot produce: an agent turn ARRIVING FIRST with a timestamp equal to the
-    /// operator turn it answers (same clock tick, or a writer that rounds to the second).
+    /// Both stores sort through ChatTurns.InOrder, so the ordering contract is tested once, here.
     ///
-    /// That input is the whole point. Asserting this through the fake would be theatre — the fake enumerates
-    /// messages before replies, so a stable sort puts the operator first even with the tiebreak deleted, and
-    /// the test could not fail. Handing InOrder the reply first is what makes the tiebreak load-bearing. An
-    /// answer printed above its own question is a transcript that lies about who said what first.
+    /// The ROLE tiebreak, made load-bearing. A reply now shares its message's anchor EXACTLY (that is what
+    /// anchoring means), so something has to break the tie, and it must be the role — an answer printed above
+    /// its own question is a transcript that lies about who said what first. Asserting that with the real ids
+    /// would be theatre: "chat-message" < "chat-reply" ordinally, so the id tiebreak below would put the
+    /// operator first even with the role tiebreak deleted, and the test could not fail. So this hands InOrder a
+    /// reply whose id sorts BEFORE its message's — which is one rename of RecordTypes away from being the real
+    /// ids ("agent-reply" < "chat-message"), and would then silently inverse every answered turn in the system.
     [Fact]
     public void ChatTurns_InOrder_OnAnEqualTimestamp_PutsTheOperatorTurnBeforeTheAgentsReply()
     {
-        var ordered = ChatTurns.InOrder([
-            new ChatTurn("r1", ChatRoles.Agent,    "reply",  "2026-07-13T01:00:00Z", []),
-            new ChatTurn("m1", ChatRoles.Operator, "msg",    "2026-07-13T01:00:00Z", []),
-            new ChatTurn("m2", ChatRoles.Operator, "later",  "2026-07-13T02:00:00Z", []),
-        ]);
+        var m1 = Msg("proj-1", Stages.Discovery, "a", "2026-07-13T01:00:00Z");
+        var m2 = Msg("proj-1", Stages.Discovery, "b", "2026-07-13T02:00:00Z");
+        var r1 = Reply("proj-1", Stages.Discovery, "a", "2026-07-13T01:00:00Z");
+        r1.Id = "AAA-sorts-before-its-own-message";   // the adversarial id; MessageId still anchors it to m1
 
-        Assert.Equal(["msg", "reply", "later"], ordered.Select(t => t.Text));
+        var ordered = ChatTurns.InOrder([m1, m2], [r1]);
+
+        Assert.Equal(["msg a", "reply a", "msg b"], ordered.Select(t => t.Text));
+    }
+
+    /// The ID tiebreak, made load-bearing — and with it the reason InOrder exists at all: BOTH STORES MUST
+    /// RENDER THE SAME THREAD. Two messages CAN share a timestamp (one clock tick, or a writer that rounds to
+    /// the second), and with no final tiebreak the winner is enumeration order — a Cosmos page order in one
+    /// store and a dictionary order in the other. The transcript would then depend on which store read it,
+    /// which is precisely the drift a single shared sort function is supposed to make impossible.
+    [Fact]
+    public void ChatTurns_InOrder_OnTwoMessagesInOneTick_IsIndependentOfEnumerationOrder()
+    {
+        var a = Msg("proj-1", Stages.Discovery, "a", "2026-07-13T01:00:00Z");
+        var b = Msg("proj-1", Stages.Discovery, "b", "2026-07-13T01:00:00Z");
+
+        Assert.Equal(
+            ChatTurns.InOrder([a, b], []).Select(t => t.Id),
+            ChatTurns.InOrder([b, a], []).Select(t => t.Id));
+    }
+
+    /// THE ORDERING BUG THIS SIGNATURE EXISTS TO PREVENT. The operator can post at any time, and the reply is
+    /// stamped when the TURN ENDS — after a 10-60s tool loop. So this interleaving is ordinary, not exotic:
+    ///
+    ///   M1 10:00:00  "why is Ba tier A?"
+    ///   M2 10:00:20  the operator, still waiting, adds "also check Hf"
+    ///   R1 10:00:30  the answer to M1 finally lands
+    ///
+    /// Sorted on its OWN CreatedAt, R1 falls below M2 and the answer to the Ba question is positioned as the
+    /// answer to the Hf question — in the UI, and forever after in ChatThread.Render, which is the agent's
+    /// entire memory of the conversation. A reply is anchored to the message it answers instead.
+    [Fact]
+    public void ChatTurns_InOrder_AnchorsAReplyToItsMessage_NotToItsOwnWallClock()
+    {
+        var m1 = Msg("proj-1", Stages.Discovery, "a", "2026-07-13T10:00:00.0000000+00:00");
+        var m2 = Msg("proj-1", Stages.Discovery, "b", "2026-07-13T10:00:20.0000000+00:00");
+        var r1 = Reply("proj-1", Stages.Discovery, "a", "2026-07-13T10:00:30.0000000+00:00");
+
+        var ordered = ChatTurns.InOrder([m1, m2], [r1]);
+
+        Assert.Equal(["msg a", "reply a", "msg b"], ordered.Select(t => t.Text));
+        // And CreatedAt still tells the truth about when the reply was WRITTEN — the audit trail needs that.
+        // It is the ORDER that is anchored, not the timestamp.
+        Assert.Equal("2026-07-13T10:00:30.0000000+00:00", ordered[1].CreatedAt);
+    }
+
+    /// A reply whose message is gone (or that arrived before it — the two queries are not one snapshot) must
+    /// still render, deterministically: falling back to its own CreatedAt keeps it in the transcript, where a
+    /// throw would take down the whole thread and a drop would silently delete something the agent said.
+    [Fact]
+    public void ChatTurns_InOrder_OnAnOrphanReply_FallsBackToItsOwnClock_AndDoesNotVanish()
+    {
+        var m2 = Msg("proj-1", Stages.Discovery, "b", "2026-07-13T02:00:00Z");
+        var orphan = Reply("proj-1", Stages.Discovery, "gone", "2026-07-13T01:00:00Z");
+
+        var ordered = ChatTurns.InOrder([m2], [orphan]);
+
+        Assert.Equal(["reply gone", "msg b"], ordered.Select(t => t.Text));
+    }
+
+    /// Finding 2's other half at the store seam: a turn that FAILED must be distinguishable from one still in
+    /// flight. Without the status on the thread the operator sees no reply and re-sends — which mints a new
+    /// message id, hence a new chat key, hence a revision id that no longer converges on the first one: two
+    /// RevisionDocs and two Learned Conclusions out of one operator instruction.
+    [Fact]
+    public async Task GetChatThread_CarriesTheMessagesStatusAndError()
+    {
+        var store = new InMemoryRecordStore();
+        var failed = Msg("proj-1", Stages.Discovery, "a", "2026-07-13T01:00:00Z");
+        failed.Status = ChatStatus.Failed;
+        failed.Error = "the agent could not complete this turn: 429 Too Many Requests";
+        await store.UpsertChatMessageAsync(failed);
+        await store.UpsertChatMessageAsync(Msg("proj-1", Stages.Discovery, "b", "2026-07-13T02:00:00Z"));
+        await store.UpsertChatReplyAsync(Reply("proj-1", Stages.Discovery, "b", "2026-07-13T02:00:05Z"));
+
+        var thread = await store.GetChatThreadAsync("proj-1", Stages.Discovery);
+
+        Assert.Equal(ChatStatus.Failed, thread[0].Status);
+        Assert.Contains("429", thread[0].Error);
+        // Still pending — its reply has not landed. THIS is what "failed" has to be distinguishable from.
+        Assert.Equal(ChatStatus.Pending, thread[1].Status);
+        Assert.Null(thread[1].Error);
+        // The agent's own turn: a ChatReplyDoc is only ever written by a turn that COMPLETED (the dispatcher
+        // writes no reply on the failure path), so the reply's existence IS the completion. It carries
+        // `answered` and never an error — a failed turn's error lives on the message, the only doc it wrote.
+        Assert.Equal(ChatStatus.Answered, thread[2].Status);
+        Assert.Null(thread[2].Error);
     }
 }

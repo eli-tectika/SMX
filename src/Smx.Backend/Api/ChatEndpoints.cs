@@ -54,11 +54,11 @@ public static class ChatEndpoints
                 // (OnChatMessageAsync returns early on any other status). A message written in any other
                 // status is a message that is never answered.
                 Status = ChatStatus.Pending,
-                // ALWAYS "O". The thread is ordered by a LEXICOGRAPHIC sort on this field (a server-side Cosmos
-                // ORDER BY on a string), which is only chronological while every writer uses the same
-                // fixed-width format — see ChatMessageDoc.CreatedAt. This endpoint and the orchestrator's reply
-                // writer are the two writers of that thread; they must agree, or the transcript lies about who
-                // said what first.
+                // ALWAYS "O". This is the thread's SORT KEY — for this message and for the reply anchored to it
+                // (ChatTurns.InOrder) — and it is compared LEXICOGRAPHICALLY, which is only chronological while
+                // every writer uses the same fixed-width format (see ChatMessageDoc.CreatedAt). This endpoint
+                // and the orchestrator's reply writer are the two writers of that thread; they must agree, or
+                // the transcript lies about who said what first.
                 CreatedAt = DateTimeOffset.UtcNow.ToString("O"),
             }, ct);
 

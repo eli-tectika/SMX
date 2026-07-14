@@ -133,10 +133,69 @@ public class ChatEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
         // Oldest-first, and the answer never above its own question.
         Assert.Equal(
             [ChatRoles.Operator, ChatRoles.Agent, ChatRoles.Operator],
-            thread.EnumerateArray().Select(t => t.GetProperty("role").GetString()).ToArray());
+            thread.EnumerateArray().Select(t => t.GetProperty("role").GetString()!).ToArray());
         Assert.Equal("why did you drop the Zr neodecanoate?", thread[0].GetProperty("text").GetString());
         Assert.Equal("the supplier discontinued that grade", thread[1].GetProperty("text").GetString());
         Assert.Equal("and the Hf one?", thread[2].GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task GetChat_KeepsTheReplyUnderItsOwnQuestion_WhenTheOperatorPostsAgainWhileWaiting()
+    {
+        // The interleaving is ordinary, not exotic: the operator can post at any time, and the reply is
+        // stamped when the TURN ENDS — after a tool loop that takes tens of seconds.
+        //
+        //   M1  "why did you drop the Zr neodecanoate?"
+        //   M2  the operator, still waiting, adds "and the Hf one?"
+        //   R1  the answer to M1 finally lands — with the LATEST timestamp of the three
+        //
+        // Sorted on its own CreatedAt the reply falls to the BOTTOM, and the answer about Zr is positioned as
+        // the answer about Hf. That is what the operator reads, and what ChatThread.Render hands the agent as
+        // its entire memory of the conversation on every later turn.
+        await SeedProject("p1");
+        await PostChat("p1", Stages.Discovery, "why did you drop the Zr neodecanoate?");
+        var m1 = Messages("p1").Single().Id;
+        await PostChat("p1", Stages.Discovery, "and the Hf one?");
+
+        // The reply to M1, written last — the way the dispatcher writes it (CreatedAt = now, at turn end).
+        await _store.UpsertChatReplyAsync(new ChatReplyDoc
+        {
+            Id = RecordIds.ChatReply("p1", Stages.Discovery, m1.Split('|')[^1]),
+            ProjectId = "p1", Stage = Stages.Discovery, MessageId = m1,
+            Text = "the supplier discontinued that grade",
+            CreatedAt = DateTimeOffset.UtcNow.ToString("O"),
+        });
+
+        var thread = await GetChat("p1", Stages.Discovery);
+        Assert.Equal(
+            ["why did you drop the Zr neodecanoate?", "the supplier discontinued that grade", "and the Hf one?"],
+            thread.EnumerateArray().Select(t => t.GetProperty("text").GetString()!).ToArray());
+    }
+
+    [Fact]
+    public async Task GetChat_ShowsAFailedTurnAsFailed_WithItsError()
+    {
+        // A failed turn that looks identical to one still running is what pushes the operator into re-sending,
+        // and a re-send mints a NEW message id → a new chat key → a revision id that no longer converges on the
+        // first one. Two RevisionDocs, two stage re-runs, two Learned Conclusions out of one instruction —
+        // exactly what the content-addressed revision id was built to prevent. So the status has to be visible.
+        await SeedProject("p1");
+        await PostChat("p1", Stages.Discovery, "why did you drop the Zr neodecanoate?");
+        await PostChat("p1", Stages.Discovery, "and the Hf one?");
+
+        // The dispatcher's failure path: no reply is written, the message is marked failed and carries why.
+        var failed = Messages("p1").First(m => m.Text.StartsWith("why"));
+        failed.Status = ChatStatus.Failed;
+        failed.Error = "the agent could not complete this turn: 429 Too Many Requests";
+        await _store.UpsertChatMessageAsync(failed);
+
+        var thread = await GetChat("p1", Stages.Discovery);
+        Assert.Equal(ChatStatus.Failed, thread[0].GetProperty("status").GetString());
+        Assert.Contains("429", thread[0].GetProperty("error").GetString());
+        // The second turn is still in flight — THAT is what "failed" has to be distinguishable from. Its error
+        // is absent rather than null (Json.Options omits nulls), which is the same "no error" on the wire.
+        Assert.Equal(ChatStatus.Pending, thread[1].GetProperty("status").GetString());
+        Assert.False(thread[1].TryGetProperty("error", out _));
     }
 
     [Fact]
