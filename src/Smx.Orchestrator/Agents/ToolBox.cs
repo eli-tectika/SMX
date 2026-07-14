@@ -12,19 +12,35 @@ public sealed class ToolBox(
     ISdsSearch sds,
     IReferenceSearch reference,
     IKnowledgeStore knowledge,
-    ILearnedConclusionsSearch learnedConclusions)
+    ILearnedConclusionsSearch learnedConclusions,
+    Func<SensitiveTerms, IWebSearch> webSearchFactory)
 {
-    public IList<AITool> DiscoveryTools() =>
-    [
-        AIFunctionFactory.Create(SearchCatalogAsync, "search_catalog",
-            "List the catalog products (form, molecule, CAS, purity, supplier) available for an element from the SMX catalog. Use this to specify candidate forms and their CAS numbers; only propose candidates whose CAS you retrieved here."),
-        AIFunctionFactory.Create(LookupCompatibilityAsync, "lookup_compatibility",
-            "Exact tabulated element×substrate compatibility verdict. Use as a tiering signal — an incompatible substrate lowers a candidate's tier or excludes it."),
-        AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
-            "Search SMX reference prose: solubility, XRF cleanliness, marker forms, bibliography-backed notes. Use to justify form ranking and tiering."),
-        AIFunctionFactory.Create(SearchLearnedConclusionsAsync, "search_learned_conclusions",
-            "Search accumulated Learned Conclusions (prior material/regulatory findings with confidence + provenance) relevant to tiering this element/form. Treat them as prior evidence, not fact; a higher-confidence, more recent conclusion supersedes an older one."),
-    ];
+    /// SensitiveTerms is a REQUIRED parameter, not an optional one: a Discovery tool set built without the
+    /// project's client/product names is a tool set that cannot protect the project. Forgetting it is now a
+    /// compile error — the same reasoning the codebase applies to RevisionDoc? in the agent runners.
+    public IList<AITool> DiscoveryTools(SensitiveTerms terms)
+    {
+        var web = webSearchFactory(terms);
+        return
+        [
+            AIFunctionFactory.Create(SearchCatalogAsync, "search_catalog",
+                "List the catalog products (form, molecule, CAS, purity, supplier) available for an element from the SMX catalog. Call this FIRST — it is the authoritative source for a candidate's CAS."),
+            AIFunctionFactory.Create(LookupCompatibilityAsync, "lookup_compatibility",
+                "Exact tabulated element×substrate compatibility verdict. Use as a tiering signal — an incompatible substrate lowers a candidate's tier or excludes it."),
+            AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
+                "Search SMX reference prose: solubility, XRF cleanliness, marker forms, bibliography-backed notes. Use to justify form ranking and tiering."),
+            AIFunctionFactory.Create(SearchLearnedConclusionsAsync, "search_learned_conclusions",
+                "Search accumulated Learned Conclusions (prior material/regulatory findings with confidence + provenance) relevant to tiering this element/form. Treat them as prior evidence, not fact; a higher-confidence, more recent conclusion supersedes an older one."),
+            AIFunctionFactory.Create(
+                (string query, string intent, CancellationToken ct) => SearchWebAsync(query, intent, ct, web),
+                "search_web",
+                "Anonymized external web search, for candidate forms the SMX catalog does not carry. It is a STARTING POINT, not an authority: a web hit may suggest a marker, it can never endorse one. " +
+                "Corroborate every web finding against search_catalog and search_reference before you rely on it, and NEVER state a CAS you did not read from a retrieved source. " +
+                "A candidate supported only by web citations must be Tier B with its limitation named in the rationale — it can never be Tier A or preferred. " +
+                "The query must contain NO client, product or project name — only chemistry. " +
+                "intent must be one of: discovery.candidate_forms, discovery.form_properties, discovery.supplier_availability."),
+        ];
+    }
 
     public IList<AITool> RegulatoryTools() =>
     [
@@ -82,6 +98,37 @@ public sealed class ToolBox(
         return chunks.Count == 0
             ? "{\"results\":[],\"note\":\"no matches — no prior conclusions on this; reason from primary sources, do not fabricate a prior finding\"}"
             : Render(chunks);
+    }
+
+    /// A web hit is NOT a RetrievedChunk. Its source is "web:<host>" so that a citation built from it stays
+    /// machine-identifiable as web-derived all the way into the candidates doc — which is what lets
+    /// DiscoveryAgent.Validate enforce the Tier-A rail deterministically instead of trusting the prompt.
+    ///
+    /// This overload exists so a test can drive the method directly, the way ToolBoxTests drives
+    /// SearchCatalogAsync. The tool the model actually calls closes over the PER-PROJECT IWebSearch that
+    /// DiscoveryTools built from the project's SensitiveTerms — never this one.
+    public async Task<string> SearchWebAsync(string query, string intent, CancellationToken ct) =>
+        await SearchWebAsync(query, intent, ct, webSearchFactory(SensitiveTerms.None));
+
+    private static async Task<string> SearchWebAsync(string query, string intent, CancellationToken ct, IWebSearch web)
+    {
+        var result = await web.SearchAsync(query, intent, ct);
+
+        // A refusal/failure is NOT "no matches". Relay the note so the agent can tell "I searched and found
+        // nothing" from "I never got an answer" — treating the second as the first is how a good marker gets
+        // confidently excluded.
+        if (result.Note is not null)
+            return JsonSerializer.Serialize(new { results = Array.Empty<object>(), note = result.Note }, Json.Options);
+
+        if (result.Hits.Count == 0)
+            return "{\"results\":[],\"note\":\"no matches — do not invent facts; stay with the catalog candidates\"}";
+
+        return JsonSerializer.Serialize(new
+        {
+            results = result.Hits.Select(h => new AgentVisibleChunk($"web:{h.Host}", h.Url, $"{h.Title} — {h.Snippet}")),
+            note = "WEB SOURCE: a starting point, not an authority. Corroborate against search_catalog before relying on it. " +
+                   "A candidate whose citations are all web sources must be Tier B, never Tier A and never preferred.",
+        }, Json.Options);
     }
 
     public async Task<string> SearchRegulatoryAsync(string query, CancellationToken ct) => Render(await regulatory.SearchAsync(query, ct: ct));

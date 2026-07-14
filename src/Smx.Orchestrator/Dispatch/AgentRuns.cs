@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Smx.Domain.Records;
+using Smx.Domain.Tools;
 using Smx.Orchestrator.Agents;
 
 namespace Smx.Orchestrator.Dispatch;
@@ -26,9 +27,14 @@ public sealed class AgentRuns(IChatClient chatClient, ToolBox toolBox) : IAgentR
             new MafAgent(chatClient, IntakeAgent.AgentName, IntakeAgent.Instructions, toolBox.IntakeTools()),
             project, ct);
 
+    /// TODO(search-proxy plan, Task 14): pass the project's real SensitiveTerms. A ConstraintsDoc carries no
+    /// client or product name, so there is nothing here to build them from yet — Task 14 plumbs the ProjectDoc
+    /// down to this call. Until it does, search_web is handed an EMPTY term list: the guard cannot block a
+    /// leak it was never told about, which is precisely why SensitiveTerms is a required parameter.
     public Task<AgentRunResult<CandidatesDoc>> RunDiscoveryAsync(ConstraintsDoc constraints, RevisionDoc? revision, CancellationToken ct) =>
         DiscoveryAgent.RunAsync(
-            new MafAgent(chatClient, DiscoveryAgent.AgentName, DiscoveryAgent.Instructions, toolBox.DiscoveryTools()),
+            new MafAgent(chatClient, DiscoveryAgent.AgentName, DiscoveryAgent.Instructions,
+                toolBox.DiscoveryTools(SensitiveTerms.None)),
             constraints, revision, ct);
 
     public Task<AgentRunResult<VerdictDoc>> RunRegulatoryAsync(ConstraintsDoc constraints, CandidateSubstance candidate, RevisionDoc? revision, CancellationToken ct) =>

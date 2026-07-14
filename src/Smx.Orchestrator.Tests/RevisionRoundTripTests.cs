@@ -73,7 +73,7 @@ public class RevisionRoundTripTests
         var search = new FakeSearch();
         return new ToolBox(
             new FakeCatalogLookup(), new FakeCompatibilityLookup(), search, search, search,
-            knowledge, new IndexBackedLearnedConclusionsSearch(index));
+            knowledge, new IndexBackedLearnedConclusionsSearch(index), _ => new FakeWebSearch());
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class RevisionRoundTripTests
         // params its description told the model to omit), and a method-level call would never notice. This is
         // the object the runtime hands the model.
         var tool = Assert.IsAssignableFrom<AIFunction>(
-            LaterProjectToolBox(knowledge, index).DiscoveryTools().Single(t => t.Name == "search_learned_conclusions"));
+            LaterProjectToolBox(knowledge, index).DiscoveryTools(Smx.Domain.Tools.SensitiveTerms.None).Single(t => t.Name == "search_learned_conclusions"));
         var result = (await tool.InvokeAsync(new AIFunctionArguments
         {
             ["query"] = "is barium safe to tier for an HDPE packaging component?",
@@ -152,7 +152,7 @@ public class RevisionRoundTripTests
         });
 
         var tool = Assert.IsAssignableFrom<AIFunction>(
-            LaterProjectToolBox(knowledge, index).DiscoveryTools().Single(t => t.Name == "search_learned_conclusions"));
+            LaterProjectToolBox(knowledge, index).DiscoveryTools(Smx.Domain.Tools.SensitiveTerms.None).Single(t => t.Name == "search_learned_conclusions"));
         var result = (await tool.InvokeAsync(new AIFunctionArguments
         {
             ["query"] = "is barium safe to tier for an HDPE packaging component?",

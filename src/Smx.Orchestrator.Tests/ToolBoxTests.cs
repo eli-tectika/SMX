@@ -8,20 +8,75 @@ public class ToolBoxTests
 {
     private static ToolBox Box(
         Smx.Domain.IKnowledgeStore? knowledge = null,
-        Smx.Domain.Tools.ILearnedConclusionsSearch? learnedConclusions = null)
+        Smx.Domain.Tools.ILearnedConclusionsSearch? learnedConclusions = null,
+        Smx.Domain.Tools.IWebSearch? web = null)
     {
         var search = new FakeSearch();
         return new ToolBox(
             new FakeCatalogLookup(), new FakeCompatibilityLookup(), search, search, search,
             knowledge ?? new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore(),
-            learnedConclusions ?? new FakeLearnedConclusionsSearch());
+            learnedConclusions ?? new FakeLearnedConclusionsSearch(),
+            _ => web ?? new FakeWebSearch());
     }
 
     [Fact]
-    public void DiscoveryTools_ExposeCatalogCompatibilityReference()
+    public void DiscoveryTools_IncludeSearchWeb()
     {
-        var names = Box().DiscoveryTools().Select(t => t.Name).OrderBy(x => x).ToArray();
-        Assert.Equal(["lookup_compatibility", "search_catalog", "search_learned_conclusions", "search_reference"], names);
+        var names = Box().DiscoveryTools(Smx.Domain.Tools.SensitiveTerms.None).Select(t => t.Name).OrderBy(x => x).ToArray();
+        Assert.Equal(
+            ["lookup_compatibility", "search_catalog", "search_learned_conclusions", "search_reference", "search_web"],
+            names);
+    }
+
+    // THE INVARIANT (spec §3, #5). A regulatory verdict may rest ONLY on the curated, sync-dated,
+    // R.E.-gated corpus. The web is not a source of law. Tool-list membership is the enforcement — MAF can
+    // only call a tool it was handed — so this assertion IS the control, not a description of it.
+    [Fact]
+    public void RegulatoryTools_NeverIncludeSearchWeb()
+    {
+        var names = Box().RegulatoryTools().Select(t => t.Name).ToArray();
+        Assert.DoesNotContain("search_web", names);
+    }
+
+    [Fact]
+    public void IntakeTools_NeverIncludeSearchWeb()
+    {
+        var names = Box().IntakeTools().Select(t => t.Name).ToArray();
+        Assert.DoesNotContain("search_web", names);
+    }
+
+    // A failure must not read as "nothing exists" — that is how an agent confidently excludes a good marker.
+    [Fact]
+    public async Task SearchWeb_RelaysTheNote_WhenTheProxyRefuses()
+    {
+        var web = new FakeWebSearch { Result = new Smx.Domain.Tools.WebSearchResult([], "the external search is unavailable") };
+        var json = await Box(web: web).SearchWebAsync("yttrium forms", "discovery.candidate_forms", default);
+        Assert.Contains("unavailable", json);
+        Assert.DoesNotContain("no matches", json);
+    }
+
+    [Fact]
+    public async Task SearchWeb_EmptyResults_SaysSoWithoutInventing()
+    {
+        var web = new FakeWebSearch { Result = new Smx.Domain.Tools.WebSearchResult([], null) };
+        var json = await Box(web: web).SearchWebAsync("yttrium forms", "discovery.candidate_forms", default);
+        Assert.Contains("no matches", json);
+    }
+
+    // Web hits must be machine-identifiable as web-derived all the way to the citation, so the Tier-A rail
+    // (Task 15) can find them. The source is "web:<host>", never a corpus name.
+    [Fact]
+    public async Task SearchWeb_TagsEveryHitWithAWebSource()
+    {
+        var web = new FakeWebSearch
+        {
+            Result = new Smx.Domain.Tools.WebSearchResult(
+                [new Smx.Domain.Tools.WebHit("Yttrium 2-EH", "https://pubchem.ncbi.nlm.nih.gov/compound/1", "CAS 80326-98-3", "pubchem.ncbi.nlm.nih.gov")],
+                null),
+        };
+        var json = await Box(web: web).SearchWebAsync("yttrium forms", "discovery.candidate_forms", default);
+        Assert.Contains("web:pubchem.ncbi.nlm.nih.gov", json);
+        Assert.Contains("https://pubchem.ncbi.nlm.nih.gov/compound/1", json);
     }
 
     [Fact]
@@ -50,7 +105,7 @@ public class ToolBoxTests
     [Fact]
     public void DiscoveryTools_IncludeLearnedConclusions()
     {
-        var names = Box().DiscoveryTools().Select(t => t.Name).ToArray();
+        var names = Box().DiscoveryTools(Smx.Domain.Tools.SensitiveTerms.None).Select(t => t.Name).ToArray();
         Assert.Contains("search_learned_conclusions", names);
     }
 
@@ -83,7 +138,8 @@ public class ToolBoxTests
         };
         var box = new ToolBox(
             new FakeCatalogLookup(), new FakeCompatibilityLookup(), search, search, search,
-            new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore(), new FakeLearnedConclusionsSearch());
+            new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore(), new FakeLearnedConclusionsSearch(),
+            _ => new FakeWebSearch());
 
         var json = await box.SearchRegulatoryAsync("is Ba an SVHC?", default);
 
