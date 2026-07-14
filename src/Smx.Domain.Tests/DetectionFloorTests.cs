@@ -28,11 +28,16 @@ public class DetectionFloorTests
         // The basis is not decoration: the UX spec requires every bound to show its basis, and the operator
         // must be able to RE-DERIVE the number from it. So it has to name the device the floor targets and
         // carry BOTH operands — a basis missing the background or the LOD cannot be checked against anything.
+        //
+        // The operands are asserted WITH THEIR ROLES, not merely present. Two bare Contains("1.5")/("4")
+        // both still pass when the basis transposes them ("LOD 4 ppm over a background of 1.5 ppm") — which
+        // is the one thing a basis must never do, since the operator re-derives the floor from it and would
+        // get the same 8.5 from the wrong arithmetic.
         var (floor, _) = DetectionFloor.Compute(Background, Vanta, "bottle", "Zr");
 
-        Assert.Contains("Olympus Vanta M", floor!.Basis);  // the device it targets
-        Assert.Contains("1.5", floor.Basis);               // the LOD it used
-        Assert.Contains("4", floor.Basis);                 // the measured background it used
+        Assert.Contains("Olympus Vanta M", floor!.Basis);        // the device it targets
+        Assert.Contains("LOD 1.5 ppm", floor.Basis);             // the LOD it used, AS the LOD
+        Assert.Contains("background of 4 ppm", floor.Basis);     // the background it used, AS the background
         Assert.Contains("Zr", floor.Basis);
         Assert.Contains("bottle", floor.Basis);
     }
@@ -122,9 +127,15 @@ public class DetectionFloorTests
     }
 
     [Fact]
-    public void Compute_REFUSES_WhenNoDeviceWasCaptured() =>
-        Assert.Contains("device", DetectionFloor.Compute(Background, null, "bottle", "Zr").Error!,
-            StringComparison.OrdinalIgnoreCase);
+    public void Compute_REFUSES_WhenNoDeviceWasCaptured()
+    {
+        var (floor, error) = DetectionFloor.Compute(Background, null, "bottle", "Zr");
+
+        // Both halves, like every other refusal here: a Compute that returned a floor AND an error would
+        // pass an error-only assertion, and the caller reads the floor.
+        Assert.Null(floor);
+        Assert.Contains("device", error, StringComparison.OrdinalIgnoreCase);
+    }
 
     [Theory]
     [InlineData(-1.0)]
