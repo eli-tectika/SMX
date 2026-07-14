@@ -30,7 +30,8 @@ public static class RegulatoryAgent
         - ApplicationCheck: the component-scoped lists from the provided scope. A restriction that binds this
           component's application/markets = Fail; a cap/limit that constrains but permits = Conditional.
         - Hazard: search_sds for GHS data (H-codes, CMR, endocrine). CMR category 1A/1B = Fail; significant
-          hazards that merit "not recommended" = Conditional.
+          hazards that merit "not recommended" = Conditional. A Conditional here is NOT a permitting cap
+          like the one above: it is a hazard you are saying should not be recommended.
         Statuses: Pass | Conditional | NeedsReview | Fail. EVERY dimension MUST carry at least one citation
         built from an actual tool result (source, reference, retrievedAt = now, ISO 8601 UTC). If your tools
         return nothing decisive for a dimension, the status is NeedsReview — never guess, never assume clean.
@@ -41,9 +42,15 @@ public static class RegulatoryAgent
           "proposedReason":        why, in one sentence, citing what you relied on.
         Both are MANDATORY, including for a rejection. You are PROPOSING, not deciding: the Regulatory
         Expert reviews your proposal and signs. Never claim to have approved or rejected anything.
-        You may only propose "recommended" when every dimension came back Pass or Conditional. If any
-        dimension is Fail or NeedsReview, propose "rejected": the Expert may still overrule a Fail, but
-        that override is hers to write, and recommending on evidence you do not have is guessing.
+        Propose "recommended" ONLY when BOTH of these hold:
+          - ElementGate and ApplicationCheck are each Pass or Conditional. A Conditional on those two is a
+            cap or limit that constrains but PERMITS — Dosing will apply it, so it does not bar a
+            recommendation.
+          - Hazard is Pass. A Conditional Hazard is, by the definition above, a hazard that merits "not
+            recommended" — you may never propose "recommended" over one.
+        Otherwise propose "rejected": on any Fail, on any NeedsReview, and on a Conditional Hazard. The
+        Expert may still overrule you and recommend anyway — that override is hers to write. Recommending
+        on evidence you do not have, or over a hazard you yourself flagged, is guessing.
 
         Reply with ONLY a JSON object: { "dimensions": [{ "dimension", "status", "citations":
         [{ "source", "reference", "retrievedAt" }], "confidence", "rationale" }],
@@ -104,7 +111,12 @@ public static class RegulatoryAgent
 
     internal static string? Validate(RegulatoryOutput o)
     {
-        string[] required = ["ElementGate", "ApplicationCheck", "Hazard"];
+        string[] required =
+        [
+            nameof(VerdictDimension.ElementGate),
+            nameof(VerdictDimension.ApplicationCheck),
+            nameof(VerdictDimension.Hazard),
+        ];
         var names = o.Dimensions.Select(d => d.Dimension).OrderBy(x => x).ToArray();
         if (!names.SequenceEqual(required.OrderBy(x => x)))
             return $"response must contain exactly the three dimensions {string.Join(", ", required)} once each; got [{string.Join(", ", names)}]";
@@ -123,7 +135,13 @@ public static class RegulatoryAgent
         // costs the operator one hand-authored determination, exactly as before the pre-fill existed. That
         // is the safe direction; the other is not. What we DO reject is a MALFORMED proposal, because a
         // proposal the operator cannot trust at a glance is worse than none.
-        if (o.ProposedDetermination is null) return null;
+        if (o.ProposedDetermination is null)
+            // A reason with nothing to justify is not a half-proposal, it is incoherent output — and it would
+            // land on the cell, where the operator reads a sentence of regulatory argument attached to no
+            // proposal at all. Omitting both is free; emitting one without the other is a defect.
+            return string.IsNullOrWhiteSpace(o.ProposedReason) ? null
+                : "proposedReason was given with no proposedDetermination — a reason justifying nothing. "
+                  + "Either propose a determination or omit the reason.";
         if (o.ProposedDetermination is not (Determinations.Recommended or Determinations.Rejected))
             return $"proposedDetermination must be exactly '{Determinations.Recommended}' or '{Determinations.Rejected}'; got '{o.ProposedDetermination}'";
         if (string.IsNullOrWhiteSpace(o.ProposedReason))
@@ -137,6 +155,21 @@ public static class RegulatoryAgent
             VerdictDoc.Fold(o.Dimensions) is VerdictStatus.Fail or VerdictStatus.NeedsReview)
             return $"cannot propose '{Determinations.Recommended}' when a dimension is Fail or NeedsReview " +
                    $"— propose '{Determinations.Rejected}'; only the Regulatory Expert may override a Fail";
+
+        // Conditional is NOT uniform across the dimensions, so the rule above cannot be, either.
+        //   ElementGate / ApplicationCheck — Conditional means "a cap or limit that constrains but PERMITS"
+        //     (Instructions). Dosing applies the cap; recommending a substance it will cap is correct, and
+        //     forbidding it here would reject most of the real catalogue.
+        //   Hazard — Conditional is defined by those same Instructions as a significant hazard "that merits
+        //     'not recommended'". An agent that then pre-fills "recommended" on it contradicts its own
+        //     analysis and trains the operator to click through flagged cells — which destroys the gate more
+        //     effectively than removing it would, because it still LOOKS like review.
+        if (o.ProposedDetermination == Determinations.Recommended &&
+            o.Dimensions.Any(d => d.Dimension == nameof(VerdictDimension.Hazard)
+                                  && d.Status == VerdictStatus.Conditional))
+            return $"cannot propose '{Determinations.Recommended}' when the Hazard dimension is Conditional " +
+                   $"— a Conditional hazard is one that merits 'not recommended'; propose " +
+                   $"'{Determinations.Rejected}'. Only the Regulatory Expert may recommend over a hazard.";
         return null;
     }
 }

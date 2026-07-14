@@ -89,11 +89,16 @@ public class RegulatoryAgentTests
         "confidence": 0.9, "rationale": "no CMR classification" }
     """;
 
-    private static List<DimensionVerdict> Dims(VerdictStatus status = VerdictStatus.Pass) =>
+    /// All three dimensions, individually settable — Validate rejects any other shape, so a fixture that
+    /// varies only one dimension would trip the *dimensions* error and pass a test for the wrong reason.
+    private static List<DimensionVerdict> Dims(
+        VerdictStatus elementGate = VerdictStatus.Pass,
+        VerdictStatus applicationCheck = VerdictStatus.Pass,
+        VerdictStatus hazard = VerdictStatus.Pass) =>
     [
-        new("ElementGate", status, [new Citation("regulatory", "reach-17", "t")], 0.9, "r"),
-        new("ApplicationCheck", VerdictStatus.Pass, [new Citation("regulatory", "ppwr", "t")], 0.9, "r"),
-        new("Hazard", VerdictStatus.Pass, [new Citation("sds", "ghs", "t")], 0.9, "r"),
+        new("ElementGate", elementGate, [new Citation("regulatory", "reach-17", "t")], 0.9, "r"),
+        new("ApplicationCheck", applicationCheck, [new Citation("regulatory", "ppwr", "t")], 0.9, "r"),
+        new("Hazard", hazard, [new Citation("sds", "ghs", "t")], 0.9, "r"),
     ];
 
     [Fact]
@@ -163,7 +168,20 @@ public class RegulatoryAgentTests
             ProposedDetermination = "probably fine",
             ProposedReason = "looks ok",
         };
-        Assert.NotNull(RegulatoryAgent.Validate(output));
+        // Named, not merely non-null: these dimensions are clean and cited, so ONLY the malformed
+        // determination can be at fault. A bare NotNull would pass on any unrelated rejection.
+        var error = RegulatoryAgent.Validate(output);
+        Assert.Contains("proposedDetermination", error!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("probably fine", error!);
+    }
+
+    [Fact]
+    public void Validate_RejectsAReasonWithNoProposal()
+    {
+        // A reason justifying nothing. It would land on the cell and read as regulatory argument attached
+        // to no proposal — incoherent output, and cheap to refuse: omitting both is always available.
+        var output = new RegulatoryOutput { Dimensions = Dims(), ProposedReason = "the listing is superseded" };
+        Assert.Contains("proposedReason", RegulatoryAgent.Validate(output)!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -183,11 +201,13 @@ public class RegulatoryAgentTests
         // behaviour this design exists to prevent. An override of a Fail is the human's to author, alone.
         var output = new RegulatoryOutput
         {
-            Dimensions = Dims(VerdictStatus.Fail),
+            Dimensions = Dims(elementGate: VerdictStatus.Fail),
             ProposedDetermination = Determinations.Recommended,
             ProposedReason = "the listing is probably superseded",
         };
-        Assert.NotNull(RegulatoryAgent.Validate(output));
+        // The named error, not any error: everything else about this output is well-formed, and the
+        // Hazard rule below must not be what catches it.
+        Assert.Contains("Fail or NeedsReview", RegulatoryAgent.Validate(output)!);
     }
 
     [Fact]
@@ -197,11 +217,68 @@ public class RegulatoryAgentTests
         // "assume clean" — the one thing the standing Instructions forbid.
         var output = new RegulatoryOutput
         {
-            Dimensions = Dims(VerdictStatus.NeedsReview),
+            Dimensions = Dims(elementGate: VerdictStatus.NeedsReview),
             ProposedDetermination = Determinations.Recommended,
             ProposedReason = "nothing turned up, looks fine",
         };
-        Assert.NotNull(RegulatoryAgent.Validate(output));
+        Assert.Contains("Fail or NeedsReview", RegulatoryAgent.Validate(output)!);
+    }
+
+    // ---- Conditional is NOT one rule. It means opposite things on different dimensions. ---------------
+    //
+    // The two halves below pin each other. Forbid Conditional uniformly and the first goes red; permit it
+    // uniformly and the second does. Neither line of Validate is safe to "simplify" without a test dying.
+
+    [Theory]
+    [InlineData("element gate")]
+    [InlineData("application check")]
+    public void Validate_Accepts_Recommended_WhenAPERMITTINGDimensionIsConditional(string which)
+    {
+        // Per the Instructions, a Conditional on ElementGate/ApplicationCheck is "a cap or limit that
+        // constrains but PERMITS". Dosing applies the cap. Refusing to recommend a substance the system
+        // will simply dose below a limit would reject most of the real catalogue — and would push the
+        // operator to hand-author the very determinations the proposal exists to spare them.
+        var output = new RegulatoryOutput
+        {
+            Dimensions = which == "element gate"
+                ? Dims(elementGate: VerdictStatus.Conditional)
+                : Dims(applicationCheck: VerdictStatus.Conditional),
+            ProposedDetermination = Determinations.Recommended,
+            ProposedReason = "permitted below the 0.1% w/w cap; Dosing will stay under it",
+        };
+        Assert.Null(RegulatoryAgent.Validate(output));
+    }
+
+    [Fact]
+    public void Validate_RefusesToPropose_Recommended_WhenTheHAZARDDimensionIsConditional()
+    {
+        // ...and on Hazard the SAME status means the opposite: the Instructions define a Conditional
+        // Hazard as a significant hazard "that merits 'not recommended'". An agent that flags a hazard and
+        // then pre-fills "recommended" over it contradicts its own analysis, and teaches the operator that
+        // flagged cells are click-through. That is worse than having no gate, because it still looks like
+        // review. The overall fold here is Conditional — NOT Fail/NeedsReview — so only the per-dimension
+        // rule can catch this cell.
+        var output = new RegulatoryOutput
+        {
+            Dimensions = Dims(hazard: VerdictStatus.Conditional),
+            ProposedDetermination = Determinations.Recommended,
+            ProposedReason = "skin irritant, but handling controls cover it",
+        };
+        Assert.Contains("Hazard", RegulatoryAgent.Validate(output)!);
+    }
+
+    [Fact]
+    public void Validate_Accepts_Rejected_OnAConditionalHazard()
+    {
+        // The rule is one-directional, like the Fail rule: rejecting over a flagged hazard is the agent
+        // doing exactly its job.
+        var output = new RegulatoryOutput
+        {
+            Dimensions = Dims(hazard: VerdictStatus.Conditional),
+            ProposedDetermination = Determinations.Rejected,
+            ProposedReason = "Skin Irrit. 2 — not recommended for a leave-on application",
+        };
+        Assert.Null(RegulatoryAgent.Validate(output));
     }
 
     [Fact]

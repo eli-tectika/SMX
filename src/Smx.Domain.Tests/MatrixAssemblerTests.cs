@@ -34,13 +34,13 @@ public class MatrixAssemblerTests
         // regulatory gate, which is the single thing Law 9 exists to prevent.
         var v = Verdict("136-25-4", "bottle", VerdictStatus.Pass);
         v.ProposedDetermination = Determinations.Recommended;
-        v.ProposedReason = "clean on all four dimensions";
+        v.ProposedReason = "clean on all three dimensions";
         // The operator has NOT spoken yet — which is exactly the state the proposal is rendered in.
 
         var cell = Assert.Single(MatrixAssembler.Assemble(Candidates(), ["bottle"], [v], "t").Cells);
 
         Assert.Equal(Determinations.Recommended, cell.ProposedDetermination);
-        Assert.Equal("clean on all four dimensions", cell.ProposedReason);
+        Assert.Equal("clean on all three dimensions", cell.ProposedReason);
         Assert.Null(cell.Determination);            // the signature line is still blank
         Assert.False(cell.EvidenceReviewed);
     }
