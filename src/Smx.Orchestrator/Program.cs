@@ -112,12 +112,30 @@ public static class OrchestratorHost
             new SearchClient(new Uri(opts.SearchEndpoint), opts.SdsIndex, credential)));
         services.AddSingleton<IReferenceSearch>(new ReferenceSearchTool(
             new SearchClient(new Uri(opts.SearchEndpoint), opts.ReferenceIndex, credential)));
-        // Per-project, so a FACTORY and not a singleton: IWebSearch closes over the project's sensitive terms
-        // and its own per-stage query budget. TEMPORARY — the real WebSearchTool (kill switch → term guard →
-        // budget → SearchProxyClient) is wired when BackendOptions learns the proxy endpoint, later in this
-        // plan. Until then it is fail-closed and SAYS SO: "disabled" must never reach the agent as "the web
-        // has nothing", which is how a good marker gets confidently excluded.
-        services.AddSingleton<Func<SensitiveTerms, IWebSearch>>(_ => _ => new WebSearchNotYetWired());
+        // Web search. The tool is built PER PROJECT (it closes over that project's sensitive terms and its own
+        // stage budget), so what DI holds is a factory, not an instance.
+        //
+        // Fail-safe by construction: with no endpoint configured there is no proxy to call, so the tool reports
+        // itself disabled and Discovery falls back to the catalog. A missing deployment must degrade the system,
+        // not break it — and it must never silently egress instead.
+        var webEnabled = opts.WebSearchEnabled && !string.IsNullOrEmpty(opts.SearchProxyEndpoint);
+
+        // SearchProxyClient takes (HttpClient, TokenCredential, endpoint, audience, ILogger). The two strings
+        // mean a typed-client registration cannot construct it, so name the client and build it explicitly.
+        services.AddHttpClient(nameof(SearchProxyClient));
+        services.AddSingleton<ISearchProxyClient>(sp => new SearchProxyClient(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(SearchProxyClient)),
+            sp.GetRequiredService<Azure.Core.TokenCredential>(),
+            opts.SearchProxyEndpoint,
+            opts.SearchProxyAudience,
+            sp.GetRequiredService<ILogger<SearchProxyClient>>()));
+
+        services.AddSingleton<Func<SensitiveTerms, IWebSearch>>(sp => terms => new WebSearchTool(
+            sp.GetRequiredService<ISearchProxyClient>(),
+            terms,
+            webEnabled,
+            opts.WebSearchMaxPerStage,
+            sp.GetRequiredService<ILogger<WebSearchTool>>()));
         services.AddSingleton<ToolBox>();
         services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(sp =>
             FoundryChatClientFactory.CreateAsync(opts, credential).GetAwaiter().GetResult());
@@ -126,15 +144,5 @@ public static class OrchestratorHost
             sp.GetRequiredService<IRecordStore>(), sp.GetRequiredService<IAgentRuns>(),
             sp.GetRequiredService<ILearnedConclusionWriter>(), opts.RegulatoryParallelism));
         services.AddHostedService<ChangeFeedWorker>();
-    }
-
-    /// The Discovery tool set must be constructible before the Search Proxy is wired, and this is what stands
-    /// in until it is: no egress, no silence. It reports the reason, because an agent told nothing came back
-    /// must never conclude that nothing is out there. Deleted the moment the real WebSearchTool is registered.
-    private sealed class WebSearchNotYetWired : IWebSearch
-    {
-        public Task<WebSearchResult> SearchAsync(string query, string intent, CancellationToken ct = default) =>
-            Task.FromResult(new WebSearchResult([],
-                "external web search is not configured — answer from the catalog and the reference corpus"));
     }
 }

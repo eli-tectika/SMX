@@ -50,7 +50,7 @@ public class ToolBoxTests
     public async Task SearchWeb_RelaysTheNote_WhenTheProxyRefuses()
     {
         var web = new FakeWebSearch { Result = new Smx.Domain.Tools.WebSearchResult([], "the external search is unavailable") };
-        var json = await Box(web: web).SearchWebAsync("yttrium forms", "discovery.candidate_forms", default);
+        var json = await Box(web: web).SearchWebAsync("yttrium forms", "discovery.candidate_forms", Smx.Domain.Tools.SensitiveTerms.None, default);
         Assert.Contains("unavailable", json);
         Assert.DoesNotContain("no matches", json);
     }
@@ -59,7 +59,7 @@ public class ToolBoxTests
     public async Task SearchWeb_EmptyResults_SaysSoWithoutInventing()
     {
         var web = new FakeWebSearch { Result = new Smx.Domain.Tools.WebSearchResult([], null) };
-        var json = await Box(web: web).SearchWebAsync("yttrium forms", "discovery.candidate_forms", default);
+        var json = await Box(web: web).SearchWebAsync("yttrium forms", "discovery.candidate_forms", Smx.Domain.Tools.SensitiveTerms.None, default);
         Assert.Contains("no matches", json);
     }
 
@@ -74,7 +74,7 @@ public class ToolBoxTests
                 [new Smx.Domain.Tools.WebHit("Yttrium 2-EH", "https://pubchem.ncbi.nlm.nih.gov/compound/1", "CAS 80326-98-3", "pubchem.ncbi.nlm.nih.gov")],
                 null),
         };
-        var json = await Box(web: web).SearchWebAsync("yttrium forms", "discovery.candidate_forms", default);
+        var json = await Box(web: web).SearchWebAsync("yttrium forms", "discovery.candidate_forms", Smx.Domain.Tools.SensitiveTerms.None, default);
         Assert.Contains("web:pubchem.ncbi.nlm.nih.gov", json);
         Assert.Contains("https://pubchem.ncbi.nlm.nih.gov/compound/1", json);
     }

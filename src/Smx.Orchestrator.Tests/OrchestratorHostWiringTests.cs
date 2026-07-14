@@ -108,4 +108,65 @@ public class OrchestratorHostWiringTests
         var ex = Assert.Throws<InvalidOperationException>(() => Build(Config(("SEARCH_ENDPOINT", ""))));
         Assert.Contains("SEARCH_ENDPOINT", ex.Message);
     }
+
+    private const string ProxyEndpoint = "https://func-smx-searchproxy-dev.azurewebsites.net";
+
+    /// A FACTORY, not a singleton: the tool closes over one project's sensitive terms and one stage's query
+    /// budget. A singleton would hand project B the tool built for project A — the budget shared, and the term
+    /// guard protecting the wrong client.
+    [Fact]
+    public void WebSearchFactory_IsRegistered_AndBuildsAFreshPerProjectTool()
+    {
+        using var sp = Build(Config(("SEARCH_PROXY_ENDPOINT", ProxyEndpoint)));
+        var factory = sp.GetRequiredService<Func<SensitiveTerms, IWebSearch>>();
+
+        var one = factory(new SensitiveTerms(["Acme"]));
+        var two = factory(new SensitiveTerms(["Globex"]));
+        Assert.NotNull(one);
+        Assert.NotSame(one, two);
+    }
+
+    /// With a proxy configured the tool is LIVE — and bound to the terms it was built with. Proven without a
+    /// network call: WebSearchTool checks the kill switch FIRST and the term guard SECOND, so a query carrying
+    /// the client's name comes back refused-by-the-guard rather than disabled. A disabled tool would have said
+    /// "disabled" instead, and a tool built with the wrong terms would have let the name through to egress.
+    [Fact]
+    public async Task WithAProxyConfigured_TheToolIsLive_AndGuardsThatProjectsTerms()
+    {
+        using var sp = Build(Config(("SEARCH_PROXY_ENDPOINT", ProxyEndpoint)));
+        var web = sp.GetRequiredService<Func<SensitiveTerms, IWebSearch>>()(new SensitiveTerms(["Acme Bottling"]));
+
+        var result = await web.SearchAsync("Acme Bottling yttrium marker forms", "discovery.candidate_forms");
+
+        Assert.Empty(result.Hits);
+        Assert.Contains("identifies this project", result.Note);
+    }
+
+    /// THE fail-safe. A deployment with no proxy must degrade to catalog-only — never fail to start, and never
+    /// silently egress to an unconfigured endpoint. The tool SAYS it is disabled: an agent told nothing came
+    /// back would conclude nothing is out there, and confidently exclude a good marker.
+    [Fact]
+    public async Task WithNoProxyConfigured_TheToolIsDisabled_AndSaysSo()
+    {
+        using var sp = Build(Config());   // no SEARCH_PROXY_ENDPOINT
+        var web = sp.GetRequiredService<Func<SensitiveTerms, IWebSearch>>()(SensitiveTerms.None);
+
+        var result = await web.SearchAsync("yttrium marker forms", "discovery.candidate_forms");
+
+        Assert.Empty(result.Hits);
+        Assert.Contains("disabled", result.Note);
+    }
+
+    /// The operator kill switch, honored even when a proxy IS configured.
+    [Fact]
+    public async Task WebSearchDisabledByTheKillSwitch_NeverReachesTheProxy()
+    {
+        using var sp = Build(Config(("SEARCH_PROXY_ENDPOINT", ProxyEndpoint), ("WEB_SEARCH_ENABLED", "false")));
+        var web = sp.GetRequiredService<Func<SensitiveTerms, IWebSearch>>()(SensitiveTerms.None);
+
+        var result = await web.SearchAsync("yttrium marker forms", "discovery.candidate_forms");
+
+        Assert.Empty(result.Hits);
+        Assert.Contains("disabled", result.Note);
+    }
 }

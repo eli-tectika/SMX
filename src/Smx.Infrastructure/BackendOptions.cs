@@ -29,7 +29,12 @@ public sealed record BackendOptions(
     // is unavailable. MAF agents are model-agnostic, so only the IChatClient construction differs.
     string ModelProvider,
     string OpenAiDeployment,
-    string OpenAiEndpoint)
+    string OpenAiEndpoint,
+    // The anonymizing Search Proxy — Discovery's ONLY route to the public internet.
+    string SearchProxyEndpoint,
+    string SearchProxyAudience,
+    bool WebSearchEnabled,
+    int WebSearchMaxPerStage)
 {
     public string AnthropicBaseUrl => $"{FoundryEndpoint.TrimEnd('/')}/anthropic/v1";
 
@@ -67,5 +72,11 @@ public sealed record BackendOptions(
         RegulatoryParallelism: int.TryParse(c["REGULATORY_PARALLELISM"], out var p) ? p : 4,
         ModelProvider: c["MODEL_PROVIDER"] ?? "anthropic",
         OpenAiDeployment: c["OPENAI_DEPLOYMENT"] ?? "gpt-5-mini",
-        OpenAiEndpoint: c["OPENAI_ENDPOINT"] ?? "");
+        OpenAiEndpoint: c["OPENAI_ENDPOINT"] ?? "",
+        SearchProxyEndpoint: c["SEARCH_PROXY_ENDPOINT"] ?? "",
+        SearchProxyAudience: c["SEARCH_PROXY_AUDIENCE"] ?? "",
+        // The operator kill switch. Default ON, but an empty endpoint disables it anyway (see Program.cs) —
+        // so a deployment that has not been given a proxy simply never searches the web, rather than failing.
+        WebSearchEnabled: !bool.TryParse(c["WEB_SEARCH_ENABLED"], out var we) || we,
+        WebSearchMaxPerStage: int.TryParse(c["WEB_SEARCH_MAX_PER_STAGE"], out var wm) ? wm : 8);
 }

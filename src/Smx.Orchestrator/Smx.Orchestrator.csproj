@@ -12,6 +12,8 @@
     <PackageReference Include="Azure.Monitor.OpenTelemetry.Exporter" Version="1.8.2" />
     <PackageReference Include="Microsoft.Agents.AI" Version="1.13.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.*" />
+    <!-- IHttpClientFactory, for the named client the SearchProxyClient is built over. -->
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.*" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.16.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.16.0" />
   </ItemGroup>

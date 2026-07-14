@@ -107,8 +107,13 @@ public sealed class ToolBox(
     /// This overload exists so a test can drive the method directly, the way ToolBoxTests drives
     /// SearchCatalogAsync. The tool the model actually calls closes over the PER-PROJECT IWebSearch that
     /// DiscoveryTools built from the project's SensitiveTerms — never this one.
-    public async Task<string> SearchWebAsync(string query, string intent, CancellationToken ct) =>
-        await SearchWebAsync(query, intent, ct, webSearchFactory(SensitiveTerms.None));
+    ///
+    /// It takes the terms EXPLICITLY for the same reason DiscoveryTools does: no method on this class may
+    /// build a web search that was never told what it must not send. A convenience overload defaulting to an
+    /// empty term list would be an unguarded egress path sitting on a public API, one careless
+    /// AIFunctionFactory.Create away from being handed to the model.
+    public async Task<string> SearchWebAsync(string query, string intent, SensitiveTerms terms, CancellationToken ct) =>
+        await SearchWebAsync(query, intent, ct, webSearchFactory(terms));
 
     private static async Task<string> SearchWebAsync(string query, string intent, CancellationToken ct, IWebSearch web)
     {
