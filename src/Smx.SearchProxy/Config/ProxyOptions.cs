@@ -16,7 +16,10 @@ public sealed class ProxyOptions
     public string CoverCorpusPath { get; init; } = "Config/cover-corpus.json";
 
     public int MaxQueryChars { get; init; } = 256;
-    public int MaxResults { get; init; } = 10;
+    /// The operator's CEILING on results per query, enforced by StructuralGuard. Distinct from
+    /// SearchRequest.MaxResults' own default of 10, which is the caller's default page size — this is the
+    /// most the caller may ask for. 20 is the shipped ceiling (and the provider's own page limit).
+    public int MaxResults { get; init; } = 20;
     public int TimeoutSeconds { get; init; } = 15;
     public int Retries { get; init; } = 3;
     public int MaxResponseBytes { get; init; } = 2 * 1024 * 1024;
@@ -42,7 +45,7 @@ public sealed class ProxyOptions
             CoverCount = Math.Max(2, coverRaw),
             CoverCorpusPath = c["PROXY_COVER_CORPUS_PATH"] ?? "Config/cover-corpus.json",
             MaxQueryChars = int.TryParse(c["PROXY_MAX_QUERY_CHARS"], out var q) ? q : 256,
-            MaxResults = int.TryParse(c["PROXY_MAX_RESULTS"], out var m) ? m : 10,
+            MaxResults = int.TryParse(c["PROXY_MAX_RESULTS"], out var m) ? m : 20,
             TimeoutSeconds = int.TryParse(c["PROXY_TIMEOUT_SECONDS"], out var t) ? t : 15,
             Retries = int.TryParse(c["PROXY_RETRIES"], out var r) ? r : 3,
             CacheTtlHours = int.TryParse(c["PROXY_CACHE_TTL_HOURS"], out var ttl) ? ttl : 168,

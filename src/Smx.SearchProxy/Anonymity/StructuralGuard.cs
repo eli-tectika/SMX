@@ -35,7 +35,9 @@ public sealed partial class StructuralGuard(ProxyOptions opts)
         if (string.IsNullOrWhiteSpace(req.Query)) return GuardVerdict.Block("query_empty");
         if (req.Query.Length > opts.MaxQueryChars) return GuardVerdict.Block("query_too_long");
         if (!SearchIntents.All.Contains(req.Intent)) return GuardVerdict.Block("unknown_intent");
-        if (req.MaxResults < 1 || req.MaxResults > 20) return GuardVerdict.Block("max_results_out_of_range");
+        // The ceiling is the OPERATOR'S (PROXY_MAX_RESULTS), not a constant baked in here — otherwise the
+        // setting is a lie that binds nothing. The lower bound stays fixed: 0 results is a malformed ask.
+        if (req.MaxResults < 1 || req.MaxResults > opts.MaxResults) return GuardVerdict.Block("max_results_out_of_range");
 
         if (GuidLike().IsMatch(req.Query)) return GuardVerdict.Block("contains_guid");
         if (EmailLike().IsMatch(req.Query)) return GuardVerdict.Block("contains_email");

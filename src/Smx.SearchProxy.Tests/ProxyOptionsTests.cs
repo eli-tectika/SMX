@@ -18,7 +18,9 @@ public class ProxyOptionsTests
         Assert.Equal("brave", o.Provider);
         Assert.Equal(4, o.CoverCount);
         Assert.Equal(256, o.MaxQueryChars);
-        Assert.Equal(10, o.MaxResults);
+        // The operator's CEILING, not the caller's page size. SearchRequest.MaxResults still defaults to 10 —
+        // a caller who says nothing asks for 10; a caller may ask for up to this many.
+        Assert.Equal(20, o.MaxResults);
         Assert.Equal(168, o.CacheTtlHours);
         Assert.Equal(5000, o.MonthlyQueryCap);
         Assert.False(o.DryRun);

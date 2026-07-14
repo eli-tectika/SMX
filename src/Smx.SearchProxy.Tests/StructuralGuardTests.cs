@@ -58,4 +58,21 @@ public class StructuralGuardTests
     [InlineData(21)]
     public void MaxResultsOutOfRange_IsRejected(int max) =>
         Assert.Equal("max_results_out_of_range", Guard.Check(Req("yttrium forms", max: max)).Reason);
+
+    /// PROXY_MAX_RESULTS is the OPERATOR'S CEILING, and this is the test that makes it real. The guard used to
+    /// hardcode `> 20`, so ProxyOptions.MaxResults was read by nothing: an operator who set PROXY_MAX_RESULTS=5
+    /// got 20 anyway and no error anywhere. A config knob that silently does nothing is worse than no knob —
+    /// it invites someone to rely on it. (Not to be confused with SearchRequest.MaxResults' own default of 10:
+    /// that is the caller's default PAGE SIZE, a different thing from the operator's ceiling.)
+    [Fact]
+    public void MaxResults_IsBoundedByTheConfiguredCeiling_NotAHardcodedTwenty()
+    {
+        var tight = new StructuralGuard(new ProxyOptions { MaxResults = 5 });
+        Assert.True(tight.Check(Req("yttrium forms", max: 5)).Allowed);
+        Assert.Equal("max_results_out_of_range", tight.Check(Req("yttrium forms", max: 10)).Reason);
+
+        // The shipped default must leave behaviour exactly where it was: 20 in, 21 out.
+        Assert.True(Guard.Check(Req("yttrium forms", max: 20)).Allowed);
+        Assert.Equal("max_results_out_of_range", Guard.Check(Req("yttrium forms", max: 21)).Reason);
+    }
 }
