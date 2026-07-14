@@ -16,8 +16,10 @@ public sealed class FakeAgentRuns : IAgentRuns
             DerivedScope = [new("reach-annex-xvii", "*", "r", new Citation("regulatory", "x", "t"))],
         }));
 
-    public Func<ConstraintsDoc, RevisionDoc?, Task<Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>>> Discovery { get; set; } =
-        (c, _) => Task.FromResult(Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>.Ok(new CandidatesDoc
+    /// Takes the ProjectDoc the real IAgentRuns takes — a fake that dropped it would let the dispatcher stop
+    /// passing the project (and with it the sensitive terms) without a single test noticing.
+    public Func<ProjectDoc, ConstraintsDoc, RevisionDoc?, Task<Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>>> Discovery { get; set; } =
+        (_, c, _) => Task.FromResult(Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>.Ok(new CandidatesDoc
         {
             Id = RecordIds.Candidates(c.ProjectId), ProjectId = c.ProjectId,
             Substances = [new("bottle", "Zr", "neodecanoate", "cas-zr", null, null, true, "A", "ok",
@@ -44,8 +46,9 @@ public sealed class FakeAgentRuns : IAgentRuns
 
     Task<Smx.Orchestrator.Agents.AgentRunResult<ConstraintsDoc>> IAgentRuns.RunIntakeAsync(ProjectDoc p, CancellationToken ct)
     { Interlocked.Increment(ref IntakeCalls); return Intake(p); }
-    Task<Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>> IAgentRuns.RunDiscoveryAsync(ConstraintsDoc c, RevisionDoc? revision, CancellationToken ct)
-    { Interlocked.Increment(ref DiscoveryCalls); return Discovery(c, revision); }
+    Task<Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>> IAgentRuns.RunDiscoveryAsync(
+        ProjectDoc project, ConstraintsDoc c, RevisionDoc? revision, CancellationToken ct)
+    { Interlocked.Increment(ref DiscoveryCalls); return Discovery(project, c, revision); }
     Task<Smx.Orchestrator.Agents.AgentRunResult<VerdictDoc>> IAgentRuns.RunRegulatoryAsync(ConstraintsDoc c, CandidateSubstance cand, RevisionDoc? revision, CancellationToken ct)
     { Interlocked.Increment(ref RegulatoryCalls); return Regulatory(c, cand, revision); }
     Task<AgentRunResult<ConclusionOutput>> IAgentRuns.RunConclusionAsync(RevisionDoc revision, ConstraintsDoc c, string stageOutputJson, CancellationToken ct)

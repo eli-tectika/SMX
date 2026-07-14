@@ -108,9 +108,11 @@ public class RevisionDispatchTests
         await SeedApprovedAsync(d, store);
 
         RevisionDoc? seenByAgent = null;
-        agents.Discovery = (_, revision) =>
+        ProjectDoc? projectSeenByAgent = null;
+        agents.Discovery = (project, _, revision) =>
         {
             seenByAgent = revision;
+            projectSeenByAgent = project;
             return Task.FromResult(AgentRunResult<CandidatesDoc>.Ok(Candidates(Substance("B", form: "octoate"))));
         };
 
@@ -122,6 +124,11 @@ public class RevisionDispatchTests
         Assert.NotNull(seenByAgent);
         Assert.Equal("prefer the octoate — the neodecanoate bleeds in HDPE", seenByAgent!.Reason);
         Assert.Equal(revision.Id, seenByAgent.Id);
+
+        // The revise path is a SECOND Discovery run, with the same external-search reach as the first — so it
+        // gets the same project terms. This call site is the one an ordinary-run-only test would miss.
+        Assert.Equal("Acme", projectSeenByAgent!.Client);
+        Assert.Equal("Bottle", projectSeenByAgent.Product);
 
         var candidates = (await store.GetCandidatesAsync(P))!;
         var substance = Assert.Single(candidates.Substances);
@@ -250,7 +257,7 @@ public class RevisionDispatchTests
     {
         var (d, store, agents, knowledge) = Sut();
         await SeedApprovedAsync(d, store);
-        agents.Discovery = (_, _) => Task.FromResult(
+        agents.Discovery = (_, _, _) => Task.FromResult(
             AgentRunResult<CandidatesDoc>.NeedsReview("no catalog hits for the requested form"));
 
         await d.OnRecordChangedAsync(Revision(Stages.Discovery, "use the octoate instead"), default);
@@ -288,7 +295,7 @@ public class RevisionDispatchTests
         Assert.Single(before.Cells);                                  // Zr is tier A ⇒ it has a screened cell
 
         // The revision drops Zr to tier C: it is no longer a screened candidate, so it must LEAVE the matrix.
-        agents.Discovery = (_, _) => Task.FromResult(AgentRunResult<CandidatesDoc>.Ok(Candidates(Substance("C"))));
+        agents.Discovery = (_, _, _) => Task.FromResult(AgentRunResult<CandidatesDoc>.Ok(Candidates(Substance("C"))));
 
         await d.OnRecordChangedAsync(Revision(Stages.Discovery, "Zr is tier C here — the bottle already contains it"), default);
         await d.OnRecordChangedAsync((await store.GetCandidatesAsync(P))!, default);   // what the change feed delivers next
@@ -314,7 +321,7 @@ public class RevisionDispatchTests
         // Now every fallible step runs first, so a failure here mutates NOTHING.
         var (d, store, agents, knowledge) = Sut(new ThrowingConclusionWriter("search index create returned 403 (Forbidden)"));
         await SeedApprovedAsync(d, store);
-        agents.Discovery = (_, _) => Task.FromResult(AgentRunResult<CandidatesDoc>.Ok(Candidates(Substance("C"))));
+        agents.Discovery = (_, _, _) => Task.FromResult(AgentRunResult<CandidatesDoc>.Ok(Candidates(Substance("C"))));
 
         await d.OnRecordChangedAsync(Revision(Stages.Discovery, "Zr overlaps the Ti K-beta line in this matrix"), default);
 

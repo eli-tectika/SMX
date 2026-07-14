@@ -63,7 +63,7 @@ public sealed class StageDispatcher(
                 await SetStageAsync(c.ProjectId, Stages.Discovery, s => { s.Status = "done"; s.Error = null; }, ct);
                 return;
             }
-            var result = await agents.RunDiscoveryAsync(c, null, ct);
+            var result = await agents.RunDiscoveryAsync(await LoadProjectAsync(c.ProjectId, ct), c, null, ct);
             if (result.Succeeded)
             {
                 await store.UpsertCandidatesAsync(result.Output!, ct);
@@ -196,7 +196,7 @@ public sealed class StageDispatcher(
 
     private async Task<RevisedStage> ReviseDiscoveryAsync(ConstraintsDoc c, RevisionDoc r, CancellationToken ct)
     {
-        var result = await agents.RunDiscoveryAsync(c, r, ct);
+        var result = await agents.RunDiscoveryAsync(await LoadProjectAsync(r.ProjectId, ct), c, r, ct);
         if (!result.Succeeded)
             throw new InvalidOperationException($"the discovery agent could not apply the revision: {result.Error}");
 
@@ -315,6 +315,15 @@ public sealed class StageDispatcher(
             MatrixAssembler.Assemble(candidates, componentIds, verdicts, DateTimeOffset.UtcNow.ToString("O")), ct);
         await SetStageAsync(projectId, Stages.Matrix, s => s.Status = "done", ct);
     }
+
+    /// Discovery is the one stage that can reach the public internet, and the ProjectDoc carries the terms
+    /// (client, product, project id) its web-search tool must refuse to send. THROWS when the project is
+    /// missing rather than substituting an empty stand-in: no project ⇒ no sensitive terms ⇒ a Discovery run
+    /// with an unguarded external search. A stage that lands in `failed` is recoverable; a leaked client name
+    /// is not.
+    private async Task<ProjectDoc> LoadProjectAsync(string projectId, CancellationToken ct) =>
+        await store.GetProjectAsync(projectId, ct)
+        ?? throw new InvalidOperationException($"project {projectId} not found");
 
     private async Task SetStageAsync(string projectId, string stage, Action<StageState> mutate, CancellationToken ct)
     {

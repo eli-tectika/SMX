@@ -48,6 +48,27 @@ public class StageDispatcherTests
         Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Discovery].Status);
     }
 
+    // Discovery is the only stage that can reach the public internet, and its web-search tool is built from
+    // the ProjectDoc's client/product/project-id — the terms it must refuse to send. The dispatcher is what
+    // hands them over: a ConstraintsDoc carries neither name, so a Discovery run dispatched without the
+    // project is a run whose external search has nothing to protect.
+    [Fact]
+    public async Task Discovery_IsHandedTheProject_TheOnlyRecordCarryingTheTermsTheWebMustNotSee()
+    {
+        var (d, store, agents) = Sut();
+        ProjectDoc? handedToDiscovery = null;
+        var run = agents.Discovery;
+        agents.Discovery = (p, c, r) => { handedToDiscovery = p; return run(p, c, r); };
+
+        await d.OnRecordChangedAsync(await Seed(store), default);
+        await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);
+
+        Assert.NotNull(handedToDiscovery);
+        Assert.Equal("p1", handedToDiscovery!.ProjectId);
+        Assert.Equal("Acme", handedToDiscovery.Client);
+        Assert.Equal("P", handedToDiscovery.Product);
+    }
+
     [Fact]
     public async Task ConstraintsWithProvidedCandidates_BypassesDiscoveryAgent()
     {
@@ -99,7 +120,7 @@ public class StageDispatcherTests
     public async Task DiscoveryNeedsReview_MarksStage_DoesNotCascade()
     {
         var (d, store, agents) = Sut();
-        agents.Discovery = (_, _) => Task.FromResult(
+        agents.Discovery = (_, _, _) => Task.FromResult(
             Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>.NeedsReview("no catalog hits"));
         await d.OnRecordChangedAsync(await Seed(store), default);
         await d.OnRecordChangedAsync((await store.GetConstraintsAsync("p1"))!, default);

@@ -83,7 +83,7 @@ public class RevisionRoundTripTests
         await SeedProjectOneAsync(store);
 
         // PROJECT 1 — the operator revises Discovery with a reason.
-        agents.Discovery = (_, _) => Task.FromResult(AgentRunResult<CandidatesDoc>.Ok(Candidates("C")));
+        agents.Discovery = (_, _, _) => Task.FromResult(AgentRunResult<CandidatesDoc>.Ok(Candidates("C")));
         agents.Conclusion = (_, _, _) => Task.FromResult(AgentRunResult<ConclusionOutput>.Ok(new ConclusionOutput
         {
             // The distiller GENERALIZES: this project was one bottle, but the finding is about Ba-sulfate in
