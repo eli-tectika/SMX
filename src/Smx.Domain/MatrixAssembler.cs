@@ -32,7 +32,9 @@ public static class MatrixAssembler
             Cells = [.. Cells(c).Select(cell =>
             {
                 var v = byCell[cell];
-                return new MatrixCell(v.Cas, v.ComponentId, v.Overall, v.Dimensions);
+                return new MatrixCell(v.Cas, v.ComponentId, v.Overall, v.Dimensions,
+                    v.ProposedDetermination, v.ProposedReason,
+                    v.Determination, v.DeterminationReason, v.EvidenceReviewed);
             })],
             GeneratedAt = generatedAt,
         };
