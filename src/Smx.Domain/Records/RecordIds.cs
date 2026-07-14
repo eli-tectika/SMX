@@ -19,6 +19,12 @@ public static class Stages
     public const string Discovery = "discovery";
     public const string Regulatory = "regulatory";
     public const string Matrix = "matrix";
+
+    /// Every stage there is — and therefore every stage the operator can TALK to (ChatEndpoints validates
+    /// against it). Hand-maintained beside the constants, so ChatEndpointsTests reflects over the class and
+    /// fails if the two ever part company: a stage added above but not here is silently un-chattable, and
+    /// nobody finds out until an operator gets a 422 for a stage the product says exists.
+    public static readonly string[] All = [Intake, Discovery, Regulatory, Matrix];
 }
 
 public static class RecordIds
