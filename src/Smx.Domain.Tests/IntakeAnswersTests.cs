@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Smx.Domain;
+using Smx.Domain.Records;
 
 namespace Smx.Domain.Tests;
 
@@ -40,6 +41,68 @@ public class IntakeAnswersTests
         var (patched, error) = IntakeAnswers.Patch(Payload(), "providedCandidates.0.cas", "7440-67-7");
         Assert.Null(patched);
         Assert.NotNull(error);
+    }
+
+    [Theory]
+    [InlineData("measuredBackground.0.level")]
+    [InlineData("device.lods.0.lodPpm")]
+    [InlineData("device.model")]
+    public void Patch_REFUSES_ToTouchTheMeasuredPhysicsInputs(string field)
+    {
+        // Same law as the element pools, and for the same reason: these are MEASURED values, and the ppm
+        // detection floor is computed from them. A floor that reads low ships a marker nobody can detect in
+        // the field, and there is no downstream check that catches it. A chat tool that can write them is a
+        // mechanism by which a language model can silently alter measured data.
+        //
+        // NOTE the assertions. `Contains("measured")` alone would be VACUOUS: the generic off-allowlist
+        // message ECHOES the field name back ("'measuredBackground.0.level' is not an answerable field"), so
+        // that assertion passes with the refusal deleted. What must hold is that the model is told WHAT these
+        // inputs are and WHY they are closed — sentences only the named refusal produces.
+        var (patched, error) = IntakeAnswers.Patch(Payload(), field, "0.001");
+        Assert.Null(patched);
+        Assert.Contains("measured data", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("detection floor", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cannot be changed through chat", error!);
+    }
+
+    [Fact]
+    public void Patch_AllowsBatchMassKg_BecauseItIsAnOperatorKnownProductFact()
+    {
+        // Batch mass is not a measurement — it is a production fact the operator knows and may well supply
+        // in conversation. It IS answerable. (Its VALIDITY is enforced by OrderAmount, not here.)
+        var (patched, error) = IntakeAnswers.Patch(Payload(), "components.bottle.batchMassKg", "250");
+        Assert.Null(error);
+        Assert.Equal(250.0, patched!.Value.GetProperty("components")[0].GetProperty("batchMassKg").GetDouble());
+    }
+
+    [Fact]
+    public void Patch_WritesBatchMassKg_AsANumberTheTypedRecordCanRead()
+    {
+        // The seam this field crosses: chat writes into the raw payload, and IntakeAgent.Validate then
+        // deserializes that same payload into typed components (double? BatchMassKg). So the written value
+        // must be READABLE as a number, which is why Patch parses it instead of storing the raw text.
+        var (patched, _) = IntakeAnswers.Patch(Payload(), "components.bottle.batchMassKg", "250");
+        var component = JsonSerializer.Deserialize<List<ComponentSpec>>(
+            patched!.Value.GetProperty("components").GetRawText(), Json.Options)!.Single();
+        Assert.Equal(250.0, component.BatchMassKg);
+    }
+
+    [Theory]
+    [InlineData("a lot")]
+    [InlineData("250 kg")]      // the unit is in the FIELD NAME; a value carrying its own unit is not a number
+    [InlineData("1,000")]       // ambiguous: one thousand, or 1.0 to a decimal-comma reader?
+    [InlineData("NaN")]         // parses as a double — and is not writable as JSON, so it would THROW
+    [InlineData("Infinity")]
+    public void Patch_RefusesABatchMassThatIsNotAPlainFiniteNumber(string value)
+    {
+        // batchMassKg is the first NUMERIC answerable field, and an unparseable one is not merely useless:
+        // stored as text it deserializes into `double? BatchMassKg` only by luck. "a lot" throws
+        // JsonException from inside IntakeAgent.Validate — which reports it as the AGENT's reply being
+        // malformed, so the agent retries a reply that was fine and intake dies on a payload it cannot fix.
+        // NaN/Infinity are worse: they parse, and then STJ refuses to WRITE them, so Patch itself would throw.
+        var (patched, error) = IntakeAnswers.Patch(Payload(), "components.bottle.batchMassKg", value);
+        Assert.Null(patched);
+        Assert.Contains("kilograms", error, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -99,6 +162,8 @@ public class IntakeAnswersTests
     [InlineData("ElementPools.0.status")]
     [InlineData("elementpools")]
     [InlineData("PROVIDEDCANDIDATES.0.cas")]
+    [InlineData("MeasuredBackground.0.level")]
+    [InlineData("DEVICE.model")]
     public void Patch_RefusalOfTheProtectedInputsIsCaseInsensitive(string field)
     {
         // The ALLOW path is exact-match (an allowlist is a list of exactly the strings you meant), but the
@@ -191,6 +256,7 @@ public class IntakeAnswersTests
     [InlineData("components.bottle.markets", "")]
     [InlineData("components.bottle.markets", " , ")]   // parses to zero markets
     [InlineData("components.bottle.material", "  ")]
+    [InlineData("components.bottle.batchMassKg", "  ")]
     [InlineData("clientRestrictedList", "")]
     public void Patch_RefusesToRecordABlankAnswer(string field, string value)
     {

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -6,8 +7,10 @@ namespace Smx.Domain;
 /// The allowlist for `record_answer` (design §5 — intake gap-fill).
 ///
 /// A chat tool that could write ANY path into the project payload would be a mechanism by which a
-/// language model can silently rewrite the ELEMENT POOLS — the physicist's measured XRF background, on
-/// which every downstream candidate and verdict rests. There is no undo and no reason anyone would look.
+/// language model can silently rewrite the physicist's MEASURED data — the ELEMENT POOLS (the measured XRF
+/// background, on which every downstream candidate and verdict rests), the MEASURED BACKGROUND LEVELS and
+/// the DEVICE LODs (from which the ppm detection floor is computed; a floor that reads low ships a marker
+/// nobody can detect in the field). There is no undo and no reason anyone would look.
 /// So this is an allowlist, not a denylist: only operator-known product facts are writable, and the
 /// physicist's data and the eval seam (providedCandidates) are not writable at all, by construction.
 ///
@@ -15,12 +18,16 @@ namespace Smx.Domain;
 /// and the error text is the only thing that teaches the model to correct itself.
 public static class IntakeAnswers
 {
-    private static readonly string[] ComponentFields = ["material", "application", "objective", "markets"];
+    private static readonly string[] ComponentFields = ["material", "application", "objective", "markets", "batchMassKg"];
 
     /// The COMPONENT fields whose value is a comma-separated list rather than a scalar. Only consulted on the
     /// component branch below — `clientRestrictedList` is a ROOT field and parses its own list before `parts`
     /// is ever destructured, so naming it here would be a dead entry that reads like a second code path.
     private static readonly string[] ListFields = ["markets"];
+
+    /// The COMPONENT fields whose value is a NUMBER. Every other answerable field is text, so it can be stored
+    /// verbatim; a number cannot. See ParseNumber for why this is a parse and not a copy.
+    private static readonly string[] NumberFields = ["batchMassKg"];
 
     private static string AllowedFields =>
         $"components.{{componentId}}.{{{string.Join("|", ComponentFields)}}}, or clientRestrictedList";
@@ -38,6 +45,16 @@ public static class IntakeAnswers
                           "must re-enter them at intake.");
         if (field.StartsWith("providedCandidates", StringComparison.OrdinalIgnoreCase))
             return (null, "provided candidates are an input seam and cannot be changed through chat.");
+        // Note what this refusal is and is not. It does not CLOSE a hole: the allowlist below already accepts
+        // only `components.{id}.{field}` and `clientRestrictedList`, so these paths were refused already —
+        // with a generic "not an answerable field". It exists because the generic message teaches the model
+        // nothing, and a model that reads "not answerable" retries with a rephrasing. The boundary here is not
+        // a typo to be worked around: it is measured data. Say so.
+        if (field.StartsWith("measuredBackground", StringComparison.OrdinalIgnoreCase)
+         || field.StartsWith("device", StringComparison.OrdinalIgnoreCase))
+            return (null, "the measured background and the device LODs are the physicist's measured data — " +
+                          "the ppm detection floor is computed from them, and a floor that reads low ships a " +
+                          "marker nobody can detect. They cannot be changed through chat.");
 
         if (Root(payload) is not { } node)
             return (null, "this project's intake payload is not a JSON object, so no answer can be recorded " +
@@ -75,6 +92,12 @@ public static class IntakeAnswers
                 if (ParseList(value) is not { Length: > 0 } entries) return (null, BlankValue(componentField));
                 component[componentField] = ToJsonArray(entries);
             }
+            else if (NumberFields.Contains(componentField, StringComparer.Ordinal))
+            {
+                if (string.IsNullOrWhiteSpace(value)) return (null, BlankValue(componentField));
+                if (ParseNumber(value) is not { } number) return (null, NotANumber(componentField, value));
+                component[componentField] = JsonValue.Create(number);
+            }
             else
             {
                 if (string.IsNullOrWhiteSpace(value)) return (null, BlankValue(componentField));
@@ -101,6 +124,28 @@ public static class IntakeAnswers
         _ => $"'{field}' needs a real value — an empty answer would blank this intake input rather than fill " +
              "it. Ask the operator for the value.",
     };
+
+    /// A numeric answer is PARSED, not copied. Every other answerable field is text, so whatever the model
+    /// says can be stored verbatim; `batchMassKg` is read back as a `double?` (ComponentSpec), and text that
+    /// is not a number poisons the payload: IntakeAgent.Validate deserializes the payload on every run, so
+    /// "a lot" throws a JsonException there — which the runner reports as the AGENT's reply being malformed,
+    /// sending it to retry a reply that was fine while intake dies on a payload it has no tool to repair.
+    ///
+    /// InvariantCulture, and NO thousands separators: "1,000" is one thousand to one reader and 1.0 to
+    /// another, and silently picking one mis-doses the batch by 1000×. It is refused and the operator is
+    /// asked for a plain number.
+    ///
+    /// The finiteness check is not pedantry: "NaN" and "Infinity" PARSE as doubles, and STJ then refuses to
+    /// WRITE them (they are not valid JSON), so Rebuild would throw — and Patch must never throw.
+    private static double? ParseNumber(string value) =>
+        double.TryParse(value.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d)
+        && double.IsFinite(d) ? d : null;
+
+    private static string NotANumber(string field, string value) =>
+        $"'{field}' must be a plain number of KILOGRAMS (e.g. 250 or 12.5) — '{value.Trim()}' is not one. " +
+        "Do not include units, thousands separators or words. ppm is mg/kg, so the batch is recorded as MASS: " +
+        "if the operator gave you a VOLUME, ask them for the mass (volume × the material's density). Never " +
+        "guess a density, and never treat litres as kilograms.";
 
     private static string KnownComponents(JsonArray? components)
     {

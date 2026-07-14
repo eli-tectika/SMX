@@ -99,6 +99,25 @@ public class RecordDocsTests
     }
 
     [Fact]
+    public void ConstraintsDoc_CarriesTheMeasuredPhysicsInputs_TheFloorIsComputedFrom()
+    {
+        var c = new ConstraintsDoc
+        {
+            Id = RecordIds.Constraints("proj-1"), ProjectId = "proj-1",
+            Components = [new ComponentSpec("bottle", "HDPE", "packaging", ["EU"], "brand", 250.0)],
+            MeasuredBackground = [new MeasuredBackground("bottle", "Zr", 4.0, "ppm")],
+            Device = new XrfDevice("Olympus Vanta M", [new DeviceLod("Zr", 1.5, "ppm")]),
+        };
+        var json = JsonSerializer.Serialize(c, Json.Options);
+        var back = JsonSerializer.Deserialize<ConstraintsDoc>(json, Json.Options)!;
+
+        Assert.Equal(4.0, Assert.Single(back.MeasuredBackground).LevelPpm);
+        Assert.Equal("ppm", Assert.Single(back.MeasuredBackground).Unit);
+        Assert.Equal(1.5, Assert.Single(back.Device!.Lods).LodPpm);
+        Assert.Equal(250.0, Assert.Single(back.Components).BatchMassKg);
+    }
+
+    [Fact]
     public void ProjectCreate_SeedsIntakeDiscoveryRegulatoryMatrix()
     {
         var p = ProjectDoc.Create("p1", "Acme", "P", System.Text.Json.JsonDocument.Parse("{}").RootElement);
