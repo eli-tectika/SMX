@@ -15,4 +15,9 @@
   <ItemGroup>
     <ProjectReference Include="../Smx.SearchProxy/Smx.SearchProxy.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="../Smx.SearchProxy/Config/cover-corpus.json"
+          Link="Config/cover-corpus.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
