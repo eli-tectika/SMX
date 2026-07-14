@@ -1715,28 +1715,101 @@ git commit -m "feat(agents): DosingAgent — it picks the ppm; the code owns the
 
 ---
 
-## Task 12: Dispatch — `OnMatrixAsync` runs Dosing, and it PARKS rather than guess
+## Task 12: Dispatch — the operator's SIGNATURE runs Dosing, and it PARKS rather than guess
 
 **Files:**
 - Modify: `src/Smx.Orchestrator/Dispatch/StageDispatcher.cs`, `src/Smx.Orchestrator/Dispatch/AgentRuns.cs` (+ `IAgentRuns`), `src/Smx.Orchestrator.Tests/Fakes/FakeAgentRuns.cs`
 - Test: `src/Smx.Orchestrator.Tests/DosingDispatchTests.cs`
 
-**The trigger is the `MatrixDoc`** — today `case MatrixDoc: break; // terminal`. The matrix assembles only when the Regulatory gate is approved *and* `RegulatoryGate.Armable` still holds (`TryAssembleAsync` re-checks), so its existence is precisely the signal "the compliant set is final". Read `TryAssembleAsync` and confirm that for yourself before relying on it.
+> ### ⚠️ The trigger is the approved `GateDoc`. It is NOT the `MatrixDoc`.
+>
+> **This plan originally said the trigger was the `MatrixDoc`, on the grounds that "the matrix assembles only
+> when the Regulatory gate is approved". That was FALSE, and a reviewer caught it by reading the code instead
+> of the plan.** `TryAssembleAsync` (`StageDispatcher.cs`) has exactly one early return — `MatrixAssembler.IsComplete`.
+> The gate lookup feeds only the *Regulatory stage's status*; the matrix upsert is **unconditional** ("Always
+> re-assemble"). **A `MatrixDoc` therefore exists as soon as every candidate has an agent verdict — before any
+> gate approval and before any operator determination.**
+>
+> Triggering Dosing off it would run Dosing on an **unsigned gate**: the operator determines a few substances,
+> has not yet signed, and Dosing doses them anyway. The hard regulatory gate — Law 9's whole subject — would be
+> bypassed by the stage that runs immediately after it. `CompliantSet` would still keep *undetermined* substances
+> out, so it is not a false pass on any single substance; what it bypasses is the operator's **aggregate**
+> signature that the analysis as a whole was reviewed. That is the gate.
+>
+> **So: Dosing triggers from `OnGateAsync`, on `{ GateType: Regulatory, Status: "approved" }`.** The signature
+> *is* the record that says "the compliant set is final". That is what record-as-bus means.
+>
+> **And re-check `RegulatoryGate.Armable` at dose time anyway** — for exactly the reason `TryAssembleAsync`'s own
+> comment gives: *"the gate record carries no binding to the verdicts it was signed over, so an `approved` status
+> alone is not proof that the CURRENT analysis was reviewed."* If it is no longer armable, park in `needs-review`
+> naming the blockers; do not dose.
+
+**A second, related correction.** Task 13's `POST …/dosing/loading` re-triggers Dosing by setting the stage back
+to `pending` — and the plan says "the `ProjectDoc` upsert is a change-feed event". It is, but **`OnProjectAsync`
+returns immediately unless `Stages.Intake` is `pending`**, so that event reaches nothing. Extract a
+**`TryDoseAsync(projectId, ct)`** (mirroring `TryAssembleAsync`) and call it from **both**:
+
+- `OnGateAsync` — the first run, on the operator's signature;
+- `OnProjectAsync` — the re-entry, when `Stages.Dosing` is `pending` and the regulatory gate is already approved.
+
+`TryDoseAsync` is the single place that resolves the inputs, parks on a gap, and runs the agent. Two copies of
+"which floors did we compute" is exactly the seam where the first-run path and the re-entry path drift.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```csharp
+    /// The operator's signature on the regulatory gate. THIS is what runs Dosing.
+    private static GateDoc ApprovedGate() => new()
+    {
+        Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
+        Status = "approved", ApprovedAt = "2026-07-14T10:00:00.0000000+00:00",
+    };
+
     [Fact]
-    public async Task Matrix_TriggersDosing_OverTheCompliantSetOnly()
+    public async Task TheApprovedGate_TriggersDosing_OverTheCompliantSetOnly()
     {
         // Seed: cas-ok recommended, cas-no rejected. The dosing agent must be handed ONLY cas-ok.
-        await SeedApprovedProjectAsync();
+        await SeedApprovedProjectAsync(withLoadingFor: "cas-ok");
         IReadOnlyList<VerdictDoc>? seen = null;
-        _agents.Dosing = (_, compliant, _, _) => { seen = compliant; return Task.FromResult(EmptyDosing()); };
+        _agents.Dosing = (_, compliant, _, _, _) => { seen = compliant; return Task.FromResult(Dosed()); };
+
+        await Dispatcher().OnRecordChangedAsync(Delivered(ApprovedGate()), default);
+
+        Assert.Equal("cas-ok", Assert.Single(seen!).Cas);
+    }
+
+    [Fact]
+    public async Task TheMATRIX_DoesNOTTriggerDosing_BecauseItExistsBEFORETheGateIsSigned()
+    {
+        // THE GATE-BYPASS GUARD, AND IT IS THE REASON THIS TASK WAS REWRITTEN. TryAssembleAsync upserts the
+        // MatrixDoc as soon as every candidate has an agent verdict — it does NOT wait for the operator's
+        // signature. If the MatrixDoc triggered Dosing, the operator could determine a few substances, not
+        // sign, and have them dosed anyway: the hard regulatory gate bypassed by the stage that runs right
+        // after it. The signature is the trigger. Nothing else is.
+        await SeedApprovedProjectAsync(withLoadingFor: "cas-ok", withApprovedGate: false);
 
         await Dispatcher().OnRecordChangedAsync(Delivered(Matrix()), default);
 
-        Assert.Equal("cas-ok", Assert.Single(seen!).Cas);
+        Assert.Equal(0, _agents.DosingCalls);
+        Assert.Null(await _store.GetDosingAsync(P));
+        Assert.Equal("pending", (await _store.GetProjectAsync(P))!.Stages[Stages.Dosing].Status);
+    }
+
+    [Fact]
+    public async Task Dosing_REFUSES_WhenTheGateIsSignedButNoLongerArmable()
+    {
+        // Defence in depth, and TryAssembleAsync's own comment is the argument: "the gate record carries no
+        // binding to the verdicts it was signed over, so an `approved` status alone is not proof that the
+        // CURRENT analysis was reviewed." If an unreviewed non-pass verdict is live at dose time, the
+        // signature does not cover it.
+        await SeedApprovedProjectAsync(withLoadingFor: "cas-ok", withUnreviewedFailFor: "cas-ok");
+
+        await Dispatcher().OnRecordChangedAsync(Delivered(ApprovedGate()), default);
+
+        var stage = (await _store.GetProjectAsync(P))!.Stages[Stages.Dosing];
+        Assert.Equal("needs-review", stage.Status);
+        Assert.Contains("unreviewed", stage.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, _agents.DosingCalls);
     }
 
     [Fact]
@@ -1745,7 +1818,7 @@ git commit -m "feat(agents): DosingAgent — it picks the ppm; the code owns the
         // It does NOT run the agent with a missing measurement and hope. It parks, and the operator can see
         // exactly what physics owes them.
         await SeedApprovedProjectAsync(measuredBackground: []);
-        await Dispatcher().OnRecordChangedAsync(Delivered(Matrix()), default);
+        await Dispatcher().OnRecordChangedAsync(Delivered(ApprovedGate()), default);
 
         var stage = (await _store.GetProjectAsync(P))!.Stages[Stages.Dosing];
         Assert.Equal("awaiting-physics", stage.Status);
@@ -1759,7 +1832,7 @@ git commit -m "feat(agents): DosingAgent — it picks the ppm; the code owns the
     {
         // The FIRST project to use a compound pays this cost, once, ever. Every later project reads it.
         await SeedApprovedProjectAsync();                       // knowledge store has no loading for cas-ok
-        await Dispatcher().OnRecordChangedAsync(Delivered(Matrix()), default);
+        await Dispatcher().OnRecordChangedAsync(Delivered(ApprovedGate()), default);
 
         var stage = (await _store.GetProjectAsync(P))!.Stages[Stages.Dosing];
         Assert.Equal("awaiting-operator", stage.Status);
@@ -1771,10 +1844,10 @@ git commit -m "feat(agents): DosingAgent — it picks the ppm; the code owns the
     public async Task Dosing_IsIdempotent_UnderChangeFeedRedelivery()
     {
         await SeedApprovedProjectAsync(withLoadingFor: "cas-ok");
-        var m = Matrix();
+        var g = ApprovedGate();
         var d = Dispatcher();
-        await d.OnRecordChangedAsync(Delivered(m), default);
-        await d.OnRecordChangedAsync(Delivered(m), default);   // at-least-once
+        await d.OnRecordChangedAsync(Delivered(g), default);
+        await d.OnRecordChangedAsync(Delivered(g), default);   // at-least-once
         Assert.Equal(1, _agents.DosingCalls);
     }
 
@@ -1782,10 +1855,27 @@ git commit -m "feat(agents): DosingAgent — it picks the ppm; the code owns the
     public async Task Dosing_WritesTheDoc_AndMarksTheStageDone()
     {
         await SeedApprovedProjectAsync(withLoadingFor: "cas-ok");
-        await Dispatcher().OnRecordChangedAsync(Delivered(Matrix()), default);
+        await Dispatcher().OnRecordChangedAsync(Delivered(ApprovedGate()), default);
 
         Assert.NotNull(await _store.GetDosingAsync(P));
         Assert.Equal("done", (await _store.GetProjectAsync(P))!.Stages[Stages.Dosing].Status);
+    }
+
+    [Fact]
+    public async Task AProjectUpsert_ReEntersDosing_WhenTheStageWasReOpened()
+    {
+        // The re-entry path (Task 13's POST /dosing/loading sets the stage back to `pending`). OnProjectAsync
+        // returns early unless INTAKE is pending, so without an explicit TryDoseAsync call this event reaches
+        // nothing and the operator's loading is recorded to no effect — the stage sits parked forever.
+        await SeedApprovedProjectAsync(withLoadingFor: "cas-ok");
+        var p = (await _store.GetProjectAsync(P))!;
+        p.Stages[Stages.Dosing].Status = "pending";
+        await _store.UpsertProjectAsync(p);
+
+        await Dispatcher().OnRecordChangedAsync(Delivered(p), default);
+
+        Assert.Equal(1, _agents.DosingCalls);
+        Assert.NotNull(await _store.GetDosingAsync(P));
     }
 ```
 
@@ -1793,28 +1883,52 @@ git commit -m "feat(agents): DosingAgent — it picks the ppm; the code owns the
 
 - [ ] **Step 2: Run to verify they fail.**
 
-- [ ] **Step 3: Implement.** Replace `case MatrixDoc: break;` with `case MatrixDoc m: await OnMatrixAsync(m, ct); break;` and add:
+- [ ] **Step 3: Implement.** Leave `case MatrixDoc: break;` **exactly as it is** — the matrix stays terminal, and
+      the test above pins that it does not dose. Call `TryDoseAsync` from `OnGateAsync` (on the approved
+      regulatory gate) and from `OnProjectAsync` (the re-entry). Add:
 
 ```csharp
-    /// The compliant set is final — the matrix only assembles behind an approved gate that TryAssembleAsync
-    /// re-checked is still armable — so Dosing may run.
+    /// The operator has SIGNED the regulatory gate: the compliant set is final, so Dosing may run.
+    ///
+    /// The trigger is the signature, NOT the matrix. TryAssembleAsync writes the MatrixDoc as soon as every
+    /// candidate has an agent verdict — before any approval — so a MatrixDoc trigger would dose an unsigned
+    /// gate, bypassing the one hard gate this stage sits behind.
     ///
     /// It resolves EVERY input first and parks on any gap. It does not run the agent on a partial picture
     /// and let it improvise the holes: the two things missing here are a MEASUREMENT and a MASS FRACTION,
     /// and a model that invents either produces a marker nobody can detect or a batch nobody dosed right.
-    private async Task OnMatrixAsync(MatrixDoc m, CancellationToken ct)
+    private async Task TryDoseAsync(string projectId, CancellationToken ct)
     {
-        var project = await store.GetProjectAsync(m.ProjectId, ct);
+        var project = await store.GetProjectAsync(projectId, ct);
         // At-least-once feed. Also the re-entry point: POST /dosing/loading sets this back to `pending`.
         if (project is null || project.Stages[Stages.Dosing].Status is not "pending") return;
 
-        var constraints = await store.GetConstraintsAsync(m.ProjectId, ct);
-        if (constraints is null) return;
+        // The signature is not self-proving. Re-check it here for the same reason TryAssembleAsync does:
+        // "the gate record carries no binding to the verdicts it was signed over", so `approved` alone is not
+        // proof that the CURRENT analysis was reviewed.
+        var gate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
+        if (gate?.Status != "approved") return;
 
-        var compliant = CompliantSet.Of(await store.GetVerdictsAsync(m.ProjectId, ct));
+        var constraints = await store.GetConstraintsAsync(projectId, ct);
+        var candidates = await store.GetCandidatesAsync(projectId, ct);
+        if (constraints is null || candidates is null) return;
+
+        var verdicts = await store.GetVerdictsAsync(projectId, ct);
+        if (RegulatoryGate.Armable(candidates, verdicts) is { Ok: false } blocked)
+        {
+            await SetStageAsync(projectId, Stages.Dosing, s =>
+            {
+                s.Status = "needs-review";
+                s.Error = "the regulatory gate is signed but no longer covers the current analysis: " +
+                          string.Join("; ", blocked.Blockers);
+            }, ct);
+            return;
+        }
+
+        var compliant = CompliantSet.Of(verdicts);
         if (compliant.Count == 0)
         {
-            await SetStageAsync(m.ProjectId, Stages.Dosing, s =>
+            await SetStageAsync(projectId, Stages.Dosing, s =>
             {
                 s.Status = "needs-review";
                 s.Error = "the compliant set is empty — no substance carries an R.E. determination of " +
@@ -1836,7 +1950,7 @@ git commit -m "feat(agents): DosingAgent — it picks the ppm; the code owns the
         }
         if (physicsGaps.Count > 0)
         {
-            await SetStageAsync(m.ProjectId, Stages.Dosing, s =>
+            await SetStageAsync(projectId, Stages.Dosing, s =>
             {
                 s.Status = "awaiting-physics";
                 s.Error = string.Join(" | ", physicsGaps.Distinct());
@@ -1855,7 +1969,7 @@ git commit -m "feat(agents): DosingAgent — it picks the ppm; the code owns the
         }
         if (loadingGaps.Count > 0)
         {
-            await SetStageAsync(m.ProjectId, Stages.Dosing, s =>
+            await SetStageAsync(projectId, Stages.Dosing, s =>
             {
                 s.Status = "awaiting-operator";
                 s.Error = "the metal loading (mass fraction of the marker element in the compound) is not " +
@@ -1866,23 +1980,23 @@ git commit -m "feat(agents): DosingAgent — it picks the ppm; the code owns the
             return;
         }
 
-        await SetStageAsync(m.ProjectId, Stages.Dosing, s => { s.Status = "running"; s.Attempts++; }, ct);
+        await SetStageAsync(projectId, Stages.Dosing, s => { s.Status = "running"; s.Attempts++; }, ct);
         try
         {
             var result = await agents.RunDosingAsync(constraints, compliant, floors, loadings, null, ct);
             if (!result.Succeeded)
             {
-                await SetStageAsync(m.ProjectId, Stages.Dosing,
+                await SetStageAsync(projectId, Stages.Dosing,
                     s => { s.Status = "needs-review"; s.Error = result.Error; }, ct);
                 return;
             }
             await store.UpsertDosingAsync(result.Output!, ct);
-            await SetStageAsync(m.ProjectId, Stages.Dosing,
+            await SetStageAsync(projectId, Stages.Dosing,
                 s => { s.Status = "done"; s.Error = null; }, ct);
         }
         catch (Exception e)
         {
-            await SetStageAsync(m.ProjectId, Stages.Dosing,
+            await SetStageAsync(projectId, Stages.Dosing,
                 s => { s.Status = "failed"; s.Error = e.Message; }, ct);
         }
     }
@@ -2121,7 +2235,7 @@ git commit -m "feat(api): dosing loading entry (cross-project), the soft checkpo
     }
 ```
 
-**Extract the floor + loading resolution out of `OnMatrixAsync` into one private helper that both call sites use.** Two copies of "which floors did we compute" is exactly the seam where the first-run path and the revision path drift — and only one of them would keep its guarantees, with nothing to tell you which:
+**Extract the floor + loading resolution out of `TryDoseAsync` into one private helper that both call sites use.** Two copies of "which floors did we compute" is exactly the seam where the first-run path and the revision path drift — and only one of them would keep its guarantees, with nothing to tell you which:
 
 ```csharp
     /// The Dosing stage's inputs, resolved once and used by both the first run and a revision. `Gap` is
@@ -2133,7 +2247,7 @@ git commit -m "feat(api): dosing loading entry (cross-project), the soft checkpo
         ResolveDosingInputsAsync(ConstraintsDoc c, IReadOnlyList<VerdictDoc> compliant, CancellationToken ct)
 ```
 
-`OnMatrixAsync` distinguishes the two gap kinds (`awaiting-physics` vs `awaiting-operator`) by which collection came back short, so return them separately if that reads more clearly than one `Gap` string — but **resolve them in one place**.
+`TryDoseAsync` distinguishes the two gap kinds (`awaiting-physics` vs `awaiting-operator`) by which collection came back short, so return them separately if that reads more clearly than one `Gap` string — but **resolve them in one place**.
 
 `RevisionEndpoints` needs no change: it already routes on `RevisionEffects.IsRevisable`, which Task 8 made true for `dosing`. **Confirm that with a test rather than assuming it.**
 
