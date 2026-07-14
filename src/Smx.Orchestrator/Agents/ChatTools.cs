@@ -58,10 +58,17 @@ public sealed class ChatTools(IRecordStore store, string projectId, string stage
                 "`cas` and `componentId` of the verdict to re-run, because a verdict is per substance x component."));
 
         if (stage == Stages.Intake)
+            // The field list must stay in step with IntakeAnswers.ComponentFields — the allowlist that
+            // actually enforces it. A field the allowlist accepts but this sentence omits is a field the
+            // model will never offer to record: it reads "is one of" as exhaustive, and the operator's
+            // answer is silently lost. batchMassKg is exactly that field, and it is a dosing multiplier.
             tools.Add(AIFunctionFactory.Create(RecordAnswerAsync, "record_answer",
                 "Fill in a missing project input the operator has just told you, while intake is still gathering them. " +
-                "`field` is one of: components.{componentId}.material, .application, .objective, .markets, or clientRestrictedList. " +
-                "Element pools and provided candidates are NOT answerable — they are measured/seeded data. " +
+                "`field` is one of: components.{componentId}.material, .application, .objective, .markets, .batchMassKg, " +
+                "or clientRestrictedList. batchMassKg is the batch MASS in KILOGRAMS as a plain number (ppm is mg/kg): " +
+                "if the operator gives you a VOLUME, ask them for the mass — never guess a density. " +
+                "Element pools, the measured background and the device LODs are NOT answerable — they are the " +
+                "physicist's measured data — and neither are provided candidates. " +
                 "Once intake has produced constraints this is refused; use apply_revision instead."));
 
         return tools;

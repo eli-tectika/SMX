@@ -2,12 +2,18 @@ using Smx.Domain.Records;
 
 namespace Smx.Backend.Api;
 
+/// <param name="MeasuredBackground">The physicist's measured background, and <paramref name="Device"/> the
+/// deployment XRF unit whose LODs the ppm floor targets. BOTH OPTIONAL, deliberately: the XRF run happens
+/// offline and can land days after the project is opened (UX spec Law 6). Dosing PARKS on their absence —
+/// that is the awaiting-physics state — so intake must not demand them up front.</param>
 public sealed record CreateProjectRequest(
     string Client, string Product,
     List<ComponentSpec> Components,
     List<ElementPool> ElementPools,
     List<CandidateSubstance>? Candidates,
-    List<string>? ClientRestrictedList)
+    List<string>? ClientRestrictedList,
+    List<MeasuredBackground>? MeasuredBackground = null,
+    XrfDevice? Device = null)
 {
     public string? Validate()
     {
@@ -25,6 +31,11 @@ public sealed record CreateProjectRequest(
             return "each conditional (L) element pool entry must carry a signal-character note";
         if (hasCandidates && Candidates!.Any(c => !componentIds.Contains(c.ComponentId)))
             return "every candidate must reference a declared component";
+        // A background measured on a component this product does not have is a measurement of nothing. It
+        // would sit in the payload looking exactly like data, while the component it was really measured on
+        // silently has no background at all — and the ppm floor would be computed without it.
+        if (MeasuredBackground is { Count: > 0 } && MeasuredBackground.Any(b => !componentIds.Contains(b.Component)))
+            return "every measured background must reference a declared component";
         return null;
     }
 }

@@ -18,12 +18,18 @@ public static class ProjectEndpoints
         {
             if (req.Validate() is { } error) return Results.BadRequest(new { error });
             var projectId = $"proj-{Guid.NewGuid():N}"[..17];
+            // This payload is the ONLY thing intake reads (IntakeAgent copies the facts straight out of it),
+            // so a field dropped here is a field no downstream stage can ever see. `device` is left to
+            // Json.Options' WhenWritingNull when absent: no key at all, rather than a `null` masquerading as
+            // a device.
             var payload = JsonSerializer.SerializeToElement(new
             {
                 components = req.Components,
                 elementPools = req.ElementPools,
                 providedCandidates = req.Candidates ?? [],
                 clientRestrictedList = req.ClientRestrictedList ?? [],
+                measuredBackground = req.MeasuredBackground ?? [],
+                device = req.Device,
             }, Json.Options);
             var doc = ProjectDoc.Create(projectId, req.Client, req.Product, payload);
             doc.CreatedAt = DateTimeOffset.UtcNow.ToString("O");

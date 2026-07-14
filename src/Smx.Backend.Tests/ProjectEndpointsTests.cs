@@ -29,6 +29,63 @@ public class ProjectEndpointsTests : IClassFixture<WebApplicationFactory<Program
         clientRestrictedList = new[] { "Pb" },
     };
 
+    /// The same project, with the physicist's numbers attached: the batch MASS, the measured background level
+    /// and the deployment device's LODs. These are the inputs the ppm detection floor is computed from.
+    private static object PhysicsBody(string backgroundComponent = "bottle") => new
+    {
+        client = "Acme", product = "Shampoo bottle",
+        components = new[] { new { id = "bottle", material = "HDPE", application = "packaging", markets = new[] { "EU" }, objective = "brand", batchMassKg = 250.0 } },
+        elementPools = new[] { new { component = "bottle", element = "Zr", line = "Kα", status = "V" } },
+        measuredBackground = new[] { new { component = backgroundComponent, element = "Zr", levelPpm = 4.0, unit = "ppm" } },
+        device = new { model = "Olympus Vanta M", lods = new[] { new { element = "Zr", lodPpm = 1.5, unit = "ppm" } } },
+    };
+
+    private async Task<JsonElement> PostAndReadPayloadAsync(object body)
+    {
+        var resp = await _client.PostAsJsonAsync("/projects", body);
+        Assert.Equal(HttpStatusCode.Accepted, resp.StatusCode);
+        var id = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("projectId").GetString()!;
+        return (await _store.GetProjectAsync(id))!.Payload;
+    }
+
+    [Fact]
+    public async Task PostProject_CarriesTheMeasuredBackgroundAndTheDevice_IntoThePayload()
+    {
+        // The payload is the only thing intake reads. Drop these on the floor here and the ppm detection floor
+        // has no inputs at all — Dosing parks forever, and the one number that decides whether the marker is
+        // physically readable in the field never gets computed.
+        var payload = await PostAndReadPayloadAsync(PhysicsBody());
+
+        Assert.Equal(4.0, payload.GetProperty("measuredBackground")[0].GetProperty("levelPpm").GetDouble());
+        Assert.Equal("ppm", payload.GetProperty("measuredBackground")[0].GetProperty("unit").GetString());
+        Assert.Equal("Olympus Vanta M", payload.GetProperty("device").GetProperty("model").GetString());
+        Assert.Equal(1.5, payload.GetProperty("device").GetProperty("lods")[0].GetProperty("lodPpm").GetDouble());
+        Assert.Equal(250.0, payload.GetProperty("components")[0].GetProperty("batchMassKg").GetDouble());
+    }
+
+    [Fact]
+    public async Task PostProject_RefusesAMeasuredBackgroundForAnUndeclaredComponent()
+    {
+        // The same law the element pools already obey: a measurement that names no component is a measurement
+        // of nothing. Accepting it would leave it sitting in the payload looking exactly like data, and the
+        // component it was actually measured on would silently have no background at all.
+        var resp = await _client.PostAsJsonAsync("/projects", PhysicsBody(backgroundComponent: "lid"));
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostProject_IsStillAcceptedWithNoPhysicsAtAll_BecauseItArrivesLater()
+    {
+        // Law 6: the physicist's XRF run happens OFFLINE and lands days later. Intake must not demand it up
+        // front — Dosing PARKS on its absence, which is the whole point of the awaiting-physics state.
+        // So absence has to be REPRESENTABLE in the payload: an empty list and no device key, which is what
+        // IntakeAgent's payload deserializer reads back as "nothing measured yet".
+        var payload = await PostAndReadPayloadAsync(ValidBody);
+
+        Assert.Empty(payload.GetProperty("measuredBackground").EnumerateArray());
+        Assert.False(payload.TryGetProperty("device", out _));
+    }
+
     [Fact]
     public async Task PostProjects_Returns202_AndSeedsProjectDoc()
     {
