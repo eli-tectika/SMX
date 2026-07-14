@@ -58,12 +58,41 @@ export interface DimensionVerdict {
   rationale: string;
 }
 
-/** MatrixCell — src/Smx.Domain/Records/MatrixDoc.cs */
+/**
+ * Determinations — src/Smx.Domain/Records/VerdictDoc.cs. The ruling on a substance × component.
+ * The backend's determination endpoint 422s anything that is not exactly one of these two, so the
+ * string that decides whether a chemical enters a customer's product is always one of them.
+ */
+export const DETERMINATIONS = ['recommended', 'rejected'] as const;
+export type Determination = (typeof DETERMINATIONS)[number];
+
+/**
+ * MatrixCell — src/Smx.Domain/Records/MatrixDoc.cs
+ *
+ * FOUR review fields, and the split between them is the design, not bookkeeping:
+ *
+ *   proposed*      — the AGENT's proposal. It exists so the operator CONFIRMS rather than authors.
+ *                    It is not a determination and carries no weight; nothing downstream reads it.
+ *   determination* — the OPERATOR's signature. The only field CompliantSet reads, and the only one
+ *                    that lets a chemical into a customer's product.
+ *
+ * They render beside each other and must NEVER render as one field: a UI that collapses them is the
+ * agent signing the regulatory gate, which is the single thing Law 9 exists to prevent. Read them
+ * through src/domain/proposal.ts, which refuses to let the proposal stand in for the signature.
+ *
+ * Nulls are omitted on the wire (Smx.Domain/Json.cs), hence the optionals; `evidenceReviewed` is a
+ * non-nullable bool server-side and so always arrives.
+ */
 export interface MatrixCell {
   cas: string;
   componentId: string;
   overall: VerdictStatus;
   dimensions: DimensionVerdict[];
+  proposedDetermination?: Determination;
+  proposedReason?: string;
+  determination?: Determination;
+  determinationReason?: string;
+  evidenceReviewed?: boolean;
 }
 
 /** MatrixDoc — src/Smx.Domain/Records/MatrixDoc.cs */

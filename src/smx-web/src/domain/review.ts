@@ -1,17 +1,27 @@
 /**
- * The review ledger — which matrix cells the operator has actually opened.
+ * The review ledger — which matrix cells the operator has opened IN THIS BROWSER.
  *
  * Spec §1.8: "Gates will not arm until the agent's flagged/low-confidence items
- * have been opened." The backend records nothing about what was opened, so this
- * is the only place that knowledge can live today.
+ * have been opened."
+ *
+ * The backend is AUTHORITATIVE about this, and this ledger is not. `MatrixCell.evidenceReviewed`
+ * ships server truth (written by POST /regulatory/reviewed and by recording a determination), and it
+ * is what `RegulatoryGate.Armable` actually reads. The EvidencePanel shows that server field on every
+ * cell, labelled as the one the gate reads.
+ *
+ * This ledger survives beside it because the two answer different questions: the server knows what was
+ * REVIEWED (a recorded act), while this knows what this operator has OPENED in this session — and this
+ * screen never writes to the server, so without it the matrix could not show the operator their own
+ * progress through the flagged cells at all.
  *
  * Three properties make it safe:
  *
  *  1. It is a genuine record of what THIS operator opened in THIS browser, and is
  *     labelled as such on every surface that reads it. It is never presented as
  *     part of the signed record.
- *  2. It can only ever WITHHOLD arming, never grant it. The sign controls are hard-
- *     disabled regardless of what it says — there is no endpoint to sign a gate.
+ *  2. It can only ever WITHHOLD arming, never grant it. Nothing in the UI signs a
+ *     gate: the sign controls are hard-disabled and no screen is wired to the
+ *     determination endpoint, so this ledger can never grant anything.
  *  3. An entry is written only when the operator actually expands the evidence for
  *     that cell. Nothing marks itself reviewed.
  *

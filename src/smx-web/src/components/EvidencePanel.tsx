@@ -2,8 +2,162 @@ import type { MatrixCell, SubstanceSpec } from '../api/types';
 import { VERDICT_DIMENSIONS } from '../api/types';
 import { fold, isInconsistent, severity, verdictClass } from '../domain/matrix';
 import { LOW_CONFIDENCE } from '../domain/matrixSummary';
+import { agentProposal, operatorRuling, reviewStance } from '../domain/proposal';
 import { Meter } from './ui/Meter';
 import { CitationChip } from './ui/Primitives';
+
+/**
+ * The agent's PROPOSAL and the operator's DETERMINATION — two boxes, never one field.
+ *
+ * The proposal is real agent output (no MockBadge: this screen reads a real endpoint), and it is here
+ * because a proposal the operator cannot SEE is one they cannot confirm — the feature would be inert
+ * and they would go on hand-authoring every determination. But it is rendered BESIDE their signature
+ * and never AS it: purple is the agent's colour in the token grammar, teal is the operator's, and the
+ * two never share a row. A UI that collapses them is the agent signing the regulatory gate.
+ *
+ * It sits BELOW the evidence deliberately. A proposal read before the dimensions it rests on is an
+ * invitation to click straight through them, and this gate is meant to be hard to rubber-stamp.
+ *
+ * Read-only. Signing is not wired to this screen; nothing here writes a determination.
+ */
+function CellReview({ cell }: { cell: MatrixCell }) {
+  const proposal = agentProposal(cell);
+  const signed = operatorRuling(cell);
+  const stance = reviewStance(cell);
+
+  return (
+    <div
+      style={{
+        borderTop: '0.5px solid var(--border)',
+        marginTop: 'var(--s4)',
+        paddingTop: 'var(--s3)',
+      }}
+    >
+      <div
+        className="tiny muted"
+        style={{
+          textTransform: 'uppercase',
+          letterSpacing: 'var(--track-eyebrow)',
+          marginBottom: 'var(--s2)',
+        }}
+      >
+        Regulatory determination
+      </div>
+
+      {/* THE AGENT. A proposal — it carries no weight until the operator signs. */}
+      <div
+        style={{
+          background: 'var(--bg-pro)',
+          border: '0.5px solid var(--border-pro)',
+          borderRadius: 'var(--r1)',
+          padding: 'var(--s2)',
+          marginBottom: 'var(--s2)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <i className="ti ti-robot" aria-hidden="true" style={{ color: 'var(--text-pro)' }} />
+          <span className="tiny" style={{ color: 'var(--text-pro)', fontWeight: 500 }}>
+            Agent proposal
+          </span>
+          {proposal && (
+            <span
+              className="tiny"
+              style={{
+                marginLeft: 'auto',
+                color: 'var(--text-pro)',
+                fontWeight: 600,
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              {proposal.determination}
+            </span>
+          )}
+        </div>
+        {proposal ? (
+          <>
+            <p className="small secondary" style={{ margin: '6px 0 0' }}>
+              {proposal.reason}
+            </p>
+            <div className="tiny muted" style={{ marginTop: 4 }}>
+              A proposal, not a determination. Nothing downstream reads it — only your determination
+              below can let this substance be dosed.
+            </div>
+          </>
+        ) : (
+          <div className="tiny muted" style={{ marginTop: 4 }}>
+            The agent proposed nothing for this cell. Author the determination yourself.
+          </div>
+        )}
+      </div>
+
+      {/* THE OPERATOR. The signature — the only field the compliant set reads. */}
+      <div
+        style={{
+          background: signed ? 'var(--bg-teal)' : 'transparent',
+          border: signed ? '0.5px solid var(--border-teal)' : '1px dashed var(--border-strong)',
+          borderRadius: 'var(--r1)',
+          padding: 'var(--s2)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <i
+            className={`ti ${signed ? 'ti-writing-sign' : 'ti-pencil-off'}`}
+            aria-hidden="true"
+            style={{ color: signed ? 'var(--text-teal)' : 'var(--text-muted)' }}
+          />
+          <span
+            className="tiny"
+            style={{ color: signed ? 'var(--text-teal)' : 'var(--text-muted)', fontWeight: 500 }}
+          >
+            Your determination
+          </span>
+          {signed && (
+            <span
+              className="tiny"
+              style={{
+                marginLeft: 'auto',
+                color: 'var(--text-teal)',
+                fontWeight: 600,
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              {signed.determination}
+            </span>
+          )}
+        </div>
+        {signed ? (
+          <>
+            <p className="small secondary" style={{ margin: '6px 0 0' }}>
+              {signed.reason}
+            </p>
+            {stance === 'overridden' && (
+              <div className="tiny" style={{ color: 'var(--text-warning)', marginTop: 4 }}>
+                <i className="ti ti-arrows-exchange" aria-hidden="true" /> You overruled the agent, which
+                proposed <b>{proposal?.determination}</b>. Both stay on the record.
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="tiny muted" style={{ marginTop: 4 }}>
+            Not signed. No determination is recorded for this cell, so it is in no compliant set —
+            whatever the agent proposed above. Determinations are not signed from this screen.
+          </div>
+        )}
+      </div>
+
+      {/* Server truth about the evidence, distinct from the browser-local ledger on the matrix. */}
+      <div className="tiny muted" style={{ marginTop: 'var(--s2)' }}>
+        <i
+          className={`ti ${cell.evidenceReviewed ? 'ti-eye-check' : 'ti-eye-exclamation'}`}
+          aria-hidden="true"
+        />{' '}
+        Server record: evidence{' '}
+        <b>{cell.evidenceReviewed ? 'reviewed' : 'not yet reviewed'}</b>. This is the one the gate reads;
+        the review ledger beside the matrix is local to this browser.
+      </div>
+    </div>
+  );
+}
 
 /**
  * The evidence behind a matrix cell.
@@ -125,6 +279,8 @@ export function EvidencePanel({
           </div>
         );
       })}
+
+      <CellReview cell={cell} />
     </div>
   );
 }

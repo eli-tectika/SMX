@@ -107,11 +107,63 @@ function dimensionsFor(cas: string, componentId: string): DimensionVerdict[] {
   }
 }
 
+/**
+ * The agent's PROPOSAL — never the operator's determination, which only they can write.
+ *
+ * These obey RegulatoryAgent.Validate: "recommended" only when nothing is Fail or NeedsReview AND the
+ * Hazard dimension is not Conditional (a Conditional hazard is one the agent itself says merits "not
+ * recommended"). Gd is the interesting case — clean gates, flagged hazard, so the agent proposes
+ * REJECTED even though the fold is only Conditional.
+ */
+function proposalFor(cas: string): Pick<MatrixCell, 'proposedDetermination' | 'proposedReason'> {
+  switch (cas) {
+    case '14832-90-7': // Y — clean on all three
+      return {
+        proposedDetermination: 'recommended',
+        proposedReason: 'Not listed in Annex II, no restriction binds this application, not classified.',
+      };
+    case '68583-78-8': // Gd — Hazard Conditional
+      return {
+        proposedDetermination: 'rejected',
+        proposedReason: 'Skin Irrit. 2 under CLP — a hazard that merits "not recommended".',
+      };
+    case '2457-01-4': // Ba — NeedsReview: the agent's tools found nothing decisive
+      return {
+        proposedDetermination: 'rejected',
+        proposedReason: 'The solubility class is unresolved, so the Annex II listing cannot be cleared.',
+      };
+    default: // Pb — Fail
+      return {
+        proposedDetermination: 'rejected',
+        proposedReason: 'Lead and its compounds are prohibited outright by Annex II #289.',
+      };
+  }
+}
+
 const cells: MatrixCell[] = SUBSTANCES.flatMap((s) =>
   COMPONENTS.map((componentId) => {
     const dimensions = dimensionsFor(s.cas, componentId);
     // Fold rather than hand-write `overall`, so the fixture can never contradict itself.
-    return { cas: s.cas, componentId, overall: fold(dimensions), dimensions };
+    const cell: MatrixCell = {
+      cas: s.cas,
+      componentId,
+      overall: fold(dimensions),
+      dimensions,
+      ...proposalFor(s.cas),
+      evidenceReviewed: false,
+    };
+
+    // ONE signed cell, and it OVERRULES the agent — the case the panel exists to render legibly. The
+    // R.E. may recommend over a hazard the agent flagged; that override is hers to write, and the
+    // agent's proposal stays visible beside it rather than being replaced by it. Every other cell is
+    // unsigned, which is the state the operator meets them in.
+    if (s.cas === '68583-78-8' && componentId === 'lid') {
+      cell.determination = 'recommended';
+      cell.determinationReason =
+        'Skin Irrit. 2 is not binding for an enclosed lid; handling controls are in the SOP.';
+      cell.evidenceReviewed = true;
+    }
+    return cell;
   }),
 );
 

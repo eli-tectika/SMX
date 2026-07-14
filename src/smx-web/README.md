@@ -31,9 +31,16 @@ to an agent-produced one is precisely the failure the badge prevents. Do not rem
 screen until that screen reads from a real endpoint.
 
 For the same reason the gate controls (Regulatory approval, VP R&D approval) and the agent chat
-composer are **disabled**. Gates are operator-signed records and there is no endpoint to sign one;
-making the buttons clickable would fake a signature. The agent panel has no chat or streaming
-endpoint to talk to.
+composer are **disabled**. Gates are operator-signed records, and **no screen is wired to the
+backend's determination/approval endpoints**; making the buttons clickable would fake a signature.
+The agent panel has no chat or streaming endpoint to talk to.
+
+The matrix's evidence panel does **read** the Regulatory agent's *proposed* determination
+(`proposedDetermination` / `proposedReason`) beside the operator's own — never as it. The proposal is
+real agent output, so it carries no `MockBadge`; it is a pre-fill so the operator **confirms** rather
+than authors, and it is deliberately rendered *below* the evidence, in the agent's colour, with the
+operator's signature line separate and empty until they sign. A UI that collapses those two fields
+into one is the agent signing the gate. See `src/domain/proposal.ts`.
 
 ## MSW
 
