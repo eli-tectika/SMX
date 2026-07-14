@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Smx.Domain\Smx.Domain.csproj" />
+    <ProjectReference Include="..\Smx.SearchProxy.Contracts\Smx.SearchProxy.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

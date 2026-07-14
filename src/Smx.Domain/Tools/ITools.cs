@@ -48,3 +48,29 @@ public interface ILearnedConclusionsIndex
     Task EnsureIndexAsync(CancellationToken ct = default);
     Task PushAsync(IReadOnlyList<LearnedConclusionChunk> chunks, CancellationToken ct = default);
 }
+
+/// One web result, as the agent sees it. Deliberately NOT a RetrievedChunk: a web hit is not a retrieved
+/// corpus chunk, it has no index reference, and the difference must survive all the way to the citation.
+public sealed record WebHit(string Title, string Url, string Snippet, string Host);
+
+/// Anonymized external search, via the Search Proxy. The ONLY tool in this system that reaches the public
+/// internet at agent time, and it is exposed to Discovery ALONE — never to Regulatory, whose verdicts may
+/// rest only on the curated, sync-dated, R.E.-gated corpus (spec §2 D4).
+///
+/// A failure is not an empty list. `WebSearchResult.Note` carries the reason (blocked, quota, provider
+/// down) so the agent can tell "I searched and found nothing" from "I never got an answer" — the second is
+/// not evidence of absence, and an agent that confuses them will confidently exclude a good marker.
+public sealed record WebSearchResult(IReadOnlyList<WebHit> Hits, string? Note);
+
+public interface IWebSearch
+{
+    Task<WebSearchResult> SearchAsync(string query, string intent, CancellationToken ct = default);
+}
+
+/// The client/product/project names of the project currently being worked on. This type exists so the terms
+/// are passed EXPLICITLY into the tool that must reject them: a tool constructed without them would be a
+/// tool that cannot protect the project, and the compiler now says so.
+public sealed record SensitiveTerms(IReadOnlyList<string> Terms)
+{
+    public static SensitiveTerms None => new([]);
+}
