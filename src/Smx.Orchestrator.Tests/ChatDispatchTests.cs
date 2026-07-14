@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
+using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
 using Smx.Orchestrator.Agents;
@@ -126,12 +127,75 @@ public class ChatDispatchTests
         // unable to see what it already told them — free to contradict a citation it gave one message ago.
         Assert.Contains("Operator: why did you drop the sulfate?", thread);
         Assert.Contains("You: it overlaps the Ti K-beta line at 4.93 keV", thread);
+
+        // The thread is PRIOR conversation only. The message being answered is already in the record — the
+        // backend's write is what dispatched this turn — so an unfiltered read would hand the agent its own
+        // new question as "conversation so far" and then repeat it as the new message.
         Assert.Equal("and the neodecanoate?", message);
+        Assert.DoesNotContain("and the neodecanoate?", thread);
 
         // ...and the agent is answering ABOUT something: the stage's CURRENT record, not just the chatter.
         // Without it the agent would be reasoning about a candidate set it cannot see.
         Assert.Contains("neodecanoate", inputs);   // the seeded candidate's form
         Assert.Contains("cas-zr", inputs);
+    }
+
+    [Fact]
+    public async Task ChatMessage_ExcludesTheMessageBeingAnswered_ByIdAndNotByTimestamp()
+    {
+        // The obvious way to render "prior conversation only" is a time predicate — everything before the new
+        // message. It works right up until two writes land on the same tick, and then it silently eats a turn.
+        // That is not hypothetical here: a reply can carry the SAME CreatedAt as the message it answers (it is
+        // why ChatTurns.InOrder needs a tiebreak at all), and a fixed-width "O" timestamp makes ties cheap.
+        //
+        // So the prior REPLY below shares the new message's timestamp exactly. A time filter drops it and the
+        // agent loses the answer it gave one turn ago — free to contradict its own citation. An id filter
+        // keeps it, because an id is what actually identifies the one turn that must not be its own history.
+        const string tick = "2026-07-14T09:05:00.0000000+00:00";
+        var (d, store, agents) = Sut();
+        await SeedAsync(d, store);
+
+        await store.UpsertChatMessageAsync(Answered(Message(Stages.Discovery, "m1",
+            "why did you drop the sulfate?", "2026-07-14T09:00:00.0000000+00:00")));
+        await store.UpsertChatReplyAsync(new ChatReplyDoc
+        {
+            Id = RecordIds.ChatReply(P, Stages.Discovery, "m1"), ProjectId = P, Stage = Stages.Discovery,
+            MessageId = RecordIds.ChatMessage(P, Stages.Discovery, "m1"),
+            Text = "it overlaps the Ti K-beta line at 4.93 keV",
+            CreatedAt = tick,                       // the same clock tick as the message below
+        });
+
+        string? thread = null;
+        agents.Chat = (_, t, _, _) => { thread = t; return Task.FromResult("ok"); };
+
+        await SendAsync(d, store, Message(Stages.Discovery, "m2", "and the neodecanoate?", tick));
+
+        Assert.Contains("You: it overlaps the Ti K-beta line at 4.93 keV", thread);   // kept, despite the tie
+        Assert.DoesNotContain("and the neodecanoate?", thread);                       // and only THIS one dropped
+    }
+
+    [Fact]
+    public async Task ChatMessage_OnTheFirstTurn_TellsTheAgentThereIsNoPriorConversation()
+    {
+        // ChatThread.Render has a branch for an empty thread — "(This is the operator's first message in this
+        // stage — there is no prior conversation.)" — and it exists to stop the agent inventing a history it
+        // never had. The dispatcher is its ONLY production caller, so if the thread it renders always contains
+        // the message being answered, that branch is unreachable and the intent behind it is quietly dead: on
+        // the very first turn the agent would instead be shown a one-message "CONVERSATION SO FAR", which
+        // reads as context it should already have answered.
+        //
+        // This test is what pins the wiring to the intent: the branch is reachable, and it is reached.
+        var (d, store, agents) = Sut();
+        await SeedAsync(d, store);
+
+        string? thread = null;
+        agents.Chat = (_, t, _, _) => { thread = t; return Task.FromResult("ok"); };
+
+        await SendAsync(d, store, Message(Stages.Discovery, "m1", "why is Zr tier A here?", "2026-07-14T09:00:00.0000000+00:00"));
+
+        Assert.Equal(ChatThread.Render([]), thread);              // the empty-thread branch, exactly
+        Assert.Contains("no prior conversation", thread);
+        Assert.DoesNotContain("why is Zr tier A here?", thread);  // the new message is NOT its own history
     }
 
     [Fact]
@@ -145,6 +209,8 @@ public class ChatDispatchTests
         await SeedAsync(d, store);
         await d.OnRecordChangedAsync((await store.GetCandidatesAsync(P))!, default);   // regulatory → verdicts
 
+        // Two stages, each with a conversation of its own. Both are in the same Cosmos partition, so only the
+        // stage predicate keeps them apart.
         await store.UpsertChatMessageAsync(Answered(Message(Stages.Discovery, "m1",
             "drop the sulfate, it overlaps Ti", "2026-07-14T09:00:00.0000000+00:00")));
         await store.UpsertChatReplyAsync(new ChatReplyDoc
@@ -154,17 +220,27 @@ public class ChatDispatchTests
             Text = "the sulfate is gone from the candidate set",
             CreatedAt = "2026-07-14T09:00:01.0000000+00:00",
         });
+        await store.UpsertChatMessageAsync(Answered(Message(Stages.Regulatory, "r0",
+            "which markets are in scope?", "2026-07-14T09:30:00.0000000+00:00")));
+        await store.UpsertChatReplyAsync(new ChatReplyDoc
+        {
+            Id = RecordIds.ChatReply(P, Stages.Regulatory, "r0"), ProjectId = P, Stage = Stages.Regulatory,
+            MessageId = RecordIds.ChatMessage(P, Stages.Regulatory, "r0"),
+            Text = "EU only, per the constraints",
+            CreatedAt = "2026-07-14T09:30:01.0000000+00:00",
+        });
 
         string? thread = null, inputs = null;
         agents.Chat = (_, t, i, _) => { thread = t; inputs = i; return Task.FromResult("ok"); };
 
         await SendAsync(d, store, Message(Stages.Regulatory, "r1", "is Zr cleared for EU food contact?", "2026-07-14T10:00:00.0000000+00:00"));
 
-        // Not one word of the Discovery conversation reaches the Regulatory agent...
+        // The Regulatory agent gets its OWN prior turn...
+        Assert.Contains("Operator: which markets are in scope?", thread);
+        Assert.Contains("You: EU only, per the constraints", thread);
+        // ...and not one word of the Discovery conversation.
         Assert.DoesNotContain("sulfate", thread);
         Assert.DoesNotContain("the sulfate is gone from the candidate set", thread);
-        // ...and the Regulatory thread is its own: this stage's message, and nothing else.
-        Assert.Contains("Operator: is Zr cleared for EU food contact?", thread);
 
         // The stage inputs are scoped the same way: Regulatory is answering about its VERDICTS, not about
         // Discovery's candidate set. Hand it the wrong stage's record and it answers a regulatory question

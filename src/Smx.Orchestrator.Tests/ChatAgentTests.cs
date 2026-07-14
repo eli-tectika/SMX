@@ -22,7 +22,7 @@ public class ChatAgentTests
         var agent = new ScriptedAgent("Because the catalog lists it clean.");
 
         var reply = await ChatAgent.RunAsync(agent,
-            thread: ChatThread.Render([new ChatTurn(ChatRoles.Operator, "why is Ba tier A?", "t1", [])]),
+            thread: ChatThread.Render([new ChatTurn("m1", ChatRoles.Operator, "why is Ba tier A?", "t1", [])]),
             stageInputsJson: """{"substances":[{"element":"Ba","tier":"A"}]}""",
             message: "and for HDPE?",
             ct: default);

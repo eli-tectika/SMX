@@ -274,9 +274,9 @@ public class ChatStoreTests
     public void ChatTurns_InOrder_OnAnEqualTimestamp_PutsTheOperatorTurnBeforeTheAgentsReply()
     {
         var ordered = ChatTurns.InOrder([
-            new ChatTurn(ChatRoles.Agent,    "reply",  "2026-07-13T01:00:00Z", []),
-            new ChatTurn(ChatRoles.Operator, "msg",    "2026-07-13T01:00:00Z", []),
-            new ChatTurn(ChatRoles.Operator, "later",  "2026-07-13T02:00:00Z", []),
+            new ChatTurn("r1", ChatRoles.Agent,    "reply",  "2026-07-13T01:00:00Z", []),
+            new ChatTurn("m1", ChatRoles.Operator, "msg",    "2026-07-13T01:00:00Z", []),
+            new ChatTurn("m2", ChatRoles.Operator, "later",  "2026-07-13T02:00:00Z", []),
         ]);
 
         Assert.Equal(["msg", "reply", "later"], ordered.Select(t => t.Text));

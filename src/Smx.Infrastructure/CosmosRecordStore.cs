@@ -70,7 +70,7 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
             .ToFeedIterator();
         while (messages.HasMoreResults)
             foreach (var m in await messages.ReadNextAsync(ct))
-                turns.Add(new ChatTurn(ChatRoles.Operator, m.Text, m.CreatedAt, []));
+                turns.Add(new ChatTurn(m.Id, ChatRoles.Operator, m.Text, m.CreatedAt, []));
 
         var replies = container.GetItemLinqQueryable<ChatReplyDoc>(
                 requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(projectId) })
@@ -78,7 +78,7 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
             .ToFeedIterator();
         while (replies.HasMoreResults)
             foreach (var r in await replies.ReadNextAsync(ct))
-                turns.Add(new ChatTurn(ChatRoles.Agent, r.Text, r.CreatedAt, r.ToolCalls));
+                turns.Add(new ChatTurn(r.Id, ChatRoles.Agent, r.Text, r.CreatedAt, r.ToolCalls));
 
         // Sorted here rather than server-side (an ORDER BY per query would buy nothing — the two result sets
         // have to be merged in memory anyway), and through the SHARED comparer the fake also calls, so the

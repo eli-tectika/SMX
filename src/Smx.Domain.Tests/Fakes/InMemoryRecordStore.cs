@@ -68,10 +68,10 @@ public sealed class InMemoryRecordStore : IRecordStore
         Task.FromResult(ChatTurns.InOrder(
             _docs.Values.OfType<ChatMessageDoc>()
                 .Where(m => m.ProjectId == projectId && m.Stage == stage)
-                .Select(m => new ChatTurn(ChatRoles.Operator, m.Text, m.CreatedAt, []))
+                .Select(m => new ChatTurn(m.Id, ChatRoles.Operator, m.Text, m.CreatedAt, []))
             .Concat(_docs.Values.OfType<ChatReplyDoc>()
                 .Where(r => r.ProjectId == projectId && r.Stage == stage)
-                .Select(r => new ChatTurn(ChatRoles.Agent, r.Text, r.CreatedAt, Copy(r).ToolCalls)))));
+                .Select(r => new ChatTurn(r.Id, ChatRoles.Agent, r.Text, r.CreatedAt, Copy(r).ToolCalls)))));
 
     public Task UpsertProjectAsync(ProjectDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertConstraintsAsync(ConstraintsDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);

@@ -57,7 +57,14 @@ public sealed class ChatReplyDoc
 /// One turn in a persisted chat thread — either side of it. The thread is a mixed sequence of messages and
 /// replies, so the store merges the two doc types into this single shape the caller can order and render.
 /// `Role` is <see cref="ChatRoles.Operator"/> | <see cref="ChatRoles.Agent"/>.
-public sealed record ChatTurn(string Role, string Text, string CreatedAt, IReadOnlyList<ChatToolCall> ToolCalls);
+///
+/// `Id` is the SOURCE DOC's id (the ChatMessageDoc's or the ChatReplyDoc's). It is here so the dispatcher can
+/// render the thread as PRIOR conversation only: the message being answered is already in the record by the
+/// time its turn runs — writing it IS the dispatch — so the turn that answers it has to exclude it by id.
+/// By ID, and never by "everything before CreatedAt": two turns can share a timestamp (that is precisely why
+/// ChatTurns.InOrder needs a tiebreak), so a time-based predicate silently drops or keeps the wrong turn on
+/// the day two writes land on one tick.
+public sealed record ChatTurn(string Id, string Role, string Text, string CreatedAt, IReadOnlyList<ChatToolCall> ToolCalls);
 
 public static class ChatTurns
 {

@@ -312,7 +312,21 @@ public sealed class StageDispatcher(
 
         try
         {
-            var thread = ChatThread.Render(await store.GetChatThreadAsync(m.ProjectId, m.Stage, ct));
+            // PRIOR conversation only — the message being answered is excluded. It is already in the record by
+            // the time this runs (the backend wrote it; that write IS the dispatch), so an unfiltered thread
+            // would put it in "CONVERSATION SO FAR" and then repeat it under "THE OPERATOR'S NEW MESSAGE".
+            //
+            // The duplication is the lesser half. The real damage is on a FIRST turn: the agent would be shown
+            // a one-message "conversation so far" instead of ChatThread.Render's "(there is no prior
+            // conversation)" — which is an invitation to treat the operator's opening question as context it
+            // has already dealt with, and to answer around a history it never had. That branch of Render was
+            // written to prevent exactly this, and an unfiltered read here makes it unreachable.
+            //
+            // BY ID, never by "everything before m.CreatedAt": two turns can share a timestamp — that is why
+            // ChatTurns.InOrder carries a tiebreak at all — so a time-based predicate is a filter that works
+            // until the day two writes land on one tick, and then silently eats a turn.
+            var prior = (await store.GetChatThreadAsync(m.ProjectId, m.Stage, ct)).Where(t => t.Id != m.Id);
+            var thread = ChatThread.Render([.. prior]);
             var inputs = await StageInputsJsonAsync(m.ProjectId, m.Stage, ct);
 
             // Bound to THIS project and THIS stage. The model has no parameter with which to name another.
