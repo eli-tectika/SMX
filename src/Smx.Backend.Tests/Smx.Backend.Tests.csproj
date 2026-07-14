@@ -23,6 +23,10 @@
   <ItemGroup>
     <ProjectReference Include="..\Smx.Domain\Smx.Domain.csproj" />
     <ProjectReference Include="..\Smx.Backend\Smx.Backend.csproj" />
+    <!-- ChatRevisionParityTests drives BOTH front doors of revise-with-reason against one store: the HTTP
+         endpoint (which only a project that can host WebApplicationFactory may drive) and the orchestrator's
+         ChatTools.apply_revision. The parity of the two RevisionDocs is the contract; testing it needs both. -->
+    <ProjectReference Include="..\Smx.Orchestrator\Smx.Orchestrator.csproj" />
   </ItemGroup>
 
   <ItemGroup>
