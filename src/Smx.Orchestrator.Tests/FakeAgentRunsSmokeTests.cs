@@ -26,7 +26,6 @@ public class FakeAgentRunsSmokeTests
     {
         var fake = new FakeAgentRuns();
         var reply = await ((Smx.Orchestrator.Dispatch.IAgentRuns)fake).RunChatAsync(
-            Stages.Discovery,
             new Smx.Orchestrator.Agents.ChatTools(new Smx.Domain.Tests.Fakes.InMemoryRecordStore(), "p1", Stages.Discovery, "k1"),
             thread: "(no prior conversation)", stageInputsJson: "{}", message: "why Ba?", ct: default);
 

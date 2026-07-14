@@ -42,9 +42,10 @@ public sealed class FakeAgentRuns : IAgentRuns
 
     /// Echoes the operator's message, so a dispatch test can prove the RIGHT message reached the agent
     /// rather than merely that a reply came back. The ChatTools instance is handed through untouched: a
-    /// test that wants the mutating half exercised scripts this to call it.
-    public Func<string, ChatTools, string, string, string, Task<string>> Chat { get; set; } =
-        (_, _, _, _, message) => Task.FromResult($"Echo: {message}");
+    /// test that wants the mutating half exercised scripts this to call it. The stage is not a separate
+    /// argument — it is `chatTools.Stage`, the one the mutating tools are actually bound to.
+    public Func<ChatTools, string, string, string, Task<string>> Chat { get; set; } =
+        (_, _, _, message) => Task.FromResult($"Echo: {message}");
 
     public int IntakeCalls; public int DiscoveryCalls; public int RegulatoryCalls; public int ConclusionCalls;
     public int ChatCalls;
@@ -57,7 +58,7 @@ public sealed class FakeAgentRuns : IAgentRuns
     { Interlocked.Increment(ref RegulatoryCalls); return Regulatory(c, cand, revision); }
     Task<AgentRunResult<ConclusionOutput>> IAgentRuns.RunConclusionAsync(RevisionDoc revision, ConstraintsDoc c, string stageOutputJson, CancellationToken ct)
     { Interlocked.Increment(ref ConclusionCalls); return Conclusion(revision, c, stageOutputJson); }
-    Task<string> IAgentRuns.RunChatAsync(string stage, ChatTools chatTools, string thread, string stageInputsJson,
+    Task<string> IAgentRuns.RunChatAsync(ChatTools chatTools, string thread, string stageInputsJson,
         string message, CancellationToken ct)
-    { Interlocked.Increment(ref ChatCalls); return Chat(stage, chatTools, thread, stageInputsJson, message); }
+    { Interlocked.Increment(ref ChatCalls); return Chat(chatTools, thread, stageInputsJson, message); }
 }

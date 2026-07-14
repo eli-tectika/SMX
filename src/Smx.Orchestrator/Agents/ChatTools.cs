@@ -36,6 +36,16 @@ public sealed class ChatTools(IRecordStore store, string projectId, string stage
     /// changed which record (design §5: "no silent mutations").
     public List<ChatToolCall> Trail { get; } = [];
 
+    /// The stage this turn is bound to — the SINGLE source of truth for it, deliberately.
+    ///
+    /// AgentRuns builds a chat turn's tools from two halves: the stage's READ tools and these MUTATING
+    /// tools. If the stage were passed to the run SEPARATELY from the one captured here, the two halves
+    /// could disagree — the agent would retrieve with (say) Regulatory's corpus while its `apply_revision`
+    /// wrote a DISCOVERY revision. The resulting RevisionDoc would look entirely legitimate on the bus, and
+    /// nothing downstream could tell it was screened against the wrong stage's sources. So the run reads the
+    /// stage from HERE and there is no second parameter to get wrong.
+    public string Stage => stage;
+
     public IList<AITool> Tools()
     {
         var tools = new List<AITool>();

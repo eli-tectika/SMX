@@ -86,19 +86,37 @@ public class ChatAgentTests
     // the operator asks for a change and gives their reason, and the agent — told the tool is the only way
     // to change anything — either cannot comply or says it did. Both are Law 4 failures.
     private static IList<Microsoft.Extensions.AI.AITool> TurnTools(string stage) =>
-        AgentRuns.ChatTurnTools(Box(), new ChatTools(new InMemoryRecordStore(), "p1", stage, "k1"), stage);
+        AgentRuns.ChatTurnTools(Box(), new ChatTools(new InMemoryRecordStore(), "p1", stage, "k1"));
 
+    // EVERY stage, exhaustively — a Fact that pinned only some of them let a mutation that special-cased
+    // REGULATORY (dropping its apply_revision) pass the whole suite. Regulatory is the stage where a chat
+    // revision voids a signed gate, i.e. the one with the most consequence and the least excuse for being
+    // the unpinned one. Intake is not revisable — it has produced no analytical result yet, so it gap-fills
+    // with record_answer instead. Matrix has neither: nothing to retrieve and nothing of its own to revise,
+    // so a Matrix chat turn holds NO tools at all and can only answer from the record it was handed.
+    [Theory]
+    [InlineData(Stages.Intake,
+        new[] { "record_answer", "search_learned_conclusions", "search_marker_library", "search_reference", "search_regulatory" })]
+    [InlineData(Stages.Discovery,
+        new[] { "apply_revision", "lookup_compatibility", "search_catalog", "search_learned_conclusions", "search_reference" })]
+    [InlineData(Stages.Regulatory,
+        new[] { "apply_revision", "search_reference", "search_regulatory", "search_sds" })]
+    [InlineData(Stages.Matrix, new string[0])]
+    public void ChatTurnTools_AreTheStagesReadTools_PlusThisTurnsMutatingTools(string stage, string[] expected) =>
+        Assert.Equal(expected, TurnTools(stage).Select(t => t.Name).OrderBy(x => x));
+
+    // The stage is read from ChatTools, never passed alongside it. If the two could diverge, a turn could
+    // retrieve with Regulatory's corpus while its apply_revision wrote a DISCOVERY revision — a RevisionDoc
+    // that looks perfectly legitimate on the bus and was screened against the wrong stage's sources. This
+    // pins the single source of truth so a `stage` parameter cannot creep back in beside it.
     [Fact]
-    public void ChatTurnTools_AreTheStagesReadTools_PlusThisTurnsMutatingTools()
+    public void ChatTurnTools_TakeTheStageFromTheToolsTheyMutateWith()
     {
+        var chatTools = new ChatTools(new InMemoryRecordStore(), "p1", Stages.Regulatory, "k1");
+        Assert.Equal(Stages.Regulatory, chatTools.Stage);
         Assert.Equal(
-            ["apply_revision", "lookup_compatibility", "search_catalog", "search_learned_conclusions", "search_reference"],
-            TurnTools(Stages.Discovery).Select(t => t.Name).OrderBy(x => x));
-
-        // Intake cannot be revised (it has produced no analytical result to revise) — it gap-fills instead.
-        Assert.Equal(
-            ["record_answer", "search_learned_conclusions", "search_marker_library", "search_reference", "search_regulatory"],
-            TurnTools(Stages.Intake).Select(t => t.Name).OrderBy(x => x));
+            ["apply_revision", "search_reference", "search_regulatory", "search_sds"],
+            AgentRuns.ChatTurnTools(Box(), chatTools).Select(t => t.Name).OrderBy(x => x));
     }
 
     // Law 9, asserted where it is actually decided: over the model's WHOLE capability list for a turn. Chat
