@@ -25,6 +25,25 @@ public class RecordDocsTests
         Assert.Equal("pending", back.Stages["intake"].Status);
     }
 
+    /// THE TRIPWIRE FOR PLAN 4. `ProjectDoc.Create`'s stage dictionary is a fourth, hand-maintained
+    /// enumeration of the stages, and it was the only one nothing pinned. The other three are safe: Stages.All
+    /// is reflection-tested against the constants (ChatEndpointsTests), and ToolBox.ReadToolsFor and
+    /// StageDispatcher.StageInputsJsonAsync both fail CLOSED on a stage they do not know.
+    ///
+    /// This one fails OPEN, in both directions. Add `Stages.Dosing` and forget this dictionary and:
+    ///   - Stages.All gains it the same commit (the reflection test forces that), so POST /stages/dosing/chat
+    ///     starts accepting messages immediately — and the dispatcher runs the turn with no tools over "{}"
+    ///     inputs: a confident conversation about nothing;
+    ///   - SetStageAsync(projectId, "dosing", …) does `p.Stages[stage]` and throws KeyNotFoundException on
+    ///     every project created before the change.
+    /// Neither shows up as a compile error. This assertion is what shows up instead.
+    [Fact]
+    public void ProjectDoc_Create_SeedsExactlyTheStagesInStagesAll()
+    {
+        var doc = ProjectDoc.Create("p1", "Acme", "Shampoo bottle", JsonDocument.Parse("{}").RootElement);
+        Assert.Equal([.. Stages.All.Order()], [.. doc.Stages.Keys.Order()]);
+    }
+
     [Theory]
     [InlineData(new[] { "Pass", "Pass" }, "Pass")]
     [InlineData(new[] { "Pass", "Conditional" }, "Conditional")]
