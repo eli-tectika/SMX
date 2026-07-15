@@ -23,6 +23,7 @@ import './styles/craft.css';
 import './styles/primitives.css';
 import './styles/print.css';
 import { App } from './App';
+import { ensureAuthenticated } from './auth/msal';
 
 /**
  * MSW is started only under `import.meta.env.DEV`, so the dynamic import is dropped
@@ -34,6 +35,9 @@ async function start() {
     const { worker } = await import('./mocks/browser');
     await worker.start({ onUnhandledRequest: 'bypass' });
   }
+
+  const ready = await ensureAuthenticated();
+  if (!ready) return; // redirecting to sign-in
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
