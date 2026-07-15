@@ -8,8 +8,16 @@ namespace Smx.Orchestrator.Dispatch;
 
 /// Reacts to record changes. Change feed is at-least-once: every branch must be idempotent
 /// (re-check store state before acting) and every write an upsert.
+///
+/// <paramref name="knowledge"/> is an OPTIONAL trailing parameter deliberately: it is read only by the Dosing
+/// path (metal loadings live in the cross-project knowledge layer, not on the per-project bus), and making it
+/// required would force every construction site — including the tests that predate Dosing — to change. When it
+/// is null, Dosing treats every loading as unknown and parks in `awaiting-operator` rather than guessing: it
+/// degrades safely. DEFERRED: the production DI (Orchestrator/Program.cs) must pass the real IKnowledgeStore
+/// so Dosing can actually resolve loadings — see the note on TryDoseAsync.
 public sealed class StageDispatcher(
-    IRecordStore store, IAgentRuns agents, ILearnedConclusionWriter conclusions, int regulatoryParallelism)
+    IRecordStore store, IAgentRuns agents, ILearnedConclusionWriter conclusions, int regulatoryParallelism,
+    IKnowledgeStore? knowledge = null)
 {
     public async Task OnRecordChangedAsync(object doc, CancellationToken ct)
     {
@@ -27,6 +35,18 @@ public sealed class StageDispatcher(
     }
 
     private async Task OnProjectAsync(ProjectDoc p, CancellationToken ct)
+    {
+        await MaybeRunIntakeAsync(p, ct);
+
+        // The Dosing RE-ENTRY. POST /dosing/loading (Task 13) records a metal loading and re-opens Dosing to
+        // `pending` — which upserts the ProjectDoc, and THAT is the change the feed delivers here. Without this
+        // call the loading the operator just entered would reach nothing: the awaiting-operator park would be
+        // permanent. TryDoseAsync is idempotent (it acts only when Dosing is `pending` and the gate is signed),
+        // so calling it on every project upsert is safe.
+        await TryDoseAsync(p.ProjectId, ct);
+    }
+
+    private async Task MaybeRunIntakeAsync(ProjectDoc p, CancellationToken ct)
     {
         if (p.Stages[Stages.Intake].Status != "pending") return;
         if (await store.GetConstraintsAsync(p.ProjectId, ct) is not null) return;
@@ -151,8 +171,152 @@ public sealed class StageDispatcher(
     private async Task OnGateAsync(GateDoc g, CancellationToken ct)
     {
         if (g is { GateType: GateTypes.Regulatory, Status: "approved" })
+        {
             await SetStageAsync(g.ProjectId, Stages.Regulatory,
                 s => { if (s.Status == "awaiting-RE") s.Status = "done"; }, ct);
+
+            // The signature IS the dispatch (record-as-bus). The operator's approval of the regulatory gate is
+            // the record that says "the compliant set is final", so it — not the MatrixDoc — is what triggers
+            // Dosing. The MatrixDoc is NOT a trigger (`case MatrixDoc: break;`) precisely because
+            // TryAssembleAsync upserts it on verdict COMPLETENESS, before any signature: dosing off the matrix
+            // would dose an UNSIGNED gate — the hard regulatory gate bypassed by the stage right after it.
+            await TryDoseAsync(g.ProjectId, ct);
+        }
+    }
+
+    /// The shared Dosing resolver, called from TWO places — OnGateAsync (the signature triggers the stage) and
+    /// OnProjectAsync (the re-entry, after POST /dosing/loading re-opens Dosing to `pending`). It resolves
+    /// EVERY input first and PARKS on any gap rather than running the agent on a partial picture: the two
+    /// missing things are a MEASUREMENT and a MASS FRACTION, and a model that invents either produces a marker
+    /// nobody can detect or a batch nobody dosed right.
+    private async Task TryDoseAsync(string projectId, CancellationToken ct)
+    {
+        var project = await store.GetProjectAsync(projectId, ct);
+        // At-least-once feed + the re-entry point (POST /dosing/loading sets Dosing back to `pending`).
+        if (project is null || project.Stages[Stages.Dosing].Status is not "pending") return;
+
+        // The signature is not self-proving. Re-check it, for the reason TryAssembleAsync gives: the gate record
+        // carries no binding to the verdicts it was signed over, so `approved` alone is not proof the CURRENT
+        // analysis was reviewed.
+        var gate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
+        if (gate?.Status != "approved") return;
+
+        var constraints = await store.GetConstraintsAsync(projectId, ct);
+        var candidates = await store.GetCandidatesAsync(projectId, ct);
+        if (constraints is null || candidates is null) return;
+
+        var verdicts = await store.GetVerdictsAsync(projectId, ct);
+        if (RegulatoryGate.Armable(candidates, verdicts) is { Ok: false } blocked)
+        {
+            await SetStageAsync(projectId, Stages.Dosing, s =>
+            {
+                s.Status = "needs-review";
+                s.Error = "the regulatory gate is signed but no longer covers the current analysis: " +
+                          string.Join("; ", blocked.Blockers);
+            }, ct);
+            return;
+        }
+
+        var compliant = CompliantSet.Of(verdicts);
+        if (compliant.Count == 0)
+        {
+            await SetStageAsync(projectId, Stages.Dosing, s =>
+            {
+                s.Status = "needs-review";
+                s.Error = "the compliant set is empty — no substance carries an R.E. determination of " +
+                          "'recommended', so there is nothing that may be dosed.";
+            }, ct);
+            return;
+        }
+
+        // Resolve EVERY input first and PARK on any gap — do not run the agent on a partial picture and let it
+        // improvise the holes. The two missing things are a MEASUREMENT and a MASS FRACTION; a model that invents
+        // either produces a marker nobody can detect or a batch nobody dosed right.
+        var (floors, loadings, physicsGaps, loadingGaps) = await ResolveDosingInputsAsync(constraints, compliant, ct);
+        if (physicsGaps.Count > 0)
+        {
+            await SetStageAsync(projectId, Stages.Dosing,
+                s => { s.Status = "awaiting-physics"; s.Error = string.Join(" | ", physicsGaps.Distinct()); }, ct);
+            return;
+        }
+        if (loadingGaps.Count > 0)
+        {
+            await SetStageAsync(projectId, Stages.Dosing, s =>
+            {
+                s.Status = "awaiting-operator";
+                s.Error = "the metal loading (mass fraction of the marker element in the compound) is not on file " +
+                          "for: " + string.Join(", ", loadingGaps) + ". Enter it once via " +
+                          "POST /projects/{id}/dosing/loading — it is kept for every future project that uses the " +
+                          "same compound.";
+            }, ct);
+            return;
+        }
+
+        await SetStageAsync(projectId, Stages.Dosing, s => { s.Status = "running"; s.Attempts++; }, ct);
+        try
+        {
+            var result = await agents.RunDosingAsync(constraints, compliant, floors, loadings, null, ct);
+            if (!result.Succeeded)
+            {
+                await SetStageAsync(projectId, Stages.Dosing,
+                    s => { s.Status = "needs-review"; s.Error = result.Error; }, ct);
+                return;
+            }
+            await store.UpsertDosingAsync(result.Output!, ct);
+            await SetStageAsync(projectId, Stages.Dosing, s => { s.Status = "done"; s.Error = null; }, ct);
+        }
+        catch (Exception e)
+        {
+            await SetStageAsync(projectId, Stages.Dosing, s => { s.Status = "failed"; s.Error = e.Message; }, ct);
+        }
+    }
+
+    /// The single place both the first run (this task) and the revision (Task 14) resolve Dosing's inputs, so
+    /// the two paths cannot drift. It computes every floor from the physicist's measured background/device, and
+    /// every loading from the cross-project knowledge layer, and returns the GAPS rather than throwing on the
+    /// first one — the operator should make ONE trip to the physicist and ONE loading entry, not discover the
+    /// holes one park at a time. Each (component, element) and each CAS is attempted exactly once.
+    ///
+    /// DEFERRED PRODUCTION WIRING: when `knowledge` is null every loading is reported as a gap, so Dosing parks
+    /// safely in awaiting-operator. That is the degraded mode until Orchestrator/Program.cs passes the real
+    /// IKnowledgeStore into StageDispatcher's optional trailing parameter (the store is already registered as a
+    /// singleton there — only the constructor call needs the extra argument).
+    private async Task<(Dictionary<(string, string), Floor> Floors,
+                        Dictionary<string, double> Loadings,
+                        List<string> PhysicsGaps,
+                        List<string> LoadingGaps)>
+        ResolveDosingInputsAsync(ConstraintsDoc c, IReadOnlyList<VerdictDoc> compliant, CancellationToken ct)
+    {
+        var floors = new Dictionary<(string, string), Floor>();
+        var loadings = new Dictionary<string, double>();
+        var physicsGaps = new List<string>();
+        var loadingGaps = new List<string>();
+        var floorAttempted = new HashSet<(string, string)>();
+        var casAttempted = new HashSet<string>();
+
+        foreach (var v in compliant)
+        {
+            // The floor key is (component, element): the detection floor is a property of the element's signal
+            // against a component's measured background, shared by every compound of that element in it.
+            if (floorAttempted.Add((v.ComponentId, v.Element)))
+            {
+                var (floor, error) = DetectionFloor.Compute(c.MeasuredBackgrounds, c.Device, v.ComponentId, v.Element);
+                if (floor is null) physicsGaps.Add(error!);
+                else floors[(v.ComponentId, v.Element)] = floor;
+            }
+
+            // The loading key is the CAS: it is a property of the COMPOUND, not the component, so it is looked
+            // up (and entered) once per substance. A null store or a null property is a gap, never a guess — an
+            // absent loading is not 1.0 (that under-orders an oxide).
+            if (casAttempted.Add(v.Cas))
+            {
+                var property = knowledge is null ? null : await knowledge.GetSubstancePropertyAsync(v.Cas, ct);
+                if (property is null) loadingGaps.Add(v.Cas);
+                else loadings[v.Cas] = property.MetalLoading;
+            }
+        }
+
+        return (floors, loadings, physicsGaps, loadingGaps);
     }
 
     /// Revise-with-reason (Law 4). Re-runs the stage's agent with the operator's directive, voids the gate
