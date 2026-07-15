@@ -1,56 +1,66 @@
 import { useState } from 'react';
-import { MockBadge } from '../components/MockBadge';
-import {
-  BarRow,
-  EmptyState,
-  SearchInput,
-  SectionHeader,
-  StatCard,
-} from '../components/ui/Primitives';
-import library from '../mocks/fixtures/marker-library.json';
-
-interface Entry {
-  code: string;
-  composition: string;
-  validatedFor: string[];
-  source: string;
-  status: string;
-  reuseCount: number;
-}
+import { getMarkerLibrary } from '../api/client';
+import type { MarkerLibraryEntry } from '../api/types';
+import { Data } from '../components/ui/Data';
+import { BarRow, EmptyState, SearchInput, SectionHeader, StatCard } from '../components/ui/Primitives';
+import { useKnowledge } from '../hooks/useKnowledge';
 
 /**
- * Marker Library (spec §6) — approved codes, written at VP sign-off.
+ * Marker Library (spec §6) — the approved codes, written at VP sign-off.
  *
- * Reuse is the entire point of this surface: a code that already exists skips
- * discovery, regulatory screening and MSDS entirely. So reuseCount gets a bar, not
- * 11px of grey text.
+ * Previously a fixture behind a MockBadge ("no Cosmos container or endpoint yet"). Both
+ * exist: `GET /marker-library?search=` is served by KnowledgeEndpoints.cs and the search runs
+ * server-side against Cosmos. The badge is gone and every row is a real record.
+ *
+ * Spec §6 gives this surface a job beyond archaeology: the Intake agent "searches here first
+ * to surface reuse candidates". A library that is fast to search is a library that stops the
+ * project from re-deriving a marker it already owns — which is the entire return on the
+ * knowledge layer.
+ *
+ * **An empty library is the correct state of a new system**, not a bug and not a reason to
+ * show invented rows. Nothing appears here until a project has passed the VP R&D gate.
  */
 export function MarkerLibrary() {
   const [q, setQ] = useState('');
-  const [showRetired, setShowRetired] = useState(true);
-  const { entries } = library as { entries: Entry[] };
+  const [showRetired, setShowRetired] = useState(false);
 
-  const needle = q.trim().toLowerCase();
-  const shown = entries
-    .filter((e) => (showRetired ? true : e.status === 'approved'))
-    .filter((e) =>
-      needle
-        ? `${e.code} ${e.composition} ${e.validatedFor.join(' ')}`.toLowerCase().includes(needle)
-        : true,
+  const state = useKnowledge<MarkerLibraryEntry>(getMarkerLibrary, q);
+
+  if (state.kind === 'loading') {
+    return (
+      <section className="screen">
+        <Head />
+        <p className="muted small">Loading the library…</p>
+      </section>
     );
+  }
 
-  const approved = entries.filter((e) => e.status === 'approved').length;
+  if (state.kind === 'error') {
+    return (
+      <section className="screen">
+        <Head />
+        <div className="banner danger">
+          <i className="ti ti-alert-triangle" aria-hidden="true" />
+          <div>
+            <b>Could not read the marker library.</b>
+            <div style={{ marginTop: 3 }}>{state.message}</div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const entries = state.items;
+  const approved = entries.filter((e) => isApproved(e)).length;
   const retired = entries.length - approved;
   const totalReuse = entries.reduce((n, e) => n + e.reuseCount, 0);
   const maxReuse = Math.max(1, ...entries.map((e) => e.reuseCount));
 
-  return (
-    <section className="screen" data-provenance="mock">
-      <div className="cap">
-        <b>Marker library</b> &nbsp;·&nbsp; spec §6 — approved codes, written at VP sign-off
-      </div>
+  const shown = entries.filter((e) => showRetired || isApproved(e));
 
-      <MockBadge note="The marker library has no Cosmos container or endpoint yet. Nothing here was written by a real project close." />
+  return (
+    <section className="screen">
+      <Head />
 
       <div className="stat-strip">
         <StatCard label="Approved" value={approved} hint="reusable today" />
@@ -63,7 +73,7 @@ export function MarkerLibrary() {
           <SearchInput
             value={q}
             onChange={setQ}
-            placeholder="Search codes, composition, validated-for…"
+            placeholder="Search markers, material, application…"
             label="Search the marker library"
           />
         </div>
@@ -81,58 +91,89 @@ export function MarkerLibrary() {
 
       {shown.length === 0 ? (
         <EmptyState
-          icon="ti-search-off"
-          title="No codes match."
-          body={q ? <>Nothing in the library matches “{q}”.</> : <>No codes to show.</>}
+          icon="ti-library-off"
+          title={q ? 'Nothing matches.' : 'The library is empty.'}
+          body={
+            q ? (
+              <>
+                No approved code matches “{q}”. That is a real answer, not a gap: only codes
+                that have passed the VP R&amp;D gate are written here.
+              </>
+            ) : (
+              <>
+                No project has passed the VP R&amp;D gate yet. Signing that gate is what writes
+                a code here — and what lets the next project reuse it instead of rediscovering
+                it.
+              </>
+            )
+          }
         />
       ) : (
-        shown.map((e) => {
-          const isRetired = e.status !== 'approved';
-          return (
-            <div
-              className="card"
-              key={e.code}
-              style={{ marginBottom: 8, opacity: isRetired ? 0.6 : 1 }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span
-                  className="chip chip--neutral chip--mono"
-                  style={{ fontWeight: 600, fontSize: 13 }}
-                >
-                  {e.code}
-                </span>
-                <span className="small secondary" style={{ fontFamily: 'var(--font-mono)' }}>
-                  {e.composition}
-                </span>
-                <span className={`chip ${isRetired ? 'x' : 'v'}`} style={{ marginLeft: 'auto' }}>
-                  {e.status}
-                </span>
-              </div>
-
-              <div style={{ margin: '10px 0 6px' }}>
-                {e.validatedFor.map((v) => (
-                  <span className="src" key={v}>
-                    <i className="ti ti-check" aria-hidden="true" /> {v}
-                  </span>
-                ))}
-              </div>
-
-              <div style={{ maxWidth: 320 }}>
-                <BarRow
-                  label={<span className="tiny muted">reuse</span>}
-                  value={e.reuseCount}
-                  max={maxReuse}
-                  display={e.reuseCount === 0 ? 'never reused' : `${e.reuseCount}×`}
-                />
-              </div>
-
-              <div className="tiny muted" style={{ marginTop: 4 }}>
-                <i className="ti ti-git-commit" aria-hidden="true" /> {e.source}
-              </div>
-            </div>
-          );
-        })
+        <table className="mx">
+          <thead>
+            <tr>
+              <th>Markers</th>
+              <th>Ratio</th>
+              <th>ppm</th>
+              <th>Validated for</th>
+              <th>Source project</th>
+              <th>Reuse</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((e) => (
+              <tr key={e.id}>
+                <td>
+                  {/* A marker element is not a verdict — green here would read as "Pass". */}
+                  {e.composition.markers.map((m) => (
+                    <span className="chip chip--neutral" key={m} style={{ marginRight: 3 }}>
+                      <Data kind="element">{m}</Data>
+                    </span>
+                  ))}
+                </td>
+                <td>
+                  <Data kind="code">{e.composition.ratio}</Data>
+                </td>
+                <td>
+                  <Data kind="ppm">{e.composition.ppm}</Data>
+                </td>
+                <td className="secondary small">
+                  {e.validatedFor.material} · {e.validatedFor.application}
+                  <div className="tiny muted">{e.validatedFor.objective}</div>
+                </td>
+                <td className="tiny muted">
+                  <Data kind="id">{e.sourceProject}</Data>
+                </td>
+                <td style={{ minWidth: 140 }}>
+                  <BarRow
+                    label=""
+                    value={e.reuseCount}
+                    max={maxReuse}
+                    display={`${e.reuseCount}×`}
+                  />
+                </td>
+                <td>
+                  <span className={`chip ${isApproved(e) ? 'v' : 'chip--neutral'}`}>{e.status}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </section>
   );
+}
+
+function Head() {
+  return (
+    <div className="cap">
+      <b>Marker library</b>
+      spec §6 — approved codes, written at VP sign-off
+    </div>
+  );
+}
+
+function isApproved(e: MarkerLibraryEntry): boolean {
+  return e.status?.toLowerCase() === 'approved';
 }

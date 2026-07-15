@@ -1,7 +1,10 @@
 import type {
   CreateProjectRequest,
   CreateProjectResponse,
+  LearnedConclusion,
+  MarkerLibraryEntry,
   MatrixDoc,
+  MsdsEntry,
   ProjectSummary,
 } from './types';
 
@@ -71,4 +74,55 @@ export async function getMatrix(projectId: string): Promise<MatrixDoc | NotFound
 
 export function matrixXlsxUrl(projectId: string): string {
   return `${BASE}/projects/${encodeURIComponent(projectId)}/matrix?format=xlsx`;
+}
+
+/* ---------------------------------------------------------------------------
+   The cross-project knowledge layer — spec §6.
+
+   Marker Library, Learned Conclusions and the MSDS Registry rendered fixtures behind a
+   MockBadge because "the backend has no endpoint". It does:
+   `src/Smx.Backend/Api/KnowledgeEndpoints.cs` serves all three, each accepting `?search=`,
+   and the search runs server-side against Cosmos. The frontend simply never called them.
+
+   Empty is a legitimate answer. A fresh subscription has an empty Marker Library, because
+   nothing has been through the VP gate yet — and an empty library rendered honestly is
+   worth more than a full one rendered from a fixture.
+   --------------------------------------------------------------------------- */
+
+function q(search?: string): string {
+  return search?.trim() ? `?search=${encodeURIComponent(search.trim())}` : '';
+}
+
+export async function getMarkerLibrary(search?: string): Promise<MarkerLibraryEntry[]> {
+  const res = await fetch(`${BASE}/marker-library${q(search)}`);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as MarkerLibraryEntry[];
+}
+
+export async function getLearnedConclusions(search?: string): Promise<LearnedConclusion[]> {
+  const res = await fetch(`${BASE}/learned-conclusions${q(search)}`);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as LearnedConclusion[];
+}
+
+export async function getMsdsRegistry(search?: string): Promise<MsdsEntry[]> {
+  const res = await fetch(`${BASE}/msds-registry${q(search)}`);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as MsdsEntry[];
+}
+
+/**
+ * Sign the MSDS review for one substance.
+ *
+ * This is an operator-signed record, not a UI flag: the MSDS-before-order hard precondition
+ * (spec §5) reads it, and an order stays blocked until its sheet is current AND reviewed.
+ * The backend stamps `reviewedAt` so that *when* it was signed stays recoverable.
+ */
+export async function reviewMsds(cas: string): Promise<MsdsEntry | NotFound> {
+  const res = await fetch(`${BASE}/msds-registry/${encodeURIComponent(cas)}/review`, {
+    method: 'POST',
+  });
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as MsdsEntry;
 }

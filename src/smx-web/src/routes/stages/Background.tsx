@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { MockBadge } from '../../components/MockBadge';
+import { Data } from '../../components/ui/Data';
 import { ParkSlot, SectionHeader } from '../../components/ui/Primitives';
 
 import background from '../../mocks/fixtures/background.json';
@@ -43,7 +44,8 @@ export function Background() {
   return (
     <section className="screen" data-provenance="mock">
       <div className="cap">
-        <b>Background analysis</b> &nbsp;·&nbsp; spec §4.2 — the agent marks X / L / V per component
+        <b>Background analysis</b>
+        spec §4.2 — the agent marks X / L / V per component
       </div>
 
       <MockBadge note="No XRF measurement has been ingested. The objective toggle re-labels the legend but cannot re-evaluate anything." />
@@ -99,7 +101,9 @@ export function Background() {
                     {row.element}
                   </span>
                 </td>
-                <td className="tiny muted">{row.line}</td>
+                <td className="tiny muted">
+                  <Data kind="line">{row.line}</Data>
+                </td>
                 {row.verdicts.map((v, i) => {
                   const flag = row.flags?.[components[i]];
                   // A banned element is out for every component. Its per-component

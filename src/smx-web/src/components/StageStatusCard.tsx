@@ -69,7 +69,7 @@ export function StageStatusCard({ name, state }: { name: string; state: StageSta
           <div>
             <b>The agent failed.</b>
             {/* Verbatim, in mono. A paraphrased error is a lost error. */}
-            <div style={{ marginTop: 3, fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+            <div className="data" style={{ marginTop: 3, fontSize: 11 }}>
               {state.error}
             </div>
           </div>

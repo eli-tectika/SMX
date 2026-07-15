@@ -1,4 +1,5 @@
 import { MockBadge } from '../../components/MockBadge';
+import { Data } from '../../components/ui/Data';
 import { Gate, type Requirement } from '../../components/ui/Gate';
 import { ParkSlot } from '../../components/ui/Primitives';
 import { axisMax, niceTicks } from '../../domain/ticks';
@@ -65,7 +66,8 @@ export function Dosing() {
   return (
     <section className="screen" data-provenance="mock">
       <div className="cap">
-        <b>Dosing &amp; codes</b> &nbsp;·&nbsp; spec §4.5 — ppm windows + code combinations, per
+        <b>Dosing &amp; codes</b>
+        spec §4.5 — ppm windows + code combinations, per
         component
       </div>
 
@@ -98,12 +100,14 @@ export function Dosing() {
               stroke="var(--border)"
               strokeWidth="0.5"
             />
+            {/* An axis tick is a number the chart computed. Mono, like every other value. */}
             <text
               x={scale(t)}
               y={PAD_TOP - 11}
               fontSize="9"
               fill="var(--text-muted)"
               textAnchor="middle"
+              fontFamily="var(--font-mono)"
             >
               {t}
             </text>
@@ -117,7 +121,15 @@ export function Dosing() {
           const y = PAD_TOP + i * ROW_H + 6;
           return (
             <g key={w.element}>
-              <text x={0} y={y + 10} fontSize="11" fill="var(--text-primary)" fontWeight="500">
+              {/* An element symbol is a proper noun of the domain. */}
+              <text
+                x={0}
+                y={y + 10}
+                fontSize="11"
+                fill="var(--text-primary)"
+                fontWeight="500"
+                fontFamily="var(--font-mono)"
+              >
                 {w.element}
               </text>
 
@@ -195,7 +207,7 @@ export function Dosing() {
               width: 12,
               height: 8,
               background: 'var(--bg-success)',
-              border: '0.5px solid var(--border-success)',
+              border: '1px solid var(--border-success)',
             }}
           />{' '}
           recommended band
@@ -222,9 +234,9 @@ export function Dosing() {
         {codes.map((c) => (
           <div className="card" key={c.code}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{ fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
-                {c.code}
-              </span>
+              <Data kind="code">
+                <span style={{ fontSize: 15, fontWeight: 600 }}>{c.code}</span>
+              </Data>
               <span className="tiny muted">{c.kind}</span>
               <span
                 className="tiny muted"
@@ -242,7 +254,7 @@ export function Dosing() {
               ))}
             </div>
             <div className="small secondary" style={{ marginBottom: 4 }}>
-              ratio <b style={{ fontFamily: 'var(--font-mono)' }}>{c.ratio}</b>
+              ratio <b className="data">{c.ratio}</b>
             </div>
             <p className="tiny muted" style={{ margin: 0 }}>
               {c.note}

@@ -145,7 +145,7 @@ export function Projects() {
               }}
             >
               <span className="small muted">{c.recent.product}</span>
-              <span className="tiny muted" style={{ fontFamily: 'var(--font-mono)' }}>
+              <span className="tiny muted data">
                 {c.recent.projectId}
               </span>
               <button
@@ -252,14 +252,7 @@ function ProjectRow({ card, onForget }: { card: ProjectCard; onForget: () => voi
             <div>
               {blocking.text}
               {blocking.detail && (
-                <div
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 11,
-                    marginTop: 3,
-                    opacity: 0.9,
-                  }}
-                >
+                <div className="data" style={{ fontSize: 11, marginTop: 3, opacity: 0.9 }}>
                   {blocking.detail}
                 </div>
               )}
@@ -300,7 +293,7 @@ function ProjectRow({ card, onForget }: { card: ProjectCard; onForget: () => voi
           style={{
             marginTop: 10,
             paddingTop: 10,
-            borderTop: '0.5px solid var(--border)',
+            borderTop: '1px solid var(--border)',
             display: 'flex',
             gap: 8,
           }}
@@ -341,7 +334,7 @@ function CardHead({ recent }: { recent: ProjectCard['recent'] }) {
         {recent.product}
       </span>
       <span className="tiny muted">
-        {recent.client} · <span style={{ fontFamily: 'var(--font-mono)' }}>{recent.projectId}</span>{' '}
+        {recent.client} · <span className="data">{recent.projectId}</span>{' '}
         · created {recent.createdAt.slice(0, 10)}
       </span>
     </div>

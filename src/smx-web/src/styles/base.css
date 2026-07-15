@@ -6,12 +6,12 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
   color: var(--text-primary);
   background: var(--page-bg);
   margin: 0;
   line-height: 1.4;
-  font-size: 13px;
+  font-size: var(--t-body);
 }
 
 a {
@@ -24,6 +24,15 @@ a:hover {
 
 button {
   font: inherit;
+}
+
+/* Only 400/500/600 are loaded. `<b>` appears throughout the banner and gate copy and
+   would otherwise ask for a 700 that does not exist — the browser then synthesizes one
+   by smearing the 400, which is exactly the kind of muddy letterform that makes an
+   interface look unconsidered. */
+b,
+strong {
+  font-weight: var(--w-semibold);
 }
 
 .sr-only {
@@ -39,36 +48,230 @@ button {
 
 /* ---- layout -------------------------------------------------------------- */
 
+/* Two frames, chosen by route (AppShell sets data-frame).
+
+   Full-bleed everywhere would be a mistake: a 1600px-wide list of project cards reads
+   worse than an 1100px one, because prose and cards want a measure. But the project
+   workspace holds a compatibility matrix AND a permanently docked agent panel, and at
+   1100px the matrix was starved to ~660px — and collapsed to ~300px the moment a cell was
+   selected and the evidence rail opened a third column. The app's most important screen
+   degraded the instant you used it the way it is meant to be used.
+
+   So the frame widens only where the instrument lives. --canvas-max is a CEILING, not a
+   target: without it a 4K monitor would produce a 3000px-wide table, which is not density,
+   just distance. */
 .wrap {
   max-width: 1100px;
   margin: 0 auto;
   padding: 20px 24px 48px;
 }
 
-.screen {
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 20px;
-  margin: 0 0 20px;
-  background: #fff;
+.wrap[data-frame='instrument'] {
+  max-width: var(--canvas-max);
+  padding: 0 var(--s5) var(--s6);
 }
 
-.cap {
-  font-size: 12px;
+/* ---- project context bar (sticky) ------------------------------------------ */
+
+.ctxbar {
+  position: sticky;
+  /* sits directly under the sticky nav tier */
+  top: var(--appnav-h);
+  z-index: 15;
+  background: var(--page-bg);
+  border-bottom: var(--hair) solid var(--border);
+  margin: 0 calc(-1 * var(--s5)) var(--s4);
+  padding: var(--s3) var(--s5) var(--s3);
+}
+
+.ctxbar__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+  flex-wrap: wrap;
+}
+
+.ctxbar__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--t-small);
   color: var(--text-muted);
-  margin: 0 0 14px;
+  flex: none;
+}
+.ctxbar__back:hover {
+  color: var(--text-accent);
+  text-decoration: none;
+}
+
+.ctxbar__sep {
+  width: var(--hair);
+  height: 12px;
+  background: var(--border-strong);
+  flex: none;
+  align-self: center;
+}
+
+.ctxbar__product {
+  font-size: var(--t-lead);
+  font-weight: var(--w-medium);
+  color: var(--ink);
+}
+
+.ctxbar__meta {
+  font-size: var(--t-small);
+  color: var(--text-muted);
+}
+
+.ctxbar__status {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--t-small);
+  white-space: nowrap;
+}
+
+/* ---- workspace: canvas + dock ---------------------------------------------- */
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--dock-w);
+  gap: var(--s4);
+  align-items: start;
+}
+
+.workspace[data-dock='collapsed'] {
+  grid-template-columns: minmax(0, 1fr) var(--dock-rail-w);
+}
+
+.workspace__canvas {
+  min-width: 0;
+}
+
+/* The dock is an instrument, not a fluid column.
+
+   It used to be `minmax(280px, 1fr)`, which is the wrong shape entirely: it made the agent
+   panel GROW on a wide monitor, stealing the space from the matrix — exactly backwards. A
+   dock has a width. The canvas gets everything else. */
+.dock {
+  position: sticky;
+  top: calc(var(--appnav-h) + var(--ctxbar-h));
+  height: calc(100vh - var(--appnav-h) - var(--ctxbar-h) - var(--s5));
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dock > .region {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Collapsed: a rail, not an absence. */
+.dock__rail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) 0;
+  background: var(--surface-1);
+  border: var(--hair) solid var(--border);
+  border-radius: var(--r3);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.dock__rail:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.dock__rail-label {
+  writing-mode: vertical-rl;
+  font-size: var(--t-tiny);
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
+}
+
+.dock__collapse {
+  position: absolute;
+  top: var(--s2);
+  right: var(--s2);
+  z-index: 1;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  line-height: 1;
+  border-radius: var(--r1);
+}
+.dock__collapse:hover {
+  color: var(--text-primary);
+  background: var(--surface-2);
+}
+
+@media (max-width: 1100px) {
+  /* Below this the two-column workspace stops being a workspace and becomes two cramped
+     columns. Stack, and let the dock size to its content. */
+  .workspace,
+  .workspace[data-dock='collapsed'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dock {
+    position: static;
+    height: auto;
+  }
+  .dock__rail {
+    flex-direction: row;
+    justify-content: center;
+  }
+  .dock__rail-label {
+    writing-mode: horizontal-tb;
+  }
+}
+
+.screen {
+  border: 1px solid var(--border);
+  border-radius: var(--r3);
+  padding: 20px;
+  margin: 0 0 20px;
+  background: var(--surface-0);
+}
+
+/* The page head. `.cap b` is the SCREEN TITLE — every stage and cross-project surface
+   opens with one. It used to render at 14px, one step above the 12px prose beside it,
+   which is why no screen in the app read as having a heading at all. Promoting it to
+   --t-title (20px) on its own line, with the description beneath, is the single largest
+   gain in hierarchy available here — and it costs nothing but this rule. */
+.cap {
+  font-size: var(--t-small);
+  color: var(--text-muted);
+  margin: 0 0 var(--s4);
   border-bottom: 1px solid var(--border);
-  padding-bottom: 8px;
+  padding-bottom: var(--s3);
+  line-height: var(--lh-body);
+  max-width: 78ch;
 }
 .cap b {
-  color: var(--text-secondary);
-  font-weight: 600;
-  font-size: 14px;
+  display: block;
+  color: var(--ink);
+  font-weight: var(--w-semibold);
+  font-size: var(--t-title);
+  line-height: var(--lh-tight);
+  /* Tracking tightens as size grows. At 20px the default spacing of Plex Sans is
+     slightly loose for a heading. */
+  letter-spacing: -0.005em;
+  margin-bottom: 3px;
 }
 
 .region {
-  border: 0.5px solid var(--border);
-  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r3);
   padding: 12px;
 }
 
@@ -79,37 +282,189 @@ button {
   color: var(--text-secondary);
 }
 .tiny {
-  font-size: 11px;
+  font-size: var(--t-tiny);
 }
 .small {
-  font-size: 12px;
+  font-size: var(--t-small);
 }
 
-/* ---- app nav ------------------------------------------------------------- */
+/* ---- masthead -------------------------------------------------------------
+   Two tiers. The identity tier scrolls away; the nav tier sticks.
 
-.appnav {
+   That split is the whole design. Thirty rows into a compatibility matrix you need the
+   stage spine and the project id, and you emphatically do not need to be told the app is
+   called SMX. So the wordmark is allowed to be large precisely BECAUSE it is allowed to
+   leave. */
+
+.masthead {
   display: flex;
   align-items: center;
-  gap: 16px;
-  border-bottom: 0.5px solid var(--border);
-  padding: 10px 24px;
-  background: #fff;
+  gap: var(--s5);
+  padding: var(--s4) var(--s5);
+  background: var(--surface-0);
+  border-bottom: var(--hair) solid var(--border);
+}
+
+/* The wordmark.
+
+   No glyph. An abstract mark — a hexagon, an atom, a spectrum wave — would be the only
+   purely decorative object in the whole application, and this one is a chemistry
+   instrument, not a brand. Note also the trap the letters set: X is this app's own
+   vocabulary for FAIL. No letter of the wordmark may ever carry a palette colour.
+
+   So the mark takes its authority from scale, tracking, and the face — and the face is
+   IBM Plex MONO, which is the idea that makes it work. A monospaced wordmark reads as
+   the silkscreen on the front of a laboratory instrument. It is also already loaded, for
+   the data, so the mark costs nothing. */
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex: none;
+}
+
+.wordmark__rule {
+  width: 4px;
+  height: 26px;
+  border-radius: 1px;
+  /* Teal MEANS operator, and the frame around the work is the operator's. This is the one
+     licence the mark takes, and it is grammar-correct. */
+  background: var(--text-teal);
+}
+
+.wordmark__name {
+  font-family: var(--font-mono);
+  font-size: var(--t-mast);
+  font-weight: var(--w-semibold);
+  color: var(--ink);
+  line-height: 1;
+  /* Tracking tightens as size grows — the inverse relationship is the whole tell of a
+     real typographic hand. At 15px this mark wanted 0.14em; mono at 34px is already wide,
+     and the same value would have gaped. */
+  letter-spacing: 0.08em;
+  /* letter-spacing adds a trailing space after the final glyph; pull it back so the
+     divider sits at an even optical gap. */
+  margin-right: -0.08em;
+}
+
+.wordmark__sub {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: var(--s3);
+  border-left: var(--hair) solid var(--border-strong);
+}
+
+.wordmark__system {
+  font-size: var(--t-tiny);
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
+  font-weight: var(--w-medium);
+  color: var(--text-secondary);
+}
+
+.wordmark__tag {
+  font-size: var(--t-tiny);
+  color: var(--text-muted);
+}
+
+/* Corpus freshness. The best element available for a masthead, and it is pure domain:
+   every regulatory verdict in SMX cites the date its corpus was synced (spec §4.4), and
+   an instrument tells you when it was last calibrated. This is information, not decoration
+   — which is the only reason it is allowed to sit here. */
+.masthead__corpus {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  font-size: var(--t-tiny);
+  color: var(--text-muted);
+}
+
+.masthead__corpus b {
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
+  font-weight: var(--w-medium);
+  color: var(--text-muted);
+}
+
+/* The slot exists and is empty, and says so. It is never coloured as if it carried a
+   value, and it never shows a date it does not have. */
+.masthead__corpus-absent {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-muted);
+  border-bottom: 1px dashed var(--border-strong);
+  cursor: help;
+}
+
+/* ---- nav tier (sticky) ---------------------------------------------------- */
+
+.appnav {
+  position: sticky;
+  top: 0;
+  z-index: 20; /* must clear the matrix's own sticky thead (z-index 2/3) */
+  display: flex;
+  align-items: center;
+  gap: var(--s5);
+  border-bottom: var(--hair) solid var(--border);
+  padding: 0 var(--s5);
+  background: var(--surface-0);
 }
 
 .tab {
-  font-size: 12px;
+  font-size: var(--t-small);
   color: var(--text-secondary);
-  padding: 5px 2px;
-  border-bottom: 1.5px solid transparent;
+  padding: 11px 2px;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
 }
 .tab.on {
-  color: var(--text-primary);
-  font-weight: 500;
+  color: var(--ink);
+  font-weight: var(--w-medium);
   border-bottom-color: var(--text-accent);
 }
 .tab:hover {
   text-decoration: none;
   color: var(--text-primary);
+}
+
+.appnav__end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+/* The ⌘K finder trigger. Not a launcher — a finder: it takes a CAS number, an element
+   symbol, a marker code. See CommandFinder. */
+.findbtn {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--t-small);
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: var(--hair) solid var(--border);
+  border-radius: var(--r2);
+  padding: 4px 8px;
+  cursor: pointer;
+  min-width: 190px;
+}
+.findbtn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+.findbtn kbd {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--text-muted);
+  background: var(--surface-0);
+  border: var(--hair) solid var(--border);
+  border-radius: var(--r1);
+  padding: 1px 4px;
 }
 
 /* ---- stage spine --------------------------------------------------------- */
@@ -127,14 +482,14 @@ button {
   align-items: center;
   gap: 4px;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--t-tiny);
   padding: 6px 4px;
-  border: 0.5px solid var(--border);
-  border-radius: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
-  background: #fff;
+  background: var(--surface-0);
   cursor: pointer;
 }
 .pill.on {
@@ -168,23 +523,40 @@ button {
   min-width: 24px;
   height: 22px;
   padding: 0 6px;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--r2);
+  font-size: var(--t-small);
+}
+
+/* A verdict chip should read as a claim at a glance, so each one is a defined,
+   saturated object — the semantic border drawn (it already exists in the palette and
+   was going unused), the tint deepened a step by pulling its own hue in, the glyph set
+   at medium weight. Still the same four hues, still no new colour: green = Pass,
+   purple = Conditional, amber = NeedsReview, red = Fail. */
+.v,
+.l,
+.x,
+.n {
+  border: 1px solid;
+  font-weight: var(--w-semibold);
 }
 .v {
-  background: var(--bg-success);
+  background: color-mix(in srgb, var(--text-success) 12%, var(--bg-success));
+  border-color: var(--border-success);
   color: var(--text-success);
 }
 .l {
-  background: var(--bg-pro);
+  background: color-mix(in srgb, var(--text-pro) 12%, var(--bg-pro));
+  border-color: var(--border-pro);
   color: var(--text-pro);
 }
 .x {
-  background: var(--bg-danger);
+  background: color-mix(in srgb, var(--text-danger) 12%, var(--bg-danger));
+  border-color: var(--border-danger);
   color: var(--text-danger);
 }
 .n {
-  background: var(--bg-warning);
+  background: color-mix(in srgb, var(--text-warning) 12%, var(--bg-warning));
+  border-color: var(--border-warning);
   color: var(--text-warning);
 }
 
@@ -193,26 +565,26 @@ button {
 .mx {
   border-collapse: collapse;
   width: 100%;
-  font-size: 12px;
+  font-size: var(--t-small);
 }
 .mx th,
 .mx td {
-  border: 0.5px solid var(--border);
+  border: 1px solid var(--border);
   padding: 7px 9px;
   text-align: left;
   vertical-align: middle;
+  /* A matrix whose digits shift column between renders reads as unreliable. */
+  font-variant-numeric: tabular-nums;
 }
 .mx th {
   background: var(--surface-2);
   font-weight: 500;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--t-tiny);
 }
 .mx tbody tr:hover {
   background: var(--surface-2);
 }
-
-/* ---- chat bubbles / research trail --------------------------------------- */
 
 .bub {
   font-size: 13px;
@@ -236,34 +608,34 @@ button {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--t-small);
   color: var(--text-secondary);
   padding: 5px 0;
 }
 
 .src {
   display: inline-block;
-  font-size: 11px;
+  font-size: var(--t-tiny);
   color: var(--text-muted);
   background: var(--surface-2);
-  border: 0.5px solid var(--border);
-  border-radius: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
   padding: 1px 6px;
   margin: 3px 4px 0 0;
 }
 
 .qr {
-  font-size: 12px;
-  border: 0.5px solid var(--border-strong);
+  font-size: var(--t-small);
+  border: 1px solid var(--border-strong);
   background: transparent;
-  border-radius: 16px;
+  border-radius: var(--r1);
   padding: 4px 12px;
   margin: 2px 4px 0 0;
   color: var(--text-secondary);
 }
 
 .name {
-  font-size: 11px;
+  font-size: var(--t-tiny);
   color: var(--text-muted);
   margin: 10px 0 3px;
 }
@@ -273,11 +645,11 @@ button {
 input[type='text'],
 select {
   font: inherit;
-  font-size: 12px;
+  font-size: var(--t-small);
   padding: 5px 8px;
-  border: 0.5px solid var(--border-strong);
-  border-radius: 6px;
-  background: #fff;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r2);
+  background: var(--surface-0);
   color: var(--text-primary);
   width: 100%;
 }
@@ -288,11 +660,11 @@ select:focus {
 }
 
 .btn {
-  font-size: 12px;
+  font-size: var(--t-small);
   padding: 6px 14px;
-  border-radius: var(--radius);
-  border: 0.5px solid var(--border-strong);
-  background: #fff;
+  border-radius: var(--r2);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-0);
   color: var(--text-secondary);
   cursor: pointer;
 }
@@ -312,17 +684,48 @@ select:focus {
   cursor: not-allowed;
 }
 
+/* A control that belongs beside a label rather than at the foot of a form. */
+.btn--quiet {
+  padding: 2px 7px;
+  font-size: var(--t-tiny);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* A key, rendered as a key. Mono, because it names a literal character the operator types
+   — the same reason a CAS number is mono. */
+.kbd {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: var(--hair) solid var(--border);
+  border-radius: var(--r1);
+  padding: 0 3px;
+  line-height: 1.5;
+}
+
 /* ---- banners ------------------------------------------------------------- */
 
 .banner {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  border-radius: 10px;
+  border-radius: var(--r2);
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: var(--t-small);
   margin: 0 0 14px;
-  border: 0.5px solid;
+  border: var(--hair) solid;
+  line-height: var(--lh-body);
+}
+
+/* The instrument frame runs to 1600px. A banner that stretched the full width would put
+   200 characters on a line — so the wider layout would read WORSE than the narrow one it
+   replaced. Prose is measured; only tables get the whole frame. */
+.banner > span,
+.banner > div {
+  max-width: 78ch;
 }
 .banner.warn {
   background: var(--bg-warning);

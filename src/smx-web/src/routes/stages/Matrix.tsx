@@ -29,6 +29,14 @@ export function Matrix({ project }: { project: ProjectSummary }) {
   const [selected, setSelected] = useState<MatrixCell | null>(null);
   const [hot, setHot] = useState<{ row: string; col: string } | null>(null);
   const [reviewed, setReviewed] = useState<Set<string>>(() => readReviewed(project.projectId));
+
+  /** Expert affordance: forty substances without scrolling. Padding only. */
+  const [compact, setCompact] = useState(
+    () => localStorage.getItem('smx.matrixCompact') === '1',
+  );
+  useEffect(() => {
+    localStorage.setItem('smx.matrixCompact', compact ? '1' : '0');
+  }, [compact]);
   const gridRef = useRef<HTMLTableElement>(null);
 
   useEffect(() => {
@@ -60,14 +68,69 @@ export function Matrix({ project }: { project: ProjectSummary }) {
   const summary = useMemo(() => (doc ? summarize(doc) : undefined), [doc]);
   const index = useMemo(() => (doc ? indexCells(doc) : new Map<string, MatrixCell>()), [doc]);
 
-  /** Arrow-key navigation across the grid. The cells are buttons; they must be reachable. */
+  /**
+   * Focus and open the next flagged cell nobody has opened yet.
+   *
+   * This is not a convenience — it is the gate-arming workflow, bound to a key.
+   *
+   * Spec §1.8: a gate will not arm until every flagged / low-confidence item has been
+   * opened. Until now the only way to satisfy that was to hunt the grid by eye for small
+   * amber dots, which on a 40-row matrix is exactly the kind of tedium that produces
+   * rubber-stamping — the operator gives up looking, and the requirement gets satisfied by
+   * clicking rather than by reading. Pressing `f` walks the queue instead.
+   */
+  const openNextFlagged = useCallback(() => {
+    if (!summary || !gridRef.current) return;
+    const next = summary.flagged.find((k) => !reviewed.has(k));
+    if (!next) return;
+    const cell = index.get(next);
+    if (!cell) return;
+    open(cell);
+    gridRef.current
+      .querySelector<HTMLButtonElement>(`button[data-cell="${CSS.escape(next)}"]`)
+      ?.focus();
+  }, [summary, reviewed, index, open]);
+
+  /**
+   * Keyboard navigation across the grid.
+   *
+   * Arrow keys already moved focus, but the journey dead-ended there: a cell could be
+   * reached with the keyboard and then not opened with one, so evidence — the entire point
+   * of the grid — stayed mouse-only. In an expert tool used for hours, that is not an
+   * accessibility footnote; it is the difference between an instrument and a web page.
+   */
   const onGridKeyDown = (e: React.KeyboardEvent) => {
-    const keys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
-    if (!keys.includes(e.key) || !doc) return;
+    if (!doc) return;
+
+    if (e.key === 'Escape') {
+      setSelected(null);
+      return;
+    }
+
+    // `f` — jump to the next flagged, unopened cell. Skipped while a text field has focus.
+    if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      openNextFlagged();
+      return;
+    }
+
     const active = document.activeElement as HTMLElement | null;
     const r = Number(active?.dataset.r);
     const c = Number(active?.dataset.c);
     if (Number.isNaN(r) || Number.isNaN(c)) return;
+
+    if (e.key === 'Enter' || e.key === ' ') {
+      const cellKey = active?.dataset.cell;
+      const cell = cellKey ? index.get(cellKey) : undefined;
+      if (cell) {
+        e.preventDefault();
+        open(cell);
+      }
+      return;
+    }
+
+    const keys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+    if (!keys.includes(e.key)) return;
     e.preventDefault();
     const dr = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
     const dc = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
@@ -98,7 +161,8 @@ export function Matrix({ project }: { project: ProjectSummary }) {
     return (
       <section className="screen">
         <div className="cap">
-          <b>Compatibility matrix</b> &nbsp;·&nbsp; assembled from the screening agents' verdicts
+          <b>Compatibility matrix</b>
+        assembled from the screening agents' verdicts
         </div>
         <StageStatusCard name="Matrix assembler" state={project.stages.matrix} />
         <EmptyState
@@ -107,7 +171,8 @@ export function Matrix({ project }: { project: ProjectSummary }) {
           body={
             <>
               The assembler writes the matrix only after screening completes. Screening is currently{' '}
-              <b>{screening}</b>. This is the normal state of a young project, not a failure.
+              <b>{screening}</b>
+        . This is the normal state of a young project, not a failure.
             </>
           }
         />
@@ -125,9 +190,31 @@ export function Matrix({ project }: { project: ProjectSummary }) {
         title="Compatibility matrix"
         hint={`${s.rows} substances × ${s.cols} components · assembled ${m.generatedAt.slice(0, 10)}`}
         actions={
-          <a className="btn" href={matrixXlsxUrl(project.projectId)} download>
-            <i className="ti ti-download" aria-hidden="true" /> .xlsx
-          </a>
+          <>
+            {/* Density changes padding and nothing else — never a chip size, never a flag
+                dot, never a column. A denser matrix loses whitespace, not information. */}
+            <div className="seg" role="group" aria-label="Row density">
+              <button
+                type="button"
+                className="seg__btn"
+                aria-pressed={!compact}
+                onClick={() => setCompact(false)}
+              >
+                Comfortable
+              </button>
+              <button
+                type="button"
+                className="seg__btn"
+                aria-pressed={compact}
+                onClick={() => setCompact(true)}
+              >
+                Compact
+              </button>
+            </div>
+            <a className="btn" href={matrixXlsxUrl(project.projectId)} download>
+              <i className="ti ti-download" aria-hidden="true" /> .xlsx
+            </a>
+          </>
         }
       />
 
@@ -140,8 +227,27 @@ export function Matrix({ project }: { project: ProjectSummary }) {
         </div>
         {s.flagged.length > 0 && (
           <div>
-            <div className="tiny muted" style={{ marginBottom: 5 }}>
-              Flagged cells opened — {progress.opened} of {progress.total}
+            <div
+              className="tiny muted"
+              style={{ marginBottom: 5, display: 'flex', alignItems: 'baseline', gap: 8 }}
+            >
+              <span>
+                Flagged cells opened — {progress.opened} of {progress.total}
+              </span>
+              {/* The flagged queue, walkable. A gate will not arm until every one of these
+                  has been opened (spec §1.8), and hunting for amber dots by eye across a
+                  long matrix is how rubber-stamping starts. */}
+              {progress.opened < progress.total && (
+                <button
+                  type="button"
+                  className="btn btn--quiet"
+                  onClick={openNextFlagged}
+                  style={{ marginLeft: 'auto' }}
+                  title="Open the next flagged cell nobody has read yet"
+                >
+                  Next flagged <kbd className="kbd">F</kbd>
+                </button>
+              )}
             </div>
             <Meter
               value={progress.total ? progress.opened / progress.total : 1}
@@ -162,7 +268,8 @@ export function Matrix({ project }: { project: ProjectSummary }) {
             <b>
               {s.inconsistent} cell{s.inconsistent === 1 ? '' : 's'} disagree with their own
               dimensions.
-            </b>{' '}
+            </b>
+        {' '}
             The overall verdict should always be the worst dimension. Open the cells marked{' '}
             <b>!</b> before trusting this matrix.
           </div>
@@ -175,7 +282,8 @@ export function Matrix({ project }: { project: ProjectSummary }) {
           <div>
             <b>
               {s.uncited} verdict{s.uncited === 1 ? '' : 's'} trace to no source.
-            </b>{' '}
+            </b>
+        {' '}
             An uncited verdict cannot be relied on.
           </div>
         </div>
@@ -191,7 +299,7 @@ export function Matrix({ project }: { project: ProjectSummary }) {
       >
         <div style={{ overflowX: 'auto', maxHeight: '70vh', overflowY: 'auto' }}>
           <table
-            className="mx mx--sticky mx--crosshair"
+            className={`mx mx--sticky mx--crosshair${compact ? ' mx--compact' : ''}`}
             ref={gridRef}
             onKeyDown={onGridKeyDown}
             onMouseLeave={() => setHot(null)}
@@ -234,7 +342,7 @@ export function Matrix({ project }: { project: ProjectSummary }) {
                       <div style={{ fontWeight: 500 }}>{row.element}</div>
                       <div className="tiny muted">{row.form}</div>
                     </td>
-                    <td className="tiny muted" style={{ fontFamily: 'var(--font-mono)' }}>
+                    <td className="tiny muted data">
                       {row.cas}
                     </td>
                     {m.columns.map((col, ci) => {
@@ -261,9 +369,10 @@ export function Matrix({ project }: { project: ProjectSummary }) {
                           <button
                             data-r={ri}
                             data-c={ci}
+                            data-cell={k}
                             onClick={() => (isSel ? setSelected(null) : open(cell))}
                             aria-pressed={isSel}
-                            title={`${cell.overall} — ${cell.dimensions.length} dimensions${bad ? ' — INCONSISTENT' : ''}. Click for evidence.`}
+                            title={`${cell.overall} — ${cell.dimensions.length} dimensions${bad ? ' — INCONSISTENT' : ''}. Enter for evidence.`}
                             className={`chip ${verdictClass(cell.overall)}`}
                             style={{
                               cursor: 'pointer',
@@ -275,7 +384,8 @@ export function Matrix({ project }: { project: ProjectSummary }) {
                             }}
                           >
                             {verdictGlyph(cell.overall)}
-                            {bad && <b>!</b>}
+                            {bad && <b>!</b>
+        }
                             {/* A flagged cell nobody has opened yet withholds the gate. */}
                             {flagged && !opened && (
                               <span

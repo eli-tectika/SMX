@@ -108,3 +108,71 @@ export interface CreateProjectRequest {
 export interface CreateProjectResponse {
   projectId: string;
 }
+
+/* ---------------------------------------------------------------------------
+   The cross-project knowledge layer.
+
+   These three surfaces rendered fixture data behind a MockBadge, on the stated grounds
+   that the backend had no endpoint for them. That has not been true for some time:
+   `KnowledgeEndpoints.cs` serves GET /marker-library, /learned-conclusions and
+   /msds-registry — each taking a `?search=` parameter — plus POST /msds-registry/{cas}/review.
+
+   Mirrors the C# records in src/Smx.Domain/Records/.
+   --------------------------------------------------------------------------- */
+
+/** MarkerLibraryDoc — an approved final code, reusable across projects. */
+export interface MarkerComposition {
+  markers: string[];
+  ppm: number;
+  ratio: string;
+}
+export interface ValidatedFor {
+  application: string;
+  material: string;
+  objective: string;
+}
+export interface MarkerLibraryEntry {
+  id: string;
+  composition: MarkerComposition;
+  validatedFor: ValidatedFor;
+  sourceProject: string;
+  status: string;
+  reuseCount: number;
+  createdAt: string;
+}
+
+/** LearnedConclusionDoc — one accumulated finding, with provenance and confidence. */
+export interface ConclusionScope {
+  element?: string | null;
+  form?: string | null;
+  material?: string | null;
+  application?: string | null;
+  market?: string | null;
+  substance?: string | null;
+}
+export interface ConclusionProvenance {
+  sourceProjects: string[];
+  decisions: string[];
+}
+export interface LearnedConclusion {
+  id: string;
+  kind: string;
+  scope: ConclusionScope;
+  finding: string;
+  confidence: number;
+  provenance: ConclusionProvenance;
+  supersedes?: string | null;
+  createdAt: string;
+}
+
+/** MsdsRegistryDoc — the governance layer that gates procurement. */
+export interface MsdsEntry {
+  id: string;
+  cas: string;
+  supplier: string;
+  version: string;
+  date: string;
+  reviewStatus: string;
+  reviewedAt?: string | null;
+  linkedProjects: string[];
+}

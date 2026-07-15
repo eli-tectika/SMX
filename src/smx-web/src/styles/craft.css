@@ -43,11 +43,15 @@
   border-radius: var(--r1);
 }
 
-/* ---- elevation -------------------------------------------------------------- */
+/* ---- elevation ---------------------------------------------------------------
+   Deliberately empty.
 
-.screen {
-  box-shadow: var(--shadow-1);
-}
+   A shadow is a claim about depth — "this floats above the page and can be dismissed."
+   The only things in this app that are true overlays are the tooltip and the ⌘K finder.
+   A screen is not an overlay; it IS the page. Giving it a drop shadow made it one more
+   soft-floating card in a grid of soft-floating cards, which is the single most legible
+   signature of a generated interface. It gets a hairline instead, and it earns its
+   separation from the page by rule and rhythm, not by pretending to hover. */
 
 /* ---- motion ----------------------------------------------------------------- */
 
@@ -198,6 +202,18 @@
 .mx--sticky thead th[data-rowhead] {
   z-index: 3;
   background: var(--surface-2);
+}
+
+/* ---- density -----------------------------------------------------------------
+   Comfortable is the default; compact is for the operator who knows the grid and wants
+   to see forty substances without scrolling. Density is an expert affordance, so it is
+   offered rather than imposed — and it changes ONLY padding. It never shrinks a verdict
+   chip, never drops a flag dot, and never hides a column: a denser matrix must lose
+   whitespace, not information. */
+
+.mx--compact th,
+.mx--compact td {
+  padding: 3px 6px;
 }
 
 /* ---- matrix crosshair --------------------------------------------------------

@@ -97,7 +97,8 @@ export function Decision({ project }: { project: ProjectSummary }) {
   return (
     <section className="screen" data-provenance="mock">
       <div className="cap">
-        <b>Decision matrix</b> &nbsp;·&nbsp; spec §4.7 — final code + ppm per component, then the VP
+        <b>Decision matrix</b>
+        spec §4.7 — final code + ppm per component, then the VP
         R&amp;D gate
       </div>
 
@@ -183,7 +184,8 @@ export function Decision({ project }: { project: ProjectSummary }) {
                             />
                             <div>
                               <span style={{ textTransform: 'capitalize' }}>{c}</span> —{' '}
-                              {r.clears[c] ? 'clear' : <b>blocking</b>}{' '}
+                              {r.clears[c] ? 'clear' : <b>blocking</b>
+        }{' '}
                               <Link to={`/p/${project.projectId}/${OWNER[c].stage}`}>
                                 {OWNER[c].label} <i className="ti ti-arrow-right" aria-hidden="true" />
                               </Link>

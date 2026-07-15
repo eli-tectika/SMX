@@ -39,7 +39,8 @@ export function Cost() {
     return (
       <section className="screen" data-provenance="mock">
         <div className="cap">
-          <b>Cost &amp; availability</b> &nbsp;·&nbsp; spec §4.6
+          <b>Cost &amp; availability</b>
+        spec §4.6
         </div>
         <MockBadge />
         <EmptyState icon="ti-package-off" title="No molecules costed yet." />
@@ -62,7 +63,8 @@ export function Cost() {
   return (
     <section className="screen" data-provenance="mock">
       <div className="cap">
-        <b>Cost &amp; availability</b> &nbsp;·&nbsp; spec §4.6 — supplier audit per molecule
+        <b>Cost &amp; availability</b>
+        spec §4.6 — supplier audit per molecule
       </div>
 
       <MockBadge note="No supplier catalog was queried. Prices, lead times and availability are illustrative." />
@@ -158,7 +160,8 @@ export function Cost() {
                 <i className="ti ti-file-alert" aria-hidden="true" />
                 <div>
                   <b>Procurement blocked.</b> The safety data sheet for {m.element} {m.form} is{' '}
-                  <b>{sheet}</b>. Spec §5 makes a current MSDS a hard precondition for an order — no
+                  <b>{sheet}</b>
+        . Spec §5 makes a current MSDS a hard precondition for an order — no
                   supplier below can be ordered from until it is.{' '}
                   <Link to="/msds-registry">Open the MSDS registry →</Link>
                 </div>
