@@ -31,6 +31,8 @@ export function Gate({
   signLabel,
   rejectLabel,
   ledgerNote,
+  onSign,
+  signBusy,
 }: {
   kind: 'hard' | 'soft';
   title: string;
@@ -39,10 +41,18 @@ export function Gate({
   signLabel: string;
   rejectLabel?: string;
   ledgerNote?: boolean;
+  /**
+   * When provided, the sign button is LIVE: enabled only at full arming, and it calls this.
+   * Omitted (the mock gates — VP, code-finalization), the button stays disabled, because there is
+   * no endpoint to sign those and a live-looking button would promise what the system cannot do.
+   */
+  onSign?: () => void;
+  signBusy?: boolean;
 }) {
   const met = requirements.filter((r) => r.met).length;
   const total = requirements.length;
   const armed = met === total;
+  const canSign = Boolean(onSign) && armed && !signBusy;
 
   return (
     <section className="gatebox" data-kind={kind} aria-label={title}>
@@ -107,11 +117,19 @@ export function Gate({
 
       <div className="gatebox__actions">
         <button
-          className="btn"
-          disabled
-          title="Disabled — a gate is an operator-signed record and no endpoint exists to sign one"
+          className="btn primary"
+          disabled={!canSign}
+          onClick={onSign}
+          title={
+            onSign
+              ? armed
+                ? undefined
+                : 'Locked until every requirement above is met'
+              : 'No endpoint exists to sign this gate'
+          }
         >
-          <i className="ti ti-signature" aria-hidden="true" /> {signLabel}
+          <i className={`ti ${signBusy ? 'ti-loader' : 'ti-signature'}`} aria-hidden="true" />{' '}
+          {signLabel}
         </button>
         {rejectLabel && (
           <button className="btn" disabled title="Disabled — no gate endpoint">
@@ -119,9 +137,11 @@ export function Gate({
           </button>
         )}
         <span className="tiny" style={{ color: 'var(--text-warning)', alignSelf: 'center' }}>
-          {armed
-            ? 'Requirements met — but signing has no endpoint, so this stays disabled.'
-            : 'Locked until every requirement above is met.'}
+          {!onSign
+            ? 'No endpoint to sign this gate — this control is inert.'
+            : armed
+              ? 'Requirements met — sign to record the determination.'
+              : 'Locked until every requirement above is met.'}
         </span>
       </div>
 

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ProjectSummary } from '../../api/types';
 import { MockBadge } from '../../components/MockBadge';
+import { ReviseForm, RevisionTrail } from '../../components/RevisionControls';
 import { StageStatusCard } from '../../components/StageStatusCard';
 import { BarRow, CitationChip } from '../../components/ui/Primitives';
 import discovery from '../../mocks/fixtures/discovery.json';
@@ -38,6 +39,7 @@ interface Tier {
  */
 export function Discovery({ project }: { project: ProjectSummary }) {
   const [openTier, setOpenTier] = useState<string | null>('A');
+  const [reviseNonce, setReviseNonce] = useState(0);
   const { queries, tiers } = discovery as { queries: string[]; tiers: Tier[] };
 
   const total = tiers.reduce((n, t) => n + t.candidates.length, 0);
@@ -51,7 +53,7 @@ export function Discovery({ project }: { project: ProjectSummary }) {
         pre-checks
       </div>
 
-      <StageStatusCard name="Screening agent" state={project.stages.screening} />
+      <StageStatusCard name="Discovery agent" state={project.stages.discovery} />
 
       <MockBadge note="The screening status above is real. The candidate tiers below are not — the record stores verdicts, not a ranked pool." />
 
@@ -162,27 +164,25 @@ export function Discovery({ project }: { project: ProjectSummary }) {
                   </div>
 
                   {/*
-                    These used to read "Move to B" / "Exclude", which implies the operator
-                    can hand-mutate the agent's record. Spec §1.4 and §4.3 forbid exactly
-                    that: no manual re-tiering — you instruct the agent WITH A REASON, and
-                    the reason is recorded as a Learned Conclusion. The label is the
-                    contract, so the label had to change.
+                    No manual re-tiering (spec §1.4 / §4.3): the operator never hand-mutates the
+                    agent's record. This is the real path — name the candidate, state the reason, and
+                    the agent applies the change and records the reason as a Learned Conclusion.
                   */}
                   <div style={{ marginTop: 8 }}>
-                    <button
-                      className="qr"
-                      disabled
-                      title="Disabled — no agent endpoint. Spec §1.4: re-tiering goes through the agent with a reason, never by hand."
-                    >
-                      <i className="ti ti-message-2" aria-hidden="true" /> Ask the agent to re-tier
-                      (needs a reason)
-                    </button>
+                    <ReviseForm
+                      projectId={project.projectId}
+                      stage="discovery"
+                      fixedTarget={`${c.element} ${c.form}`}
+                      onRequested={() => setReviseNonce((n) => n + 1)}
+                    />
                   </div>
                 </div>
               ))}
           </div>
         );
       })}
+
+      <RevisionTrail projectId={project.projectId} refreshKey={reviseNonce} />
     </section>
   );
 }

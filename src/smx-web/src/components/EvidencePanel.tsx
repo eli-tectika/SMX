@@ -3,6 +3,7 @@ import { VERDICT_DIMENSIONS } from '../api/types';
 import { fold, isInconsistent, severity, verdictClass } from '../domain/matrix';
 import { LOW_CONFIDENCE } from '../domain/matrixSummary';
 import { agentProposal, operatorRuling, reviewStance } from '../domain/proposal';
+import { DeterminationForm } from './DeterminationForm';
 import { Meter } from './ui/Meter';
 import { CitationChip } from './ui/Primitives';
 
@@ -18,9 +19,18 @@ import { CitationChip } from './ui/Primitives';
  * It sits BELOW the evidence deliberately. A proposal read before the dimensions it rests on is an
  * invitation to click straight through them, and this gate is meant to be hard to rubber-stamp.
  *
- * Read-only. Signing is not wired to this screen; nothing here writes a determination.
+ * Signing is wired here (DeterminationForm), but the two boxes stay distinct: confirm is an explicit
+ * act, and the operator's field never inherits the agent's text without one.
  */
-function CellReview({ cell }: { cell: MatrixCell }) {
+function CellReview({
+  projectId,
+  cell,
+  onWrote,
+}: {
+  projectId: string;
+  cell: MatrixCell;
+  onWrote: () => void;
+}) {
   const proposal = agentProposal(cell);
   const signed = operatorRuling(cell);
   const stance = reviewStance(cell);
@@ -140,9 +150,12 @@ function CellReview({ cell }: { cell: MatrixCell }) {
         ) : (
           <div className="tiny muted" style={{ marginTop: 4 }}>
             Not signed. No determination is recorded for this cell, so it is in no compliant set —
-            whatever the agent proposed above. Determinations are not signed from this screen.
+            whatever the agent proposed above.
           </div>
         )}
+
+        {/* The write controls — confirm the proposal, or override with your own reason. */}
+        <DeterminationForm projectId={projectId} cell={cell} onWrote={onWrote} />
       </div>
 
       {/* Server truth about the evidence, distinct from the browser-local ledger on the matrix. */}
@@ -170,13 +183,18 @@ function CellReview({ cell }: { cell: MatrixCell }) {
  * thing you read rather than something you scroll for.
  */
 export function EvidencePanel({
+  projectId,
   cell,
   substance,
   onClose,
+  onWrote,
 }: {
+  projectId: string;
   cell: MatrixCell;
   substance: SubstanceSpec | undefined;
   onClose: () => void;
+  /** Called after a determination or review is written, so the caller can refetch the matrix. */
+  onWrote: () => void;
 }) {
   const folded = fold(cell.dimensions);
   const seen = new Set(cell.dimensions.map((d) => d.dimension));
@@ -280,7 +298,7 @@ export function EvidencePanel({
         );
       })}
 
-      <CellReview cell={cell} />
+      <CellReview projectId={projectId} cell={cell} onWrote={onWrote} />
     </div>
   );
 }

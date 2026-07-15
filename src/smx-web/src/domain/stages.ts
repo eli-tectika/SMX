@@ -3,26 +3,29 @@ import type { StageState, StageStatus } from '../api/types';
 /**
  * The 8-stage journey from project_files/SMX_Marker_System_UX_Spec.md §4.
  *
- * The backend's ProjectDoc tracks only three of these — intake, screening, matrix
- * (src/Smx.Domain/Records/ProjectDoc.cs). The other five have no agent, no record,
- * and no endpoint yet; their screens render fixture data behind a MockBadge.
+ * The backend's ProjectDoc.Stages now tracks FOUR of these — intake, discovery, regulatory,
+ * matrix (src/Smx.Domain/Records/ProjectDoc.cs; the old "screening" key was renamed to
+ * "discovery" and a real "regulatory" stage status was added). The other four (background,
+ * dosing, cost, decision) have no agent and no record; their screens render fixture data
+ * behind a MockBadge.
  *
- * `backedBy` names the ProjectDoc stage key whose real status drives the pill.
- * `gate` marks the two hard gates, which are operator-signed records — there is no
- * endpoint to sign one, so their controls are inert.
+ * `backedBy` names the ProjectDoc stage key whose real status drives the pill. `gate` marks a
+ * hard gate; regulatory is BOTH a backed stage and a gate. The decision/VP gate has no backend.
  */
+export type BackendStage = 'intake' | 'discovery' | 'regulatory' | 'matrix';
+
 export interface StageDef {
   slug: string;
   label: string;
-  backedBy?: 'intake' | 'screening' | 'matrix';
+  backedBy?: BackendStage;
   gate?: boolean;
 }
 
 export const STAGES: readonly StageDef[] = [
   { slug: 'intake', label: 'Intake', backedBy: 'intake' },
   { slug: 'background', label: 'Background' },
-  { slug: 'discovery', label: 'Discovery', backedBy: 'screening' },
-  { slug: 'regulatory', label: 'Reg gate', gate: true },
+  { slug: 'discovery', label: 'Discovery', backedBy: 'discovery' },
+  { slug: 'regulatory', label: 'Reg gate', backedBy: 'regulatory', gate: true },
   { slug: 'dosing', label: 'Dosing' },
   { slug: 'cost', label: 'Cost' },
   { slug: 'matrix', label: 'Matrix', backedBy: 'matrix' },
@@ -30,6 +33,30 @@ export const STAGES: readonly StageDef[] = [
 ];
 
 export const isMocked = (stage: StageDef) => stage.backedBy === undefined;
+
+/**
+ * Which backend stage a spine slug maps to — the routing key for chat and revise.
+ *
+ * Chat (ChatEndpoints.cs) accepts all four backend stages; revise (RevisionEndpoints.cs) accepts
+ * only discovery and regulatory — those are the two stages that produce a revisable agent output.
+ * A slug with no backend stage can do neither, and its controls say so honestly rather than pretend.
+ */
+export function backendStage(slug: string): BackendStage | undefined {
+  return STAGES.find((s) => s.slug === slug)?.backedBy;
+}
+
+const CHAT_STAGES: readonly BackendStage[] = ['intake', 'discovery', 'regulatory', 'matrix'];
+const REVISE_STAGES: readonly BackendStage[] = ['discovery', 'regulatory'];
+
+export function canChat(slug: string): boolean {
+  const s = backendStage(slug);
+  return s !== undefined && CHAT_STAGES.includes(s);
+}
+
+export function canRevise(slug: string): boolean {
+  const s = backendStage(slug);
+  return s !== undefined && REVISE_STAGES.includes(s);
+}
 
 /** Terminal for polling purposes: nothing further will change without operator action. */
 export const isTerminal = (status: StageStatus) =>

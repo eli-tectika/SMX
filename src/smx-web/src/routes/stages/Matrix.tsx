@@ -39,21 +39,41 @@ export function Matrix({ project }: { project: ProjectSummary }) {
   }, [compact]);
   const gridRef = useRef<HTMLTableElement>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    getMatrix(project.projectId)
-      .then((res) => {
-        if (cancelled) return;
-        setState(res === NotFound ? { kind: 'unassembled' } : { kind: 'ready', doc: res });
-      })
-      .catch((err: unknown) => {
-        if (!cancelled)
+  /**
+   * Load (and reload) the matrix. Called on mount, and again after a determination is written so the
+   * evidence panel shows the operator's fresh signature. When a cell is open, it is re-selected from
+   * the new doc by key — the panel must never keep rendering a stale, pre-write snapshot.
+   */
+  const load = useCallback(
+    async (signal?: { cancelled: boolean }) => {
+      try {
+        const res = await getMatrix(project.projectId);
+        if (signal?.cancelled) return;
+        if (res === NotFound) {
+          setState({ kind: 'unassembled' });
+          return;
+        }
+        setState({ kind: 'ready', doc: res });
+        setSelected((prev) =>
+          prev
+            ? (res.cells.find((c) => c.cas === prev.cas && c.componentId === prev.componentId) ?? prev)
+            : prev,
+        );
+      } catch (err) {
+        if (!signal?.cancelled)
           setState({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
-      });
+      }
+    },
+    [project.projectId],
+  );
+
+  useEffect(() => {
+    const signal = { cancelled: false };
+    void load(signal);
     return () => {
-      cancelled = true;
+      signal.cancelled = true;
     };
-  }, [project.projectId]);
+  }, [load]);
 
   /** Opening the evidence is the ONLY thing that marks a cell reviewed. Nothing self-marks. */
   const open = useCallback(
@@ -157,7 +177,7 @@ export function Matrix({ project }: { project: ProjectSummary }) {
     );
 
   if (state.kind === 'unassembled') {
-    const screening = project.stages.screening?.status ?? 'unknown';
+    const screening = project.stages.discovery?.status ?? 'unknown';
     return (
       <section className="screen">
         <div className="cap">
@@ -447,9 +467,11 @@ export function Matrix({ project }: { project: ProjectSummary }) {
 
         {selected && (
           <EvidencePanel
+            projectId={project.projectId}
             cell={selected}
             substance={m.rows.find((r) => r.cas === selected.cas)}
             onClose={() => setSelected(null)}
+            onWrote={() => load()}
           />
         )}
       </div>

@@ -45,7 +45,15 @@ export function ProjectLayout() {
     <>
       <ContextBar project={state.project} />
 
-      <Dock panel={<AgentPanel stageLabel={def.label} />}>
+      <Dock
+        panel={
+          <AgentPanel
+            projectId={state.project.projectId}
+            stageSlug={def.slug}
+            stageLabel={def.label}
+          />
+        }
+      >
         <Screen project={state.project} />
       </Dock>
     </>

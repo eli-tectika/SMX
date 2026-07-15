@@ -389,7 +389,7 @@ function ProjectsEmpty({ onLoadDemo }: { onLoadDemo: () => void }) {
           </div>
           <MiniSpine showLabels />
           <p className="tiny muted" style={{ marginTop: 10 }}>
-            Three are backed by the API today — intake, screening and matrix. The rest have no agent
+            Four are backed by the API today — intake, discovery, regulatory and matrix. The rest have no agent
             yet, and render fixture data behind a mock badge.
           </p>
         </div>
