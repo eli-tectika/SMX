@@ -25,3 +25,7 @@ param tags = {
 // The app's domain / Azure DNS zone. Empty until the operator registers the App Service Domain
 // (Task A1 Step 1); the dns module is gated off while empty. Set to e.g. 'smxmarkers.io' post-purchase.
 param appDomainName = ''
+
+// Versionless Key Vault secret ID of the gateway TLS cert. Empty until the cert is issued into Key Vault
+// (Task A2, operator step); while empty the gateway stays HTTP-only and the HTTPS listener/redirect are gated off.
+param certKeyVaultSecretId = ''

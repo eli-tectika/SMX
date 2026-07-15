@@ -30,6 +30,14 @@ param dnsVnetLinks array
 @description('Gateway SKU: Standard_v2 (dev) or WAF_v2 (prod, prevention).')
 param gatewaySku string = 'Standard_v2'
 
+@description('Resource ID of the workload UAMI (already has Key Vault Secrets User) — reads the TLS cert.')
+param uamiId string = ''
+
+@description('Versionless Key Vault secret ID of the TLS cert (empty = HTTP-only, current behaviour).')
+// Not a secret value — a Key Vault resource identifier (same shape as proxySearchKeySecretUri).
+#disable-next-line secure-secrets-in-params
+param certKeyVaultSecretId string = ''
+
 var gwName = 'agw-${namePrefix}-${env}-${regionShort}'
 var pipName = 'pip-${namePrefix}-${env}-agw-${regionShort}'
 var gwId = resourceId('Microsoft.Network/applicationGateways', gwName)
@@ -104,6 +112,10 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
   dependsOn: [
     acaDnsLinks
   ]
+  identity: empty(certKeyVaultSecretId) ? null : {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${uamiId}': {} }
+  }
   properties: {
     sku: {
       name: gatewaySku
@@ -141,6 +153,20 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
         name: fePortName
         properties: {
           port: 80
+        }
+      }
+      {
+        name: 'port443'
+        properties: {
+          port: 443
+        }
+      }
+    ]
+    sslCertificates: empty(certKeyVaultSecretId) ? [] : [
+      {
+        name: 'kvTlsCert'
+        properties: {
+          keyVaultSecretId: certKeyVaultSecretId
         }
       }
     ]
@@ -231,7 +257,7 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
         }
       }
     ]
-    httpListeners: [
+    httpListeners: concat([
       {
         name: listenerName
         properties: {
@@ -244,7 +270,23 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
           protocol: 'Http'
         }
       }
-    ]
+    ], empty(certKeyVaultSecretId) ? [] : [
+      {
+        name: 'httpsListener'
+        properties: {
+          frontendIPConfiguration: {
+            id: '${gwId}/frontendIPConfigurations/${feIpName}'
+          }
+          frontendPort: {
+            id: '${gwId}/frontendPorts/port443'
+          }
+          protocol: 'Https'
+          sslCertificate: {
+            id: '${gwId}/sslCertificates/kvTlsCert'
+          }
+        }
+      }
+    ])
     urlPathMaps: [
       {
         name: pathMapName
@@ -276,7 +318,20 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
         }
       }
     ]
-    requestRoutingRules: [
+    redirectConfigurations: empty(certKeyVaultSecretId) ? [] : [
+      {
+        name: 'httpToHttps'
+        properties: {
+          redirectType: 'Permanent'
+          targetListener: {
+            id: '${gwId}/httpListeners/httpsListener'
+          }
+          includePath: true
+          includeQueryString: true
+        }
+      }
+    ]
+    requestRoutingRules: empty(certKeyVaultSecretId) ? [
       {
         name: ruleName
         properties: {
@@ -287,6 +342,33 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
           }
           urlPathMap: {
             id: '${gwId}/urlPathMaps/${pathMapName}'
+          }
+        }
+      }
+    ] : [
+      {
+        name: ruleName
+        properties: {
+          ruleType: 'PathBasedRouting'
+          priority: 100
+          httpListener: {
+            id: '${gwId}/httpListeners/httpsListener'
+          }
+          urlPathMap: {
+            id: '${gwId}/urlPathMaps/${pathMapName}'
+          }
+        }
+      }
+      {
+        name: 'httpRedirectRule'
+        properties: {
+          ruleType: 'Basic'
+          priority: 110
+          httpListener: {
+            id: '${gwId}/httpListeners/${listenerName}'
+          }
+          redirectConfiguration: {
+            id: '${gwId}/redirectConfigurations/httpToHttps'
           }
         }
       }

@@ -59,6 +59,11 @@ param webSearchEnabled bool = true
 @description('Registered domain / Azure DNS zone (empty = skip DNS record management).')
 param appDomainName string = ''
 
+@description('Versionless Key Vault secret ID of the gateway TLS cert (empty = HTTP-only).')
+// Not a secret value — a Key Vault resource identifier (same shape as proxySearchKeySecretUri).
+#disable-next-line secure-secrets-in-params
+param certKeyVaultSecretId string = ''
+
 @description('Extra tags merged onto every resource.')
 param tags object = {}
 
@@ -333,6 +338,8 @@ module gateway 'modules/gateway.bicep' = {
       { name: 'spoke', vnetId: spoke.outputs.vnetId }
     ]
     gatewaySku: env == 'prod' ? 'WAF_v2' : 'Standard_v2'
+    uamiId: security.outputs.uamiId
+    certKeyVaultSecretId: certKeyVaultSecretId
   }
 }
 
