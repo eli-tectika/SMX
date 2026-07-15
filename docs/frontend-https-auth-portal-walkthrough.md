@@ -9,8 +9,9 @@ isn't silently reverted. **The portal teaches; the Bicep is the system.**
 the design spec (`docs/superpowers/specs/2026-07-15-frontend-https-and-entra-auth-design.md`), and the
 implementation plan (`docs/superpowers/plans/2026-07-15-frontend-https-and-entra-auth.md`).
 
-> **This file covers Phase A — Public HTTPS.** Phase B (the Entra login) is appended when that work lands.
-> After Phase A the site is encrypted and redirects HTTP→HTTPS, but is **still open** — the login comes in Phase B.
+> **This file covers both phases: Phase A — Public HTTPS (Steps 1–9), then Phase B — Entra login (Steps 10–14).**
+> After Phase A the site is encrypted and redirects HTTP→HTTPS but is still open to anyone; Phase B adds the
+> Microsoft sign-in gate.
 
 ---
 
@@ -265,8 +266,131 @@ az network application-gateway ssl-cert list -g rg-smx-dev-swc --gateway-name ag
 ```
 
 At this point the app is served over trusted HTTPS and HTTP is redirected — **but it is still open to anyone**.
-The login is **Phase B** (Entra sign-in via MSAL in the SPA + JwtBearer in the backend), appended below when
-that work lands.
+The login is **Phase B**, below.
+
+---
+
+# Phase B — Microsoft Entra login
+
+Phase A gave us encryption. Phase B gives us a **gate**: only a signed-in SecurityMatters user can load the app
+or call `/api`. The gate is **not** on the gateway (App Gateway can't log anyone in at any SKU) — it lives in
+the app: the React SPA signs the user in with **MSAL** and attaches a bearer token to every `/api` call; the
+.NET backend validates that token with **JwtBearer**. Two Entra **app registrations** make this work — one for
+the SPA, one for the API it calls.
+
+```
+   browser ──▶ SPA (MSAL) ──sign in──▶ Microsoft ──token(aud=API)──▶ SPA
+                    │
+                    └── GET /api/... + "Authorization: Bearer <token>" ──▶ backend (JwtBearer validates)
+                                                                            /api/healthz stays ANONYMOUS (probe)
+```
+
+## Why two app registrations?
+
+An OAuth token is minted **for a specific audience**. The **SPA** registration is the client that signs the
+user in; the **API** registration is the audience the backend checks. The SPA asks Entra for a token whose
+`aud` is the API (`api://<api-id>`) with the scope `access_as_user`; the backend accepts only tokens with that
+audience + scope. Splitting them is the standard, documented SPA-calls-API shape — and it lets us **pre-authorize**
+the SPA on the API so the operator never sees a per-session consent pop-up.
+
+## Step 10 — Create the API app registration + expose a scope
+
+**Why:** this registration *is* the audience the backend validates. Exposing a scope named `access_as_user`
+gives the SPA something concrete to request.
+
+**Portal:**
+1. Portal → **Microsoft Entra ID** → **App registrations** → **New registration** → name `smx-dev-api`,
+   supported account types **Single tenant** → Register.
+2. **Expose an API** → set the Application ID URI to `api://<the-api-client-id>` → **Add a scope** →
+   name `access_as_user`, who can consent **Admins and users**, fill the consent display strings → **Add scope**.
+
+**Verify:** the API app's **Expose an API** blade shows `api://<id>/access_as_user`.
+
+> **What keeps it:** [`infra/scripts/configure-auth.sh`](../infra/scripts/configure-auth.sh) creates this
+> registration and exposes `access_as_user` idempotently (Entra objects are Graph resources, so they're
+> script-managed, not Bicep). Run `infra/scripts/configure-auth.sh dev dev.<domain>`; it prints
+> `API_CLIENT_ID=…`.
+
+## Step 11 — Create the SPA app registration
+
+**Why:** this is the client the browser uses to sign in. Its **redirect URI** must be the gateway hostname over
+HTTPS (that's why Phase A had to come first — Entra refuses non-HTTPS redirect URIs), and it must be registered
+under the **SPA** platform (which enables auth-code + PKCE, the browser-safe flow).
+
+**Portal:**
+1. **App registrations** → **New registration** → name `smx-dev-web`, **Single tenant** → Register.
+2. **Authentication** → **Add a platform** → **Single-page application** → Redirect URI `https://dev.<domain>/` → Configure.
+
+**Verify:** the SPA app's **Authentication** blade lists `https://dev.<domain>/` under **Single-page application**.
+
+> **What keeps it:** the same `configure-auth.sh` creates `smx-dev-web` with the SPA redirect URI (it takes the
+> host as an argument precisely so a wrong URI can't be baked in) and prints `SPA_CLIENT_ID=…`.
+
+## Step 12 — Let the SPA call the API (permission + pre-consent)
+
+**Why:** the SPA must be allowed to request the API's `access_as_user` scope, and **pre-authorizing** it means
+no consent prompt interrupts the operator.
+
+**Portal:**
+1. On the **API** app (`smx-dev-api`) → **Expose an API** → **Add a client application** → paste the SPA's
+   client id → tick the `access_as_user` scope → Add. (This is the pre-authorization.)
+2. **⚙ Grant admin consent** (needs a directory admin): on the **SPA** app → **API permissions** → add the
+   `smx-dev-api / access_as_user` delegated permission → **Grant admin consent for SecurityMatters**. Or CLI:
+   `az ad app permission admin-consent --id <SPA_CLIENT_ID>`.
+
+**Verify:** the SPA's **API permissions** shows `access_as_user` with status **Granted**.
+
+> **What keeps it:** `configure-auth.sh` adds the pre-authorization (reading back the *real* scope id so a
+> re-run stays correct) and prints the exact `admin-consent` command. The consent grant itself is the operator's
+> click — it's a directory-admin action, not something to automate blindly.
+
+## Step 13 — Feed the ids into the backend and the frontend build
+
+**Why:** the backend needs to know which audience/tenant to validate (env vars), and the SPA needs its client
+id + the API scope **baked into its bundle at build time** (Vite inlines `import.meta.env.VITE_*` when
+`npm run build` runs — they can't be set at container runtime).
+
+**How (not portal — this is config):**
+- **Backend:** set `apiClientId` in [`dev.bicepparam:35`](../infra/env/dev.bicepparam#L35) to the `API_CLIENT_ID`
+  from Step 10, then deploy. Bicep passes it (and the derived tenant id) into the backend container app's env at
+  [`main.bicep:290`](../infra/main.bicep#L290) → [`compute.bicep:154`](../infra/modules/compute.bicep#L154).
+- **Frontend:** export the three values and rebuild the image:
+  ```
+  export SPA_CLIENT_ID=<from Step 11>  API_CLIENT_ID=<from Step 10>
+  export ENTRA_TENANT_ID=$(az account show --query tenantId -o tsv)
+  export VITE_API_SCOPE="api://$API_CLIENT_ID/access_as_user"
+  infra/scripts/build-images.sh dev
+  ```
+  The frontend Dockerfile bakes them via `--build-arg` ([build-images.sh:62](../infra/scripts/build-images.sh#L62)).
+
+> **What keeps it:** [`compute.bicep`](../infra/modules/compute.bicep#L154) sets `ENTRA_TENANT_ID` + `API_CLIENT_ID`
+> on the backend; the frontend image carries `VITE_*` from the build args. **Both sides are OFF when the ids are
+> empty** — the backend's auth is gated on both env vars being set, and the SPA's MSAL is gated on
+> `VITE_ENTRA_CLIENT_ID` — so a deploy before you fill the ids simply runs open, exactly as today.
+
+## Step 14 — The health-probe rule (do not skip)
+
+**Why:** the App Gateway probes `GET /api/healthz` and needs a **200–399** back. The moment the backend requires
+auth, that *unauthenticated* probe would get **401** → the gateway marks the backend unhealthy → **502 for every
+real user**. So `/api/healthz` must be explicitly **anonymous**. This is already handled in code, but it's the
+single line that would take the whole app down if it were ever removed.
+
+> **What keeps it:** [`src/Smx.Backend/Program.cs`](../src/Smx.Backend/Program.cs) enables JwtBearer + a
+> fallback "require authenticated user" policy only when `ENTRA_TENANT_ID` + `API_CLIENT_ID` are set, and
+> [`ProjectEndpoints.cs:130`](../src/Smx.Backend/Api/ProjectEndpoints.cs#L130) marks `/healthz`
+> `.AllowAnonymous()`. On the SPA side, [`src/auth/msal.ts`](../src/smx-web/src/auth/msal.ts) does the sign-in and
+> [`src/api/client.ts`](../src/smx-web/src/api/client.ts) attaches the bearer token to every `/api` call.
+
+## Confirming Phase B end-to-end
+
+```
+# Unauthenticated API call is refused, but the probe path is open:
+curl -s -o /dev/null -w '%{http_code}\n' https://dev.<domain>/api/projects/x    # → 401
+curl -s -o /dev/null -w '%{http_code}\n' https://dev.<domain>/api/healthz       # → 200
+```
+Then open `https://dev.<domain>/` in a clean browser profile → you're redirected to the Microsoft sign-in →
+sign in with your SecurityMatters account → the app loads, and the browser dev-tools Network tab shows `/api/*`
+calls carrying `Authorization: Bearer …` and returning 200.
 
 ## The trap to remember
 
