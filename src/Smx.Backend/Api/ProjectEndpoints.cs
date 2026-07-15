@@ -127,6 +127,6 @@ public static class ProjectEndpoints
             }, Json.Options);
         });
 
-        app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
+        app.MapGet("/healthz", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
     }
 }
