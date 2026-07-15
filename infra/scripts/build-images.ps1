@@ -2,6 +2,16 @@
 .SYNOPSIS
   Build + push the frontend, backend and orchestrator images in ACR (cloud build, no local
   Docker). Twin of build-images.sh.
+.DESCRIPTION
+  Entra SPA auth (optional): Vite inlines import.meta.env.VITE_* at build time, so the SPA
+  client id + API scope must be baked into the frontend image's `npm run build`, not passed at
+  container runtime. Export these before running this script - SPA_CLIENT_ID and API_CLIENT_ID
+  are echoed by configure-auth.ps1, ENTRA_TENANT_ID is your tenant id (az account show --query
+  tenantId):
+    $env:SPA_CLIENT_ID = '<spa app id>'
+    $env:ENTRA_TENANT_ID = '<tenant id>'
+    $env:VITE_API_SCOPE = 'api://<api app id>/access_as_user'
+  Left unset, all three default to empty and the frontend image builds in today's open mode.
 .EXAMPLE
   .\build-images.ps1 dev
   .\build-images.ps1 dev -Tag 1.2.3
@@ -34,12 +44,20 @@ if (-not $Tag) {
 $acr = Get-AcrName $envName
 if (-not $Logs) { Write-Warn 'Building with --no-logs (pass -Logs to stream them).' }
 
+# Entra SPA client id + API scope, baked into the frontend image only. Empty values are valid
+# --build-arg args: the image builds in open mode, matching today's behavior.
+$frontendBuildArgs = @(
+    '--build-arg', "VITE_ENTRA_CLIENT_ID=$env:SPA_CLIENT_ID",
+    '--build-arg', "VITE_ENTRA_TENANT_ID=$env:ENTRA_TENANT_ID",
+    '--build-arg', "VITE_API_SCOPE=$env:VITE_API_SCOPE"
+)
+
 # The SPA's build context is its own directory: its Dockerfile COPYs package.json from the
 # context root. The two .NET images need the whole src/ tree.
 $images = @(
-    @{ App = 'frontend';     Dockerfile = "$srcDir\smx-web\Dockerfile";          Context = "$srcDir\smx-web" },
-    @{ App = 'backend';      Dockerfile = "$srcDir\Smx.Backend\Dockerfile";      Context = $srcDir },
-    @{ App = 'orchestrator'; Dockerfile = "$srcDir\Smx.Orchestrator\Dockerfile"; Context = $srcDir }
+    @{ App = 'frontend';     Dockerfile = "$srcDir\smx-web\Dockerfile";          Context = "$srcDir\smx-web"; BuildArgs = $frontendBuildArgs },
+    @{ App = 'backend';      Dockerfile = "$srcDir\Smx.Backend\Dockerfile";      Context = $srcDir;           BuildArgs = @() },
+    @{ App = 'orchestrator'; Dockerfile = "$srcDir\Smx.Orchestrator\Dockerfile"; Context = $srcDir;           BuildArgs = @() }
 )
 
 Write-Log "Building images in $acr (tag $Tag)"
@@ -51,6 +69,7 @@ foreach ($i in $images) {
         '--file', $i.Dockerfile
     )
     if (-not $Logs) { $azArgs += '--no-logs' }
+    $azArgs += $i.BuildArgs
     $azArgs += @('-o', 'none', $i.Context)
     Invoke-Native az @azArgs
 }
