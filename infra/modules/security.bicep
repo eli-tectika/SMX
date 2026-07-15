@@ -17,12 +17,18 @@ param deployerIpAddress string = ''
 @allowed(['Enabled', 'Disabled'])
 param publicNetworkAccess string = 'Enabled'
 
+@description('Principal id of the KeyVault-Acmebot managed identity (empty = skip its role grants).')
+param acmebotPrincipalId string = ''
+
 var uamiName = 'id-${namePrefix}-${env}-${regionShort}'
 var kvName = 'kv-${namePrefix}-${env}-${uniqueSuffix}'
 var ipRules = empty(deployerIpAddress) ? [] : [ { value: deployerIpAddress } ]
 
 // Key Vault Secrets User
 var kvSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
+
+// Key Vault Certificates Officer — granted to KeyVault-Acmebot so it can write the certs it issues.
+var kvCertsOfficerRoleId = 'a4417e6f-fecd-4de8-b567-7b0420556985'
 
 resource uami 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: uamiName
@@ -59,6 +65,18 @@ resource kvRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   properties: {
     principalId: uami.properties.principalId
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// KeyVault-Acmebot's managed identity: write access to issue/renew certs into this vault via DNS-01.
+// Gated off until the operator deploys Acmebot and supplies its principal id (setup-cert.*).
+resource acmebotKvRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(acmebotPrincipalId)) {
+  name: guid(keyVault.id, acmebotPrincipalId, kvCertsOfficerRoleId)
+  scope: keyVault
+  properties: {
+    principalId: acmebotPrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvCertsOfficerRoleId)
     principalType: 'ServicePrincipal'
   }
 }

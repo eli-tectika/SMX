@@ -14,6 +14,7 @@ publish-functions.*              build + zip-deploy Smx.Functions to the regsync
 publish-searchproxy.*            build + zip-deploy Smx.SearchProxy to the searchproxy Function App
 set-search-key.*                 put the search provider API key in Key Vault, print its secret URI
 configure-auth.*                 Entra app registrations + Easy Auth (regsync AND searchproxy)
+setup-cert.*                     guided checklist: wire KeyVault-Acmebot's DNS-01 + Key Vault cert issuance
 seed-reference-data.*            upload the workbooks to Bronze + invoke the seeder
 harden.*                         lock data/AI services down to private endpoints
 smoke.*                          post-deploy health check

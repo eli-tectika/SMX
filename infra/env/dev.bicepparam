@@ -30,6 +30,11 @@ param appDomainName = ''
 // (Task A2, operator step); while empty the gateway stays HTTP-only and the HTTPS listener/redirect are gated off.
 param certKeyVaultSecretId = ''
 
+// Principal id of the KeyVault-Acmebot managed identity. Empty until the operator deploys Acmebot
+// (setup-cert.sh Step 1) and reads its identity back with `az functionapp identity show`; while empty
+// the DNS Zone Contributor + Key Vault Certificates Officer role grants (Task A2) are skipped.
+param acmebotPrincipalId = ''
+
 // API app registration client id (backend JwtBearer audience). Empty until configure-auth.sh creates the
 // app registration (Task B1) and prints the id; while empty the backend runs with auth OFF.
 param apiClientId = ''

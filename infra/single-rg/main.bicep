@@ -67,6 +67,9 @@ param appDomainName string = ''
 #disable-next-line secure-secrets-in-params
 param certKeyVaultSecretId string = ''
 
+@description('Principal id of the KeyVault-Acmebot managed identity, deployed separately by the operator (empty = skip its DNS-01 + Key Vault role grants).')
+param acmebotPrincipalId string = ''
+
 @description('Extra tags merged onto every resource.')
 param tags object = {}
 
@@ -107,6 +110,7 @@ module security 'modules/security.bicep' = {
     uniqueSuffix: uniqueSuffix
     deployerIpAddress: deployerIpAddress
     publicNetworkAccess: publicNetworkAccess
+    acmebotPrincipalId: acmebotPrincipalId
   }
 }
 
@@ -283,6 +287,7 @@ module dns 'modules/dns.bicep' = if (!empty(appDomainName)) {
     zoneName: appDomainName
     recordName: env // 'dev' → dev.<domain>
     gatewayIp: gateway.outputs.gatewayPublicIp
+    acmebotPrincipalId: acmebotPrincipalId
   }
 }
 
