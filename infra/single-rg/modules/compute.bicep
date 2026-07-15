@@ -60,6 +60,12 @@ param searchProxyAudience string = ''
 param webSearchEnabled bool = true
 param webSearchMaxPerStage int = 8
 
+@description('Entra tenant id for JwtBearer (empty = backend auth OFF).')
+param entraTenantId string = ''
+
+@description('API app registration client id = the audience the backend validates (empty = auth OFF).')
+param apiClientId string = ''
+
 var caeName = 'cae-${namePrefix}-${env}-${regionShort}'
 var consumptionProfile = [
   {
@@ -143,7 +149,11 @@ var apps = [
     targetPort: empty(backendImage) ? 80 : 8080 // aspnet:8.0 default port
     minReplicas: 0
     // PATH_BASE makes the API serve under /api (App Gateway forwards /api/* unstripped).
-    env: concat(sharedEnv, [ { name: 'PATH_BASE', value: '/api' } ])
+    env: concat(sharedEnv, [
+      { name: 'PATH_BASE', value: '/api' }
+      { name: 'ENTRA_TENANT_ID', value: entraTenantId }
+      { name: 'API_CLIENT_ID', value: apiClientId }
+    ])
     probes: empty(backendImage) ? [] : [
       {
         type: 'Readiness'

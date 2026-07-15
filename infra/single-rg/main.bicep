@@ -41,6 +41,9 @@ param orchestratorImage string = ''
 @description('Entra app-registration client id for Function App Easy Auth. Empty = auth OFF (first deploy); configure-auth.sh fills it in.')
 param authClientId string = ''
 
+@description('API app registration client id (audience the backend validates). Empty = backend auth OFF; configure-auth.sh produces it.')
+param apiClientId string = ''
+
 @description('Entra app-registration client id for the Search Proxy — its OWN registration, never regsync\'s. Empty = auth OFF (first deploy); configure-auth.sh fills it in.')
 param proxyAuthClientId string = ''
 
@@ -212,6 +215,8 @@ module compute 'modules/compute.bicep' = {
     searchProxyEndpoint: 'https://${functions.outputs.searchProxyDefaultHostName}'
     searchProxyAudience: empty(proxyAuthClientId) ? '' : 'api://${proxyAuthClientId}'
     webSearchEnabled: webSearchEnabled
+    entraTenantId: empty(apiClientId) ? '' : tenant().tenantId
+    apiClientId: apiClientId
   }
 }
 

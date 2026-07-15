@@ -29,3 +29,7 @@ param appDomainName = ''
 // Versionless Key Vault secret ID of the gateway TLS cert. Empty until the cert is issued into Key Vault
 // (Task A2, operator step); while empty the gateway stays HTTP-only and the HTTPS listener/redirect are gated off.
 param certKeyVaultSecretId = ''
+
+// API app registration client id (backend JwtBearer audience). Empty until configure-auth.sh creates the
+// app registration (Task B1) and prints the id; while empty the backend runs with auth OFF.
+param apiClientId = ''
