@@ -48,6 +48,7 @@ app.MapProjectEndpoints();
 app.MapRevisionEndpoints();
 app.MapChatEndpoints();
 app.MapKnowledgeEndpoints();
+app.MapDosingEndpoints();
 app.Run();
 
 public partial class Program { } // WebApplicationFactory hook
