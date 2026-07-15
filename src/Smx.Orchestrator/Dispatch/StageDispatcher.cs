@@ -469,7 +469,27 @@ public sealed class StageDispatcher(
         // or reach outside the compliant set FAILS here, loudly, with the operator's reason still recorded as
         // a Learned Conclusion. The operator's directive is authoritative over the AGENT; it does not outrank
         // the regulatory gate.
-        var compliant = CompliantSet.Of(await store.GetVerdictsAsync(c.ProjectId, ct));
+        //
+        // Re-check the signed gate BEFORE re-running, exactly as TryDoseAsync does on the first-run path.
+        // A Regulatory revision can void the gate (VoidRegulatoryGateAsync locks it) or introduce an
+        // unreviewed non-pass verdict since the signature; re-dosing behind a locked-or-uncovered gate would
+        // regenerate dosing (and, per the Cost reset below, re-price) over an analysis the operator never
+        // gated. CompliantSet + Validate already keep a rejected substance out of a code, so this is not a
+        // regulatory false pass — but "Dosing runs only behind the signed gate" is the invariant the
+        // first-run path enforces, and the revision path must not be the one hole in it. Throw so the
+        // revision fails cleanly with the analysis untouched (the ordered-mutation contract of this method).
+        var verdicts = await store.GetVerdictsAsync(c.ProjectId, ct);
+        var gate = await store.GetGateAsync(c.ProjectId, GateTypes.Regulatory, ct);
+        if (gate?.Status != "approved")
+            throw new InvalidOperationException(
+                "cannot revise Dosing while the regulatory gate is not approved — Dosing consumes the signed " +
+                "compliant set; re-dosing an unsigned analysis would produce an artifact the operator never gated");
+        var candidates = await store.GetCandidatesAsync(c.ProjectId, ct);
+        if (candidates is not null && RegulatoryGate.Armable(candidates, verdicts) is { Ok: false } blocked)
+            throw new InvalidOperationException(
+                "the regulatory gate is signed but no longer covers the current analysis: " +
+                string.Join("; ", blocked.Blockers));
+        var compliant = CompliantSet.Of(verdicts);
         var (floors, loadings, physicsGaps, loadingGaps) = await ResolveDosingInputsAsync(c, compliant, ct);
         if (physicsGaps.Count > 0 || loadingGaps.Count > 0)
             throw new InvalidOperationException(
@@ -483,7 +503,17 @@ public sealed class StageDispatcher(
         var dosing = result.Output!;
         return new RevisedStage(
             JsonSerializer.Serialize(dosing, Json.Options),
-            token => store.UpsertDosingAsync(dosing, token));
+            async token =>
+            {
+                // A Dosing revision may change the codes' substance set, so a Cost audit computed over the
+                // OLD set is now stale — the same "never leave an artifact that is wrong but looks current"
+                // rule TryAssembleAsync applies to the Matrix. Reset Cost to `pending` so the persisted
+                // DosingDoc re-triggers OnDosingAsync over the revised substances. A review note does NOT
+                // travel this path, so the "a review note does not re-price" guard is preserved.
+                await SetStageAsync(c.ProjectId, Stages.Cost,
+                    s => { if (s.Status is "done" or "failed") { s.Status = "pending"; s.Error = null; } }, token);
+                await store.UpsertDosingAsync(dosing, token);
+            });
     }
 
     /// A gate is an operator's signature over a SPECIFIC analysis, and the revision just replaced that

@@ -98,6 +98,30 @@ public class DosingAgentTests
         Assert.Contains("Cd", error);
     }
 
+    // ---- a window's element must match the compliant verdict's element for that CAS ------------------
+
+    [Fact]
+    public void Window_WithAnElementMislabelledAgainstTheCompliantVerdict_IsRejected()
+    {
+        // The compliant verdict for cas-y assigns element Y. The model emits a window for cas-y claiming Zr —
+        // and a Zr floor EXISTS in Floors(), so invariant 1 (the floor lookup by (component, element)) finds a
+        // floor and does NOT fire, and the below-floor check (invariant 2) would then measure the ppm against
+        // Zr's floor (8.5) instead of Y's (6.0). If Y's true floor were the higher one, the marker could pass
+        // while dosed below its real detection floor — the headline harm, uncaught. The (CAS → Element) map is
+        // authoritative in the signed compliant set, so the mislabel must be caught here, naming both elements.
+        //
+        // The fixture violates ONLY this invariant: a Zr floor is present (invariant 1 cannot be what fails),
+        // 20 ppm is above Zr's 8.5 floor (invariant 2 cannot fire), inside (8.5, 100) (invariant 3), and the
+        // upper is an estimate (invariant 4). Strip the cross-check and this output validates clean — which is
+        // the whole point of the fixture.
+        var output = new DosingOutput { Windows = [Window("cas-y", "Zr", 20, 100)] };
+        var error = DosingAgent.Validate(output, Floors(), Compliant());
+        Assert.NotNull(error);
+        Assert.Contains("cas-y", error);
+        Assert.Contains("'Zr'", error);   // the claimed (wrong) element
+        Assert.Contains("'Y'", error);    // the authoritative element from the compliant verdict
+    }
+
     // ---- invariant 2: a recommended ppm at or below the detection floor (THE HEADLINE HARM) ----------
 
     [Fact]

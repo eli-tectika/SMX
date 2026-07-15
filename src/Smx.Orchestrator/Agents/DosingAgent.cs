@@ -199,6 +199,16 @@ public static class DosingAgent
     {
         foreach (var w in o.Windows)
         {
+            // A window's element must be the element the compliant verdict assigns to that CAS. w.Element is
+            // model-authored and the floor is looked up by (component, element); a mislabelled element checks
+            // the recommended ppm against the WRONG element's floor, so a marker could pass while dosed below
+            // its true detection floor. The (Cas -> Element) map is authoritative in the signed compliant set.
+            var verdictForCas = compliant.FirstOrDefault(v => v.Cas == w.Cas && v.ComponentId == w.ComponentId);
+            if (verdictForCas is not null && verdictForCas.Element != w.Element)
+                return $"the window for '{w.Cas}' in {w.ComponentId} claims element '{w.Element}', but the " +
+                       $"compliant verdict for it is element '{verdictForCas.Element}' — a floor checked against " +
+                       "the wrong element could dose a marker below its true detection floor";
+
             // 1 — a window outside the compliant set has no computed floor (the dispatcher only computes
             // floors for the compliant set). Without a floor there is nothing to dose above, so refuse before
             // the below-floor check, which needs the floor to exist.
