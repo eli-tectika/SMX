@@ -14,6 +14,7 @@ public static class RecordDocRouter
             RecordTypes.Candidates => element.Deserialize<CandidatesDoc>(Json.Options),
             RecordTypes.Verdict => element.Deserialize<VerdictDoc>(Json.Options),
             RecordTypes.Matrix => element.Deserialize<MatrixDoc>(Json.Options),
+            RecordTypes.Dosing => element.Deserialize<DosingDoc>(Json.Options),
             RecordTypes.Gate => element.Deserialize<GateDoc>(Json.Options),
             RecordTypes.Revision => element.Deserialize<RevisionDoc>(Json.Options),
             RecordTypes.ChatMessage => element.Deserialize<ChatMessageDoc>(Json.Options),

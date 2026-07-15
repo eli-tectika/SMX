@@ -7,6 +7,8 @@ public static class RecordTypes
     public const string Candidates = "candidates";
     public const string Verdict = "verdict";
     public const string Matrix = "matrix";
+    public const string Dosing = "dosing";
+    public const string Cost = "cost";
     public const string Gate = "gate";
     public const string Revision = "revision";
     public const string ChatMessage = "chat-message";
@@ -33,6 +35,14 @@ public static class RecordIds
     public static string Candidates(string projectId) => $"{projectId}|candidates";
     public static string Verdict(string projectId, string cas, string componentId) => $"{projectId}|verdict|{cas}|{componentId}";
     public static string Matrix(string projectId) => $"{projectId}|matrix";
+
+    /// One dosing doc and one cost doc per project — both are whole-project rollups (the PER-COMPONENT split
+    /// lives INSIDE them, in PpmWindow.ComponentId and MarkerCode.ComponentId), so neither id takes a
+    /// component. Singular ids also make the change feed's at-least-once redelivery an idempotent upsert
+    /// rather than a second document.
+    public static string Dosing(string projectId) => $"{projectId}|dosing";
+    public static string Cost(string projectId) => $"{projectId}|cost";
+
     public static string Gate(string projectId, string gateType) => $"{projectId}|gate|{gateType}";
 
     /// `key` is a per-request unique suffix, not a hash of the content: two revisions of the same target
