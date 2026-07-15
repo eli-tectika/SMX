@@ -250,6 +250,59 @@ public class ChatDispatchTests
     }
 
     [Fact]
+    public async Task ChatMessage_OnDosing_SeesTheDosingDoc_NotEmptyInputs()
+    {
+        // Adding `dosing` to Stages.All opened POST /stages/dosing/chat immediately. Without a
+        // StageInputsJsonAsync arm the dispatcher would hand the agent "{}" — a confident conversation about
+        // a dosing analysis it cannot see. This pins the arm: the turn answers ABOUT the DosingDoc.
+        var (d, store, agents) = Sut();
+        await SeedAsync(d, store);
+        await store.UpsertDosingAsync(new DosingDoc
+        {
+            Id = RecordIds.Dosing(P), ProjectId = P,
+            Windows = [new PpmWindow("bottle", "1314-36-9", "Y",
+                Floor: new Bound(12.0, "3-sigma over measured background", BoundKinds.Measured, 1.0),
+                Upper: new Bound(1200.0, "solubility estimate", BoundKinds.Estimate, 0.4),
+                RecommendedPpm: 600.0, QuantificationPpm: 40.0)],
+            GeneratedAt = "2026-07-15T00:00:00Z",
+        });
+
+        string? inputs = null;
+        agents.Chat = (_, _, i, _) => { inputs = i; return Task.FromResult("ok"); };
+
+        await SendAsync(d, store, Message(Stages.Dosing, "d1", "why 600 ppm for Y?", "2026-07-15T09:00:00.0000000+00:00"));
+
+        // The DosingDoc's content reached the agent — its CAS and its recommended ppm. A "{}" arm carries
+        // neither, so reverting StageInputsJsonAsync's Dosing arm turns this red.
+        Assert.Contains("1314-36-9", inputs);
+        Assert.Contains("600", inputs);
+    }
+
+    [Fact]
+    public async Task ChatMessage_OnCost_SeesTheCostDoc_NotEmptyInputs()
+    {
+        // Cost holds no tools (it is deterministic), but the chat surface is still a read-only Q&A over the
+        // finished audit — so the CostDoc must reach the agent as inputs, not "{}". This is the other half of
+        // the "one commit makes the stage live" wiring: the arm exists and carries the audit.
+        var (d, store, agents) = Sut();
+        await SeedAsync(d, store);
+        await store.UpsertCostAsync(new CostDoc
+        {
+            Id = RecordIds.Cost(P), ProjectId = P, GeneratedAt = "2026-07-15T00:00:00Z",
+            Substances = [new SupplierAudit("10035-04-8", "Zr", ["OnlySource"],
+                BestQuote: null, PriceNote: "single listing", Risks: ["single-source"])],
+        });
+
+        string? inputs = null;
+        agents.Chat = (_, _, i, _) => { inputs = i; return Task.FromResult("ok"); };
+
+        await SendAsync(d, store, Message(Stages.Cost, "c1", "is Zr single-source?", "2026-07-15T09:00:00.0000000+00:00"));
+
+        Assert.Contains("10035-04-8", inputs);
+        Assert.Contains("single-source", inputs);
+    }
+
+    [Fact]
     public async Task ChatMessage_IsIdempotent_UnderChangeFeedRedelivery()
     {
         // The change feed is at-least-once, and answering the message re-enters this handler once more by

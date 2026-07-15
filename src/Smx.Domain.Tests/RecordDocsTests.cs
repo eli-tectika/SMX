@@ -118,15 +118,22 @@ public class RecordDocsTests
     }
 
     [Fact]
-    public void ProjectCreate_SeedsIntakeDiscoveryRegulatoryMatrix()
+    public void ProjectCreate_SeedsAllSixStages_IntakeThroughCost()
     {
         var p = ProjectDoc.Create("p1", "Acme", "P", System.Text.Json.JsonDocument.Parse("{}").RootElement);
         Assert.True(p.Stages.ContainsKey(Stages.Intake));
         Assert.True(p.Stages.ContainsKey(Stages.Discovery));
         Assert.True(p.Stages.ContainsKey(Stages.Regulatory));
         Assert.True(p.Stages.ContainsKey(Stages.Matrix));
+        Assert.True(p.Stages.ContainsKey(Stages.Dosing));
+        Assert.True(p.Stages.ContainsKey(Stages.Cost));
         Assert.False(p.Stages.ContainsKey("screening"));
-        Assert.Equal(4, p.Stages.Count);
+        Assert.Equal(6, p.Stages.Count);
+        // Dosing and Cost start `pending` like every other stage — inert until the approved regulatory gate
+        // (Plan 4, Task 12) triggers Dosing. `pending` is not "run me now": nothing scans stages for pending,
+        // the dispatcher only reacts to specific upstream docs, and no case produces a DosingDoc/CostDoc yet.
+        Assert.Equal("pending", p.Stages[Stages.Dosing].Status);
+        Assert.Equal("pending", p.Stages[Stages.Cost].Status);
     }
 
     [Fact]

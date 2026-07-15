@@ -98,10 +98,11 @@ public class OrchestratorHostWiringTests
             // ReadToolsFor left the combined-list assertion green.) An agent that can still CHANGE the analysis
             // but can no longer LOOK ANYTHING UP is the worst reachable state in this system — it answers, and
             // acts, from memory.
-            if (stage == Stages.Matrix)
+            if (stage is Stages.Matrix or Stages.Cost)
             {
-                // Fail-closed by design: Matrix derives its output from the record it is handed, so there is no
-                // corpus to search, and it is not revisable — a Matrix turn holds no capability at all.
+                // No corpus to search, on purpose. Matrix derives its output from the record it is handed;
+                // Cost is a deterministic table lookup. Neither is revisable either — so a turn on them holds
+                // no capability at all and answers only from the stage inputs in its prompt.
                 Assert.Empty(readTools);
                 Assert.Empty(tools);
             }

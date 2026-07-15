@@ -6,15 +6,20 @@ namespace Smx.Domain;
 /// asserted without standing up a dispatcher, a store, or an agent.
 public static class RevisionEffects
 {
-    /// Revising a stage means RE-RUNNING its agent. Discovery and Regulatory qualify; Matrix does not
-    /// (it is assembled deterministically from candidates + verdicts — revise those instead).
+    /// Revising a stage means RE-RUNNING its agent. Discovery, Regulatory and Dosing qualify; Matrix does
+    /// not (it is assembled deterministically from candidates + verdicts — revise those instead), and
+    /// neither does Cost (it is a deterministic table lookup — to change a cost you change its inputs, not
+    /// argue with the audit; Law 4 has no "why" to record over a price fetch).
+    ///
+    /// Dosing IS revisable (Law 4): the operator changes a ppm by telling the agent WHY, which re-runs the
+    /// stage and earns a Learned Conclusion — the same mechanism as a tiering or a verdict change.
     ///
     /// Intake is deliberately excluded even though it DOES have an agent: its output is the derived
     /// regulatory scope that every downstream stage was screened against, so re-running it invalidates
     /// the whole project rather than one stage's output. That is a bigger blast radius than
-    /// revise-with-reason is meant to have; no journey step asks for it. Plan 4's dosing and cost join
-    /// this list when they arrive.
-    public static bool IsRevisable(string stage) => stage is Stages.Discovery or Stages.Regulatory;
+    /// revise-with-reason is meant to have; no journey step asks for it.
+    public static bool IsRevisable(string stage) =>
+        stage is Stages.Discovery or Stages.Regulatory or Stages.Dosing;
 
     /// A gate is an operator's signature over a SPECIFIC analysis. Re-running an agent at or upstream of
     /// the Regulatory gate replaces that analysis, so the signature is void and has to be re-taken.
@@ -26,8 +31,9 @@ public static class RevisionEffects
     ///
     /// It THROWS rather than defaulting for an unknown stage, on purpose. `false` is the dangerous
     /// answer here, so it must never be the one an unrecognized string falls into. Call IsRevisable
-    /// first — which every caller must do anyway. Stages downstream of the gate (Plan 4's dosing, cost)
-    /// consume its result and will answer `false` here once they are revisable.
+    /// first — which every caller must do anyway. Dosing is DOWNSTREAM of the gate: it consumes the
+    /// compliant set the operator signed over, it cannot change it, so re-running it must NOT void that
+    /// signature — it answers `false` here. (Cost is not revisable, so it hits the throw above.)
     public static bool BreaksRegulatoryGate(string stage)
     {
         if (!IsRevisable(stage))
@@ -44,6 +50,7 @@ public static class RevisionEffects
     {
         Stages.Discovery => KnowledgeKinds.Material,
         Stages.Regulatory => KnowledgeKinds.RegulatoryJudgment,
+        Stages.Dosing => KnowledgeKinds.Dosing,
         _ => throw new ArgumentOutOfRangeException(nameof(stage), stage,
             "no conclusion kind for this stage — it is not revisable"),
     };

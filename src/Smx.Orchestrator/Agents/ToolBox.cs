@@ -75,6 +75,16 @@ public sealed class ToolBox(
             "Search accumulated Learned Conclusions (prior material/regulatory findings with confidence + provenance) relevant to this intake. Treat them as prior evidence, not fact; a higher-confidence, more recent conclusion supersedes an older one."),
     ];
 
+    /// The Dosing stage's read tools. Task 10 adds the deterministic calculators (detection_floor,
+    /// order_amount); these two are the retrieval half, and the §6 knowledge-layer read point.
+    public IList<AITool> DosingTools() =>
+    [
+        AIFunctionFactory.Create(SearchLearnedConclusionsAsync, "search_learned_conclusions",
+            "Prior ppm and dosing findings from earlier projects, with the reasons they were recorded."),
+        AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
+            "The reference corpus — formulation-impact basis, application notes, typical loadings."),
+    ];
+
     /// The READ tools a CHAT turn gets for a stage (ChatAgent, design §5) — deliberately the same retrieval
     /// surface the stage's own agent reasoned with, so chat can answer for what the stage produced FROM ITS
     /// SOURCES rather than from the model's memory. A switch over the existing sets, never a new set: chat
@@ -93,6 +103,11 @@ public sealed class ToolBox(
         Stages.Intake => IntakeTools(),
         Stages.Discovery => DiscoveryReadTools(),
         Stages.Regulatory => RegulatoryTools(),
+        Stages.Dosing => DosingTools(),
+        // Cost is deterministic — its output is a table lookup, not a reasoned claim over a corpus — so a
+        // chat turn on it holds NO read tools and answers only from the CostDoc in its prompt. Listed
+        // explicitly (not left to the default) so the intent reads as deliberate, not as an unknown stage.
+        Stages.Cost => [],
         _ => [],
     };
 

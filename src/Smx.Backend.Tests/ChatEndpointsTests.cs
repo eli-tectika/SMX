@@ -89,13 +89,30 @@ public class ChatEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
     {
         // A chat-message on a stage that does not exist is a doc the dispatcher would run anyway: it would
         // find no stage inputs (StageInputsJsonAsync's `_ => "{}"`) and no read tools, and the agent would
-        // hold a conversation about nothing. Refuse it at the door.
+        // hold a conversation about nothing. Refuse it at the door. (`dosing`/`cost` are now REAL stages —
+        // `screening` is one that genuinely is not, which is what keeps this a test of the closed door.)
         await SeedProject("p1");
-        var resp = await PostChat("p1", "dosing", "what ppm are we at?");
+        var resp = await PostChat("p1", "screening", "what ppm are we at?");
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
-        Assert.Contains("dosing", await resp.Content.ReadAsStringAsync());
+        Assert.Contains("screening", await resp.Content.ReadAsStringAsync());
         Assert.Empty(Messages("p1"));
+    }
+
+    [Fact]
+    public async Task PostChat_ToCost_IsAccepted_ADeterministicStageStillHasAReadOnlyChatSurface()
+    {
+        // Cost is deterministic and holds NO chat tools (ToolBox.ReadToolsFor(Cost) is empty, and Cost is not
+        // revisable), but it is still a real stage in Stages.All — so the operator can ask a read-only Q&A
+        // about the finished audit and the endpoint accepts it, rather than refusing the stage outright. This
+        // pins the plan's stance: chat allowed, tool-less, answered from the CostDoc in the prompt.
+        await SeedProject("p1");
+        var resp = await PostChat("p1", Stages.Cost, "why is Zr flagged single-source?");
+
+        Assert.Equal(HttpStatusCode.Accepted, resp.StatusCode);
+        var doc = Assert.Single(Messages("p1"));
+        Assert.Equal(Stages.Cost, doc.Stage);
+        Assert.Equal(ChatStatus.Pending, doc.Status);
     }
 
     [Fact]
