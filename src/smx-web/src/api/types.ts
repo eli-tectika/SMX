@@ -32,13 +32,35 @@ export interface ComponentSpec {
   application: string;
   markets: string[];
   objective: string;
+  /**
+   * Batch MASS in kilograms (never volume). Optional at intake — it is one of the few
+   * fields the intake chat is allowed to gap-fill later (IntakeAnswers writable allowlist),
+   * so the create form does not collect it.
+   */
+  batchMassKg?: number;
 }
 
-/** SubstanceSpec — src/Smx.Domain/Records/ConstraintsDoc.cs */
+/** SubstanceSpec — src/Smx.Domain/Records/ConstraintsDoc.cs (still used by MatrixDoc.rows). */
 export interface SubstanceSpec {
   element: string;
   form: string;
   cas: string;
+}
+
+/**
+ * ElementPool — src/Smx.Domain/Records/ConstraintsDoc.cs.
+ *
+ * The physicist's measured XRF background for one element on one component, already
+ * interpreted into a status. "V" = present/verified; "L" = conditional, and a conditional
+ * pool MUST carry a signal-character note (the backend rejects an L with a blank note).
+ * This data is the physicist's and cannot be edited through chat — only re-entered at intake.
+ */
+export interface ElementPool {
+  component: string;
+  element: string;
+  line: string;
+  status: 'V' | 'L';
+  signalNote?: string;
 }
 
 /** Citation — src/Smx.Domain/Records/ConstraintsDoc.cs */
@@ -124,12 +146,19 @@ export interface ProjectSummary {
   stages: Record<string, StageState>;
 }
 
-/** CreateProjectRequest — src/Smx.Backend/Api/CreateProjectRequest.cs */
+/**
+ * CreateProjectRequest — src/Smx.Backend/Api/CreateProjectRequest.cs.
+ *
+ * Production mode: at least one `elementPools` entry (the physicist's XRF background). The
+ * backend also accepts a known-candidate mode (`candidates`) plus optional `measuredBackground`
+ * and `device` (XRF LODs), but those are eval / awaiting-physics seams and the operator form
+ * does not send them — see the plan's deferred section.
+ */
 export interface CreateProjectRequest {
   client: string;
   product: string;
   components: ComponentSpec[];
-  substances: SubstanceSpec[];
+  elementPools: ElementPool[];
   clientRestrictedList?: string[];
 }
 

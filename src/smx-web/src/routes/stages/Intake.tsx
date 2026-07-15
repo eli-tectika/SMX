@@ -72,7 +72,7 @@ export function Intake({ project }: { project: ProjectSummary }) {
             to <code>projectId, client, product, stages</code> only).
           </div>
           <div style={{ marginTop: 8 }}>
-            {['components[]', 'substances[]', 'clientRestrictedList[]'].map((f) => (
+            {['components[]', 'elementPools[]', 'clientRestrictedList[]'].map((f) => (
               <span className="src data" key={f}>
                 {f}
               </span>

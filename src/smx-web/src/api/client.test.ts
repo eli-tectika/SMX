@@ -19,7 +19,7 @@ const request: CreateProjectRequest = {
   components: [
     { id: 'bottle', material: 'PET', application: 'leave-on', markets: ['EU'], objective: 'brand' },
   ],
-  substances: [{ element: 'Zr', form: 'neodecanoate', cas: '39049-04-2' }],
+  elementPools: [{ component: 'bottle', element: 'Zr', line: 'Kα', status: 'V' }],
 };
 
 describe('createProject', () => {
@@ -37,8 +37,10 @@ describe('createProject', () => {
   });
 
   it("surfaces the server's `{error}` body from a 400 rather than a generic message", async () => {
-    stubFetch(() => json({ error: 'substance CAS numbers must be unique' }, 400));
-    await expect(createProject(request)).rejects.toThrow('substance CAS numbers must be unique');
+    stubFetch(() => json({ error: 'every element pool must reference a declared component' }, 400));
+    await expect(createProject(request)).rejects.toThrow(
+      'every element pool must reference a declared component',
+    );
     await expect(createProject(request)).rejects.toBeInstanceOf(ApiError);
   });
 });
