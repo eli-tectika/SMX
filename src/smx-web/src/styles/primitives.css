@@ -22,15 +22,57 @@
   font-size: var(--t-tiny);
 }
 
+/* ---- data --------------------------------------------------------------------
+   Every machine-readable value in the app: CAS, ppm, element symbol, emission line,
+   marker code, H-code, SML limit, price, lead time, date, project id.
+
+   This is the rule the instrument look actually rests on — mono for anything a machine
+   produced or a spec defines, sans for anything a human wrote. Applied by hand it drifts
+   (before this, mono landed on CAS numbers and project ids and nothing else, so ppm and
+   prices rendered in sans). A primitive makes it total. */
+
+.data {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  /* NOT 1em. Plex Mono is optically larger and wider than Plex Sans at the same px, so
+     mono set inline at full size bulges out of the sentence around it and reads as a
+     mistake. ~0.94 is the optical match. */
+  font-size: 0.94em;
+  letter-spacing: 0;
+}
+
+/* An element symbol is a proper noun of the domain — Pb, Cd, Sr. Never lowercased,
+   never tracked. */
+.data[data-kind='element'] {
+  font-weight: var(--w-medium);
+  letter-spacing: 0.02em;
+}
+
+/* ---- prose ---------------------------------------------------------------------
+   The instrument frame runs to 1600px. Unmeasured, that gives a banner a 200-character
+   line, which is unreadable — and would make the WIDER layout feel worse than the narrow
+   one it replaced. Tables get the full width; prose never does. */
+
+.prose {
+  max-width: 72ch;
+  line-height: var(--lh-prose);
+}
+
 /* ---- card --------------------------------------------------------------------
-   Paper picked up, not a game tile: 1px of lift. */
+   A ruled area on a page, not a tile floating over one. No shadow: the card does not
+   hover above the plane, so claiming it does is a lie the eye notices even when the
+   mind doesn't.
+
+   And it does not MOVE on hover. A card that lifts under the cursor belongs to a
+   marketing page; it also violates this app's own motion policy (craft.css: "LAYOUT ON
+   HOVER"), which was written and then quietly broken here. Hover changes the border and
+   the surface — that is enough to say "this is a link", and it costs no motion. */
 
 .card {
   background: var(--surface-0);
-  border: 1px solid var(--border);
+  border: var(--hair) solid var(--border);
   border-radius: var(--r3);
   padding: var(--s4);
-  box-shadow: var(--shadow-1);
 }
 
 .card--link {
@@ -38,20 +80,14 @@
   color: inherit;
   text-decoration: none;
   transition:
-    transform var(--dur-2) var(--ease-out),
-    box-shadow var(--dur-2) var(--ease-out),
+    background var(--dur-2) var(--ease-out),
     border-color var(--dur-2) var(--ease-out);
 }
 
 .card--link:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-2);
   border-color: var(--border-strong);
+  background: var(--surface-2);
   text-decoration: none;
-}
-
-.card--link:active {
-  transform: translateY(0);
 }
 
 /* Bucket tone — the 3px left edge that says which pile this project is in. */
@@ -74,19 +110,20 @@
 
 .stat {
   background: var(--surface-0);
-  border: 1px solid var(--border);
+  border: var(--hair) solid var(--border);
   border-radius: var(--r2);
   padding: var(--s3) var(--s4);
-  box-shadow: var(--shadow-1);
   min-width: 0;
 }
 
 .stat__value {
+  font-family: var(--font-mono);
   font-size: var(--t-display);
   line-height: var(--lh-tight);
   font-variant-numeric: tabular-nums;
   color: var(--ink);
-  font-weight: 500;
+  font-weight: var(--w-medium);
+  letter-spacing: -0.02em; /* 28px mono is wide; pull it back to a readable measure */
 }
 
 .stat__label {
@@ -369,6 +406,7 @@
 }
 
 .sec__count {
+  font-family: var(--font-mono);
   font-size: var(--t-tiny);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
@@ -377,6 +415,8 @@
 .sec__hint {
   font-size: var(--t-small);
   color: var(--text-muted);
+  /* Hints carry counts and dates ("12 substances × 4 components · assembled 2026-06-01"). */
+  font-variant-numeric: tabular-nums;
 }
 
 .sec__actions {
@@ -395,17 +435,14 @@
   background: transparent;
 }
 
+/* A 44px grey disc with a 20px glyph centred in it is the stock empty-state illustration
+   of every generated dashboard. The icon here is not an illustration — it is a 16px mark
+   set on the baseline of the title, the way a printed form marks a blank field. */
 .empty__icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: var(--surface-1);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
+  font-size: 16px;
   color: var(--text-muted);
-  margin-bottom: var(--s3);
+  margin-right: var(--s2);
+  vertical-align: -2px;
 }
 
 .empty__title {
@@ -459,7 +496,11 @@
   background: var(--text-secondary);
 }
 
+/* Every value that reaches this row is machine-produced — a price, a lead time, a reuse
+   count, a metal loading. One rule puts all of them in mono, which is why Cost and the
+   Marker Library need no per-call-site change. */
 .barrow__value {
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--t-small);
   color: var(--text-secondary);
@@ -479,12 +520,16 @@
    The sign control stays disabled regardless of arming — there is no endpoint. */
 
 .gatebox {
-  border: 1px solid var(--border-warning);
+  border: var(--hair) solid var(--border-warning);
   border-top: 4px solid var(--text-warning);
   border-radius: var(--r3);
   background: var(--bg-warning);
   padding: var(--s4);
   margin-bottom: var(--s4);
+  /* A gate is a decision, not a table. In the 1600px instrument frame an unmeasured gate
+     flings each requirement's "Open" control eight hundred pixels from the requirement it
+     belongs to, which is precisely the coupling this component exists to make obvious. */
+  max-width: 90ch;
 }
 
 /* A soft review gate is not a lock. The border teaches the difference. */
@@ -650,6 +695,130 @@
   z-index: 10;
   pointer-events: none;
   box-shadow: var(--shadow-2);
+}
+
+/* ---- finder (⌘K) ---------------------------------------------------------------
+   One of exactly two true overlays in the app, and therefore one of exactly two things
+   permitted to cast a shadow. It floats above the page and can be dismissed; that is what
+   a shadow means, and it is the only thing it may mean. */
+
+.finder__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: hsl(var(--shadow-hue) / 0.28);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+
+.finder {
+  width: min(680px, calc(100vw - var(--s6)));
+  background: var(--surface-0);
+  border: var(--hair) solid var(--border-strong);
+  border-radius: var(--r3);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+
+.finder__field {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  border-bottom: var(--hair) solid var(--border);
+  color: var(--text-muted);
+}
+
+.finder__field input {
+  border: 0;
+  outline: 0;
+  padding: 0;
+  font-size: var(--t-lead);
+  background: transparent;
+  flex: 1;
+  color: var(--text-primary);
+}
+
+/* What the finder does NOT search matters as much as what it does. The Regulatory agent has
+   no web tool and never will — a regulatory verdict must trace to the synced corpus — and
+   this box must not be mistaken for one that reaches further than it does. */
+.finder__scope {
+  padding: var(--s2) var(--s4);
+  font-size: var(--t-tiny);
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-bottom: var(--hair) solid var(--border);
+  line-height: var(--lh-body);
+}
+
+.finder__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--s1) 0;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.finder__hit {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: var(--s2) var(--s4);
+  cursor: pointer;
+  color: inherit;
+}
+.finder__hit[data-on] {
+  background: var(--bg-accent);
+}
+
+.finder__kind {
+  flex: none;
+  width: 58px;
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
+  color: var(--text-muted);
+}
+
+.finder__hit-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.finder__hit-title {
+  font-size: var(--t-body);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finder__hit-sub {
+  font-size: var(--t-tiny);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finder__badge {
+  flex: none;
+}
+
+.finder__note {
+  padding: var(--s4);
+  font-size: var(--t-small);
+  color: var(--text-muted);
+  line-height: var(--lh-body);
 }
 
 /* ---- grid helpers -------------------------------------------------------------- */

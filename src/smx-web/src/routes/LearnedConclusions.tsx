@@ -1,113 +1,196 @@
 import { useState } from 'react';
-import { MockBadge } from '../components/MockBadge';
+import { getLearnedConclusions } from '../api/client';
+import type { ConclusionScope, LearnedConclusion } from '../api/types';
+import { Data } from '../components/ui/Data';
 import { Meter } from '../components/ui/Meter';
 import { EmptyState, SearchInput, SectionHeader } from '../components/ui/Primitives';
-import conclusions from '../mocks/fixtures/learned-conclusions.json';
+import { useKnowledge } from '../hooks/useKnowledge';
 
-interface Entry {
-  tag: string;
-  text: string;
-  scope: string;
-  source: string;
-  confidence: number;
+/**
+ * A kind is a CATEGORY, not a verdict. Painting `xrf-background` green would say "Pass" in
+ * this app's colour grammar, which it does not mean. Categories stay neutral and are told
+ * apart by icon.
+ */
+const KIND_ICON: Record<string, string> = {
+  xrf: 'ti-wave-square',
+  'xrf-background': 'ti-wave-square',
+  material: 'ti-cube',
+  regulatory: 'ti-gavel',
+  'regulatory-judgment': 'ti-gavel',
+};
+
+function iconFor(kind: string): string {
+  return KIND_ICON[kind?.toLowerCase()] ?? 'ti-bulb';
 }
 
 /**
- * A tag is a CATEGORY, not a verdict. Painting `XRF` green would say "Pass" in this
- * app's colour grammar, which it does not mean. Categories are neutral and are told
- * apart by icon.
- */
-const TAG_ICON: Record<string, string> = {
-  XRF: 'ti-wave-square',
-  material: 'ti-cube',
-  regulatory: 'ti-gavel',
-};
-
-/**
- * Learned Conclusions (spec §6) — accumulated findings with provenance and confidence.
+ * Learned Conclusions (spec §6) — accumulated findings, with provenance and confidence.
  *
- * Written whenever the operator tells an agent *why* to change something, and at
- * project close. Read at intake, discovery and dosing. Confidence is the reason an
- * entry is trustworthy or not, so it gets a meter rather than a grey percentage.
+ * Previously a fixture behind a MockBadge. `GET /learned-conclusions?search=` exists and is
+ * served from Cosmos, so the badge is gone and every finding here is a real record.
+ *
+ * This is "the mechanism by which the system gets smarter" (spec §6): a conclusion is written
+ * whenever the operator tells an agent *why* to change something, and again at project close.
+ * Which means the honest empty state is important — a new system has learned nothing, and
+ * saying so is the only way the operator can tell the difference between "we have no prior
+ * knowledge here" and "the knowledge layer is broken".
+ *
+ * Confidence gets a meter rather than a grey percentage, because confidence is the whole
+ * reason a finding is or is not safe to lean on. The meter is neutral, never green: a
+ * high-confidence finding is not a Pass.
  */
 export function LearnedConclusions() {
   const [q, setQ] = useState('');
-  const [tag, setTag] = useState<string | null>(null);
-  const { entries } = conclusions as { entries: Entry[] };
+  const [kind, setKind] = useState<string | null>(null);
 
-  const tags = [...new Set(entries.map((e) => e.tag))];
-  const needle = q.trim().toLowerCase();
-  const shown = entries
-    .filter((e) => (tag ? e.tag === tag : true))
-    .filter((e) =>
-      needle ? `${e.tag} ${e.text} ${e.scope}`.toLowerCase().includes(needle) : true,
+  const state = useKnowledge<LearnedConclusion>(getLearnedConclusions, q);
+
+  if (state.kind === 'loading') {
+    return (
+      <section className="screen">
+        <Head />
+        <p className="muted small">Loading conclusions…</p>
+      </section>
     );
+  }
+
+  if (state.kind === 'error') {
+    return (
+      <section className="screen">
+        <Head />
+        <div className="banner danger">
+          <i className="ti ti-alert-triangle" aria-hidden="true" />
+          <div>
+            <b>Could not read the learned conclusions.</b>
+            <div style={{ marginTop: 3 }}>{state.message}</div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const entries = state.items;
+  const kinds = [...new Set(entries.map((e) => e.kind))];
+  const shown = entries.filter((e) => (kind ? e.kind === kind : true));
 
   return (
-    <section className="screen" data-provenance="mock">
-      <div className="cap">
-        <b>Learned conclusions</b> &nbsp;·&nbsp; spec §6 — findings with provenance and confidence
-      </div>
-
-      <MockBadge note="No conclusion here was recorded from a real agent-with-a-reason change." />
+    <section className="screen">
+      <Head />
 
       <SearchInput
         value={q}
         onChange={setQ}
-        placeholder="Search conclusions…"
-        label="Search learned conclusions"
+        placeholder="Search findings, elements, materials, markets…"
+        label="Search the learned conclusions"
       />
 
-      <div className="seg" role="group" aria-label="Filter by tag" style={{ marginBottom: 4 }}>
-        <button className="seg__btn" onClick={() => setTag(null)} aria-pressed={tag === null}>
-          all
-        </button>
-        {tags.map((t) => (
+      {kinds.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, margin: '10px 0 0', flexWrap: 'wrap' }}>
           <button
-            key={t}
-            className="seg__btn"
-            onClick={() => setTag(tag === t ? null : t)}
-            aria-pressed={tag === t}
+            className="qr"
+            onClick={() => setKind(null)}
+            aria-pressed={kind === null}
+            style={kind === null ? { borderColor: 'var(--text-accent)', color: 'var(--text-accent)' } : undefined}
           >
-            <i className={`ti ${TAG_ICON[t] ?? 'ti-tag'}`} aria-hidden="true" /> {t}
+            All
           </button>
-        ))}
-      </div>
+          {kinds.map((k) => (
+            <button
+              key={k}
+              className="qr"
+              onClick={() => setKind(kind === k ? null : k)}
+              aria-pressed={kind === k}
+              style={kind === k ? { borderColor: 'var(--text-accent)', color: 'var(--text-accent)' } : undefined}
+            >
+              <i className={`ti ${iconFor(k)}`} aria-hidden="true" /> {k}
+            </button>
+          ))}
+        </div>
+      )}
 
       <SectionHeader eyebrow="Conclusions" count={shown.length} />
 
       {shown.length === 0 ? (
         <EmptyState
-          icon="ti-search-off"
-          title="No conclusions match."
-          body={q ? <>Nothing matches “{q}”.</> : undefined}
+          icon="ti-bulb-off"
+          title={q || kind ? 'Nothing matches.' : 'Nothing has been learned yet.'}
+          body={
+            q || kind ? (
+              <>No conclusion matches that filter.</>
+            ) : (
+              <>
+                A conclusion is written when you tell an agent <i>why</i> to change something,
+                and again when a project closes. Until then the system has no prior knowledge to
+                bring to a new project — which is a fact worth seeing, not a gap to fill.
+              </>
+            )
+          }
         />
       ) : (
-        shown.map((e, i) => (
-          <div className="card" key={i} style={{ marginBottom: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span className="chip chip--neutral">
-                <i className={`ti ${TAG_ICON[e.tag] ?? 'ti-tag'}`} aria-hidden="true" />
-                &nbsp;{e.tag}
-              </span>
-              <span className="tiny muted">scope: {e.scope}</span>
-            </div>
-
-            <p className="small" style={{ margin: '0 0 10px', lineHeight: 1.5 }}>
-              {e.text}
-            </p>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ minWidth: 190, flex: '0 1 240px' }}>
-                <Meter value={e.confidence} label="confidence" />
+        <div className="card-list">
+          {shown.map((e) => (
+            <article className="card" key={e.id}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span className="chip chip--neutral">
+                  <i className={`ti ${iconFor(e.kind)}`} aria-hidden="true" />
+                  &nbsp;{e.kind}
+                </span>
+                <span className="tiny muted">{scopeText(e.scope)}</span>
+                <span className="tiny muted" style={{ marginLeft: 'auto' }}>
+                  <Data kind="date">{e.createdAt.slice(0, 10)}</Data>
+                </span>
               </div>
-              <span className="src" style={{ marginLeft: 'auto' }}>
-                {e.source}
-              </span>
-            </div>
-          </div>
-        ))
+
+              <p className="prose" style={{ margin: '0 0 8px' }}>
+                {e.finding}
+              </p>
+
+              <div style={{ maxWidth: 260, marginBottom: 6 }}>
+                <div className="tiny muted" style={{ marginBottom: 3 }}>
+                  Confidence
+                </div>
+                <Meter value={e.confidence} />
+              </div>
+
+              <div className="tiny muted">
+                {e.provenance.sourceProjects.length > 0 ? (
+                  <>
+                    from{' '}
+                    {e.provenance.sourceProjects.map((p) => (
+                      <span className="src data" key={p}>
+                        {p}
+                      </span>
+                    ))}
+                  </>
+                ) : (
+                  <span>no source project recorded</span>
+                )}
+                {e.supersedes && (
+                  <span> · refines <Data kind="id">{e.supersedes}</Data></span>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
       )}
     </section>
+  );
+}
+
+function Head() {
+  return (
+    <div className="cap">
+      <b>Learned conclusions</b>
+      spec §6 — findings with provenance and confidence
+    </div>
+  );
+}
+
+/** The scope is what a finding is *about*, and it is what makes the finding reusable. */
+function scopeText(s: ConclusionScope): string {
+  return (
+    [s.element, s.form, s.substance, s.material, s.application, s.market]
+      .filter(Boolean)
+      .join(' · ') || 'general'
   );
 }

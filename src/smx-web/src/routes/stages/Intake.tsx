@@ -27,7 +27,8 @@ export function Intake({ project }: { project: ProjectSummary }) {
     <>
       <section className="screen">
         <div className="cap">
-          <b>Intake &amp; scoping</b> &nbsp;·&nbsp; spec §4.1 — objective + scope
+          <b>Intake &amp; scoping</b>
+        spec §4.1 — objective + scope
         </div>
 
         <SectionHeader eyebrow="Real — the record" />
@@ -44,7 +45,7 @@ export function Intake({ project }: { project: ProjectSummary }) {
             </tr>
             <tr>
               <th>Project id</th>
-              <td style={{ fontFamily: 'var(--font-mono)' }}>{project.projectId}</td>
+              <td className="data">{project.projectId}</td>
             </tr>
           </tbody>
         </table>
@@ -72,7 +73,7 @@ export function Intake({ project }: { project: ProjectSummary }) {
           </div>
           <div style={{ marginTop: 8 }}>
             {['components[]', 'substances[]', 'clientRestrictedList[]'].map((f) => (
-              <span className="src" key={f} style={{ fontFamily: 'var(--font-mono)' }}>
+              <span className="src data" key={f}>
                 {f}
               </span>
             ))}

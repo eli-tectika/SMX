@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
+import { Data } from './Data';
 
-/** Card. `--shadow-1`, lifting 1px on hover when it links somewhere. Paper, not a game tile. */
+/** Card. A hairline border and a surface change on hover. Paper, not a game tile — it does
+ *  not float and it does not lift (see the shadow and transform rules in craft.css). */
 export function Card({
   children,
   tone,
@@ -85,11 +87,12 @@ export function EmptyState({
 }) {
   return (
     <div className="empty">
-      <div className="empty__icon">
-        <i className={`ti ${icon}`} aria-hidden="true" />
-      </div>
-      <p className="empty__title">{title}</p>
-      {body && <div className="empty__body">{body}</div>}
+      {/* Set on the title's baseline, not floated above it in a grey disc. */}
+      <p className="empty__title">
+        <i className={`ti ${icon} empty__icon`} aria-hidden="true" />
+        {title}
+      </p>
+      {body && <div className="empty__body prose">{body}</div>}
       {actions && <div className="empty__actions">{actions}</div>}
       {children}
     </div>
@@ -182,8 +185,13 @@ export function CitationChip({
 }) {
   return (
     <span className="src" title={snippet ?? undefined}>
-      {source} · {reference}
-      <span className="muted"> · {retrievedAt.slice(0, 10)}</span>
+      {source} · <Data kind="code">{reference}</Data>
+      {/* The corpus sync date is the load-bearing half of a citation: a regulation
+          entry without the date it was retrieved is not a citation, it is a claim. */}
+      <span className="muted">
+        {' '}
+        · <Data kind="date">{retrievedAt.slice(0, 10)}</Data>
+      </span>
     </span>
   );
 }

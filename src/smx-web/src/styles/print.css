@@ -1,0 +1,150 @@
+/* ---------------------------------------------------------------------------
+   print.css — the dossier.
+
+   A regulatory tool gets printed. The compatibility matrix and the regulatory gate go
+   into a compliance package for the R.E.; the decision matrix goes to the VP. That is not
+   a nice-to-have in SMX, it is the round trip the whole product is built around: the
+   operator "generates what they take offline" (spec §2) and comes back with a
+   determination days later.
+
+   So printing is a real output format, and the rules below are correctness rules, not
+   cosmetics:
+
+     - Chrome disappears. Masthead, nav, agent dock, buttons, the ⌘K finder: none of them
+       exist on paper, and a disabled button printed onto a compliance document is noise
+       that invites a question the page cannot answer.
+
+     - THE MOCK HATCH AND BADGE SURVIVE. This is the important one. A printed page loses
+       every affordance that told the reader it came from a screen — no tooltip, no
+       disabled control, no colour on a mono office printer. If a fixture-backed screen
+       printed as cleanly as a real one, a fabricated verdict could be walked into a
+       regulator's office in a folder. The hatch prints. The badge prints. They print in
+       BLACK, because they must survive a greyscale printer.
+
+     - Verdict chips keep their fill. `print-color-adjust: exact` forces the browser to
+       print the V / L / X backgrounds rather than helpfully dropping them to save ink —
+       and each chip carries its letter as well as its colour, so the matrix is still
+       readable if a printer ignores us anyway.
+   --------------------------------------------------------------------------- */
+
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+    font-size: 10pt;
+  }
+
+  /* Chrome that has no meaning on paper. */
+  .masthead,
+  .appnav,
+  .dock,
+  .finder__scrim,
+  .findbtn,
+  .ctxbar__back,
+  .btn,
+  .qr,
+  .seg,
+  .search {
+    display: none !important;
+  }
+
+  /* The page is the document now. */
+  .wrap,
+  .wrap[data-frame='instrument'] {
+    max-width: none;
+    padding: 0;
+  }
+
+  .workspace,
+  .workspace[data-dock='collapsed'] {
+    display: block;
+  }
+
+  .screen,
+  .card,
+  .region,
+  .gatebox {
+    border: 1px solid #999;
+    border-radius: 0;
+    box-shadow: none;
+    break-inside: avoid;
+  }
+
+  /* The context bar becomes the document's running head — which project this is about is
+     the single most important thing on a printed page that has left the building. */
+  .ctxbar {
+    position: static;
+    border-bottom: 2px solid #000;
+    margin: 0 0 8mm;
+    padding: 0 0 3mm;
+  }
+
+  /* A table that splits a row across a page break is a table that can be misread. */
+  .mx {
+    break-inside: auto;
+  }
+  .mx thead {
+    display: table-header-group; /* repeat the header on every page */
+  }
+  .mx tr {
+    break-inside: avoid;
+  }
+  .mx th,
+  .mx td {
+    border: 1px solid #999;
+  }
+
+  /* Verdicts keep their fill. A matrix printed as grey-on-grey is not a matrix. */
+  .chip,
+  .ribbon__seg,
+  .banner,
+  .gatebox,
+  [class*='hatch-'],
+  .screen[data-provenance='mock']::before {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Provenance survives the printer.
+
+     On paper there is no hover, no tooltip, no disabled state — every signal that said
+     "this was not produced by an agent" is gone except these two. So they get louder, not
+     quieter, and they get a black rule so they survive a greyscale printer. */
+  .screen[data-provenance='mock'] {
+    border-left: 4px solid #000 !important;
+  }
+
+  .screen[data-provenance='mock']::after {
+    content: 'MOCK DATA — NOT AGENT-PRODUCED, NOT TRACEABLE TO A SOURCE. NOT FOR REGULATORY USE.';
+    display: block;
+    margin-top: 6mm;
+    padding-top: 2mm;
+    border-top: 1px solid #000;
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: #000;
+  }
+
+  .banner.warn {
+    border: 1px solid #000;
+  }
+
+  /* A link's destination is invisible on paper unless it is written out. Citations are the
+     whole evidentiary chain — a printed verdict whose source you cannot look up is exactly
+     the uncited verdict this system exists to prevent. */
+  .src::after,
+  .citation::after {
+    content: '';
+  }
+
+  a[href^='http']::after {
+    content: ' (' attr(href) ')';
+    font-size: 8pt;
+    color: #555;
+  }
+}

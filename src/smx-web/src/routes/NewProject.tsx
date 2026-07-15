@@ -88,7 +88,8 @@ export function NewProject() {
   return (
     <form className="screen" onSubmit={submit}>
       <div className="cap">
-        <b>Intake &amp; scoping</b> &nbsp;·&nbsp; spec §4.1 — this is the only screen that writes to
+        <b>Intake &amp; scoping</b>
+        spec §4.1 — this is the only screen that writes to
         the record
       </div>
 

@@ -46,7 +46,8 @@ export function Discovery({ project }: { project: ProjectSummary }) {
   return (
     <section className="screen" data-provenance="mock">
       <div className="cap">
-        <b>Discovery &amp; AI-screening</b> &nbsp;·&nbsp; spec §4.3 — candidates + regulatory
+        <b>Discovery &amp; AI-screening</b>
+        spec §4.3 — candidates + regulatory
         pre-checks
       </div>
 
@@ -122,13 +123,13 @@ export function Discovery({ project }: { project: ProjectSummary }) {
               t.candidates.map((c) => (
                 <div
                   key={c.cas}
-                  style={{ borderTop: '0.5px solid var(--border)', marginTop: 12, paddingTop: 12 }}
+                  style={{ borderTop: '1px solid var(--border)', marginTop: 12, paddingTop: 12 }}
                 >
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 13, fontWeight: 500 }}>
                       {c.element} {c.form}
                     </span>
-                    <span className="tiny muted" style={{ fontFamily: 'var(--font-mono)' }}>
+                    <span className="tiny muted data">
                       CAS {c.cas}
                     </span>
                   </div>

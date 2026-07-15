@@ -45,7 +45,7 @@ export function EvidencePanel({
       </div>
 
       <div className="tiny muted" style={{ marginBottom: 10 }}>
-        CAS <span style={{ fontFamily: 'var(--font-mono)' }}>{cell.cas}</span> · component{' '}
+        CAS <span className="data">{cell.cas}</span> · component{' '}
         {cell.componentId}
       </div>
 
@@ -80,7 +80,7 @@ export function EvidencePanel({
             key={d.dimension}
             className={uncited ? 'hatch-danger' : undefined}
             style={{
-              borderTop: '0.5px solid var(--border)',
+              borderTop: '1px solid var(--border)',
               padding: uncited ? 'var(--s2)' : 'var(--s3) 0',
               borderRadius: uncited ? 'var(--r1)' : undefined,
               marginTop: uncited ? 'var(--s2)' : undefined,

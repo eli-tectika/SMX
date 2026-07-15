@@ -45,9 +45,13 @@
   --surface-3: #e3e5e8; /* sticky headers, spine rails */
   --ink: #0e0f11; /* headings — one step darker than --text-primary */
 
-  /* elevation — cool grey, never soot */
+  /* elevation — cool grey, never soot.
+     A shadow is a CLAIM ABOUT DEPTH: "this floats above the plane and can be dismissed."
+     Only two things in this app are true overlays — the tooltip and the ⌘K finder — and
+     only they may cast one. Cards, stats and screens sit IN the page; they get a hairline.
+     A grid of soft-floating cards is the house style of every generated dashboard on the
+     internet, and it is the fastest way to look like one. */
   --shadow-hue: 218 12% 18%;
-  --shadow-1: 0 1px 2px hsl(var(--shadow-hue) / 0.05), 0 1px 1px hsl(var(--shadow-hue) / 0.04);
   --shadow-2: 0 1px 2px hsl(var(--shadow-hue) / 0.04), 0 4px 10px -2px hsl(var(--shadow-hue) / 0.07);
   --shadow-3: 0 2px 4px hsl(var(--shadow-hue) / 0.04), 0 12px 28px -8px hsl(var(--shadow-hue) / 0.12);
 
@@ -60,23 +64,62 @@
   --s6: 32px;
   --s7: 48px;
 
-  /* radii */
-  --r1: 6px;
-  --r2: 8px;
-  --r3: 12px;
-  --r4: 14px;
+  /* frame. The sticky stack has to agree on its own heights or the context bar pins in the
+     wrong place, so these are tokens, not magic numbers scattered across three files. */
+  --appnav-h: 41px; /* nav tier: 11px padding × 2 + ~17px line + 1px rule */
+  --ctxbar-h: 74px; /* context bar: identity row + stage spine */
+  --canvas-max: 1600px; /* a CEILING — a 3000px table is distance, not density */
+  --dock-w: 360px; /* fixed. A dock has a width; the canvas gets the rest. */
+  --dock-rail-w: 44px; /* collapsed. It never goes to zero — "always present" is doctrine. */
+
+  /* radii. Ceiling is 8px — above that a corner reads consumer-app, not instrument.
+     --r-pill survives for exactly one shape: the end-cap of a BAR (.meter, .ribbon,
+     .barrow__track). It may never reach a button or a chip. A pill-shaped button is a
+     top-three tell. */
+  --r1: 4px;
+  --r2: 6px;
+  --r3: 8px;
   --r-pill: 999px;
 
-  /* type */
+  /* One hairline, and it is 1px. A half-pixel border is a lie on a non-retina Windows
+     display: it rounds up, or thins to nothing, depending on the device pixel ratio — so
+     it really means "1px, sometimes, on some machines". The codebase used to mix half-
+     pixel and whole-pixel rules arbitrarily, which is why the grid never looked crisp. */
+  --hair: 1px;
+
+  /* type.
+
+     IBM Plex, self-hosted from node_modules via @fontsource — no CDN, because the
+     system is private-by-default and a font request is an egress.
+
+     The pairing is not incidental. Plex was drawn as a technical-documentation face,
+     and Sans and Mono are siblings, not strangers — which matters because this app
+     sets data in mono INLINE, mid-sentence, inside sans table cells ("CAS 7440-22-4",
+     "12 ppm"). A mismatched pair produces a texture break on every row.
+
+     The rule the whole look hangs on: every machine-readable value is monospaced,
+     every prose word is not. See `.data` in primitives.css. */
+  --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+
   --t-micro: 10px;
   --t-tiny: 11px;
   --t-small: 12px;
   --t-body: 13px;
   --t-lead: 15px;
-  --t-title: 18px;
-  --t-display: 26px;
-  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+  --t-title: 20px;
+  --t-display: 28px;
+  --t-mast: 34px; /* the wordmark, and nothing else */
+
+  /* Only 400/500/600 are loaded. Never ask for `bold` — the browser will synthesize
+     a 700 that does not exist and the letterforms will smear. */
+  --w-regular: 400;
+  --w-medium: 500;
+  --w-semibold: 600;
+
   --lh-tight: 1.25;
+  --lh-body: 1.5;
+  --lh-prose: 1.6; /* banners, gate rationale, evidence — see `.prose` */
   --track-eyebrow: 0.07em;
 
   /* motion */

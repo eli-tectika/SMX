@@ -25,8 +25,25 @@ export default defineConfig(({ command }) => ({
     },
   },
 
+  /**
+   * Two test environments, split by file extension.
+   *
+   * The suite used to be `environment: 'node'` + `include: ['**\/*.test.ts']`, and every
+   * one of its five files was pure logic. That means there was NOT ONE render test in the
+   * repo — so the entire visual layer could be rewritten, or deleted, and `npm test` would
+   * still come back green. A passing suite that cannot see the thing you changed is worse
+   * than no suite, because it reports confidence it does not have.
+   *
+   * `.test.ts` stays in node (fast, no DOM). `.test.tsx` gets jsdom.
+   */
   test: {
+    globals: true,
+    environmentMatchGlobs: [
+      ['src/**/*.test.tsx', 'jsdom'],
+      ['src/**/*.test.ts', 'node'],
+    ],
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    setupFiles: ['src/test/setup.ts'],
   },
 }));

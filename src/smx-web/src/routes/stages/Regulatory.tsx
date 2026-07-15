@@ -129,7 +129,8 @@ export function Regulatory() {
   return (
     <section className="screen" data-provenance="mock">
       <div className="cap">
-        <b>Regulatory gate</b> &nbsp;·&nbsp; spec §4.4 — hard gate, R.E. sign-off · corpus synced{' '}
+        <b>Regulatory gate</b>
+        spec §4.4 — hard gate, R.E. sign-off · corpus synced{' '}
         {corpusSyncedAt}
       </div>
 
@@ -169,7 +170,7 @@ export function Regulatory() {
                   <td>
                     <span style={{ fontWeight: 500 }}>{s.element}</span>{' '}
                     <span className="secondary">{s.form}</span>
-                    <div className="tiny muted" style={{ fontFamily: 'var(--font-mono)' }}>
+                    <div className="tiny muted data">
                       {s.cas}
                     </div>
                   </td>

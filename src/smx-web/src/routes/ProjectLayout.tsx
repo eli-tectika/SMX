@@ -1,8 +1,8 @@
 import { Navigate, useParams } from 'react-router-dom';
 import { AgentPanel } from '../components/AgentPanel';
+import { ContextBar } from '../components/ContextBar';
+import { Dock } from '../components/Dock';
 import { ErrorScreen, Loading } from '../components/Loading';
-import { ProjectHeader } from '../components/ProjectHeader';
-import { StageSpine } from '../components/StageSpine';
 import { STAGES } from '../domain/stages';
 import { useProject } from '../hooks/useProject';
 import { Background } from './stages/Background';
@@ -43,14 +43,11 @@ export function ProjectLayout() {
 
   return (
     <>
-      <ProjectHeader project={state.project} />
-      <StageSpine project={state.project} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.6fr) minmax(280px, 1fr)', gap: 12, alignItems: 'start' }}>
-        <div style={{ minWidth: 0 }}>
-          <Screen project={state.project} />
-        </div>
-        <AgentPanel stageLabel={def.label} />
-      </div>
+      <ContextBar project={state.project} />
+
+      <Dock panel={<AgentPanel stageLabel={def.label} />}>
+        <Screen project={state.project} />
+      </Dock>
     </>
   );
 }
