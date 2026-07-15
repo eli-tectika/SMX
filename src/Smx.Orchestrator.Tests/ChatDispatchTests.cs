@@ -302,6 +302,55 @@ public class ChatDispatchTests
         Assert.Contains("single-source", inputs);
     }
 
+    /// A project driven to a priced answer: a DosingDoc naming a marker and a CostDoc carrying a cited price —
+    /// enough for the chat surface on EITHER new stage to have its own record to read.
+    private static async Task SeedCostedProjectAsync(InMemoryRecordStore store)
+    {
+        var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
+        project.Stages[Stages.Dosing].Status = "done";
+        project.Stages[Stages.Cost].Status = "done";
+        await store.UpsertProjectAsync(project);
+        await store.UpsertDosingAsync(new DosingDoc
+        {
+            Id = RecordIds.Dosing(P), ProjectId = P, GeneratedAt = "t",
+            // A code is 2-3 markers (RatioSignature needs a ratio BETWEEN them) — the first is the one the
+            // theory asserts reached the agent.
+            Codes = [new MarkerCode("bottle",
+                [new CodeMarker("1314-36-9", "Y", 20, 0.787, 1, 2), new CodeMarker("10035-04-8", "Zr", 10, 0.5, 1, 2)],
+                "r")],
+        });
+        await store.UpsertCostAsync(new CostDoc
+        {
+            Id = RecordIds.Cost(P), ProjectId = P, GeneratedAt = "t",
+            Substances = [new SupplierAudit("1314-36-9", "Y", ["Acme"],
+                new PriceQuote(0.42, "USD", "Acme", "100 g", new Citation("ref-catalog", "ref-catalog/acme", "t")),
+                "note", [])],
+        });
+    }
+
+    /// PLAN-4 TRIPWIRE. Adding `dosing` and `cost` to Stages.All opened POST /stages/{stage}/chat for both,
+    /// and the chat surface (Plan 3c) works on every stage in Stages.All. The two StageInputsJsonAsync arms
+    /// that give those stages their own record already exist; break either to "{}" and the operator gets an
+    /// agent holding a confident conversation about an analysis it cannot see. This guards that they stay:
+    /// each stage's chat turn must be handed THAT stage's own record, never an empty object.
+    [Theory]
+    [InlineData(Stages.Dosing, "1314-36-9")]     // the DosingDoc's marker
+    [InlineData(Stages.Cost, "ref-catalog/")]    // the CostDoc's citation
+    public async Task ChatOnANewStage_SeesThatStagesOwnRecord_NotAnEmptyObject(string stage, string expected)
+    {
+        var (d, store, agents) = Sut();
+        await SeedCostedProjectAsync(store);
+        string? seen = null;
+        agents.Chat = (_, _, inputs, _) => { seen = inputs; return Task.FromResult("ok"); };
+
+        var m = Message(stage, "aaaa1111", "what did you dose?", "2026-07-15T00:00:00Z");
+        await store.UpsertChatMessageAsync(m);
+        await d.OnRecordChangedAsync(Delivered(m), default);
+
+        Assert.Contains(expected, seen);
+        Assert.NotEqual("{}", seen);
+    }
+
     [Fact]
     public async Task ChatMessage_IsIdempotent_UnderChangeFeedRedelivery()
     {
