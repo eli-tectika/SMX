@@ -56,6 +56,9 @@ param proxyDryRun bool = false
 @description('Operator kill switch for the Discovery agent\'s external web search.')
 param webSearchEnabled bool = true
 
+@description('Registered domain / Azure DNS zone (empty = skip DNS record management).')
+param appDomainName string = ''
+
 @description('Extra tags merged onto every resource.')
 param tags object = {}
 
@@ -255,6 +258,19 @@ module gateway 'modules/gateway.bicep' = {
       { name: 'main', vnetId: network.outputs.vnetId }
     ]
     gatewaySku: env == 'prod' ? 'WAF_v2' : 'Standard_v2'
+  }
+}
+
+// App domain A record → the App Gateway's public IP. The DNS zone itself is created out-of-band
+// by an Azure App Service Domain purchase (operator step); this module only manages the record,
+// and is gated off entirely until appDomainName is set. Single-RG variant: no hub RG here, so the
+// zone (and record) live in this same resource group — no explicit scope needed.
+module dns 'modules/dns.bicep' = if (!empty(appDomainName)) {
+  name: 'dns'
+  params: {
+    zoneName: appDomainName
+    recordName: env // 'dev' → dev.<domain>
+    gatewayIp: gateway.outputs.gatewayPublicIp
   }
 }
 

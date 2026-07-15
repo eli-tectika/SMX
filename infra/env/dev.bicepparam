@@ -21,3 +21,7 @@ param tags = {
   costCenter: 'RnD'
   owner: 'platform'
 }
+
+// The app's domain / Azure DNS zone. Empty until the operator registers the App Service Domain
+// (Task A1 Step 1); the dns module is gated off while empty. Set to e.g. 'smxmarkers.io' post-purchase.
+param appDomainName = ''
