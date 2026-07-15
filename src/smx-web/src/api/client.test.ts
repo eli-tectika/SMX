@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, NotFound, createProject, getMatrix, getProject, matrixXlsxUrl } from './client';
+import {
+  ApiError,
+  NotFound,
+  createProject,
+  getMatrix,
+  getProject,
+  matrixXlsxUrl,
+  setAccessTokenProvider,
+} from './client';
 import type { CreateProjectRequest } from './types';
 
 const json = (body: unknown, status = 200) =>
@@ -12,6 +20,7 @@ const stubFetch = (impl: (url: string, init?: RequestInit) => Response) =>
   );
 
 afterEach(() => vi.unstubAllGlobals());
+afterEach(() => setAccessTokenProvider(async () => null));
 
 const request: CreateProjectRequest = {
   client: 'LVMH',
@@ -40,6 +49,17 @@ describe('createProject', () => {
     stubFetch(() => json({ error: 'substance CAS numbers must be unique' }, 400));
     await expect(createProject(request)).rejects.toThrow('substance CAS numbers must be unique');
     await expect(createProject(request)).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it('attaches an Authorization header when a token provider is set', async () => {
+    setAccessTokenProvider(async () => 'tok123');
+    let seen: RequestInit | undefined;
+    stubFetch((_url, init) => {
+      seen = init;
+      return json({ projectId: 'p' }, 202);
+    });
+    await createProject(request);
+    expect(new Headers(seen?.headers).get('Authorization')).toBe('Bearer tok123');
   });
 });
 

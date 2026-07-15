@@ -16,6 +16,22 @@ import type {
  */
 const BASE = '/api';
 
+type TokenProvider = () => Promise<string | null>;
+let tokenProvider: TokenProvider = async () => null;
+
+/** Set by the MSAL bootstrap (src/auth/msal.ts). Default no-op keeps local dev open. */
+export function setAccessTokenProvider(provider: TokenProvider): void {
+  tokenProvider = provider;
+}
+
+/** fetch() wrapper that adds `Authorization: Bearer <token>` when a provider yields one. */
+async function authorizedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const token = await tokenProvider();
+  const headers = new Headers(init.headers);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  return fetch(url, { ...init, headers });
+}
+
 /**
  * A missing matrix is the normal pre-assembly state, not a failure — the
  * assembler only writes the doc once the screening agents have run. Callers
@@ -49,7 +65,7 @@ async function failure(res: Response): Promise<ApiError> {
 }
 
 export async function createProject(req: CreateProjectRequest): Promise<CreateProjectResponse> {
-  const res = await fetch(`${BASE}/projects`, {
+  const res = await authorizedFetch(`${BASE}/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
@@ -59,14 +75,14 @@ export async function createProject(req: CreateProjectRequest): Promise<CreatePr
 }
 
 export async function getProject(projectId: string): Promise<ProjectSummary | NotFound> {
-  const res = await fetch(`${BASE}/projects/${encodeURIComponent(projectId)}`);
+  const res = await authorizedFetch(`${BASE}/projects/${encodeURIComponent(projectId)}`);
   if (res.status === 404) return NotFound;
   if (!res.ok) throw await failure(res);
   return (await res.json()) as ProjectSummary;
 }
 
 export async function getMatrix(projectId: string): Promise<MatrixDoc | NotFound> {
-  const res = await fetch(`${BASE}/projects/${encodeURIComponent(projectId)}/matrix`);
+  const res = await authorizedFetch(`${BASE}/projects/${encodeURIComponent(projectId)}/matrix`);
   if (res.status === 404) return NotFound;
   if (!res.ok) throw await failure(res);
   return (await res.json()) as MatrixDoc;
@@ -94,19 +110,19 @@ function q(search?: string): string {
 }
 
 export async function getMarkerLibrary(search?: string): Promise<MarkerLibraryEntry[]> {
-  const res = await fetch(`${BASE}/marker-library${q(search)}`);
+  const res = await authorizedFetch(`${BASE}/marker-library${q(search)}`);
   if (!res.ok) throw await failure(res);
   return (await res.json()) as MarkerLibraryEntry[];
 }
 
 export async function getLearnedConclusions(search?: string): Promise<LearnedConclusion[]> {
-  const res = await fetch(`${BASE}/learned-conclusions${q(search)}`);
+  const res = await authorizedFetch(`${BASE}/learned-conclusions${q(search)}`);
   if (!res.ok) throw await failure(res);
   return (await res.json()) as LearnedConclusion[];
 }
 
 export async function getMsdsRegistry(search?: string): Promise<MsdsEntry[]> {
-  const res = await fetch(`${BASE}/msds-registry${q(search)}`);
+  const res = await authorizedFetch(`${BASE}/msds-registry${q(search)}`);
   if (!res.ok) throw await failure(res);
   return (await res.json()) as MsdsEntry[];
 }
@@ -119,7 +135,7 @@ export async function getMsdsRegistry(search?: string): Promise<MsdsEntry[]> {
  * The backend stamps `reviewedAt` so that *when* it was signed stays recoverable.
  */
 export async function reviewMsds(cas: string): Promise<MsdsEntry | NotFound> {
-  const res = await fetch(`${BASE}/msds-registry/${encodeURIComponent(cas)}/review`, {
+  const res = await authorizedFetch(`${BASE}/msds-registry/${encodeURIComponent(cas)}/review`, {
     method: 'POST',
   });
   if (res.status === 404) return NotFound;
