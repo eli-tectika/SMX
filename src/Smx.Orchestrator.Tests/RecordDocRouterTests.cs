@@ -42,4 +42,29 @@ public class RecordDocRouterTests
         var gate = Assert.IsType<GateDoc>(routed);
         Assert.Equal("approved", gate.Status);
     }
+
+    /// Drop the Dosing arm and the change feed silently stops dispatching the Dosing stage — no error, the
+    /// null just gets skipped by ChangeFeedWorker. This is what shows up instead.
+    [Fact]
+    public void Route_DeserializesDosingDoc_ByDiscriminator()
+    {
+        var json = System.Text.Json.JsonSerializer.SerializeToElement(new DosingDoc
+        {
+            Id = RecordIds.Dosing("p1"), ProjectId = "p1", GeneratedAt = "2026-07-15T00:00:00Z",
+        }, Smx.Domain.Json.Options);
+        Assert.IsType<DosingDoc>(RecordDocRouter.Route(json));
+    }
+
+    /// The latent bug this task fixes: a CostDoc on the change feed routed to null, so the Cost stage would
+    /// never dispatch and Plan 5's Decision stage (which triggers off CostDoc) would never fire. Remove the
+    /// Cost arm and this goes red.
+    [Fact]
+    public void Route_DeserializesCostDoc_ByDiscriminator()
+    {
+        var json = System.Text.Json.JsonSerializer.SerializeToElement(new CostDoc
+        {
+            Id = RecordIds.Cost("p1"), ProjectId = "p1", GeneratedAt = "2026-07-15T00:00:00Z",
+        }, Smx.Domain.Json.Options);
+        Assert.IsType<CostDoc>(RecordDocRouter.Route(json));
+    }
 }
