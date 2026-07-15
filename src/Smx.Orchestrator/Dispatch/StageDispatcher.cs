@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Smx.Domain;
 using Smx.Domain.Records;
+using Smx.Domain.Tools;
 using Smx.Orchestrator.Agents;
+using Smx.Orchestrator.Cost;
 using Smx.Orchestrator.Knowledge;
 
 namespace Smx.Orchestrator.Dispatch;
@@ -15,9 +17,15 @@ namespace Smx.Orchestrator.Dispatch;
 /// is null, Dosing treats every loading as unknown and parks in `awaiting-operator` rather than guessing: it
 /// degrades safely. DEFERRED: the production DI (Orchestrator/Program.cs) must pass the real IKnowledgeStore
 /// so Dosing can actually resolve loadings — see the note on TryDoseAsync.
+///
+/// <paramref name="catalog"/> is OPTIONAL for the SAME reason: it is read only by the Cost path, and a required
+/// parameter would force every construction site — including the forbidden Program.cs and the tests that
+/// predate Cost — to change. When it is null, Cost degrades safely: OnDosingAsync returns without pricing and
+/// the stage stays `pending`, never fabricating an audit from an absent catalog. DEFERRED: the production DI
+/// (Orchestrator/Program.cs) must pass the real ICatalogLookup — see the note on OnDosingAsync.
 public sealed class StageDispatcher(
     IRecordStore store, IAgentRuns agents, ILearnedConclusionWriter conclusions, int regulatoryParallelism,
-    IKnowledgeStore? knowledge = null)
+    IKnowledgeStore? knowledge = null, ICatalogLookup? catalog = null)
 {
     public async Task OnRecordChangedAsync(object doc, CancellationToken ct)
     {
@@ -30,6 +38,7 @@ public sealed class StageDispatcher(
             case GateDoc g: await OnGateAsync(g, ct); break;
             case RevisionDoc r: await OnRevisionAsync(r, ct); break;
             case ChatMessageDoc m: await OnChatMessageAsync(m, ct); break;
+            case DosingDoc d: await OnDosingAsync(d, ct); break;
             case MatrixDoc: break; // terminal
         }
     }
@@ -268,6 +277,38 @@ public sealed class StageDispatcher(
         catch (Exception e)
         {
             await SetStageAsync(projectId, Stages.Dosing, s => { s.Status = "failed"; s.Error = e.Message; }, ct);
+        }
+    }
+
+    /// Dosing finished — the finalized codes name what will actually be ordered, so Cost audits exactly
+    /// those substances. Deterministic: no agent (§3.4). Cost is a supplier-catalog lookup and a price parse;
+    /// there is nothing here for a model to reason about, and a model asked to would only be given the chance
+    /// to invent a price procurement then acts on.
+    private async Task OnDosingAsync(DosingDoc d, CancellationToken ct)
+    {
+        var project = await store.GetProjectAsync(d.ProjectId, ct);
+        // Guard on the STAGE STATUS, not on "does a DosingDoc exist". The soft code-finalization checkpoint
+        // (POST /dosing/review) upserts the SAME DosingDoc to record a review note — and that upsert
+        // re-delivers here. If this guarded on the doc's existence it would re-price the whole project every
+        // time the operator recorded a note. Only `pending` runs — which the first Cost run flips to `done`,
+        // absorbing every later redelivery (the at-least-once feed, and the review-note upsert alike).
+        if (project is null || project.Stages[Stages.Cost].Status is not "pending") return;
+        if (catalog is null) return;   // production DI wiring pending; degrades safely (Cost stays pending)
+
+        // DISTINCT over the finalized codes' markers: one (CAS, element) is audited once even when it appears
+        // in several codes or components. The element selects the ref-catalog partition; the CAS is the exact
+        // identifier the returned cards are filtered by.
+        var substances = d.Codes.SelectMany(c => c.Markers).Select(m => (m.Cas, m.Element)).Distinct().ToList();
+        await SetStageAsync(d.ProjectId, Stages.Cost, s => { s.Status = "running"; s.Attempts++; }, ct);
+        try
+        {
+            var cost = await CostAudit.RunAsync(catalog, substances, d.ProjectId, DateTimeOffset.UtcNow.ToString("O"), ct);
+            await store.UpsertCostAsync(cost, ct);
+            await SetStageAsync(d.ProjectId, Stages.Cost, s => { s.Status = "done"; s.Error = null; }, ct);
+        }
+        catch (Exception e)
+        {
+            await SetStageAsync(d.ProjectId, Stages.Cost, s => { s.Status = "failed"; s.Error = e.Message; }, ct);
         }
     }
 

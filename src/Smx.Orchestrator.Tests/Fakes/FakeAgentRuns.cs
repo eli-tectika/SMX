@@ -66,6 +66,11 @@ public sealed class FakeAgentRuns : IAgentRuns
     public int IntakeCalls; public int DiscoveryCalls; public int RegulatoryCalls; public int ConclusionCalls;
     public int ChatCalls; public int DosingCalls;
 
+    /// Every agent invocation across all arms. Cost is DETERMINISTIC (§3.4) — no agent — so a Cost dispatch
+    /// test asserts this is unchanged: if Cost ever needs a model, that is a design change to argue for in the
+    /// open, not one that slips in behind a green suite.
+    public int TotalCalls => IntakeCalls + DiscoveryCalls + RegulatoryCalls + ConclusionCalls + ChatCalls + DosingCalls;
+
     Task<Smx.Orchestrator.Agents.AgentRunResult<ConstraintsDoc>> IAgentRuns.RunIntakeAsync(ProjectDoc p, CancellationToken ct)
     { Interlocked.Increment(ref IntakeCalls); return Intake(p); }
     Task<Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>> IAgentRuns.RunDiscoveryAsync(
