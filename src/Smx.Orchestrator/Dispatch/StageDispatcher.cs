@@ -341,6 +341,7 @@ public sealed class StageDispatcher(
             {
                 Stages.Discovery => await ReviseDiscoveryAsync(constraints, r, ct),
                 Stages.Regulatory => await ReviseRegulatoryAsync(constraints, r, ct),
+                Stages.Dosing => await ReviseDosingAsync(constraints, r, ct),
                 _ => throw new InvalidOperationException($"stage '{r.Stage}' is not revisable"),
             };
 
@@ -417,6 +418,31 @@ public sealed class StageDispatcher(
             // made against the verdict this one replaces; RegulatoryGate.Armable will now block the gate
             // until the operator opens this item again.
             token => store.UpsertVerdictAsync(verdict, token));
+    }
+
+    private async Task<RevisedStage> ReviseDosingAsync(ConstraintsDoc c, RevisionDoc r, CancellationToken ct)
+    {
+        // Re-resolve the SAME inputs the first run used — the compliant set, the measured floors, the
+        // loadings — through the one shared resolver, so the revision path cannot relax what the first run
+        // enforced. Validate fires again inside RunDosingAsync, so a directive that would dose below the floor
+        // or reach outside the compliant set FAILS here, loudly, with the operator's reason still recorded as
+        // a Learned Conclusion. The operator's directive is authoritative over the AGENT; it does not outrank
+        // the regulatory gate.
+        var compliant = CompliantSet.Of(await store.GetVerdictsAsync(c.ProjectId, ct));
+        var (floors, loadings, physicsGaps, loadingGaps) = await ResolveDosingInputsAsync(c, compliant, ct);
+        if (physicsGaps.Count > 0 || loadingGaps.Count > 0)
+            throw new InvalidOperationException(
+                "cannot revise Dosing while an input is missing: " +
+                string.Join("; ", physicsGaps.Concat(loadingGaps)));
+
+        var result = await agents.RunDosingAsync(c, compliant, floors, loadings, r, ct);
+        if (!result.Succeeded)
+            throw new InvalidOperationException($"the dosing agent could not apply the revision: {result.Error}");
+
+        var dosing = result.Output!;
+        return new RevisedStage(
+            JsonSerializer.Serialize(dosing, Json.Options),
+            token => store.UpsertDosingAsync(dosing, token));
     }
 
     /// A gate is an operator's signature over a SPECIFIC analysis, and the revision just replaced that
