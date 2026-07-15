@@ -50,10 +50,11 @@ export function Intake({ project }: { project: ProjectSummary }) {
           </tbody>
         </table>
 
-        {/* All three backed stages, not just intake — this is the only place the whole
-            real pipeline state is visible in one column. */}
+        {/* All four backed stages — this is the only place the whole real pipeline state is
+            visible in one column. */}
         <StageStatusCard name="Intake agent" state={project.stages.intake} />
-        <StageStatusCard name="Screening agent" state={project.stages.screening} />
+        <StageStatusCard name="Discovery agent" state={project.stages.discovery} />
+        <StageStatusCard name="Regulatory agent" state={project.stages.regulatory} />
         <StageStatusCard name="Matrix assembler" state={project.stages.matrix} />
 
         {/*
@@ -72,7 +73,7 @@ export function Intake({ project }: { project: ProjectSummary }) {
             to <code>projectId, client, product, stages</code> only).
           </div>
           <div style={{ marginTop: 8 }}>
-            {['components[]', 'substances[]', 'clientRestrictedList[]'].map((f) => (
+            {['components[]', 'elementPools[]', 'clientRestrictedList[]'].map((f) => (
               <span className="src data" key={f}>
                 {f}
               </span>

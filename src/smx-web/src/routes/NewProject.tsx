@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createProject } from '../api/client';
-import type { ComponentSpec, SubstanceSpec } from '../api/types';
+import type { ComponentSpec, ElementPool } from '../api/types';
 import { rememberProject } from '../hooks/useRecentProjects';
 
 const blankComponent = (): ComponentSpec => ({
@@ -11,7 +11,13 @@ const blankComponent = (): ComponentSpec => ({
   markets: [],
   objective: '',
 });
-const blankSubstance = (): SubstanceSpec => ({ element: '', form: '', cas: '' });
+// "Kα" matches the backend test data; the operator adjusts the line if the physicist read another.
+const blankPool = (component: string): ElementPool => ({
+  component,
+  element: '',
+  line: 'Kα',
+  status: 'V',
+});
 
 /**
  * Client-side validation mirrors CreateProjectRequest.Validate() so the operator
@@ -23,17 +29,22 @@ function validate(
   client: string,
   product: string,
   components: ComponentSpec[],
-  substances: SubstanceSpec[],
+  pools: ElementPool[],
 ): string | null {
   if (!client.trim() || !product.trim()) return 'client and product are required';
   if (components.length === 0) return 'at least one component is required';
-  if (substances.length === 0) return 'at least one candidate substance is required';
   if (components.some((c) => !c.id.trim())) return 'every component needs an id';
-  if (substances.some((s) => !s.cas.trim())) return 'every substance needs a CAS number';
   if (new Set(components.map((c) => c.id)).size !== components.length)
     return 'component ids must be unique';
-  if (new Set(substances.map((s) => s.cas)).size !== substances.length)
-    return 'substance CAS numbers must be unique';
+  // Production mode: the physicist's element pools are what the project screens against.
+  if (pools.length === 0) return 'at least one element pool is required';
+  const ids = new Set(components.map((c) => c.id));
+  if (pools.some((p) => !p.component || !ids.has(p.component)))
+    return 'every element pool must reference a declared component';
+  if (pools.some((p) => !p.element.trim())) return 'every element pool needs an element';
+  // The anti-rubber-stamping rule: a conditional (L) reading must carry its signal-character note.
+  if (pools.some((p) => p.status === 'L' && !p.signalNote?.trim()))
+    return 'each conditional (L) element pool entry must carry a signal-character note';
   return null;
 }
 
@@ -43,18 +54,18 @@ export function NewProject() {
   const [product, setProduct] = useState('');
   const [restricted, setRestricted] = useState('');
   const [components, setComponents] = useState<ComponentSpec[]>([blankComponent()]);
-  const [substances, setSubstances] = useState<SubstanceSpec[]>([blankSubstance()]);
+  const [pools, setPools] = useState<ElementPool[]>([blankPool('')]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const patchComponent = (i: number, patch: Partial<ComponentSpec>) =>
     setComponents((cs) => cs.map((c, j) => (i === j ? { ...c, ...patch } : c)));
-  const patchSubstance = (i: number, patch: Partial<SubstanceSpec>) =>
-    setSubstances((ss) => ss.map((s, j) => (i === j ? { ...s, ...patch } : s)));
+  const patchPool = (i: number, patch: Partial<ElementPool>) =>
+    setPools((ps) => ps.map((p, j) => (i === j ? { ...p, ...patch } : p)));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const invalid = validate(client, product, components, substances);
+    const invalid = validate(client, product, components, pools);
     if (invalid) {
       setError(invalid);
       return;
@@ -66,7 +77,10 @@ export function NewProject() {
         client: client.trim(),
         product: product.trim(),
         components,
-        substances,
+        // Drop the signal note on V rows — it is meaningful only for a conditional reading.
+        elementPools: pools.map((p) =>
+          p.status === 'L' ? p : { component: p.component, element: p.element, line: p.line, status: p.status },
+        ),
         clientRestrictedList: restricted
           .split(',')
           .map((s) => s.trim())
@@ -199,54 +213,93 @@ export function NewProject() {
       </table>
 
       <SectionHeader
-        title="Candidate substances"
-        hint="Screened per component against the element gate, application check and hazard layer."
-        onAdd={() => setSubstances((ss) => [...ss, blankSubstance()])}
+        title="Element pools"
+        hint="The physicist's measured XRF background, per component. V = present · L = conditional (needs a signal note)."
+        onAdd={() => setPools((ps) => [...ps, blankPool(components[0]?.id ?? '')])}
       />
       <table className="mx" style={{ marginBottom: 18 }}>
         <thead>
           <tr>
-            <th style={{ width: 110 }}>Element</th>
-            <th>Form</th>
-            <th style={{ width: 180 }}>CAS</th>
+            <th style={{ width: 130 }}>Component</th>
+            <th style={{ width: 90 }}>Element</th>
+            <th style={{ width: 80 }}>Line</th>
+            <th style={{ width: 96 }}>Status</th>
+            <th>Signal note</th>
             <th style={{ width: 34 }} />
           </tr>
         </thead>
         <tbody>
-          {substances.map((s, i) => (
+          {pools.map((p, i) => (
             <tr key={i}>
               <td>
+                <select
+                  value={p.component}
+                  onChange={(e) => patchPool(i, { component: e.target.value })}
+                  aria-label={`Pool ${i + 1} component`}
+                >
+                  <option value="" disabled>
+                    choose…
+                  </option>
+                  {components
+                    .filter((c) => c.id.trim())
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.id}
+                      </option>
+                    ))}
+                </select>
+              </td>
+              <td>
                 <input
                   type="text"
-                  value={s.element}
+                  value={p.element}
                   placeholder="Zr"
-                  onChange={(e) => patchSubstance(i, { element: e.target.value })}
-                  aria-label={`Substance ${i + 1} element`}
+                  onChange={(e) => patchPool(i, { element: e.target.value })}
+                  aria-label={`Pool ${i + 1} element`}
                 />
               </td>
               <td>
                 <input
                   type="text"
-                  value={s.form}
-                  placeholder="neodecanoate"
-                  onChange={(e) => patchSubstance(i, { form: e.target.value })}
-                  aria-label={`Substance ${i + 1} form`}
+                  value={p.line}
+                  placeholder="Kα"
+                  onChange={(e) => patchPool(i, { line: e.target.value })}
+                  aria-label={`Pool ${i + 1} line`}
                 />
               </td>
               <td>
-                <input
-                  type="text"
-                  value={s.cas}
-                  placeholder="39049-04-2"
-                  onChange={(e) => patchSubstance(i, { cas: e.target.value })}
-                  aria-label={`Substance ${i + 1} CAS`}
-                />
+                <div className="seg" role="group" aria-label={`Pool ${i + 1} status`}>
+                  {(['V', 'L'] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      className="seg__btn"
+                      onClick={() => patchPool(i, { status: st })}
+                      aria-pressed={p.status === st}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+              </td>
+              <td>
+                {p.status === 'L' ? (
+                  <input
+                    type="text"
+                    value={p.signalNote ?? ''}
+                    placeholder="e.g. trace, near LOD — why it's conditional"
+                    onChange={(e) => patchPool(i, { signalNote: e.target.value })}
+                    aria-label={`Pool ${i + 1} signal note`}
+                  />
+                ) : (
+                  <span className="tiny muted">— (only for conditional readings)</span>
+                )}
               </td>
               <td>
                 <RemoveButton
-                  disabled={substances.length === 1}
-                  onClick={() => setSubstances((ss) => ss.filter((_, j) => j !== i))}
-                  label={`Remove substance ${i + 1}`}
+                  disabled={pools.length === 1}
+                  onClick={() => setPools((ps) => ps.filter((_, j) => j !== i))}
+                  label={`Remove element pool ${i + 1}`}
                 />
               </td>
             </tr>

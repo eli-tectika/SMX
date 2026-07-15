@@ -1,11 +1,20 @@
 import type {
+  ChatAccepted,
+  ChatTurn,
   CreateProjectRequest,
   CreateProjectResponse,
+  Determination,
+  DeterminationRequest,
   LearnedConclusion,
   MarkerLibraryEntry,
   MatrixDoc,
   MsdsEntry,
   ProjectSummary,
+  RegulatoryGate,
+  ReviewRequest,
+  ReviseAccepted,
+  ReviseRequest,
+  RevisionDoc,
 } from './types';
 
 /**
@@ -141,4 +150,118 @@ export async function reviewMsds(cas: string): Promise<MsdsEntry | NotFound> {
   if (res.status === 404) return NotFound;
   if (!res.ok) throw await failure(res);
   return (await res.json()) as MsdsEntry;
+}
+
+/* ---------------------------------------------------------------------------
+   The WRITE side — the operator finally acts, not just looks.
+
+   Two shapes here. Determination / review / approve are SYNCHRONOUS 200s — the record
+   changes immediately, so callers just refetch. Chat and revise are 202 record-as-bus:
+   the write triggers an agent that answers LATER, so callers poll the matching GET.
+   --------------------------------------------------------------------------- */
+
+const p = (projectId: string) => `${BASE}/projects/${encodeURIComponent(projectId)}`;
+
+async function postJson(url: string, body: unknown): Promise<Response> {
+  return authorizedFetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Record the operator's determination on one cell (spec §4.4).
+ *
+ * This is the signature that lets a chemical into a customer's product — the only field
+ * CompliantSet reads. It is NEVER the agent's proposal auto-applied; the caller supplies the
+ * determination and a mandatory reason (the backend 422s a blank one). A 404 means the verdict
+ * no longer exists (e.g. a revise dropped the cell) — a NotFound the caller handles, not an error.
+ */
+export async function recordDetermination(
+  projectId: string,
+  req: DeterminationRequest,
+): Promise<{ determination: Determination } | NotFound> {
+  const res = await postJson(`${p(projectId)}/regulatory/determination`, req);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as { determination: Determination };
+}
+
+/** "I have read the evidence" — short of a ruling, but enough to clear a gate blocker on a Pass cell. */
+export async function reviewEvidence(
+  projectId: string,
+  req: ReviewRequest,
+): Promise<{ reviewed: true } | NotFound> {
+  const res = await postJson(`${p(projectId)}/regulatory/review`, req);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as { reviewed: true };
+}
+
+/** The gate's live arming state. Never 404s — an un-run project reads locked + not armable. */
+export async function getRegulatoryGate(projectId: string): Promise<RegulatoryGate> {
+  const res = await authorizedFetch(`${p(projectId)}/gate/regulatory`);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as RegulatoryGate;
+}
+
+/**
+ * Sign the regulatory gate.
+ *
+ * The backend re-checks armability server-side and 422s if the analysis is incomplete or any flagged
+ * cell is unreviewed — so this can fail even when the button looked enabled (a concurrent revise).
+ * The caller catches the ApiError and re-reads the gate, which carries the fresh blockers.
+ */
+export async function approveRegulatory(projectId: string): Promise<{ status: 'approved' }> {
+  const res = await authorizedFetch(`${p(projectId)}/regulatory/approve`, { method: 'POST' });
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as { status: 'approved' };
+}
+
+/**
+ * Post a message to a stage's agent (spec §3). 202 record-as-bus: the reply is written later by the
+ * orchestrator, so the caller polls getChatThread until the pending message flips to answered.
+ * `stage` is a BACKEND stage key (intake | discovery | regulatory | matrix); a 422 rejects any other.
+ */
+export async function sendChatMessage(
+  projectId: string,
+  stage: string,
+  text: string,
+): Promise<ChatAccepted | NotFound> {
+  const res = await postJson(`${p(projectId)}/stages/${encodeURIComponent(stage)}/chat`, { text });
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as ChatAccepted;
+}
+
+/** The thread for one (project, stage), oldest-first. An unknown project reads an empty thread, not 404. */
+export async function getChatThread(projectId: string, stage: string): Promise<ChatTurn[]> {
+  const res = await authorizedFetch(`${p(projectId)}/stages/${encodeURIComponent(stage)}/chat`);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as ChatTurn[];
+}
+
+/**
+ * Ask an agent to revise its output, with a reason (spec §1.5 — "no direct edits").
+ *
+ * Only discovery and regulatory are revisable; a regulatory revision must carry cas + componentId.
+ * 202 record-as-bus: poll getMatrix / getRevisions for the effect. A 404 means the project is gone.
+ */
+export async function reviseStage(
+  projectId: string,
+  stage: string,
+  req: ReviseRequest,
+): Promise<ReviseAccepted | NotFound> {
+  const res = await postJson(`${p(projectId)}/stages/${encodeURIComponent(stage)}/revise`, req);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as ReviseAccepted;
+}
+
+/** The revision trail for a project, oldest-first. Never 404s. */
+export async function getRevisions(projectId: string): Promise<RevisionDoc[]> {
+  const res = await authorizedFetch(`${p(projectId)}/revisions`);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as RevisionDoc[];
 }

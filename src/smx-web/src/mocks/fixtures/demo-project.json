@@ -4,7 +4,8 @@
   "product": "MUFE clear bottle (demo)",
   "stages": {
     "intake": { "status": "done", "attempts": 1 },
-    "screening": { "status": "done", "attempts": 2 },
+    "discovery": { "status": "done", "attempts": 2 },
+    "regulatory": { "status": "done", "attempts": 1 },
     "matrix": { "status": "done", "attempts": 1 }
   }
 }

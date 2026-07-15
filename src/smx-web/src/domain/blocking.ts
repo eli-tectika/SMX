@@ -27,16 +27,18 @@ export interface Blocking {
   detail?: string;
 }
 
-/** Upstream order of the three stages the backend actually tracks. */
+/** Upstream order of the four stages the backend actually tracks (intake → discovery → regulatory → matrix). */
 const UPSTREAM: Record<string, string | undefined> = {
   intake: undefined,
-  screening: 'intake',
-  matrix: 'screening',
+  discovery: 'intake',
+  regulatory: 'discovery',
+  matrix: 'regulatory',
 };
 
 const LABEL: Record<string, string> = {
   intake: 'Intake',
-  screening: 'Screening',
+  discovery: 'Discovery',
+  regulatory: 'Regulatory',
   matrix: 'Matrix',
 };
 

@@ -21,8 +21,8 @@ export type VerdictDimension = (typeof VERDICT_DIMENSIONS)[number];
 /** StageState.Status — src/Smx.Domain/Records/ProjectDoc.cs */
 export type StageStatus = 'pending' | 'running' | 'failed' | 'needs-review' | 'done';
 
-/** Stage keys the backend actually tracks — src/Smx.Domain/Records/RecordIds.cs */
-export const BACKED_STAGES = ['intake', 'screening', 'matrix'] as const;
+/** Stage keys the backend actually tracks — src/Smx.Domain/Records/RecordIds.cs (Stages.All). */
+export const BACKED_STAGES = ['intake', 'discovery', 'regulatory', 'matrix'] as const;
 export type BackedStage = (typeof BACKED_STAGES)[number];
 
 /** ComponentSpec — src/Smx.Domain/Records/ConstraintsDoc.cs */
@@ -32,13 +32,35 @@ export interface ComponentSpec {
   application: string;
   markets: string[];
   objective: string;
+  /**
+   * Batch MASS in kilograms (never volume). Optional at intake — it is one of the few
+   * fields the intake chat is allowed to gap-fill later (IntakeAnswers writable allowlist),
+   * so the create form does not collect it.
+   */
+  batchMassKg?: number;
 }
 
-/** SubstanceSpec — src/Smx.Domain/Records/ConstraintsDoc.cs */
+/** SubstanceSpec — src/Smx.Domain/Records/ConstraintsDoc.cs (still used by MatrixDoc.rows). */
 export interface SubstanceSpec {
   element: string;
   form: string;
   cas: string;
+}
+
+/**
+ * ElementPool — src/Smx.Domain/Records/ConstraintsDoc.cs.
+ *
+ * The physicist's measured XRF background for one element on one component, already
+ * interpreted into a status. "V" = present/verified; "L" = conditional, and a conditional
+ * pool MUST carry a signal-character note (the backend rejects an L with a blank note).
+ * This data is the physicist's and cannot be edited through chat — only re-entered at intake.
+ */
+export interface ElementPool {
+  component: string;
+  element: string;
+  line: string;
+  status: 'V' | 'L';
+  signalNote?: string;
 }
 
 /** Citation — src/Smx.Domain/Records/ConstraintsDoc.cs */
@@ -124,18 +146,124 @@ export interface ProjectSummary {
   stages: Record<string, StageState>;
 }
 
-/** CreateProjectRequest — src/Smx.Backend/Api/CreateProjectRequest.cs */
+/**
+ * CreateProjectRequest — src/Smx.Backend/Api/CreateProjectRequest.cs.
+ *
+ * Production mode: at least one `elementPools` entry (the physicist's XRF background). The
+ * backend also accepts a known-candidate mode (`candidates`) plus optional `measuredBackground`
+ * and `device` (XRF LODs), but those are eval / awaiting-physics seams and the operator form
+ * does not send them — see the plan's deferred section.
+ */
 export interface CreateProjectRequest {
   client: string;
   product: string;
   components: ComponentSpec[];
-  substances: SubstanceSpec[];
+  elementPools: ElementPool[];
   clientRestrictedList?: string[];
 }
 
 /** The 202 body of POST /projects. */
 export interface CreateProjectResponse {
   projectId: string;
+}
+
+/* ---------------------------------------------------------------------------
+   The WRITE side — spec §4.4 (regulatory), §3 (the agent conversation), §1.5 (revise).
+
+   Every endpoint here was fully implemented on the backend while the frontend only read.
+   Mirrors: ProjectEndpoints.cs (regulatory), ChatEndpoints.cs, RevisionEndpoints.cs, and the
+   docs in src/Smx.Domain/Records/{VerdictDoc,ChatDocs,RevisionDoc}.cs.
+   --------------------------------------------------------------------------- */
+
+/** POST /projects/{id}/regulatory/determination — the operator's signature on one cell. */
+export interface DeterminationRequest {
+  cas: string;
+  componentId: string;
+  /** Exactly one of DETERMINATIONS; the backend 422s anything else. */
+  determination: Determination;
+  /** Mandatory — the backend 422s a blank reason, for a confirm as much as an override. */
+  reason: string;
+}
+
+/** POST /projects/{id}/regulatory/review — "I have read the evidence", short of a ruling. */
+export interface ReviewRequest {
+  cas: string;
+  componentId: string;
+}
+
+/**
+ * GET /projects/{id}/gate/regulatory — ProjectEndpoints.cs projects this, it is not a raw GateDoc.
+ *
+ * `armable` is computed server-side (RegulatoryGate.Armable): true only when every LIVE non-Pass cell
+ * has had its evidence reviewed. The sign button reads THIS, never a browser-side tally. Each blocker is
+ * the string "unreviewed: {cas}|{componentId} ({Overall})" — parse it, never display it raw.
+ * `approvedAt` is omitted (not null) until the gate is signed.
+ */
+export interface RegulatoryGate {
+  status: 'locked' | 'approved';
+  armable: boolean;
+  blockers: string[];
+  approvedAt?: string;
+}
+
+/** ChatToolCall — ChatDocs.cs. `recordId` is set when the call WROTE something: the audit link. */
+export interface ChatToolCall {
+  tool: string;
+  summary: string;
+  recordId?: string;
+}
+
+/**
+ * ChatTurn — ChatDocs.cs. One side of a per-(project, stage) thread, oldest-first.
+ * An agent turn always carries status "answered" and no error; an operator turn carries the message's
+ * own status ("pending" until the agent replies, "failed" with an error if the turn died).
+ */
+export interface ChatTurn {
+  id: string;
+  role: 'operator' | 'agent';
+  text: string;
+  createdAt: string;
+  toolCalls: ChatToolCall[];
+  status: 'pending' | 'answered' | 'failed';
+  error?: string;
+}
+
+/** The 202 body of POST …/chat and POST …/revise. */
+export interface AcceptedWrite {
+  status: 'pending';
+}
+export interface ChatAccepted extends AcceptedWrite {
+  messageId: string;
+}
+export interface ReviseAccepted extends AcceptedWrite {
+  revisionId: string;
+}
+
+/**
+ * ReviseRequest — RevisionEndpoints.cs. "No direct edits — tell the agent WHY." Only discovery and
+ * regulatory are revisable; a regulatory revision must name the verdict's cas + componentId.
+ */
+export interface ReviseRequest {
+  target: string;
+  reason: string;
+  cas?: string;
+  componentId?: string;
+}
+
+/** RevisionDoc — src/Smx.Domain/Records/RevisionDoc.cs. The audit ledger of why things changed. */
+export interface RevisionDoc {
+  id: string;
+  projectId: string;
+  stage: string;
+  target: string;
+  reason: string;
+  cas?: string;
+  componentId?: string;
+  status: 'pending' | 'applied' | 'failed';
+  error?: string;
+  conclusionId?: string;
+  createdAt: string;
+  appliedAt?: string;
 }
 
 /* ---------------------------------------------------------------------------

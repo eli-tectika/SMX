@@ -1,217 +1,316 @@
-import { Fragment, useMemo, useRef, useState } from 'react';
-import { MockBadge } from '../../components/MockBadge';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ApiError,
+  NotFound,
+  approveRegulatory,
+  getMatrix,
+  getRegulatoryGate,
+} from '../../api/client';
+import type { MatrixDoc, ProjectSummary, RegulatoryGate } from '../../api/types';
+import { EvidencePanel } from '../../components/EvidencePanel';
+import { ReviseForm, RevisionTrail } from '../../components/RevisionControls';
+import { Loading } from '../../components/Loading';
+import { StageStatusCard } from '../../components/StageStatusCard';
 import { Gate, type Requirement } from '../../components/ui/Gate';
-import { CitationChip } from '../../components/ui/Primitives';
-import regulatory from '../../mocks/fixtures/regulatory.json';
+import { EmptyState, SectionHeader } from '../../components/ui/Primitives';
+import { verdictClass } from '../../domain/matrix';
+import { cellBlockerKey, parseBlocker, type CellBlocker } from '../../domain/gate';
+import { operatorRuling, reviewStance } from '../../domain/proposal';
 
-interface Check {
-  check: string;
-  result: string;
-  source: string;
-  reference: string;
-  retrievedAt: string;
-}
-interface Substance {
-  element: string;
-  form: string;
-  cas: string;
-  elementGate: string;
-  application: string;
-  conclusion: string;
-  reviewed: boolean;
-  evidence: { elementGate: Check[]; application: Check[]; hazard: Check[] };
-}
-
-const CLASS: Record<string, string> = { Pass: 'v', Conditional: 'l', NeedsReview: 'n', Fail: 'x' };
-
-/** A corpus older than this is stale enough to say so. Silent when fresh — noise otherwise. */
-const CORPUS_MAX_AGE_DAYS = 90;
-
-const daysBetween = (a: string, b: string) =>
-  Math.round((Date.parse(a) - Date.parse(b)) / 86_400_000);
+const cellKey = (cas: string, componentId: string) => `${cas}|${componentId}`;
 
 /**
- * Regulatory gate (spec §4.4) — a HARD gate.
+ * Regulatory gate (spec §4.4) — a HARD gate, now real.
  *
- * The gate is the subject of this screen, at the top, not a banner at the bottom.
- * Spec §1.8 says it must not arm until the agent's flagged items have been opened,
- * so it enumerates exactly which substances are unopened and links to each one.
- * Making the remaining work concrete and reachable is what makes rubber-stamping hard.
+ * This screen used to render a fixture behind a MockBadge with a hard-coded "no endpoint" requirement.
+ * Every part of it is now a real endpoint: `GET /gate/regulatory` computes armability server-side and
+ * lists the exact blockers, `GET /matrix` carries each cell's verdict + the operator's determination, and
+ * the sign button POSTs `/regulatory/approve`.
  *
- * The sign control stays disabled regardless of arming: a gate is an operator-signed
- * record and no endpoint exists to sign one.
+ * The gate arms on SERVER truth: the button is enabled only when the server says `armable`, never on a
+ * browser-side tally, and the backend re-checks on approve — so a concurrent revise can still refuse it,
+ * in which case we re-read the gate to show the fresh blockers.
  */
-export function Regulatory() {
-  const { corpusSyncedAt, substances } = regulatory as {
-    corpusSyncedAt: string;
-    substances: Substance[];
-  };
-
-  const [open, setOpen] = useState<string | null>(null);
-  /** Opened here, in this browser, in this session. Nothing self-marks. */
-  const [opened, setOpened] = useState<Set<string>>(new Set());
+export function Regulatory({ project }: { project: ProjectSummary }) {
+  const [gate, setGate] = useState<RegulatoryGate | null>(null);
+  const [doc, setDoc] = useState<MatrixDoc | null>(null);
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'unassembled' | 'error'>('loading');
+  const [loadError, setLoadError] = useState<string>();
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [signBusy, setSignBusy] = useState(false);
+  const [signError, setSignError] = useState<string | null>(null);
+  const [reviseNonce, setReviseNonce] = useState(0);
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
-  const openRow = (cas: string) => {
-    setOpen(cas);
-    setOpened((prev) => new Set(prev).add(cas));
+  const reload = useCallback(
+    async (signal?: { cancelled: boolean }) => {
+      try {
+        const [g, m] = await Promise.all([
+          getRegulatoryGate(project.projectId),
+          getMatrix(project.projectId),
+        ]);
+        if (signal?.cancelled) return;
+        setGate(g);
+        if (m === NotFound) {
+          setDoc(null);
+          setPhase('unassembled');
+        } else {
+          setDoc(m);
+          setPhase('ready');
+        }
+      } catch (err) {
+        if (!signal?.cancelled) {
+          setLoadError(err instanceof Error ? err.message : String(err));
+          setPhase('error');
+        }
+      }
+    },
+    [project.projectId],
+  );
+
+  useEffect(() => {
+    const signal = { cancelled: false };
+    void reload(signal);
+    return () => {
+      signal.cancelled = true;
+    };
+  }, [reload]);
+
+  const openCell = useCallback((key: string) => {
+    setOpenKey(key);
     requestAnimationFrame(() =>
-      rowRefs.current[cas]?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
+      rowRefs.current[key]?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
     );
-  };
+  }, []);
 
-  const unopened = substances.filter((s) => !opened.has(s.cas));
-  const flaggedUnopened = substances.filter(
-    (s) => !opened.has(s.cas) && (s.elementGate !== 'Pass' || s.application !== 'Pass'),
-  );
+  const sign = useCallback(async () => {
+    setSignBusy(true);
+    setSignError(null);
+    try {
+      await approveRegulatory(project.projectId);
+      await reload();
+    } catch (err) {
+      // The server re-checks armability; a concurrent revise can refuse a button that looked live.
+      setSignError(err instanceof ApiError ? err.message : String(err));
+      await reload(); // refresh the blockers so the operator sees why
+    } finally {
+      setSignBusy(false);
+    }
+  }, [project.projectId, reload]);
 
-  // The fixture has no clock, so age is measured against the newest citation in it
-  // rather than "today" — inventing a live date would make this look like real
-  // freshness telemetry, which it is not.
-  const newestCitation = useMemo(
-    () =>
-      substances
-        .flatMap((s) => [...s.evidence.elementGate, ...s.evidence.application, ...s.evidence.hazard])
-        .map((c) => c.retrievedAt)
-        .sort()
-        .at(-1) ?? corpusSyncedAt,
-    [substances, corpusSyncedAt],
-  );
-  const corpusAge = Math.abs(daysBetween(newestCitation, corpusSyncedAt));
+  if (phase === 'loading') return <Loading what="the regulatory gate" />;
+
+  if (phase === 'error') {
+    return (
+      <section className="screen">
+        <Head />
+        <div className="banner danger">
+          <i className="ti ti-alert-triangle" aria-hidden="true" />
+          <div>
+            <b>Could not load the regulatory gate.</b>
+            <div style={{ marginTop: 3 }}>{loadError}</div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (phase === 'unassembled' || !doc) {
+    return (
+      <section className="screen">
+        <Head />
+        <StageStatusCard name="Regulatory agent" state={project.stages.regulatory} />
+        <EmptyState
+          icon="ti-gavel"
+          title="No verdicts to rule on yet."
+          body={
+            <>
+              The screening agents have not produced a compatibility matrix, so there is nothing to sign
+              off. Regulatory sign-off opens once discovery and screening complete.
+            </>
+          }
+        />
+      </section>
+    );
+  }
+
+  const g = gate!;
+  const approved = g.status === 'approved';
+  const parsed = g.blockers.map(parseBlocker);
+  const cellBlockers = parsed.filter((b): b is CellBlocker => b.kind === 'cell');
+  const incomplete = parsed.some((b) => b.kind === 'message');
 
   const requirements: Requirement[] = [
     {
-      id: 'opened',
-      label: `Every substance's evidence opened`,
-      met: unopened.length === 0,
+      id: 'complete',
+      label: 'Every candidate has a verdict',
+      met: !incomplete,
+      detail: incomplete ? 'Screening is still running — not every cell has been screened.' : undefined,
+    },
+    {
+      id: 'reviewed',
+      label: 'Every flagged verdict reviewed',
+      met: cellBlockers.length === 0,
       detail:
-        unopened.length > 0 ? (
-          <>
-            {unopened.length} not yet opened — {unopened.map((s) => `${s.element} ${s.form}`).join(', ')}
-          </>
-        ) : (
-          <>All {substances.length} opened.</>
-        ),
+        cellBlockers.length > 0
+          ? `${cellBlockers.length} unreviewed: ${cellBlockers
+              .map((b) => `${b.cas}|${b.componentId} (${b.overall})`)
+              .join(', ')}`
+          : 'All flagged verdicts have been reviewed.',
       action:
-        unopened.length > 0
-          ? { label: 'Open next', onClick: () => openRow(unopened[0].cas) }
+        cellBlockers.length > 0
+          ? { label: 'Open first', onClick: () => openCell(cellBlockerKey(cellBlockers[0])) }
           : undefined,
-    },
-    {
-      id: 'flagged',
-      label: 'No flagged verdict left unreviewed',
-      met: flaggedUnopened.length === 0,
-      detail:
-        flaggedUnopened.length > 0 ? (
-          <>{flaggedUnopened.map((s) => `${s.element} (${s.conclusion})`).join(' · ')}</>
-        ) : undefined,
-      action:
-        flaggedUnopened.length > 0
-          ? { label: 'Open', onClick: () => openRow(flaggedUnopened[0].cas) }
-          : undefined,
-    },
-    {
-      id: 'corpus',
-      label: `Corpus synced within ${CORPUS_MAX_AGE_DAYS} days`,
-      met: corpusAge <= CORPUS_MAX_AGE_DAYS,
-      detail: <>synced {corpusSyncedAt}</>,
-    },
-    {
-      id: 'determination',
-      // Never met. There is no endpoint, and pretending otherwise would be the
-      // single most dangerous lie this screen could tell.
-      label: 'R.E. determination recorded',
-      met: false,
-      detail: <>No endpoint exists to record one. This gate cannot arm.</>,
     },
   ];
 
+  const substanceOf = (cas: string) => doc.rows.find((r) => r.cas === cas);
+
   return (
-    <section className="screen" data-provenance="mock">
-      <div className="cap">
-        <b>Regulatory gate</b>
-        spec §4.4 — hard gate, R.E. sign-off · corpus synced{' '}
-        {corpusSyncedAt}
-      </div>
+    <section className="screen">
+      <Head synced={g.approvedAt} />
 
-      <Gate
-        kind="hard"
-        title="Regulatory gate"
-        records="records the R.E.'s offline determination"
-        requirements={requirements}
-        signLabel="Record R.E. determination"
-        rejectLabel="Reject (requires a reason)"
-        ledgerNote
+      {approved ? (
+        <div className="banner" style={{ background: 'var(--bg-teal)', borderColor: 'var(--border-teal)', color: 'var(--text-teal)' }}>
+          <i className="ti ti-writing-sign" aria-hidden="true" />
+          <div>
+            <b>Regulatory gate signed.</b>
+            {g.approvedAt && <> Recorded {g.approvedAt.slice(0, 10)}.</>} Procurement is unblocked for the
+            recommended substances.
+          </div>
+        </div>
+      ) : (
+        <Gate
+          kind="hard"
+          title="Regulatory gate"
+          records="records the R.E.'s offline determination"
+          requirements={requirements}
+          signLabel="Sign the R.E. determination"
+          onSign={sign}
+          signBusy={signBusy}
+        />
+      )}
+
+      {signError && (
+        <div className="banner danger">
+          <i className="ti ti-alert-triangle" aria-hidden="true" />
+          <div>
+            <b>The gate was not signed.</b>
+            <div style={{ marginTop: 3 }}>{signError}</div>
+          </div>
+        </div>
+      )}
+
+      <SectionHeader
+        eyebrow="Verdicts"
+        count={doc.cells.length}
+        hint="each substance × component — rule on it, then the gate can arm"
       />
-
-      <MockBadge note="These screening results were not produced by the compliance agent. The real per-substance verdicts live on the compatibility matrix." />
 
       <table className="mx">
         <thead>
           <tr>
             <th>Substance</th>
-            <th>Element gate</th>
-            <th>Application</th>
-            <th>Conclusion</th>
+            <th>Component</th>
+            <th>Verdict</th>
+            <th>Evidence</th>
+            <th>Determination</th>
             <th style={{ width: 90 }} />
           </tr>
         </thead>
         <tbody>
-          {substances.map((s) => {
-            const isOpen = open === s.cas;
+          {doc.cells.map((cell) => {
+            const key = cellKey(cell.cas, cell.componentId);
+            const sub = substanceOf(cell.cas);
+            const isOpen = openKey === key;
+            const signedRuling = operatorRuling(cell);
+            const stance = reviewStance(cell);
+            const isBlocking = cellBlockers.some((b) => cellBlockerKey(b) === key);
             return (
-              <Fragment key={s.cas}>
+              <Fragment key={key}>
                 <tr
                   ref={(el) => {
-                    rowRefs.current[s.cas] = el;
+                    rowRefs.current[key] = el;
                   }}
-                  style={isOpen ? { background: 'var(--surface-2)' } : undefined}
+                  className={isBlocking && !isOpen ? 'hatch-danger' : undefined}
                 >
                   <td>
-                    <span style={{ fontWeight: 500 }}>{s.element}</span>{' '}
-                    <span className="secondary">{s.form}</span>
-                    <div className="tiny muted data">
-                      {s.cas}
-                    </div>
-                  </td>
-                  <td>
-                    <span className={`chip ${CLASS[s.elementGate]}`}>{s.elementGate}</span>
-                    <div className="tiny muted">product-wide</div>
-                  </td>
-                  <td>
-                    <span className={`chip ${CLASS[s.application]}`}>{s.application}</span>
-                    <div className="tiny muted">per component</div>
-                  </td>
-                  <td className="small">
-                    {s.conclusion}
-                    {!opened.has(s.cas) && (
-                      <div className="tiny" style={{ color: 'var(--text-warning)' }}>
-                        <i className="ti ti-eye-exclamation" aria-hidden="true" /> not yet opened
-                      </div>
+                    {sub ? (
+                      <>
+                        <span style={{ fontWeight: 500 }}>{sub.element}</span>{' '}
+                        <span className="secondary">{sub.form}</span>
+                        <div className="tiny muted data">{cell.cas}</div>
+                      </>
+                    ) : (
+                      <span className="data">{cell.cas}</span>
                     )}
-                    {opened.has(s.cas) && (
-                      <div className="tiny" style={{ color: 'var(--text-success)' }}>
-                        <i className="ti ti-check" aria-hidden="true" /> opened
-                      </div>
+                  </td>
+                  <td className="secondary">{cell.componentId}</td>
+                  <td>
+                    <span className={`chip ${verdictClass(cell.overall)}`}>{cell.overall}</span>
+                  </td>
+                  <td>
+                    <span
+                      className="tiny"
+                      style={{ color: cell.evidenceReviewed ? 'var(--text-success)' : 'var(--text-warning)' }}
+                    >
+                      <i
+                        className={`ti ${cell.evidenceReviewed ? 'ti-eye-check' : 'ti-eye-exclamation'}`}
+                        aria-hidden="true"
+                      />{' '}
+                      {cell.evidenceReviewed ? 'reviewed' : 'not reviewed'}
+                    </span>
+                  </td>
+                  <td>
+                    {signedRuling ? (
+                      <span
+                        className="tiny"
+                        style={{ color: 'var(--text-teal)', fontWeight: 600, fontFamily: 'var(--font-mono)' }}
+                      >
+                        {signedRuling.determination}
+                        {stance === 'overridden' && (
+                          <span className="muted"> (overrode agent)</span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="tiny muted">unsigned</span>
                     )}
                   </td>
                   <td>
                     <button
                       className="btn"
-                      onClick={() => (isOpen ? setOpen(null) : openRow(s.cas))}
+                      onClick={() => (isOpen ? setOpenKey(null) : openCell(key))}
                       aria-expanded={isOpen}
                     >
-                      {isOpen ? 'Hide' : 'Evidence'}
+                      {isOpen ? 'Hide' : 'Rule'}
                     </button>
                   </td>
                 </tr>
-                {/* Master-detail in place: the evidence belongs to its row, not to a
-                    floating panel below the whole table. */}
                 {isOpen && (
                   <tr>
-                    <td colSpan={5} style={{ padding: 0, background: 'var(--surface-2)' }}>
+                    <td colSpan={6} style={{ padding: 0, background: 'var(--surface-2)' }}>
                       <div style={{ borderLeft: '2px solid var(--text-accent)', padding: 'var(--s3)' }}>
-                        <Evidence substance={s} />
+                        <EvidencePanel
+                          projectId={project.projectId}
+                          cell={cell}
+                          substance={sub}
+                          onClose={() => setOpenKey(null)}
+                          onWrote={() => reload()}
+                        />
+                        {/* No direct edits: to change a verdict, tell the agent why (spec §1.5). */}
+                        <div style={{ marginTop: 'var(--s3)' }}>
+                          <ReviseForm
+                            projectId={project.projectId}
+                            stage="regulatory"
+                            fixedTarget={`${sub ? `${sub.element} ${sub.form}` : cell.cas} on ${cell.componentId}`}
+                            cas={cell.cas}
+                            componentId={cell.componentId}
+                            onRequested={() => {
+                              setReviseNonce((n) => n + 1);
+                              void reload();
+                            }}
+                          />
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -221,45 +320,18 @@ export function Regulatory() {
           })}
         </tbody>
       </table>
+
+      <RevisionTrail projectId={project.projectId} refreshKey={reviseNonce} />
     </section>
   );
 }
 
-function Evidence({ substance }: { substance: Substance }) {
-  const groups: [string, string, Check[]][] = [
-    // The hybrid model made legible from the layout (spec §1.2): the element gate is
-    // product-wide, so it gets a full-width band; the application check is per
-    // component. Today they read as two identical columns.
-    ['Element gate', 'product-wide — a failing element is out for every component', substance.evidence.elementGate],
-    ['Application check', 'per component — application × target markets', substance.evidence.application],
-    ['Hazard layer', 'CLP / SDS', substance.evidence.hazard],
-  ];
-
+function Head({ synced }: { synced?: string }) {
   return (
-    <div>
-      {groups.map(([title, sub, checks]) => (
-        <div key={title} style={{ marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
-            <span style={{ fontSize: 'var(--t-small)', fontWeight: 600 }}>{title}</span>
-            <span className="tiny muted">{sub}</span>
-          </div>
-          {checks.map((c) => (
-            <div className="step" key={c.check}>
-              <i className="ti ti-file-search" aria-hidden="true" style={{ marginTop: 2 }} />
-              <div>
-                <div>
-                  <b>{c.check}</b> — {c.result}
-                </div>
-                <CitationChip
-                  source={c.source}
-                  reference={c.reference}
-                  retrievedAt={c.retrievedAt}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
+    <div className="cap">
+      <b>Regulatory gate</b>
+      &nbsp;·&nbsp; spec §4.4 — hard gate, the R.E.&rsquo;s sign-off
+      {synced && <span className="muted"> · signed {synced.slice(0, 10)}</span>}
     </div>
   );
 }
