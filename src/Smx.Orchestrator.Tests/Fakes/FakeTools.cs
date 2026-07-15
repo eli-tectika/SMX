@@ -11,6 +11,15 @@ public sealed class FakeCatalogLookup : ICatalogLookup
         Calls.Add(element);
         return Task.FromResult<IReadOnlyList<CatalogCard>>(Cards.TryGetValue(element, out var c) ? c : []);
     }
+
+    /// Register the cards a lookup for <paramref name="element"/> returns. Cost-stage tests pass cards that
+    /// carry a price/pack (via CatalogCard's optional trailing params); every other test omits them and the
+    /// card's Price/Pack stay null. Returns `this` so a test can chain a couple of elements in one setup line.
+    public FakeCatalogLookup Returns(string element, params CatalogCard[] cards)
+    {
+        Cards[element] = [.. cards];
+        return this;
+    }
 }
 
 public sealed class FakeCompatibilityLookup : ICompatibilityLookup

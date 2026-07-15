@@ -17,7 +17,12 @@ public interface IReferenceSearch  { Task<IReadOnlyList<RetrievedChunk>> SearchA
 public interface ILearnedConclusionsSearch { Task<IReadOnlyList<RetrievedChunk>> SearchAsync(string query, int top = 5, CancellationToken ct = default); }
 
 /// One catalog product listing from ref-catalog (docType "product").
-public sealed record CatalogCard(string Element, string Molecule, string Compound, string Cas, string? Purity, string Supplier, string RefId);
+/// Price and Pack are the free-text supplier figures ("$115.00", "500 mg") the Cost stage audits via
+/// PriceParse; they are optional trailing params because most callers/tests never need them (and the
+/// seeded catalog carries them only on a minority of rows).
+public sealed record CatalogCard(
+    string Element, string Molecule, string Compound, string Cas, string? Purity, string Supplier, string RefId,
+    string? Price = null, string? Pack = null);
 
 public interface ICatalogLookup
 {
