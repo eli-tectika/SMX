@@ -8,6 +8,7 @@ public interface IRecordStore
     Task<ConstraintsDoc?> GetConstraintsAsync(string projectId, CancellationToken ct = default);
     Task<MatrixDoc?> GetMatrixAsync(string projectId, CancellationToken ct = default);
     Task<DosingDoc?> GetDosingAsync(string projectId, CancellationToken ct = default);
+    Task<CostDoc?> GetCostAsync(string projectId, CancellationToken ct = default);
     Task<IReadOnlyList<VerdictDoc>> GetVerdictsAsync(string projectId, CancellationToken ct = default);
     Task<CandidatesDoc?> GetCandidatesAsync(string projectId, CancellationToken ct = default);
     Task<GateDoc?> GetGateAsync(string projectId, string gateType, CancellationToken ct = default);
@@ -25,6 +26,7 @@ public interface IRecordStore
     Task UpsertVerdictAsync(VerdictDoc doc, CancellationToken ct = default);
     Task UpsertMatrixAsync(MatrixDoc doc, CancellationToken ct = default);
     Task UpsertDosingAsync(DosingDoc doc, CancellationToken ct = default);
+    Task UpsertCostAsync(CostDoc doc, CancellationToken ct = default);
     Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default);
     Task UpsertGateAsync(GateDoc doc, CancellationToken ct = default);
     Task UpsertRevisionAsync(RevisionDoc doc, CancellationToken ct = default);
