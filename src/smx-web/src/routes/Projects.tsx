@@ -5,7 +5,7 @@ import { Card, EmptyState, SectionHeader, Skeleton, StatCard } from '../componen
 import { VerdictRibbon } from '../components/ui/VerdictRibbon';
 import { BUCKET_LABEL, bucket, bucketTone, whatsBlocking, type Bucket } from '../domain/blocking';
 import { forgetProject, useProjectsOverview, type ProjectCard } from '../hooks/useProjectsOverview';
-import { isDemo, loadDemoProject } from '../mocks/demo';
+import { DEMO_ENABLED, isDemo, loadDemoProject } from '../mocks/demo';
 
 /**
  * The re-entry surface (spec §2).
@@ -367,7 +367,7 @@ function ProjectsEmpty({ onLoadDemo }: { onLoadDemo: () => void }) {
             <Link className="btn primary" to="/new">
               <i className="ti ti-plus" aria-hidden="true" /> New project
             </Link>
-            {import.meta.env.DEV && (
+            {DEMO_ENABLED && (
               <button
                 className="btn"
                 onClick={() => {
@@ -376,7 +376,7 @@ function ProjectsEmpty({ onLoadDemo }: { onLoadDemo: () => void }) {
                 }}
                 title="Adds a fixture project so the populated dashboard can be seen without creating a real one"
               >
-                <i className="ti ti-flask" aria-hidden="true" /> Load demo data · dev only
+                <i className="ti ti-flask" aria-hidden="true" /> Load demo data
               </button>
             )}
           </>
