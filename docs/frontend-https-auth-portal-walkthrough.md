@@ -319,9 +319,14 @@ under the **SPA** platform (which enables auth-code + PKCE, the browser-safe flo
 
 **Portal:**
 1. **App registrations** → **New registration** → name `smx-dev-web`, **Single tenant** → Register.
-2. **Authentication** → **Add a platform** → **Single-page application** → Redirect URI `https://dev.<domain>/` → Configure.
+2. **Authentication** → **Add a platform** → **Single-page application** → Redirect URI `https://dev.<domain>`
+   (no trailing slash — configure-auth.sh, below, registers the bare origin. The SPA's MSAL config sends
+   `redirectUri: window.location.origin`, which the browser platform *always* returns without a trailing
+   slash, and Entra exact-matches redirect URIs, so a registered `.../` would never match and login would
+   fail with `AADSTS50011`) → Configure.
 
-**Verify:** the SPA app's **Authentication** blade lists `https://dev.<domain>/` under **Single-page application**.
+**Verify:** the SPA app's **Authentication** blade lists `https://dev.<domain>` (no trailing slash) under
+**Single-page application**.
 
 > **What keeps it:** the same `configure-auth.sh` creates `smx-dev-web` with the SPA redirect URI (it takes the
 > host as an argument precisely so a wrong URI can't be baked in) and prints `SPA_CLIENT_ID=…`.
@@ -350,18 +355,32 @@ no consent prompt interrupts the operator.
 id + the API scope **baked into its bundle at build time** (Vite inlines `import.meta.env.VITE_*` when
 `npm run build` runs — they can't be set at container runtime).
 
+**Order matters: frontend first, backend second.** If the backend starts enforcing auth before the frontend is
+rebuilt and rolled out, there's a window where the still-running old frontend image sends `/api` calls with no
+bearer token — the backend now requires one, so every call 401s until the new frontend image is live. Doing it
+frontend-first avoids that window entirely: the new frontend sending a bearer token to a still-open backend is
+harmless (the token is just ignored), so there's never a moment where a live frontend can't reach the API.
+
 **How (not portal — this is config):**
-- **Backend:** set `apiClientId` in [`dev.bicepparam:35`](../infra/env/dev.bicepparam#L35) to the `API_CLIENT_ID`
-  from Step 10, then deploy. Bicep passes it (and the derived tenant id) into the backend container app's env at
-  [`main.bicep:290`](../infra/main.bicep#L290) → [`compute.bicep:154`](../infra/modules/compute.bicep#L154).
-- **Frontend:** export the three values and rebuild the image:
-  ```
-  export SPA_CLIENT_ID=<from Step 11>  API_CLIENT_ID=<from Step 10>
-  export ENTRA_TENANT_ID=$(az account show --query tenantId -o tsv)
-  export VITE_API_SCOPE="api://$API_CLIENT_ID/access_as_user"
-  infra/scripts/build-images.sh dev
-  ```
-  The frontend Dockerfile bakes them via `--build-arg` ([build-images.sh:62](../infra/scripts/build-images.sh#L62)).
+1. **Frontend — rebuild AND roll out:** export the three values and rebuild the image:
+   ```
+   export SPA_CLIENT_ID=<from Step 11>  API_CLIENT_ID=<from Step 10>
+   export ENTRA_TENANT_ID=$(az account show --query tenantId -o tsv)
+   export VITE_API_SCOPE="api://$API_CLIENT_ID/access_as_user"
+   infra/scripts/build-images.sh dev
+   ```
+   The frontend Dockerfile bakes them via `--build-arg` ([build-images.sh:62](../infra/scripts/build-images.sh#L62)).
+   **`build-images.sh` only builds and pushes the image — it does not make it live.** Redeploy passing the new
+   tag to actually roll it out:
+   ```
+   infra/scripts/deploy.sh dev -p frontendImage=<new-tag>
+   ```
+   (`swap-images.sh` can flip the running Container App straight to the new tag as a quick stopgap, but the next
+   `deploy.sh` reverts it to the placeholder image — treat it as temporary, not the rollout step.)
+2. **Backend — set the id and deploy:** only once the new frontend is confirmed live, set `apiClientId` in
+   [`dev.bicepparam:35`](../infra/env/dev.bicepparam#L35) to the `API_CLIENT_ID` from Step 10, then deploy. Bicep
+   passes it (and the derived tenant id) into the backend container app's env at
+   [`main.bicep:290`](../infra/main.bicep#L290) → [`compute.bicep:154`](../infra/modules/compute.bicep#L154).
 
 > **What keeps it:** [`compute.bicep`](../infra/modules/compute.bicep#L154) sets `ENTRA_TENANT_ID` + `API_CLIENT_ID`
 > on the backend; the frontend image carries `VITE_*` from the build args. **Both sides are OFF when the ids are

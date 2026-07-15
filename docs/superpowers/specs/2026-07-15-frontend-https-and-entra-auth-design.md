@@ -94,7 +94,7 @@ Topology is unchanged. New elements are marked `NEW`.
 
 | Registration | Platform | Purpose | Key config |
 |---|---|---|---|
-| **SPA** (`smx-<env>-web`) | **SPA** | The React app signs the user in | Redirect URI `https://<host>/`; requests the API scope |
+| **SPA** (`smx-<env>-web`) | **SPA** | The React app signs the user in | Redirect URI `https://<host>` (bare origin, no trailing slash — matches `window.location.origin`); requests the API scope |
 | **API** (`smx-<env>-api`) | **Web/API** | Audience the backend validates | Exposes scope `api://<api-client-id>/access_as_user`; the SPA is pre-authorized |
 
 Two registrations (not one) is the documented SPA+API pattern: the SPA acquires a token whose **audience is the
@@ -176,7 +176,8 @@ Modifies `src/smx-web`.
   a single choke point today, so one wrapper covers every call).
 - MSAL config (`clientId`, `authority`, `redirectUri`) from Vite env (`VITE_ENTRA_CLIENT_ID`,
   `VITE_ENTRA_TENANT_ID`, `VITE_API_SCOPE`) baked at build time by `build-images.sh`.
-- The SPA app registration's redirect URI is `https://dev.<domain>/`; `access_as_user` is a delegated permission
+- The SPA app registration's redirect URI is `https://dev.<domain>` (bare origin, no trailing slash —
+  `window.location.origin` never has one and Entra exact-matches); `access_as_user` is a delegated permission
   on the API, SPA pre-authorized.
 - **Note on the shell:** the static bundle itself remains anonymously downloadable (it holds no secrets); the
   *data* behind `/api` is what's gated. This is inherent to the SPA pattern and accepted.

@@ -116,6 +116,12 @@ else
   log "Scope access_as_user already exposed on ${API_APP_NAME} (${SCOPE_ID})."
 fi
 
+# Pin token version to 2: without this Entra defaults to v1 access tokens (iss =
+# https://sts.windows.net/<tenant>/), but the backend's JwtBearer Authority is the v2.0 endpoint (iss =
+# https://login.microsoftonline.com/<tenant>/v2.0) — a v1 token would fail issuer validation and every
+# authenticated call would 401 even after a successful sign-in. Idempotent; safe to re-run.
+az ad app update --id "${API_ID}" --set api.requestedAccessTokenVersion=2 --output none
+
 # --- SPA app registration: the React app; pre-authorized on the API so sign-in needs no consent prompt. ---
 SPA_APP_NAME="${NAME_PREFIX}-${ENV}-web"
 log "Ensuring Entra app registration '${SPA_APP_NAME}'..."
@@ -126,10 +132,13 @@ if [ -z "${SPA_ID}" ]; then
   log "Created app registration ${SPA_ID}"
 fi
 
-# SPA-platform redirect URI (auth code + PKCE), root path on the gateway host. Always (re)set to the
-# given HOST so a later domain change is corrected on the next run rather than silently left stale.
-log "Setting SPA redirect URI to https://${HOST}/ ..."
-az ad app update --id "${SPA_ID}" --set spa="{\"redirectUris\":[\"https://${HOST}/\"]}" --output none
+# SPA-platform redirect URI (auth code + PKCE), root path on the gateway host. Bare origin (NO trailing
+# slash): msal.ts sends redirectUri: window.location.origin, which the browser platform ALWAYS returns
+# without a trailing slash, and Entra exact-matches redirect URIs — a registered "https://host/" would
+# never match and login would fail with AADSTS50011. Always (re)set to the given HOST so a later domain
+# change is corrected on the next run rather than silently left stale.
+log "Setting SPA redirect URI to https://${HOST} ..."
+az ad app update --id "${SPA_ID}" --set spa="{\"redirectUris\":[\"https://${HOST}\"]}" --output none
 
 # Pre-authorize the SPA for access_as_user so the operator sees no separate per-app consent prompt.
 # Uses the READ-BACK SCOPE_ID from above, never a freshly generated one — see the comment there.

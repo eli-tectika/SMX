@@ -151,6 +151,12 @@ else {
     Write-Log "Scope access_as_user already exposed on $apiAppName ($scopeId)."
 }
 
+# Pin token version to 2: without this Entra defaults to v1 access tokens (iss =
+# https://sts.windows.net/<tenant>/), but the backend's JwtBearer Authority is the v2.0 endpoint (iss =
+# https://login.microsoftonline.com/<tenant>/v2.0) - a v1 token would fail issuer validation and every
+# authenticated call would 401 even after a successful sign-in. Idempotent; safe to re-run.
+Invoke-Native az ad app update --id $apiId --set api.requestedAccessTokenVersion=2 --output none
+
 # --- SPA app registration: the React app; pre-authorized on the API so sign-in needs no consent prompt. ---
 $spaAppName = "$($script:NamePrefix)-$envName-web"
 Write-Log "Ensuring Entra app registration '$spaAppName'..."
@@ -161,10 +167,13 @@ if ([string]::IsNullOrWhiteSpace($spaId)) {
     Write-Log "Created app registration $spaId"
 }
 
-# SPA-platform redirect URI (auth code + PKCE), root path on the gateway host. Always (re)set to the
-# given host so a later domain change is corrected on the next run rather than silently left stale.
-Write-Log "Setting SPA redirect URI to https://$appHostValue/ ..."
-$spaObj = @{ redirectUris = @("https://$appHostValue/") }
+# SPA-platform redirect URI (auth code + PKCE), root path on the gateway host. Bare origin (NO trailing
+# slash): msal.ts sends redirectUri: window.location.origin, which the browser platform ALWAYS returns
+# without a trailing slash, and Entra exact-matches redirect URIs - a registered "https://host/" would
+# never match and login would fail with AADSTS50011. Always (re)set to the given host so a later domain
+# change is corrected on the next run rather than silently left stale.
+Write-Log "Setting SPA redirect URI to https://$appHostValue ..."
+$spaObj = @{ redirectUris = @("https://$appHostValue") }
 $spaJson = ConvertTo-Json -InputObject $spaObj -Compress -Depth 5
 Invoke-Native az ad app update --id $spaId --set "spa=$spaJson" --output none
 

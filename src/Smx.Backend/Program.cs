@@ -26,6 +26,16 @@ if (authEnabled)
         {
             options.Authority = $"https://login.microsoftonline.com/{tenantId}/v2.0";
             options.TokenValidationParameters.ValidAudiences = [ apiClientId!, $"api://{apiClientId}" ];
+            // Accept both issuer forms as defense-in-depth: configure-auth.sh pins the API app's
+            // requestedAccessTokenVersion=2 so Entra issues v2 tokens (iss = the v2.0 endpoint above), but
+            // if a v1 token ever arrives (e.g. the pin drifts or predates this fix) it should still
+            // validate rather than 401 every authenticated call. Signing keys still come from Authority's
+            // OIDC metadata; this only broadens the accepted-issuer set.
+            options.TokenValidationParameters.ValidIssuers =
+            [
+                $"https://login.microsoftonline.com/{tenantId}/v2.0",
+                $"https://sts.windows.net/{tenantId}/",
+            ];
         });
     // Every endpoint requires an authenticated user unless it opts out with AllowAnonymous (/healthz).
     builder.Services.AddAuthorizationBuilder()
