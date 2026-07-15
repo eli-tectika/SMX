@@ -75,14 +75,41 @@ public sealed class ToolBox(
             "Search accumulated Learned Conclusions (prior material/regulatory findings with confidence + provenance) relevant to this intake. Treat them as prior evidence, not fact; a higher-confidence, more recent conclusion supersedes an older one."),
     ];
 
-    /// The Dosing stage's read tools. Task 10 adds the deterministic calculators (detection_floor,
-    /// order_amount); these two are the retrieval half, and the §6 knowledge-layer read point.
-    public IList<AITool> DosingTools() =>
+    /// The Dosing retrieval tools MINUS the two calculators — the read surface with no computation. A CHAT
+    /// turn for the Dosing stage gets exactly this (ReadToolsFor): it answers from the already-computed
+    /// DosingDoc and these sources, it does NOT recompute a floor or an order amount. Mirrors
+    /// DiscoveryReadTools (the read half) vs DiscoveryTools (the autonomous run's full set).
+    public IList<AITool> DosingReadTools() =>
     [
         AIFunctionFactory.Create(SearchLearnedConclusionsAsync, "search_learned_conclusions",
             "Prior ppm and dosing findings from earlier projects, with the reasons they were recorded."),
         AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
             "The reference corpus — formulation-impact basis, application notes, typical loadings."),
+    ];
+
+    /// The Dosing stage's tools. The two calculators are DETERMINISTIC and the agent may not do their
+    /// arithmetic itself: a model that computes its own floor can compute one that is too low, and a low
+    /// floor ships a marker nobody can detect. It calls these, and picks a ppm INSIDE what they return.
+    ///
+    /// Closed over the project's ConstraintsDoc for the same reason DiscoveryTools closes over SensitiveTerms:
+    /// the floor is targeted at THIS project's measured background and device, and no method here may compute
+    /// against another project's physics. The DosingAgent (Task 11) is the consumer; the CHAT surface gets
+    /// DosingReadTools() only — it answers from the already-computed DosingDoc, it does not recompute a floor.
+    public IList<AITool> DosingTools(ConstraintsDoc constraints) =>
+    [
+        AIFunctionFactory.Create(
+            (string componentId, string element, CancellationToken ct) => DetectionFloorJson(constraints, componentId, element),
+            "detection_floor",
+            "The ppm detection and quantification floors for an element in a component, computed from the " +
+            "physicist's MEASURED background and the deployment device's LOD. If the measurement is missing " +
+            "this returns an error and NO number — say so; never estimate a floor."),
+        AIFunctionFactory.Create(
+            (string cas, double ppm, string componentId, CancellationToken ct) => OrderAmountAsync(constraints, cas, ppm, componentId, ct),
+            "order_amount",
+            "How many grams of the COMPOUND to order for a given ppm in a component, from the batch mass and " +
+            "the substance's metal loading. If the loading is unknown this returns an error naming the CAS — " +
+            "the operator must supply it; never assume one."),
+        .. DosingReadTools(),
     ];
 
     /// The READ tools a CHAT turn gets for a stage (ChatAgent, design §5) — deliberately the same retrieval
@@ -103,7 +130,7 @@ public sealed class ToolBox(
         Stages.Intake => IntakeTools(),
         Stages.Discovery => DiscoveryReadTools(),
         Stages.Regulatory => RegulatoryTools(),
-        Stages.Dosing => DosingTools(),
+        Stages.Dosing => DosingReadTools(),
         // Cost is deterministic — its output is a table lookup, not a reasoned claim over a corpus — so a
         // chat turn on it holds NO read tools and answers only from the CostDoc in its prompt. Listed
         // explicitly (not left to the default) so the intent reads as deliberate, not as an unknown stage.
@@ -145,6 +172,45 @@ public sealed class ToolBox(
         return chunks.Count == 0
             ? "{\"results\":[],\"note\":\"no matches — no prior conclusions on this; reason from primary sources, do not fabricate a prior finding\"}"
             : Render(chunks);
+    }
+
+    /// The ppm detection/quantification floor for one element in one component. PURE over the project's
+    /// constraints — the physicist's measured background + the deployment device's LOD — so it takes no
+    /// CancellationToken body and never touches the knowledge store: there is nothing to fetch, and the
+    /// arithmetic must be the one thing the agent cannot influence. On any missing/ambiguous input
+    /// DetectionFloor.Compute returns an error and NO Floor, and this emits the error VERBATIM with no
+    /// number in any field — a floor the agent could talk down is a marker nobody can detect.
+    private string DetectionFloorJson(ConstraintsDoc constraints, string componentId, string element)
+    {
+        var (floor, error) = DetectionFloor.Compute(constraints.MeasuredBackgrounds, constraints.Device, componentId, element);
+        return floor is not null
+            ? JsonSerializer.Serialize(new { floor }, Json.Options)
+            : JsonSerializer.Serialize(new { error }, Json.Options);
+    }
+
+    /// Grams of the COMPOUND to order for a ppm in a component. The metal loading lives in NO catalog we have;
+    /// it is read by CAS from the cross-project knowledge layer, and a cold miss is a REFUSAL that names the
+    /// CAS and tells the operator to supply it — never a default to 1.0 ("it's the pure metal"), which is the
+    /// exact assumption that under-orders an oxide below the detection floor. The batch mass comes from the
+    /// component; an absent one is surfaced by OrderAmount.Compute's own refusal, not crashed on.
+    private async Task<string> OrderAmountAsync(
+        ConstraintsDoc constraints, string cas, double ppm, string componentId, CancellationToken ct)
+    {
+        var component = constraints.Components.FirstOrDefault(c => c.Id == componentId);
+
+        var property = await knowledge.GetSubstancePropertyAsync(cas, ct);
+        if (property is null)
+            return JsonSerializer.Serialize(new
+            {
+                error = $"no metal loading is recorded for CAS {cas}, so the order amount cannot be computed. " +
+                        "The operator must enter the substance's metal loading (with its basis) — it lives in no " +
+                        "catalog, and assuming the pure metal (1.0) under-orders an oxide below the detection floor.",
+            }, Json.Options);
+
+        var (order, error) = OrderAmount.Compute(ppm, component?.BatchMassKg, property.MetalLoading);
+        return order is not null
+            ? JsonSerializer.Serialize(new { order }, Json.Options)
+            : JsonSerializer.Serialize(new { error }, Json.Options);
     }
 
     /// A web hit is NOT a RetrievedChunk. Its source is "web:<host>" so that a citation built from it stays

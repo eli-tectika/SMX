@@ -239,4 +239,141 @@ public class ToolBoxTests
             .SearchMarkerLibraryAsync("anti-counterfeit", "bottle", null, default);
         Assert.Contains("no matches", json);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────────────
+    // Dosing calculators (Task 10). Every test drives the REAL AIFunction from DosingTools(constraints), the
+    // way the agent runtime does — a schema that lies about a param would leave the model unable to call the
+    // tool, and only an InvokeAsync test can catch that (the C#-method call cannot, cf. the marker-tool tests).
+    // ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    private const string KnownCas = "1314-36-9";   // Y2O3 — 78.7% Y, so its compound mass exceeds its element mass.
+
+    /// One project's physics: a 'bottle' with a 10 kg batch and a measured Zr background of 4.0 ppm, a 'label'
+    /// with NO batch mass (intake never asked), and a Vanta device whose Zr LOD is 1.5 ppm. So the Zr floor is
+    /// 4.0 + 3×1.5 = 8.5 ppm, and an order for 25 ppm in the 10 kg bottle needs 250 mg of Y.
+    private static Smx.Domain.Records.ConstraintsDoc Constraints() => new()
+    {
+        Id = "c1", ProjectId = "p1",
+        Components =
+        [
+            new Smx.Domain.Records.ComponentSpec("bottle", "HDPE", "anti-counterfeit", ["EU"], "overt", BatchMassKg: 10.0),
+            new Smx.Domain.Records.ComponentSpec("label", "paper", "anti-counterfeit", ["EU"], "overt", BatchMassKg: null),
+        ],
+        MeasuredBackgrounds = [new Smx.Domain.Records.MeasuredBackground("bottle", "Zr", 4.0, "ppm")],
+        Device = new Smx.Domain.Records.XrfDevice("Vanta", [new Smx.Domain.Records.DeviceLod("Zr", 1.5, "ppm")]),
+    };
+
+    /// A knowledge store that HAS the loading for KnownCas and nothing else — so a lookup for any other CAS is
+    /// the cold miss Dosing must park on, not a lucky hit.
+    private static async Task<Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore> KnowledgeWithLoading()
+    {
+        var knowledge = new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore();
+        await knowledge.UpsertSubstancePropertyAsync(new Smx.Domain.Records.SubstancePropertyDoc
+        {
+            Id = Smx.Domain.Records.KnowledgeIds.SubstanceProperty(KnownCas),
+            Cas = KnownCas, Element = "Y", Form = "oxide",
+            MetalLoading = 0.787, Basis = "2×M(Y)/M(Y2O3)", EnteredAt = "2026-07-14T10:00:00.0000000+00:00",
+        });
+        return knowledge;
+    }
+
+    private static AIFunction DosingTool(ToolBox box, string name) =>
+        box.DosingTools(Constraints()).Cast<AIFunction>().Single(t => t.Name == name);
+
+    // The split, pinned: DosingTools(constraints) is the two calculators PLUS the read tools; DosingReadTools()
+    // alone is only the two retrieval tools. Adding a calculator to the read (chat) surface — which would let a
+    // chat turn recompute a floor instead of reading the DosingDoc — must break this.
+    [Fact]
+    public void DosingTools_AreTheTwoCalculatorsPlusTheReadTools_WhileReadToolsAloneAreJustRetrieval()
+    {
+        Assert.Equal(
+            ["detection_floor", "order_amount", "search_learned_conclusions", "search_reference"],
+            Box().DosingTools(Constraints()).Select(t => t.Name).OrderBy(x => x).ToArray());
+        Assert.Equal(
+            ["search_learned_conclusions", "search_reference"],
+            Box().DosingReadTools().Select(t => t.Name).OrderBy(x => x).ToArray());
+    }
+
+    [Fact]
+    public async Task DetectionFloorTool_ReturnsTheComputedFloor_AndItsBasis()
+    {
+        var result = (await DosingTool(Box(), "detection_floor").InvokeAsync(new AIFunctionArguments
+        {
+            ["componentId"] = "bottle", ["element"] = "Zr",
+        }))?.ToString() ?? "";
+
+        Assert.Contains("8.5", result);              // 4.0 bg + 3 × 1.5 LOD
+        Assert.Contains("Vanta", result);            // the basis names the device the marker must be read by
+    }
+
+    [Fact]
+    public async Task DetectionFloorTool_OnAMissingMeasurement_SaysSo_RatherThanReturningANumber()
+    {
+        var result = (await DosingTool(Box(), "detection_floor").InvokeAsync(new AIFunctionArguments
+        {
+            ["componentId"] = "bottle", ["element"] = "Xx",
+        }))?.ToString() ?? "";
+
+        Assert.Contains("no measured background", result, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"floor\"", result);  // no number, of any kind, in any field
+    }
+
+    // detection_floor is PURE over the constraints — it must never need the knowledge store. The default Box()
+    // has a cold store, and this still returns the floor: proof it never reached for one.
+    [Fact]
+    public async Task DetectionFloorTool_NeedsNoKnowledgeStore_ComputingPurelyFromTheConstraints()
+    {
+        var result = (await DosingTool(Box(knowledge: new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore()), "detection_floor")
+            .InvokeAsync(new AIFunctionArguments { ["componentId"] = "bottle", ["element"] = "Zr" }))?.ToString() ?? "";
+        Assert.Contains("8.5", result);
+    }
+
+    [Fact]
+    public async Task OrderAmountTool_RefusesAnUnknownMetalLoading_RatherThanAssumeOne()
+    {
+        // The loading is not in any catalog. If the tool guessed 1.0 ("it's pure metal"), an oxide order
+        // would be short by ~21% and the whole batch would land below the floor.
+        var result = (await DosingTool(Box(), "order_amount").InvokeAsync(new AIFunctionArguments
+        {
+            ["cas"] = "cas-unknown", ["ppm"] = 25.0, ["componentId"] = "bottle",
+        }))?.ToString() ?? "";
+
+        Assert.Contains("metal loading", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("operator", result, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"order\"", result);  // a refusal ships NO number
+    }
+
+    [Fact]
+    public async Task OrderAmountTool_WithAKnownLoading_ReturnsACompoundMassLargerThanTheElementMass()
+    {
+        var result = (await DosingTool(Box(knowledge: await KnowledgeWithLoading()), "order_amount").InvokeAsync(new AIFunctionArguments
+        {
+            ["cas"] = KnownCas, ["ppm"] = 25.0, ["componentId"] = "bottle",
+        }))?.ToString() ?? "";
+
+        using var doc = System.Text.Json.JsonDocument.Parse(result);
+        var order = doc.RootElement.GetProperty("order");
+        var elementMass = order.GetProperty("elementMassMg").GetDouble();
+        var compoundMass = order.GetProperty("compoundMassMg").GetDouble();
+
+        Assert.Equal(250.0, elementMass);            // 25 ppm × 10 kg = 250 mg of Y
+        // Y2O3 is 78.7% Y, so the COMPOUND you must order weighs more than the element that must end up in it —
+        // ordering the element mass of an oxide under-doses the batch below the floor. This is the whole point.
+        Assert.True(compoundMass > elementMass, $"compound {compoundMass} should exceed element {elementMass}");
+    }
+
+    // The null-BatchMassKg judgment call: the 'label' component has no batch mass, and ppm is mg/kg — with no
+    // MASS there is no order amount. OrderAmount.Compute already refuses this; the tool must SURFACE that
+    // refusal, not crash on the null (FirstOrDefault → null → the same refusal for an unknown component too).
+    [Fact]
+    public async Task OrderAmountTool_SurfacesTheBatchMassRefusal_WhenTheComponentHasNoBatchMass()
+    {
+        var result = (await DosingTool(Box(knowledge: await KnowledgeWithLoading()), "order_amount").InvokeAsync(new AIFunctionArguments
+        {
+            ["cas"] = KnownCas, ["ppm"] = 25.0, ["componentId"] = "label",
+        }))?.ToString() ?? "";
+
+        Assert.Contains("batch mass", result, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"order\"", result);
+    }
 }

@@ -54,7 +54,7 @@ public class ChatAgentTests
         Assert.Equal(Names(box.DiscoveryReadTools()), Names(box.ReadToolsFor(Stages.Discovery)));
         Assert.DoesNotContain("search_web", Names(box.ReadToolsFor(Stages.Discovery)));
         Assert.Equal(Names(box.RegulatoryTools()), Names(box.ReadToolsFor(Stages.Regulatory)));
-        Assert.Equal(Names(box.DosingTools()), Names(box.ReadToolsFor(Stages.Dosing)));
+        Assert.Equal(Names(box.DosingReadTools()), Names(box.ReadToolsFor(Stages.Dosing)));
     }
 
     // Pinned literally, not derived: this is the whole capability surface a chat turn's READ half offers the
