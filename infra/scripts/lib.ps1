@@ -30,13 +30,17 @@ $script:SmxSubscriptionId = Get-EnvOrDefault 'SMX_SUBSCRIPTION_ID' '98c6dba9-508
 
 # $ErrorActionPreference='Stop' does NOT trap a native exe's non-zero exit code, so every
 # az call that must succeed goes through here.
+#
+# Deliberately a SIMPLE function (bind via $args, not a param() block). A [Parameter()]
+# attribute would make this an advanced function, which silently gains the common parameters
+# -OutVariable/-OutBuffer; an inline native flag like 'dotnet publish -o out' then binds 'o'
+# to those and dies "parameter name 'o' is ambiguous". With $args every token - '-o' included -
+# is passed straight through to the exe.
 function Invoke-Native {
-    param(
-        [Parameter(Mandatory)][string]$Exe,
-        [Parameter(ValueFromRemainingArguments)][string[]]$Arguments
-    )
-    & $Exe @Arguments
-    if ($LASTEXITCODE -ne 0) { Die "Command failed ($LASTEXITCODE): $Exe $($Arguments -join ' ')" }
+    $exe, $rest = $args
+    if (-not $exe) { Die 'Invoke-Native: no executable given.' }
+    & $exe @rest
+    if ($LASTEXITCODE -ne 0) { Die "Command failed ($LASTEXITCODE): $exe $($rest -join ' ')" }
 }
 
 function Require-Command {

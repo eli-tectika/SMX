@@ -1,6 +1,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 COPY Smx.Domain/ Smx.Domain/
+COPY Smx.SearchProxy.Contracts/ Smx.SearchProxy.Contracts/
 COPY Smx.Infrastructure/ Smx.Infrastructure/
 COPY Smx.Backend/ Smx.Backend/
 RUN dotnet publish Smx.Backend/Smx.Backend.csproj -c Release -o /app
