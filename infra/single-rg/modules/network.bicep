@@ -33,6 +33,68 @@ var privateDnsZoneNames = [
   'privatelink.table.core.windows.net' // 11
 ]
 
+resource nsgAgw 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
+  name: 'nsg-${namePrefix}-${env}-agw-${regionShort}'
+  location: location
+  tags: tags
+  properties: {
+    securityRules: [
+      {
+        name: 'Allow-HTTP-HTTPS-Inbound'
+        properties: {
+          priority: 100
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourceAddressPrefix: 'Internet'
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRanges: [ '80', '443' ]
+        }
+      }
+      {
+        name: 'Allow-GatewayManager'
+        properties: {
+          priority: 110
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourceAddressPrefix: 'GatewayManager'
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRange: '65200-65535'
+        }
+      }
+      {
+        name: 'Allow-AzureLoadBalancer'
+        properties: {
+          priority: 120
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: '*'
+          sourceAddressPrefix: 'AzureLoadBalancer'
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRange: '*'
+        }
+      }
+      {
+        name: 'Deny-Other-Inbound'
+        properties: {
+          priority: 4096
+          direction: 'Inbound'
+          access: 'Deny'
+          protocol: '*'
+          sourceAddressPrefix: '*'
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRange: '*'
+        }
+      }
+    ]
+  }
+}
+
 resource nsgAca 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: 'nsg-${namePrefix}-${env}-aca-${regionShort}'
   location: location
@@ -104,6 +166,9 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
         name: 'snet-agw'
         properties: {
           addressPrefix: agwSubnetCidr
+          networkSecurityGroup: {
+            id: nsgAgw.id
+          }
         }
       }
       {

@@ -28,6 +28,68 @@ var privateDnsZoneNames = [
   'privatelink.table.core.windows.net'
 ]
 
+resource nsgAgw 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
+  name: 'nsg-${namePrefix}-hub-agw-${regionShort}'
+  location: location
+  tags: tags
+  properties: {
+    securityRules: [
+      {
+        name: 'Allow-HTTP-HTTPS-Inbound'
+        properties: {
+          priority: 100
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourceAddressPrefix: 'Internet'
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRanges: [ '80', '443' ]
+        }
+      }
+      {
+        name: 'Allow-GatewayManager'
+        properties: {
+          priority: 110
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourceAddressPrefix: 'GatewayManager'
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRange: '65200-65535'
+        }
+      }
+      {
+        name: 'Allow-AzureLoadBalancer'
+        properties: {
+          priority: 120
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: '*'
+          sourceAddressPrefix: 'AzureLoadBalancer'
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRange: '*'
+        }
+      }
+      {
+        name: 'Deny-Other-Inbound'
+        properties: {
+          priority: 4096
+          direction: 'Inbound'
+          access: 'Deny'
+          protocol: '*'
+          sourceAddressPrefix: '*'
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRange: '*'
+        }
+      }
+    ]
+  }
+}
+
 resource hubVnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   name: 'vnet-${namePrefix}-hub-${regionShort}'
   location: location
@@ -41,12 +103,18 @@ resource hubVnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
         name: 'snet-agw-dev'
         properties: {
           addressPrefix: '10.0.0.0/24'
+          networkSecurityGroup: {
+            id: nsgAgw.id
+          }
         }
       }
       {
         name: 'snet-agw-prod'
         properties: {
           addressPrefix: '10.0.1.0/24'
+          networkSecurityGroup: {
+            id: nsgAgw.id
+          }
         }
       }
       {
