@@ -56,7 +56,9 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
 
         // The stage spine rides along, statuses included — straight off the ProjectDoc.
         Assert.Equal("pending", arr[0].GetProperty("stages").GetProperty("intake").GetProperty("status").GetString());
-        Assert.Equal("pending", arr[1].GetProperty("stages").GetProperty("decision").GetProperty("status").GetString());
+        // `cost`, deliberately: the last stage that exists on MAIN today. The plan-5 branch asserts
+        // `decision` here (its Tasks 1+2 seed that stage); when the branch merges, take ITS version.
+        Assert.Equal("pending", arr[1].GetProperty("stages").GetProperty("cost").GetProperty("status").GetString());
 
         // The gated project reports its signed gate; everywhere a gate is absent the key is an EXPLICIT
         // null — "no gate yet" must be a value the frontend can read, not a missing field it has to infer.
