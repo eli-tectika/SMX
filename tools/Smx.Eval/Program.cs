@@ -37,6 +37,18 @@ foreach (var gc in cases)
     if (matrix is null) { Console.WriteLine($"   NO MATRIX for {gc.Name} — counting all cells as missing"); }
 
     var report = EvalMetrics.Score(gc.Expected, matrix?.Cells ?? []);
+
+    // Design-§9 Dosing invariants, when the case got that far. The harness does not enter determinations,
+    // sign the gate, or record loadings, so most cases never reach Dosing — a 404 here is expected and
+    // scores nothing. When a DosingDoc DOES exist, an invariant breach in it is a harm case: it counts as a
+    // FALSE PASS and trips the non-zero exit, exactly like a matrix false-pass.
+    var dosingResp = await http.GetAsync($"/projects/{projectId}/dosing");
+    if (dosingResp.IsSuccessStatusCode)
+    {
+        var dosing = JsonSerializer.Deserialize<DosingDoc>(await dosingResp.Content.ReadAsStringAsync(), Json.Options)!;
+        EvalMetrics.ScoreDosing(dosing, report);
+    }
+
     Merge(overall, report);
     Print(gc.Name, report);
 }

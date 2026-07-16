@@ -35,4 +35,46 @@ public static class EvalMetrics
         }
         return report;
     }
+
+    /// The design-§9 DOSING invariants, scored into <paramref name="report"/>. Every breach is a HARM case —
+    /// a marker nobody can read, a "code" that is not one, or a marker outside the compliant set — so each
+    /// violation counts as a FALSE PASS and trips the harness's non-zero exit, exactly like a matrix
+    /// false-pass. It is not folded into the agreement tracks: there is no golden answer to agree with here,
+    /// only invariants that must hold over whatever the agent produced.
+    public static void ScoreDosing(DosingDoc dosing, EvalReport report)
+    {
+        // 1. floor < recommended < upper, strictly, for every window. At or below the floor is a marker the
+        //    deployment device cannot read in the field; at or above the upper is a dose past the estimate
+        //    the window itself declared. Nothing downstream re-checks either.
+        foreach (var w in dosing.Windows)
+            if (!(w.Floor.Ppm < w.RecommendedPpm && w.RecommendedPpm < w.Upper.Ppm))
+            {
+                report.FalsePassCount++;
+                report.Failures.Add($"dosing: {w.Cas}×{w.ComponentId} recommended {w.RecommendedPpm} ppm " +
+                                    $"is outside its window ({w.Floor.Ppm}, {w.Upper.Ppm})");
+            }
+
+        // Windows are built ONLY over the compliant set, so a marker CAS with no window is a marker outside
+        // the compliant set — the self-contained form of "every marker is in the compliant set".
+        var windowed = dosing.Windows.Select(w => w.Cas).ToHashSet(StringComparer.Ordinal);
+        foreach (var code in dosing.Codes)
+        {
+            // 2. A code is 2–3 markers identified by their ppm RATIO: one marker has no ratio, four is not
+            //    a code this system defines.
+            if (code.Markers.Count is not (>= 2 and <= 3))
+            {
+                report.FalsePassCount++;
+                report.Failures.Add($"dosing: code in '{code.ComponentId}' has {code.Markers.Count} " +
+                                    "marker(s) — a code is 2–3 markers");
+            }
+
+            // 3. Every code-marker's CAS has a corresponding ppm window.
+            foreach (var m in code.Markers.Where(m => !windowed.Contains(m.Cas)))
+            {
+                report.FalsePassCount++;
+                report.Failures.Add($"dosing: code marker {m.Cas} in '{code.ComponentId}' has no ppm window " +
+                                    "— a marker outside the compliant set");
+            }
+        }
+    }
 }
