@@ -107,6 +107,40 @@ public class VpGateTests
         Assert.Contains("not 'awaiting-VP'", VpGate.ParkBlocker(null));
     }
 
+    private static RevisionDoc Revision(string stage, string status) => new()
+    {
+        Id = RecordIds.Revision("p1", stage, "r1"), ProjectId = "p1", Stage = stage,
+        Target = "t", Reason = "why", Status = status,
+        CreatedAt = "2026-07-16T10:00:00.0000000+00:00",
+    };
+
+    [Fact]
+    public void PendingRevisionBlocker_BlocksWhileADosingOrDecisionRevisionIsPending()
+    {
+        // F1 layer 3: the revise run is minutes wide and the stage advertises `awaiting-VP` throughout —
+        // but the RevisionDoc is durable from POST /revise's 202 until applied/failed, so it is the one
+        // record that covers the whole window. A pending Dosing or Decision revision means the decision
+        // may be about to change; the VP must not sign words that are being rewritten.
+        foreach (var stage in new[] { Stages.Dosing, Stages.Decision })
+        {
+            var blocker = VpGate.PendingRevisionBlocker([Revision(stage, RevisionStatus.Pending)]);
+            Assert.NotNull(blocker);
+            Assert.Contains(stage, blocker);            // names the stage whose revision is in flight
+            Assert.Contains("pending", blocker);
+        }
+
+        // A LANDED revision blocks nothing — applied re-parked the stage (the park guard takes over),
+        // failed changed nothing.
+        Assert.Null(VpGate.PendingRevisionBlocker([Revision(Stages.Dosing, RevisionStatus.Applied)]));
+        Assert.Null(VpGate.PendingRevisionBlocker([Revision(Stages.Decision, RevisionStatus.Failed)]));
+        Assert.Null(VpGate.PendingRevisionBlocker([]));
+
+        // Upstream stages are deliberately NOT listed: a Discovery/Regulatory revision voids the
+        // REGULATORY gate when it lands, and the determination's Armable + coverage re-check already
+        // refuse an unsigned or uncovered analysis — that window has its own guards.
+        Assert.Null(VpGate.PendingRevisionBlocker([Revision(Stages.Discovery, RevisionStatus.Pending)]));
+    }
+
     [Fact]
     public void NotArmable_WhenTheDecisionCoversNoComponents()
     {

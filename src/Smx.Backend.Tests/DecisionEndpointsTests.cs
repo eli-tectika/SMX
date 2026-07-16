@@ -339,6 +339,69 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         Assert.Contains(blockers, b => b!.Contains("'pending'") && b.Contains("not 'awaiting-VP'"));
     }
 
+    // ---- (F1 layer 3): a pending revision blocks the pen --------------------------------------------------
+
+    private static RevisionDoc PendingRevision(string stage, string key = "r1") => new()
+    {
+        Id = RecordIds.Revision(P, stage, key), ProjectId = P, Stage = stage,
+        Target = "the bottle code", Reason = "the ratio is too close to project X's",
+        CreatedAt = "2026-07-16T10:00:00.0000000+00:00",
+    };
+
+    [Theory]
+    [InlineData(Stages.Dosing)]
+    [InlineData(Stages.Decision)]
+    public async Task PostDetermination_WhileARevisionIsPending_Refuses_ThenSignsAfterItLands(string stage)
+    {
+        // The revise run is minutes wide (two LLM calls, an embed, a push) and the stage advertises
+        // `awaiting-VP` throughout — the (d) park guard cannot see it. The RevisionDoc CAN be seen: it is
+        // durable from POST /revise's 202 until applied/failed, so refusing while one is pending closes
+        // the whole window including feed lag. The decision may be about to change; the VP must not sign
+        // words that are being rewritten.
+        await SeedAwaitingVpAsync();
+        var revision = PendingRevision(stage);
+        await _store.UpsertRevisionAsync(revision);
+
+        var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
+            Approve("sign it now", ("bottle", Ratio("bottle"))));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, res.StatusCode);
+        var body = await res.Content.ReadAsStringAsync();
+        Assert.Contains(stage, body);                        // the blocker names the pending stage
+        Assert.Contains("pending", body);
+        Assert.Null(await _store.GetGateAsync(P, GateTypes.Vp));                      // nothing stamped
+        Assert.Null(Assert.Single((await _store.GetDecisionAsync(P))!.Components).ConfirmedCode);
+
+        // ...and a REJECT is refused identically: both verbs write a gate record over a moving target.
+        var reject = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
+            new { determination = "rejected", reason = "no" });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, reject.StatusCode);
+        Assert.Null(await _store.GetGateAsync(P, GateTypes.Vp));
+
+        // Once the revision has LANDED (applied — the executor re-parked the stage), the pen is free.
+        revision.Status = RevisionStatus.Applied;
+        await _store.UpsertRevisionAsync(revision);
+        var after = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
+            Approve("codes reviewed after the revision landed", ("bottle", Ratio("bottle"))));
+        Assert.Equal(HttpStatusCode.OK, after.StatusCode);
+        Assert.Equal("approved", (await _store.GetGateAsync(P, GateTypes.Vp))!.Status);
+    }
+
+    [Fact]
+    public async Task GetGateVp_WhileARevisionIsPending_IsNotArmable_AndNamesTheBlocker()
+    {
+        // The read mirrors the POST's refusal (the same rule as ParkBlocker): armable must mean the POST
+        // would accept, or the affordance invites a signature over a decision that is being rewritten.
+        await SeedAwaitingVpAsync();
+        await _store.UpsertRevisionAsync(PendingRevision(Stages.Dosing));
+
+        var g = await _client.GetFromJsonAsync<JsonElement>($"/projects/{P}/gate/vp");
+
+        Assert.False(g.GetProperty("armable").GetBoolean());
+        var blockers = g.GetProperty("blockers").EnumerateArray().Select(b => b.GetString()).ToList();
+        Assert.Contains(blockers, b => b!.Contains("dosing") && b.Contains("pending"));
+    }
+
     [Fact]
     public async Task PostDetermination_ApproveTwice_PreservesApprovedAt()
     {

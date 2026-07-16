@@ -52,4 +52,25 @@ public static class VpGate
             ? null
             : $"the decision stage is '{decisionStageStatus ?? "absent"}', not 'awaiting-VP' — " +
               "a signature answers a park, never a draft, never history";
+
+    /// The revision-in-flight blocker (Task 15 review F1, layer 3). The revise run is minutes wide (two
+    /// LLM calls, an embed, a search push) and the stage still advertises `awaiting-VP` throughout, so
+    /// ParkBlocker cannot see it — but the RevisionDoc CAN be seen: it is durable from POST /revise's 202
+    /// until the executor marks it applied/failed, covering the whole window including feed lag. A pending
+    /// Dosing or Decision revision means the decision may be about to change; nothing may be signed over
+    /// words that are being rewritten. Same three surfaces as ParkBlocker: the POST's 422, GET /gate/vp,
+    /// and the dashboard's vp card.
+    ///
+    /// Upstream stages (Discovery/Regulatory) are deliberately not listed: their revisions void the
+    /// REGULATORY gate when they land, and Armable + the coverage re-check already refuse an unsigned or
+    /// uncovered analysis — that window has its own guards.
+    public static string? PendingRevisionBlocker(IReadOnlyList<RevisionDoc> revisions)
+    {
+        var pending = revisions.FirstOrDefault(r =>
+            r.Status == RevisionStatus.Pending && r.Stage is Stages.Dosing or Stages.Decision);
+        return pending is null
+            ? null
+            : $"a revision of {pending.Stage} is pending — the decision may be about to change; " +
+              "sign after it lands";
+    }
 }

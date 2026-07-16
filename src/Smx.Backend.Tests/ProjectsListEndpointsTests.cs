@@ -278,6 +278,54 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
     }
 
     [Fact]
+    public async Task Dashboard_VpEntry_IsNotArmable_WhileARevisionIsPending()
+    {
+        // F1 layer 3, mirrored the same way ParkBlocker is: the vp card must not invite a signature while
+        // a dosing/decision revision is pending — the POST 422s it, so the card says why instead.
+        var p = Project("proj-dash-pendrev", "Acme", "Bottle", "2026-07-16T09:00:00.0000000+00:00");
+        p.Stages[Stages.Decision].Status = "awaiting-VP";
+        await _store.UpsertProjectAsync(p);
+        await _store.UpsertGateAsync(new GateDoc
+        {
+            Id = RecordIds.Gate("proj-dash-pendrev", GateTypes.Regulatory), ProjectId = "proj-dash-pendrev",
+            GateType = GateTypes.Regulatory, Status = "approved", ApprovedAt = "2026-07-16T00:00:00.0000000+00:00",
+        });
+        // Everything ELSE armable, so the pending revision is the ONLY blocker standing.
+        await _store.UpsertDecisionAsync(new DecisionDoc
+        {
+            Id = RecordIds.Decision("proj-dash-pendrev"), ProjectId = "proj-dash-pendrev", GeneratedAt = "t",
+            Components = [new ComponentDecision("bottle", [],
+                new ProposedCode("Zr:Y = 1.00:0.50", ["cas-zr", "cas-y"], "agent rationale"))],
+        });
+        await _store.UpsertCandidatesAsync(new CandidatesDoc
+        {
+            Id = RecordIds.Candidates("proj-dash-pendrev"), ProjectId = "proj-dash-pendrev",
+            Substances = [new CandidateSubstance("bottle", "Zr", "f", "cas-zr", null, null, false, "A", "s", [])],
+        });
+        await _store.UpsertVerdictAsync(new VerdictDoc
+        {
+            Id = RecordIds.Verdict("proj-dash-pendrev", "cas-zr", "bottle"), ProjectId = "proj-dash-pendrev",
+            Cas = "cas-zr", ComponentId = "bottle", Element = "Zr", Form = "f",
+            Dimensions = [new("ElementGate", VerdictStatus.Pass, [new Citation("regulatory", "x", "t")], 0.9, "ok")],
+            EvidenceReviewed = true,
+        });
+        await _store.UpsertRevisionAsync(new RevisionDoc
+        {
+            Id = RecordIds.Revision("proj-dash-pendrev", Stages.Decision, "r1"), ProjectId = "proj-dash-pendrev",
+            Stage = Stages.Decision, Target = "the pick", Reason = "too close to project X's ratio",
+            CreatedAt = "2026-07-16T10:00:00.0000000+00:00",
+        });
+
+        var dash = await _client.GetFromJsonAsync<JsonElement>("/projects/proj-dash-pendrev/dashboard");
+
+        var vp = Find(dash.GetProperty("needsSigning"), "gate", "vp");
+        Assert.NotNull(vp);
+        Assert.False(vp!.Value.GetProperty("armable").GetBoolean());
+        var blockers = vp.Value.GetProperty("blockers").EnumerateArray().Select(b => b.GetString()).ToList();
+        Assert.Contains(blockers, b => b!.Contains("decision") && b.Contains("pending"));
+    }
+
+    [Fact]
     public async Task Dashboard_AnUnmappedAwaitingStatus_SurfacesOnTheOperator_NeverVanishes()
     {
         // A future awaiting-* the mapping doesn't know yet must still SURFACE — a park that silently

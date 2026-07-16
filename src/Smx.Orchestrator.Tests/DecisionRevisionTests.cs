@@ -448,6 +448,137 @@ public class DecisionRevisionTests
         Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Vp))!.Status);
     }
 
+    // ---- the race the (d) guard cannot see (Task 15 review F1, layer 2) -----------------------------------
+    //
+    // During the ENTIRE revise run (closed-check → decision LLM → conclusion LLM → embed → push → persist)
+    // the stage still advertises `awaiting-VP`, so a determination STARTED before the revision landed can
+    // complete mid-run (layer 3 blocks one started after — see the endpoint tests). The persist closures
+    // therefore re-check the world immediately before writing: if the signature won the race, the revision
+    // lands honest `failed` and persists NOTHING — the stamped doc survives.
+
+    [Fact]
+    public async Task ARevision_RacedByTheSignature_FailsAndTheStampedDocSurvives()
+    {
+        var (d, store, agents, knowledge, _) = Sut();
+        await SeedAwaitingVpAsync(store, knowledge);
+
+        // The fake decision agent performs the VP's determination MID-CALL, exactly as the endpoint would:
+        // Confirmed* stamped onto the doc ON FILE, the approved gate written. When the fake returns, the
+        // revise run is between its entry checks (which passed — nothing was signed then) and its persist.
+        agents.Decision = async (assembled, dosing, rev) =>
+        {
+            var onFile = (await store.GetDecisionAsync(P))!;
+            onFile.Components = [.. onFile.Components.Select(x => x with
+            {
+                ConfirmedCode = StaleRatio, ConfirmedBy = "VP R&D", ConfirmedReason = "signed mid-revision",
+            })];
+            await store.UpsertDecisionAsync(onFile);
+            await store.UpsertGateAsync(Vp("approved"));
+            return AgentRunResult<DecisionDoc>.Ok(new DecisionDoc
+            {
+                Id = RecordIds.Decision(P), ProjectId = P,
+                Components = [.. assembled.Select(c => c with { ProposedCode = new ProposedCode(
+                    RevisedRatio, ["cas-y", "cas-fe"], "the re-pick that lost the race") })],
+                GeneratedAt = "2026-07-16T11:00:00.0000000+00:00",
+            });
+        };
+
+        await d.OnRecordChangedAsync(Delivered(DecisionRevision("re-pick — racing the pen")), default);
+
+        // The revision lands honest FAILED — the persist re-check saw the signature and refused to write.
+        var refused = Assert.Single(await store.GetRevisionsAsync(P));
+        Assert.Equal(RevisionStatus.Failed, refused.Status);
+        Assert.Contains("the project is closed", refused.Error);
+        // The conclusion was already written when the race was detected (it runs before persist, by the
+        // ordered-mutation contract) — the documented orphan, findable via the id the failed doc carries.
+        Assert.NotNull(refused.ConclusionId);
+
+        // The STAMPED doc survives byte-for-byte: the fresh unconfirmed doc never landed.
+        var decision = (await store.GetDecisionAsync(P))!;
+        var comp = Assert.Single(decision.Components);
+        Assert.Equal(StaleRatio, comp.ConfirmedCode);
+        Assert.Equal("signed mid-revision", comp.ConfirmedReason);
+        Assert.Equal(SeededDecisionGeneratedAt, decision.GeneratedAt);
+        Assert.Equal("awaiting-VP", Stage(store, Stages.Decision).Status);   // untouched by the failed persist
+
+        // ...so when the already-written approved gate now delivers, the close proceeds over the SIGNED
+        // doc — confirmations intact, procurement released over a real conclusion, never over nothing.
+        await d.OnRecordChangedAsync(Delivered((await store.GetGateAsync(P, GateTypes.Vp))!), default);
+        Assert.Equal("done", Stage(store, Stages.Decision).Status);
+        Assert.Equal(ProcurementStatus.Released, (await store.GetDecisionAsync(P))!.Procurement.Status);
+        Assert.Equal(StaleRatio, Assert.Single((await store.GetDecisionAsync(P))!.Components).ConfirmedCode);
+    }
+
+    [Fact]
+    public async Task ADosingRevision_RacedByTheSignature_FailsAndResetsNothing()
+    {
+        // The same race through the OTHER revise path: a determination completes while the dosing re-run
+        // is in flight. Without the persist re-check, the closure would reset Cost AND Decision to
+        // `pending` and upsert the new DosingDoc — the whole cascade re-running underneath a just-signed
+        // gate, regenerating the records the signature covers.
+        var (d, store, agents, knowledge, catalog) = Sut();
+        await SeedAwaitingVpAsync(store, knowledge);
+        agents.Dosing = async (c, _, _, _, _) =>
+        {
+            var onFile = (await store.GetDecisionAsync(P))!;
+            onFile.Components = [.. onFile.Components.Select(x => x with
+            {
+                ConfirmedCode = StaleRatio, ConfirmedBy = "VP R&D", ConfirmedReason = "signed mid-revision",
+            })];
+            await store.UpsertDecisionAsync(onFile);
+            await store.UpsertGateAsync(Vp("approved"));
+            return AgentRunResult<DosingDoc>.Ok(DosingAfter());
+        };
+
+        await d.OnRecordChangedAsync(Delivered(DosingRevision("swap Zr for Fe — racing the pen")), default);
+
+        var refused = Assert.Single(await store.GetRevisionsAsync(P));
+        Assert.Equal(RevisionStatus.Failed, refused.Status);
+        Assert.Contains("the project is closed", refused.Error);
+
+        // NOTHING was reset and NOTHING persisted: dosing/cost stand, both downstream stages untouched.
+        Assert.Equal(DosingBefore().GeneratedAt, (await store.GetDosingAsync(P))!.GeneratedAt);
+        Assert.Equal(SeededCostGeneratedAt, (await store.GetCostAsync(P))!.GeneratedAt);
+        Assert.Equal("done", Stage(store, Stages.Cost).Status);
+        Assert.Equal("awaiting-VP", Stage(store, Stages.Decision).Status);   // NOT reset to pending
+        Assert.Empty(catalog.Calls);
+        Assert.Equal(StaleRatio, Assert.Single((await store.GetDecisionAsync(P))!.Components).ConfirmedCode);
+    }
+
+    [Fact]
+    public async Task ARevision_WhoseStageMovedMidRun_FailsWithoutPersisting()
+    {
+        // The status half of the persist re-check: no signature this time, but the Decision stage moved
+        // mid-run (a concurrent Dosing revision's reset landing while the pick was re-running). Persisting
+        // would re-park `awaiting-VP` with a doc assembled over dosing that is being replaced — a stale
+        // proposal advertised as fresh. The revision must fail without writing.
+        var (d, store, agents, knowledge, _) = Sut();
+        await SeedAwaitingVpAsync(store, knowledge);
+        agents.Decision = async (assembled, dosing, rev) =>
+        {
+            var p = (await store.GetProjectAsync(P))!;
+            p.Stages[Stages.Decision].Status = "pending";   // the concurrent reset lands mid-call
+            await store.UpsertProjectAsync(p);
+            return AgentRunResult<DecisionDoc>.Ok(new DecisionDoc
+            {
+                Id = RecordIds.Decision(P), ProjectId = P,
+                Components = [.. assembled.Select(c => c with { ProposedCode = new ProposedCode(
+                    StaleRatio, ["cas-zr", "cas-y"], "assembled over dosing that is being replaced") })],
+                GeneratedAt = "2026-07-16T11:00:00.0000000+00:00",
+            });
+        };
+
+        await d.OnRecordChangedAsync(Delivered(DecisionRevision("re-pick")), default);
+
+        var refused = Assert.Single(await store.GetRevisionsAsync(P));
+        Assert.Equal(RevisionStatus.Failed, refused.Status);
+        Assert.Contains("moved", refused.Error);
+        // Nothing persisted: the seeded doc stands, and the stage keeps the status the CONCURRENT actor
+        // gave it — this path must not re-park a stage it no longer understands.
+        Assert.Equal(SeededDecisionGeneratedAt, (await store.GetDecisionAsync(P))!.GeneratedAt);
+        Assert.Equal("pending", Stage(store, Stages.Decision).Status);
+    }
+
     // ---- the front door ----------------------------------------------------------------------------------
 
     [Fact]

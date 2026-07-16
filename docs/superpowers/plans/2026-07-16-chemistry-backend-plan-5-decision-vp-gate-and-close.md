@@ -1327,3 +1327,40 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
   `ADosingRevision_AfterClose_IsRefused_NothingReRun_NothingRePriced` FAILED (a closed project re-dosed);
   (3) the (d) stage guard dropped from the endpoint → all four POST refusal cases FAILED (200 OK where a
   422 must be).
+- **Task 15 review follow-up (F1 MAJOR + F3 + F4, one commit): the signature and the revision cannot
+  cross.** The revise run is minutes wide (two LLM calls, an embed, a push) and the stage advertises
+  `awaiting-VP` throughout — the (d) park guard cannot see a determination completing inside that window.
+  Three layers landed: (1) `CloseProjectAsync` refuses a zero-confirmation close — an unconfirmed
+  component under a signed gate means a revision's persist replaced the stamped doc; it parks Decision
+  `needs-review` naming the components instead of releasing procurement over nothing; (2) BOTH revise
+  persist closures re-check the world immediately before writing (`ThrowIfClosedAsync` again, plus — on
+  the Decision path — a stage-status-unchanged check against the status captured at entry); a raced
+  revision lands honest `failed`, persisting nothing, the stamped doc surviving; (3) `POST
+  …/decision/determination` 422s while a Pending Dosing/Decision RevisionDoc exists
+  (`VpGate.PendingRevisionBlocker` — durable from POST /revise's 202 until applied/failed, covering the
+  whole window including feed lag), mirrored in `GET /gate/vp` and the dashboard's vp card exactly as
+  ParkBlocker is. F3: `CloseProjectAsync` re-reads the vp gate (point read) instead of trusting the fed
+  snapshot — an approve revoked before the feed delivered closes nothing; the close-test fixtures now
+  persist-then-deliver the gate (`DeliverSignedGateAsync`), the production sequence F3 makes load-bearing.
+  F4: the "only discovery and regulatory" 422 message named four stages — fixed in BOTH sites carrying it
+  (`RevisionEndpoints.cs` AND `ChatTools.cs`'s apply_revision refusal; the tests pin only "cannot be
+  revised", so neither broke).
+- **Follow-up mutations, all real kills, all reverted by hand:** (A) layer-1 park dropped →
+  `AClose_OverAnUnconfirmedDecision_ParksLoud_AndNeverReleases` FAILED (`done` + Released over zero
+  confirmations); (B) Decision-path persist re-checks dropped → BOTH
+  `ARevision_RacedByTheSignature_FailsAndTheStampedDocSurvives` and
+  `ARevision_WhoseStageMovedMidRun_FailsWithoutPersisting` FAILED (revision `applied`, the stamp
+  clobbered); (B2) Dosing-path closure re-check dropped →
+  `ADosingRevision_RacedByTheSignature_FailsAndResetsNothing` FAILED; (C) layer-3 POST guard dropped →
+  both `PostDetermination_WhileARevisionIsPending…` cases FAILED (200 where 422 must be — the read
+  mirrors survived the mutation, which is why the POST tests carry the kill); (D) F3 re-read dropped →
+  `AnApproveRevokedBeforeTheFeedDelivered_DoesNotClose` FAILED (closed `done` off the stale snapshot).
+- **Residual windows, accepted and documented (review follow-up):** (i) the determination POST's
+  unconditional `UpsertDecisionAsync` can still clobber a revise persist landing in its millisecond
+  window between the POST's read and write — the real fix is an ETag'd conditional upsert, deferred
+  together with the existing `SetStageAsync` read-modify-write ETag debt; (ii) `POST /revise` 202s on a
+  closed project — the refusal is asynchronous by design (record-as-bus: the executor refuses and the
+  revision lands `failed` with the closed-project message); a front-door 422 is cheap future hardening;
+  (iii) `OnRevisionAsync` acts on the fed snapshot's `Status` rather than re-reading the RevisionDoc —
+  the same latest-version-feed mode-dependence the chat handler documents (and closes with a point read);
+  pre-existing, unchanged by this task.

@@ -39,6 +39,17 @@ public static class DecisionEndpoints
                     blockers = (IReadOnlyList<string>)[notParked],
                 });
 
+            // ...and the window the park guard cannot see (Task 15 review F1, layer 3): the revise run is
+            // minutes wide and the stage advertises `awaiting-VP` throughout. The RevisionDoc is durable
+            // from POST /revise's 202 until applied/failed, so a pending Dosing/Decision revision blocks
+            // the pen for the whole window — approve and reject alike, the decision may be about to change.
+            if (VpGate.PendingRevisionBlocker(await store.GetRevisionsAsync(projectId, ct)) is { } inFlight)
+                return Results.UnprocessableEntity(new
+                {
+                    error = "VP gate not armable",
+                    blockers = (IReadOnlyList<string>)[inFlight],
+                });
+
             var regGate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
             var decision = await store.GetDecisionAsync(projectId, ct);
             if (VpGate.Armable(regGate, decision) is { Ok: false } blocked)
@@ -168,16 +179,21 @@ public static class DecisionEndpoints
                 : RegulatoryGate.Armable(candidates, verdicts).Blockers;
 
             // ...and the POST's park guard, mirrored for the same reason (Task 15(d)): a stage mid-re-pick
-            // or post-close reads not-armable HERE, with the blocker the POST would answer with.
+            // or post-close reads not-armable HERE, with the blocker the POST would answer with. The
+            // pending-revision guard (F1 layer 3) mirrors identically — the read must not advertise a pen
+            // the POST refuses while a revision is in flight.
             var project = await store.GetProjectAsync(projectId, ct);
             var notParked = VpGate.ParkBlocker(project?.Stages.GetValueOrDefault(Stages.Decision)?.Status);
+            var inFlight = VpGate.PendingRevisionBlocker(await store.GetRevisionsAsync(projectId, ct));
 
             var gate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
             return Results.Json(new
             {
                 status = gate?.Status ?? "locked",
-                armable = armed && uncovered.Count == 0 && notParked is null,
-                blockers = blockers.Concat(uncovered).Concat(notParked is null ? [] : new[] { notParked }).ToList(),
+                armable = armed && uncovered.Count == 0 && notParked is null && inFlight is null,
+                blockers = blockers.Concat(uncovered)
+                    .Concat(notParked is null ? [] : new[] { notParked })
+                    .Concat(inFlight is null ? [] : new[] { inFlight }).ToList(),
                 approvedAt = gate?.ApprovedAt,
             }, Json.Options);
         });

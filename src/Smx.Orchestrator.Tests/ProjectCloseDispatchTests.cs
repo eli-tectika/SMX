@@ -101,6 +101,16 @@ public class ProjectCloseDispatchTests
     private static StageState DecisionStage(InMemoryRecordStore store, string pid) =>
         store.Documents.OfType<ProjectDoc>().Single(p => p.ProjectId == pid).Stages[Stages.Decision];
 
+    /// The production sequence: POST /decision/determination WRITES the gate record, and the change feed
+    /// then hands the dispatcher a snapshot of it. F3's re-read makes the ON-FILE record load-bearing —
+    /// the close trusts the store, not the fed snapshot — so a fixture must never deliver a gate the
+    /// store does not hold.
+    private static async Task DeliverSignedGateAsync(StageDispatcher d, InMemoryRecordStore store, string pid)
+    {
+        await store.UpsertGateAsync(VpGateDoc(pid));
+        await d.OnRecordChangedAsync(Delivered(VpGateDoc(pid)), default);
+    }
+
     // ---- the close -------------------------------------------------------------------------------------
 
     [Fact]
@@ -109,7 +119,7 @@ public class ProjectCloseDispatchTests
         var (d, store, knowledge, _) = Sut();
         await SeedClosableAsync(store, P);
 
-        await d.OnRecordChangedAsync(Delivered(VpGateDoc(P)), default);
+        await DeliverSignedGateAsync(d, store, P);
 
         var marker = Assert.Single(await knowledge.QueryMarkersAsync(null));
         // Composition comes from the DosingDoc code — markers, the ratio identity, and the anchor ppm.
@@ -140,7 +150,7 @@ public class ProjectCloseDispatchTests
         var (d, store, knowledge, index) = Sut();
         await SeedClosableAsync(store, P);
 
-        await d.OnRecordChangedAsync(Delivered(VpGateDoc(P)), default);
+        await DeliverSignedGateAsync(d, store, P);
         await d.OnRecordChangedAsync(Delivered(VpGateDoc(P)), default);   // redelivery
 
         var marker = Assert.Single(await knowledge.QueryMarkersAsync(null));
@@ -161,8 +171,8 @@ public class ProjectCloseDispatchTests
         await SeedClosableAsync(store, "p1");
         await SeedClosableAsync(store, "p2");
 
-        await d.OnRecordChangedAsync(Delivered(VpGateDoc("p1")), default);   // first close mints the entry
-        await d.OnRecordChangedAsync(Delivered(VpGateDoc("p2")), default);   // second close is the reuse
+        await DeliverSignedGateAsync(d, store, "p1");   // first close mints the entry
+        await DeliverSignedGateAsync(d, store, "p2");   // second close is the reuse
 
         var marker = Assert.Single(await knowledge.QueryMarkersAsync(null));
         Assert.Equal(1, marker.ReuseCount);
@@ -182,7 +192,7 @@ public class ProjectCloseDispatchTests
         var (d, store, knowledge, _) = Sut();
         await SeedClosableAsync(store, P);
 
-        await d.OnRecordChangedAsync(Delivered(VpGateDoc(P)), default);
+        await DeliverSignedGateAsync(d, store, P);
 
         // Deterministic id — keyed by the project's close, so an at-least-once redelivery upserts one doc.
         var conclusion = await knowledge.GetLearnedConclusionAsync(KnowledgeKinds.Decision, $"{P}|close");
@@ -209,6 +219,58 @@ public class ProjectCloseDispatchTests
     }
 
     [Fact]
+    public async Task AClose_OverAnUnconfirmedDecision_ParksLoud_AndNeverReleases()
+    {
+        // The raced-close residue (Task 15 review F1, layer 1): a revision's persist can land a FRESH
+        // DecisionDoc (Confirmed* null) between the VP's stamp and the gate's delivery. A close that
+        // filtered to zero confirmations and carried on would release procurement over NOTHING — an empty
+        // conclusion under a real signature, the worst artifact this system could mint. It must park LOUD
+        // instead: needs-review, naming the unconfirmed components, nothing written, nothing released.
+        var (d, store, knowledge, index) = Sut();
+        await SeedClosableAsync(store, P);
+        var decision = (await store.GetDecisionAsync(P))!;
+        decision.Components = [.. decision.Components.Select(c => c with
+        {
+            ConfirmedCode = null, ConfirmedBy = null, ConfirmedReason = null,
+        })];
+        await store.UpsertDecisionAsync(decision);
+
+        await DeliverSignedGateAsync(d, store, P);
+
+        var stage = DecisionStage(store, P);
+        Assert.Equal("needs-review", stage.Status);
+        Assert.Contains("bottle", stage.Error);            // names the unconfirmed component
+        Assert.Contains("re-sign", stage.Error);           // and the recovery: re-sign after the re-pick
+        Assert.Equal(ProcurementStatus.Unreleased, (await store.GetDecisionAsync(P))!.Procurement.Status);
+        Assert.Empty(await knowledge.QueryMarkersAsync(null));
+        Assert.Empty(index.Pushed);
+
+        // A redelivered gate is absorbed — the stage is no longer awaiting-VP — so the park is stable.
+        await DeliverSignedGateAsync(d, store, P);
+        Assert.Equal("needs-review", DecisionStage(store, P).Status);
+        Assert.Empty(await knowledge.QueryMarkersAsync(null));
+    }
+
+    [Fact]
+    public async Task AnApproveRevokedBeforeTheFeedDelivered_DoesNotClose()
+    {
+        // F3: the feed hands SNAPSHOTS (the OnChatMessageAsync lesson). An approve stamped and revoked a
+        // moment later delivers the approved snapshot while the STORE already holds `locked`. Closing off
+        // the fed element would release procurement under a gate that is no longer signed — the handler
+        // must re-read the record and trust only that.
+        var (d, store, knowledge, index) = Sut();
+        await SeedClosableAsync(store, P);
+        await store.UpsertGateAsync(VpGateDoc(P, "locked"));   // the store's CURRENT truth: revoked
+
+        await d.OnRecordChangedAsync(Delivered(VpGateDoc(P)), default);   // the stale approved snapshot
+
+        Assert.Equal("awaiting-VP", DecisionStage(store, P).Status);      // no close: still parked
+        Assert.Equal(ProcurementStatus.Unreleased, (await store.GetDecisionAsync(P))!.Procurement.Status);
+        Assert.Empty(await knowledge.QueryMarkersAsync(null));
+        Assert.Empty(index.Pushed);
+    }
+
+    [Fact]
     public async Task Close_WithNoKnowledgeStore_DegradesSafely()
     {
         // Mirror of the catalog-null degrade: no knowledge store ⇒ the knowledge writes are skipped, but
@@ -216,7 +278,7 @@ public class ProjectCloseDispatchTests
         var (d, store, knowledge, index) = Sut(withKnowledge: false);
         await SeedClosableAsync(store, P);
 
-        await d.OnRecordChangedAsync(Delivered(VpGateDoc(P)), default);
+        await DeliverSignedGateAsync(d, store, P);
 
         Assert.Equal("done", DecisionStage(store, P).Status);
         Assert.Equal(ProcurementStatus.Released, (await store.GetDecisionAsync(P))!.Procurement.Status);

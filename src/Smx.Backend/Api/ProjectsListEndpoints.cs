@@ -121,13 +121,17 @@ public static class ProjectsListEndpoints
                         : RegulatoryGate.Armable(candidates, verdicts).Blockers;
                     // ...and the POST's park guard (Task 15(d)), for the same reason: a Dosing revision
                     // resets Decision to `pending` with the STALE DecisionDoc still on file — this card
-                    // must not invite a signature the POST refuses.
+                    // must not invite a signature the POST refuses. Nor while a Dosing/Decision revision
+                    // is still PENDING (F1 layer 3): the decision may be about to change.
                     var notParked = VpGate.ParkBlocker(project.Stages.GetValueOrDefault(Stages.Decision)?.Status);
+                    var inFlight = VpGate.PendingRevisionBlocker(await store.GetRevisionsAsync(projectId, ct));
                     needsSigning.Add(new
                     {
                         gate = GateTypes.Vp,
-                        armable = armed && uncovered.Count == 0 && notParked is null,
-                        blockers = blockers.Concat(uncovered).Concat(notParked is null ? [] : new[] { notParked }).ToList(),
+                        armable = armed && uncovered.Count == 0 && notParked is null && inFlight is null,
+                        blockers = blockers.Concat(uncovered)
+                            .Concat(notParked is null ? [] : new[] { notParked })
+                            .Concat(inFlight is null ? [] : new[] { inFlight }).ToList(),
                     });
                 }
             }

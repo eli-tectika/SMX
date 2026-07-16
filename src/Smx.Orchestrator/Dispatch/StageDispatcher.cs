@@ -210,10 +210,38 @@ public sealed class StageDispatcher(
         // re-pushing the conclusion on every at-least-once delivery).
         if (project is null || project.Stages[Stages.Decision].Status is not "awaiting-VP") return;
 
+        // F3: trust the RECORD, not the fed snapshot (the OnChatMessageAsync lesson). The feed's element
+        // is a snapshot of the gate at some change: an approval revoked a moment later delivers the
+        // approved version while the store already holds `locked`. Closing off the fed element would
+        // release procurement under a gate that is no longer signed — re-read, and a by-now-unsigned
+        // gate closes nothing (the reject's own delivery is a no-op in OnGateAsync).
+        var gate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
+        if (gate?.Status != "approved") return;
+
         var decision = await store.GetDecisionAsync(projectId, ct);
         var dosing = await store.GetDosingAsync(projectId, ct);
         var constraints = await store.GetConstraintsAsync(projectId, ct);
         if (decision is null || dosing is null || constraints is null) return; // nothing signed over nothing
+
+        // The raced-close refusal (Task 15 review F1, layer 1). The determination endpoint stamps EVERY
+        // component before the gate is written, so an unconfirmed component here means the DecisionDoc on
+        // file is NOT the one the VP signed — a revision's persist replaced it in the window between the
+        // stamp and this delivery. Filtering to an empty confirmed list and carrying on would release
+        // procurement over NOTHING (an empty conclusion under a real signature). Park LOUD instead;
+        // the re-pick re-parks at awaiting-VP and the VP signs what they can actually read.
+        var unconfirmed = decision.Components
+            .Where(c => c.ConfirmedCode is null).Select(c => c.ComponentId).ToList();
+        if (unconfirmed.Count > 0)
+        {
+            await SetStageAsync(projectId, Stages.Decision, s =>
+            {
+                s.Status = "needs-review";
+                s.Error = "the gate is signed but the decision on file carries no confirmation for: " +
+                          string.Join(", ", unconfirmed) +
+                          " — a revision may have raced the signature; re-sign after the re-pick";
+            }, ct);
+            return;
+        }
 
         // The confirmed codes, resolved back to the DosingDoc records they name. The endpoint 422'd any
         // confirmation that names no real code, so First() is a contract here, not a hope.
@@ -669,6 +697,14 @@ public sealed class StageDispatcher(
             JsonSerializer.Serialize(dosing, Json.Options),
             async token =>
             {
+                // Re-check the close IMMEDIATELY before mutating (Task 15 review F1, layer 2 — the same
+                // re-check ReviseDecisionAsync's closure runs, for the same race): the entry check passed
+                // minutes ago, and a determination in flight then may have signed since. Without this, the
+                // resets below plus the upsert would re-run the whole Cost→Decision cascade UNDERNEATH a
+                // just-signed gate, regenerating the records the signature covers. Throw: the revision
+                // lands honest `failed`, nothing reset, nothing persisted.
+                await ThrowIfClosedAsync(c.ProjectId, "project", token);
+
                 // A Dosing revision may change the codes' substance set, so a Cost audit computed over the
                 // OLD set is now stale — the same "never leave an artifact that is wrong but looks current"
                 // rule TryAssembleAsync applies to the Matrix. Reset Cost to `pending` so the persisted
@@ -701,6 +737,11 @@ public sealed class StageDispatcher(
         // rewrote the DecisionDoc now would put words under a signature the VP never read.
         await ThrowIfClosedAsync(c.ProjectId, "decision", ct);
 
+        // Captured NOW so the persist closure can prove the stage did not move while the agent ran —
+        // see the re-check below.
+        var statusAtStart = (await store.GetProjectAsync(c.ProjectId, ct))
+            ?.Stages.GetValueOrDefault(Stages.Decision)?.Status;
+
         var verdicts = await store.GetVerdictsAsync(c.ProjectId, ct);
         var dosing = await store.GetDosingAsync(c.ProjectId, ct)
             ?? throw new InvalidOperationException("no dosing on file — there are no finalized codes to re-pick over");
@@ -723,6 +764,23 @@ public sealed class StageDispatcher(
             JsonSerializer.Serialize(decision, Json.Options),
             async token =>
             {
+                // Re-check the world IMMEDIATELY before writing (Task 15 review F1, layer 2). The run
+                // between the entry checks and this line is minutes wide (two LLM calls, an embed, a
+                // push), and the stage advertised `awaiting-VP` throughout — so a determination STARTED
+                // before this revision landed can have completed mid-run (layer 3's pending-revision 422
+                // blocks one started after). If the VP signed in that window, persisting would put an
+                // unconfirmed doc OVER the stamped one — under an approved gate whose close then finds
+                // zero confirmations. Throw instead: the revision lands honest `failed`, nothing written,
+                // the signature survives.
+                await ThrowIfClosedAsync(c.ProjectId, "decision", token);
+                var now = (await store.GetProjectAsync(c.ProjectId, token))
+                    ?.Stages.GetValueOrDefault(Stages.Decision)?.Status;
+                if (now != statusAtStart)
+                    throw new InvalidOperationException(
+                        $"the decision stage moved from '{statusAtStart ?? "absent"}' to '{now ?? "absent"}' " +
+                        "while the revision was re-running — refusing to persist over a record that changed " +
+                        "mid-flight; re-issue the revision");
+
                 // Doc FIRST, park SECOND — the park is the "a proposal awaits your signature" signal, and
                 // POST /decision/determination signs whatever DecisionDoc is on file at `awaiting-VP`. The
                 // reverse order opens a window where the stage advertises the park while the STALE proposal
