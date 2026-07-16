@@ -6,6 +6,7 @@ using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
 using Azure.Storage.Files.DataLake;
 using Microsoft.Azure.Cosmos;
+using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -28,6 +29,12 @@ var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
     .ConfigureServices((ctx, services) =>
     {
+        // Worker-side Application Insights. On Flex Consumption the host emits almost no telemetry
+        // on the app's behalf — without this wiring NOTHING reaches the workspace (verified live
+        // 2026-07-16: zero requests/traces despite a correct connection string).
+        services.AddApplicationInsightsTelemetryWorkerService();
+        services.ConfigureFunctionsApplicationInsights();
+
         var opts = SdsOptions.From(ctx.Configuration);
         services.AddSingleton(opts);
 
@@ -163,6 +170,17 @@ var host = new HostBuilder()
             sp.GetRequiredService<IEmbedder>(),        // reused from the SDS registration
             sp.GetRequiredService<IReferenceSearchClient>(),
             refOpts));
+    })
+    .ConfigureLogging(logging =>
+    {
+        // The AI logger provider defaults to Warning+; drop that rule so the operational
+        // Information logs ("SDS sweep: N due entries", candidate rejections) reach App Insights.
+        logging.Services.Configure<LoggerFilterOptions>(options =>
+        {
+            var aiRule = options.Rules.FirstOrDefault(r =>
+                r.ProviderName == "Microsoft.Extensions.Logging.ApplicationInsights.ApplicationInsightsLoggerProvider");
+            if (aiRule is not null) options.Rules.Remove(aiRule);
+        });
     })
     .Build();
 
