@@ -108,6 +108,9 @@ public class OrchestratorHostWiringTests
             }
             else
             {
+                // Every other stage — Decision included, deliberately: its assembly is deterministic but the
+                // chat surface still reads the knowledge layer (DecisionReadTools == DosingReadTools), so it
+                // must land HERE, not in the empty branch.
                 Assert.NotEmpty(readTools);
             }
 

@@ -67,4 +67,17 @@ public class RecordDocRouterTests
         }, Smx.Domain.Json.Options);
         Assert.IsType<CostDoc>(RecordDocRouter.Route(json));
     }
+
+    /// The DecisionDoc landing on the change feed is what parks the project at the VP gate (Plan 5). A
+    /// missing arm routes it to null and the close chain never fires; an arm mis-pointed at another doc
+    /// type hands the dispatcher a doc with no Components — either way, silently. This goes red instead.
+    [Fact]
+    public void Route_DeserializesDecisionDoc_ByDiscriminator()
+    {
+        var json = System.Text.Json.JsonSerializer.SerializeToElement(new DecisionDoc
+        {
+            Id = RecordIds.Decision("p1"), ProjectId = "p1", GeneratedAt = "t",
+        }, Smx.Domain.Json.Options);
+        Assert.IsType<DecisionDoc>(RecordDocRouter.Route(json));
+    }
 }

@@ -104,6 +104,11 @@ public sealed class ToolBox(
             "The reference corpus — formulation-impact basis, application notes, typical loadings."),
     ];
 
+    /// Decision reads what Dosing reads: prior conclusions and the reference corpus. The decision matrix
+    /// itself is DETERMINISTIC assembly — there is deliberately no tool that could let the model "look up"
+    /// a different answer than the record it is proposing over.
+    public IList<AITool> DecisionReadTools() => DosingReadTools();
+
     /// The Dosing stage's tools. The two calculators are DETERMINISTIC and the agent may not do their
     /// arithmetic itself: a model that computes its own floor can compute one that is too low, and a low
     /// floor ships a marker nobody can detect. It calls these, and picks a ppm INSIDE what they return.
@@ -148,6 +153,7 @@ public sealed class ToolBox(
         Stages.Discovery => DiscoveryReadTools(),
         Stages.Regulatory => RegulatoryTools(),
         Stages.Dosing => DosingReadTools(),
+        Stages.Decision => DecisionReadTools(),
         // Cost is deterministic — its output is a table lookup, not a reasoned claim over a corpus — so a
         // chat turn on it holds NO read tools and answers only from the CostDoc in its prompt. Listed
         // explicitly (not left to the default) so the intent reads as deliberate, not as an unknown stage.

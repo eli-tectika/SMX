@@ -302,8 +302,9 @@ public class ChatDispatchTests
         Assert.Contains("single-source", inputs);
     }
 
-    /// A project driven to a priced answer: a DosingDoc naming a marker and a CostDoc carrying a cited price —
-    /// enough for the chat surface on EITHER new stage to have its own record to read.
+    /// A project driven to a priced answer: a DosingDoc naming a marker, a CostDoc carrying a cited price,
+    /// and a DecisionDoc carrying the agent's proposed final code — enough for the chat surface on ANY of
+    /// the new stages to have its own record to read.
     private static async Task SeedCostedProjectAsync(InMemoryRecordStore store)
     {
         var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
@@ -326,6 +327,21 @@ public class ChatDispatchTests
                 new PriceQuote(0.42, "USD", "Acme", "100 g", new Citation("ref-catalog", "ref-catalog/acme", "t")),
                 "note", [])],
         });
+        await store.UpsertDecisionAsync(new DecisionDoc
+        {
+            Id = RecordIds.Decision(P), ProjectId = P, GeneratedAt = "t",
+            Components = [new ComponentDecision("bottle",
+                Rows:
+                [
+                    new DecisionRow("1314-36-9", "Y", "recommended", 20,
+                        Cleared: new ClearedCriteria(Regulatory: true, Dosing: true, Cost: true),
+                        Traceability: new TraceRefs(
+                            Verdict: RecordIds.Verdict(P, "1314-36-9", "bottle"),
+                            Window: RecordIds.Dosing(P), Audit: RecordIds.Cost(P))),
+                ],
+                ProposedCode: new ProposedCode("Y:Zr = 1.00:0.50", ["1314-36-9", "10035-04-8"],
+                    "final code covering both criteria at lowest cost"))],
+        });
     }
 
     /// PLAN-4 TRIPWIRE. Adding `dosing` and `cost` to Stages.All opened POST /stages/{stage}/chat for both,
@@ -336,6 +352,7 @@ public class ChatDispatchTests
     [Theory]
     [InlineData(Stages.Dosing, "1314-36-9")]     // the DosingDoc's marker
     [InlineData(Stages.Cost, "ref-catalog/")]    // the CostDoc's citation
+    [InlineData(Stages.Decision, "final")]       // the DecisionDoc's picked-code rationale (seed writes "final code …")
     public async Task ChatOnANewStage_SeesThatStagesOwnRecord_NotAnEmptyObject(string stage, string expected)
     {
         var (d, store, agents) = Sut();
