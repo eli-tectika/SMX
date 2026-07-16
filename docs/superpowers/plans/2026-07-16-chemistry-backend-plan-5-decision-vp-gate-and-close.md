@@ -618,7 +618,7 @@ Today `CostDoc` falls through `OnRecordChangedAsync` with no case (inventory §6
 
 Spec §4 gates table: VP arms only when "Regulatory cleared + all components have a selected code". "Selected" at ARM time means the DecisionDoc offers a code per component (proposal present); the VP's confirmation happens IN the signing call.
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
 
 ```csharp
     // Armable == (regulatory gate approved) && (decision doc exists) && (every component id in the
@@ -631,9 +631,9 @@ Spec §4 gates table: VP arms only when "Regulatory cleared + all components hav
     // 4. NotArmable_WithNoDecisionDoc → blocker "decision has not run"
 ```
 
-- [ ] **Step 2: fail → Step 3: implement** (pure function, `(bool Ok, IReadOnlyList<string> Blockers)`, mirror `RegulatoryGate.Armable`'s shape) **→ Step 4: green + full suite.**
-- [ ] **Step 5: Mutation:** drop the regulatory-approved check → test 2 FAILS. Revert.
-- [ ] **Step 6: Commit** `feat(domain): VpGate.Armable — no VP signature over an unsigned analysis or a code-less component`
+- [x] **Step 2: fail → Step 3: implement** (pure function, `(bool Ok, IReadOnlyList<string> Blockers)`, mirror `RegulatoryGate.Armable`'s shape) **→ Step 4: green + full suite.**
+- [x] **Step 5: Mutation:** drop the regulatory-approved check → test 2 FAILS. Revert.
+- [x] **Step 6: Commit** `feat(domain): VpGate.Armable — no VP signature over an unsigned analysis or a code-less component`
 
 ---
 
@@ -1158,3 +1158,7 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
   plan named only "dosing or cost", but `TryDecideAsync` also resolves constraints for the component list).
   Note these guard pins pass vacuously BEFORE the case exists (no case → nothing happens → stage stays
   `pending`); their teeth are the post-implementation mutations above.
+- **Task 7 touched only `VpGate.cs` + `VpGateTests.cs`** — `GateTypes.Vp` already shipped with Task 11 (see
+  above), so the plan's `GateDoc.cs` modification was already done and was not re-applied.
+  `NotArmable_WithoutTheRegulatorySignature` covers BOTH the locked gate and the absent (null) gate —
+  neither is a signature, and the two must block identically.
