@@ -5,6 +5,10 @@ namespace Smx.Domain;
 public interface IRecordStore
 {
     Task<ProjectDoc?> GetProjectAsync(string projectId, CancellationToken ct = default);
+
+    /// Cross-partition, deliberately: the Projects list spans every project. Bounded by `max` — the
+    /// single-operator estate is small, but an unbounded cross-partition scan is a habit not to form.
+    Task<IReadOnlyList<ProjectDoc>> GetProjectsAsync(int max = 50, CancellationToken ct = default);
     Task<ConstraintsDoc?> GetConstraintsAsync(string projectId, CancellationToken ct = default);
     Task<MatrixDoc?> GetMatrixAsync(string projectId, CancellationToken ct = default);
     Task<DosingDoc?> GetDosingAsync(string projectId, CancellationToken ct = default);

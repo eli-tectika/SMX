@@ -24,6 +24,23 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
     public Task<VerdictDoc?> GetVerdictAsync(string projectId, string cas, string componentId, CancellationToken ct = default) =>
         ReadAsync<VerdictDoc>(RecordIds.Verdict(projectId, cas, componentId), projectId, ct);
 
+    /// The ONE query in this class with no PartitionKey in its request options: the projects list spans
+    /// every partition. `MaxItemCount = max` + `Take(max)` keep the fan-out bounded page-side and
+    /// result-side. Wire names pinned by CosmosQueryTextTests.GetProjects_query_uses_wire_property_names.
+    public async Task<IReadOnlyList<ProjectDoc>> GetProjectsAsync(int max = 50, CancellationToken ct = default)
+    {
+        var results = new List<ProjectDoc>();
+        var query = container.GetItemLinqQueryable<ProjectDoc>(
+                requestOptions: new QueryRequestOptions { MaxItemCount = max })
+            .Where(d => d.Type == RecordTypes.Project)
+            .OrderByDescending(d => d.CreatedAt)
+            .Take(max)
+            .ToFeedIterator();
+        while (query.HasMoreResults)
+            results.AddRange(await query.ReadNextAsync(ct));
+        return results;
+    }
+
     public async Task<IReadOnlyList<VerdictDoc>> GetVerdictsAsync(string projectId, CancellationToken ct = default)
     {
         var results = new List<VerdictDoc>();

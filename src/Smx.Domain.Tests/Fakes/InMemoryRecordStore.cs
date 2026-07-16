@@ -35,6 +35,12 @@ public sealed class InMemoryRecordStore : IRecordStore
 
     public Task<ProjectDoc?> GetProjectAsync(string projectId, CancellationToken ct = default) =>
         Read<ProjectDoc>(projectId);
+    public Task<IReadOnlyList<ProjectDoc>> GetProjectsAsync(int max = 50, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ProjectDoc>>(_docs.Values.OfType<ProjectDoc>()
+            .OrderByDescending(p => p.CreatedAt, StringComparer.Ordinal)   // twin of the Cosmos ORDER BY ... DESC
+            .Take(max)
+            .Select(Copy)
+            .ToList());
     public Task<ConstraintsDoc?> GetConstraintsAsync(string projectId, CancellationToken ct = default) =>
         Read<ConstraintsDoc>(RecordIds.Constraints(projectId));
     public Task<MatrixDoc?> GetMatrixAsync(string projectId, CancellationToken ct = default) =>
