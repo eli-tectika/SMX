@@ -594,29 +594,6 @@
   margin-top: var(--s2);
 }
 
-/* ---- park slot ----------------------------------------------------------------
-   The five spec-named waits (awaiting physics XRF, awaiting R.E. determination, …)
-   have no backend representation. This occupies exactly the position the real
-   indicator will occupy, unfilled — never coloured as if active, never showing a
-   person or an elapsed time. When the record grows a park state this is a data
-   swap, not a redesign. */
-
-.park {
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--r2);
-  padding: var(--s3);
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s2);
-  color: var(--text-muted);
-  font-size: var(--t-small);
-  background: repeating-linear-gradient(
-    45deg,
-    transparent 0 8px,
-    color-mix(in srgb, var(--text-muted) 3%, transparent) 8px 9px
-  );
-}
-
 /* ---- segmented control --------------------------------------------------------- */
 
 .seg {

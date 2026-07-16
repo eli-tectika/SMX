@@ -149,28 +149,6 @@ export function BarRow({
   );
 }
 
-/**
- * The five spec-named waits (awaiting client samples / physics XRF / R.E.
- * determination / code-finalization review / VP determination) have no backend
- * representation. This occupies exactly the position the real indicator will
- * occupy — unfilled, never coloured as if active, never naming a person or an
- * elapsed time. When the record grows a park state, this becomes a data swap.
- */
-export function ParkSlot({ awaiting, specRef }: { awaiting: string; specRef: string }) {
-  return (
-    <div className="park">
-      <i className="ti ti-player-pause" aria-hidden="true" style={{ marginTop: 1 }} />
-      <div>
-        <b>This stage parks here in the real system</b> — awaiting {awaiting} ({specRef}).
-        <div style={{ marginTop: 2 }}>
-          No endpoint reports a park state; the record knows only{' '}
-          <code>pending / running / failed / needs-review / done</code>.
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /** A citation. Every verdict must trace to one; a dimension without one is a defect. */
 export function CitationChip({
   source,

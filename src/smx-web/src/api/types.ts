@@ -157,14 +157,66 @@ export interface StageState {
 }
 
 /**
+ * MeasuredBackground — src/Smx.Domain/Records/ConstraintsDoc.cs.
+ *
+ * The physicist's measured background for one element in one component. `unit` is CARRIED, not assumed,
+ * which is why the field is `level` and not `levelPpm` — DetectionFloor refuses to add a background to a
+ * LOD whose unit differs, because mixing counts with ppm yields a plausible, wrong number. Render the unit.
+ */
+export interface MeasuredBackground {
+  component: string;
+  element: string;
+  level: number;
+  unit: string;
+}
+
+/** DeviceLod / XrfDevice — ConstraintsDoc.cs. The deployment XRF unit whose LODs the ppm floor targets. */
+export interface DeviceLod {
+  element: string;
+  lod: number;
+  unit: string;
+}
+export interface XrfDevice {
+  model: string;
+  lods: DeviceLod[];
+}
+
+/**
+ * The intake payload, as held on the project record — the body of POST /projects, gap-filled in place by
+ * the intake chat's record_answer while intake is still gathering (ChatTools.cs:227-230).
+ *
+ * `providedCandidates` is the ONE field here that is a provenance trap. It is the known-candidate mode
+ * seam: when non-empty, Discovery is BYPASSED and these become the candidates doc verbatim, never having
+ * passed DiscoveryAgent.Validate (StageDispatcher.cs:89-98). They are operator/eval input that carries
+ * exactly the authority of an agent-cited candidate — so a UI that renders them beside, or as, Discovery
+ * output is fabricating agent provenance. Label them or do not render them.
+ *
+ * `measuredBackground: []` with no `device` is not an empty screen — it is the exact precondition Dosing
+ * parks on (awaiting-physics). It is a FACT about the record, and the honest thing to show.
+ */
+export interface ProjectPayload {
+  components: ComponentSpec[];
+  elementPools: ElementPool[];
+  providedCandidates: unknown[];
+  clientRestrictedList: string[];
+  measuredBackground: MeasuredBackground[];
+  /** Absent (no key at all) when the operator has no XRF device on file — never a null masquerading as one. */
+  device?: XrfDevice;
+}
+
+/**
  * The projection returned by GET /projects/{projectId}, NOT the whole ProjectDoc.
- * See src/Smx.Backend/Api/ProjectEndpoints.cs:24 — payload and createdAt are dropped.
+ * See src/Smx.Backend/Api/ProjectEndpoints.cs:48 — `createdAt` is still dropped.
+ *
+ * `payload` is optional here only so existing ProjectSummary fixtures stay valid; the backend always
+ * sends it. Treat its absence as "not loaded", never as "the operator submitted nothing".
  */
 export interface ProjectSummary {
   projectId: string;
   client: string;
   product: string;
   stages: Record<string, StageState>;
+  payload?: ProjectPayload;
 }
 
 /**

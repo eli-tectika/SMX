@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { MockBadge } from '../../components/MockBadge';
 import { Data } from '../../components/ui/Data';
-import { ParkSlot, SectionHeader } from '../../components/ui/Primitives';
+import { SectionHeader } from '../../components/ui/Primitives';
 
 import background from '../../mocks/fixtures/background.json';
 
@@ -45,7 +45,7 @@ export function Background() {
     <section className="screen" data-provenance="mock">
       <div className="cap">
         <b>Background analysis</b>
-        spec §4.2 — the agent marks X / L / V per component
+        The agent marks X / L / V per component
       </div>
 
       <MockBadge note="No XRF measurement has been ingested. The objective toggle re-labels the legend but cannot re-evaluate anything." />
@@ -217,10 +217,6 @@ export function Background() {
             )}
           </div>
         ))}
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-        <ParkSlot awaiting="physics XRF measurement" specRef="spec §4.2" />
       </div>
     </section>
   );
