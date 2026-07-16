@@ -2691,4 +2691,45 @@ git commit -m "test(e2e): the whole journey to a priced, dosable, cited answer"
 
 ## Deviations recorded during execution
 
-*(Fill this in as you go — the as-shipped record is worth more than the plan being right.)*
+*(The as-shipped record. Merged to main as `190ae82`, 2026-07-16; 699 backend tests.)*
+
+- **Task 1b added mid-execution** (not in the original plan): intake copies the physics facts from the
+  PAYLOAD, never from the model's echo. Found while testing Task 1 — `clientRestrictedList` was never
+  echo-checked, so a model returning `[]` silently dropped the client's banned elements from the element
+  gate. A live false-pass, closed structurally.
+- **Renames:** `LevelPpm`→`Level`, `LodPpm`→`Lod`, `MeasuredBackground`→`MeasuredBackgrounds`. A name
+  encoding a unit beside a `Unit` field lies about non-ppm readings.
+- **Task 12 was rewritten before execution:** the plan originally triggered Dosing off the MatrixDoc "once
+  the gate is approved" — false premise. `TryAssembleAsync` upserts the matrix on verdict COMPLETENESS,
+  before any signature, so a matrix trigger would dose an unsigned gate. As shipped: the approved GateDoc
+  triggers; `TryDoseAsync` is shared with `OnProjectAsync` re-entry and re-checks `Armable`.
+- **`StageDispatcher`'s two new dependencies are optional-trailing** (`IKnowledgeStore?`, `ICatalogLookup?`),
+  degrading safely when null (Dosing parks `awaiting-operator`, Cost stays `pending`) — chosen to avoid a
+  construction-site ripple while a concurrent session held both `Program.cs` files.
+- **Task 11:** the implementer shipped invariant #8 inverted (a code marker with no dosable window returned
+  *valid*); caught in review, fixed, the five key mutations re-run by hand.
+- **The holistic review found three cross-task bugs** (fixed in `974ecae`): a composition-changing Dosing
+  revision left Cost STALE (now resets Cost→`pending`; the regression test wires BOTH stores into one
+  dispatcher — the per-store gap that hid it); the revision path skipped the gate re-check; a window's
+  model-authored element was never cross-checked against the verdict's element for that CAS.
+- **Task 13:** review caught the knowledge write happening BEFORE the project-existence check — a valid
+  loading POSTed to a bad `projectId` returned 404 *after* seeding permanent cross-project knowledge.
+  Reordered (a 4xx is side-effect-free) and pinned by a regression test.
+- **Task 19:** the `StageInputsJsonAsync` arms were already wired by Task 8 — only the tripwire test was
+  added. The plan's 1-marker seed was invalid: `RatioSignature.Of` throws below 2 markers (a code IS 2–3
+  markers); seeds use 2.
+- **Task 20 (E2E):** seeds the pre-gate records directly rather than driving `POST /projects` through faked
+  Intake/Discovery/Regulatory — the canned intake fake cannot carry the physics payload, and the journey
+  under test is the Plan-4 surface (signature → park → loading → dose → price → cited reads), which runs
+  through the real HTTP endpoints and the real dispatcher. The eval's "every marker in the compliant set"
+  ships in its self-contained form (every code-marker CAS must have a `PpmWindow` — windows exist only over
+  the compliant set) because the black-box eval cannot see operator determinations; eval facts live in
+  `tools/Smx.Eval.Tests`; `Smx.Backend.Tests` gained Compile-links to three orchestrator fakes (the repo's
+  linked-fakes pattern).
+- **Execution mechanics worth keeping:** Tasks 13/19/20 + the DI wiring were built on a side branch
+  (`wt-plan4-endpoints`) in an isolated worktree because a concurrent session held ~21 files uncommitted
+  (the hosted web-search work, landed as `f7b5c94`); the later rebase was conflict-free as predicted. A
+  `/tmp` worktree was wiped by a session reset and took an agent's uncommitted Task-20 work with it (the
+  branch commits survived; the agent recreated the rest from its transcript) — worktrees now live in-repo
+  (`.worktrees/`, excluded via `.git/info/exclude`) and implementers commit the moment the suite is green,
+  BEFORE mutation checks.
