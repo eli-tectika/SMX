@@ -175,9 +175,15 @@ public static class OrchestratorHost
         // chat turn reads with. So there is genuinely nothing else for chat to register — see
         // OrchestratorHostWiringTests.AChatTurnsTools_BuildFromTheRealGraph_ForEveryChattableStage, which
         // builds a real turn's tool list out of this container rather than taking that on trust.)
+        // The two OPTIONAL trailing params are wired here deliberately — this is the "deferred production
+        // wiring" the StageDispatcher XML docs point at. Without the IKnowledgeStore every metal loading
+        // reads as unknown and Dosing parks in `awaiting-operator` forever; without the ICatalogLookup the
+        // Cost stage never prices (it degrades safely to `pending`). Both are the singletons registered
+        // above; the E2E (DosingCostEndToEndTests) proves the logic, this line turns it on.
         services.AddSingleton(sp => new StageDispatcher(
             sp.GetRequiredService<IRecordStore>(), sp.GetRequiredService<IAgentRuns>(),
-            sp.GetRequiredService<ILearnedConclusionWriter>(), opts.RegulatoryParallelism));
+            sp.GetRequiredService<ILearnedConclusionWriter>(), opts.RegulatoryParallelism,
+            sp.GetRequiredService<IKnowledgeStore>(), sp.GetRequiredService<ICatalogLookup>()));
         services.AddHostedService<ChangeFeedWorker>();
     }
 }
