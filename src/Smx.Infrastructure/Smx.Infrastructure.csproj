@@ -12,12 +12,32 @@
          needs lands only in the 2.2.0-beta+ prerelease line; 2.1.0 was the newest stable and lacks it.
          Scoped behind WEB_SEARCH_PROVIDER=hosted and reversible. See the agent-backend design notes. -->
     <PackageReference Include="Azure.AI.OpenAI" Version="2.9.0-beta.1" />
+    <!-- PINNED. These four references are ONE interlocking set — change any of them and re-check all of
+         them, because every mismatch here builds perfectly clean and only dies at runtime, as a
+         MissingMethodException on whichever member happened to change shape.
+
+         The constraints, and there is exactly one gap they all fit through:
+           • Microsoft.Agents.AI 1.13.0 (Smx.Orchestrator) floors Extensions.AI[.Abstractions] at 10.6.0.
+           • Extensions.AI.OpenAI must MATCH the Abstractions actually loaded — 10.4.1 against Abstractions
+             10.6.0 threw 'Void WebSearchToolResultContent.set_Results(IList<AIContent>)'.
+           • Extensions.AI.OpenAI 10.6.0 floors OpenAI at 2.10.0; 10.7.0 raises it to 2.11.0.
+           • Azure.AI.OpenAI 2.9.0-beta.1 — the newest published — is built against OpenAI 2.9.x/2.10.x.
+             Letting NuGet resolve OpenAI 2.11.0 threw 'Void OpenAI.Responses.ResponsesClient..ctor(
+             ClientPipeline, OpenAIClientOptions)' and, because the chat client is resolved eagerly at host
+             start, took the whole orchestrator down — a crash-looping host, so a new project simply sat
+             there with nothing on its record to explain why.
+
+         => Extensions.AI* at 10.6.0 and OpenAI pinned to 2.10.0 is the only combination that satisfies
+         both floors. The pin lifts when Azure.AI.OpenAI ships a build targeting a newer OpenAI. -->
+    <PackageReference Include="OpenAI" Version="2.10.0" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="Azure.Search.Documents" Version="11.6.0" />
     <PackageReference Include="Azure.Security.KeyVault.Secrets" Version="4.11.0" />
     <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.43.0" />
-    <PackageReference Include="Microsoft.Extensions.AI" Version="10.7.0" />
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0" />
+    <!-- 10.6.0, matching the Abstractions that Microsoft.Agents.AI 1.13.0 pulls in. See the OpenAI pin
+         above for the full constraint set — these do not move independently. -->
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.6.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.6.0" />
   </ItemGroup>
 
   <PropertyGroup>
