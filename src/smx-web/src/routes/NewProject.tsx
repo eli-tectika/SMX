@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createProject } from '../api/client';
 import type { ComponentSpec, ElementPool } from '../api/types';
-import { rememberProject } from '../hooks/useRecentProjects';
 
 const blankComponent = (): ComponentSpec => ({
   id: '',
@@ -86,12 +85,8 @@ export function NewProject() {
           .map((s) => s.trim())
           .filter(Boolean),
       });
-      rememberProject({
-        projectId,
-        client: client.trim(),
-        product: product.trim(),
-        createdAt: new Date().toISOString(),
-      });
+      // Nothing to remember: POST wrote the project to the record before it answered, so GET /projects
+      // already lists it. The dashboard finds it on any browser, not just this one.
       navigate(`/p/${projectId}/intake`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -103,8 +98,7 @@ export function NewProject() {
     <form className="screen" onSubmit={submit}>
       <div className="cap">
         <b>Intake &amp; scoping</b>
-        spec §4.1 — this is the only screen that writes to
-        the record
+        This is the only screen that writes to the record
       </div>
 
       {error && (

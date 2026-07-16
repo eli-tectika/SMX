@@ -11,6 +11,7 @@ import {
   getProject,
   getRegulatoryGate,
   getRevisions,
+  listProjects,
   matrixXlsxUrl,
   recordDetermination,
   recordLoading,
@@ -74,6 +75,34 @@ describe('createProject', () => {
     });
     await createProject(request);
     expect(new Headers(seen?.headers).get('Authorization')).toBe('Bearer tok123');
+  });
+});
+
+describe('listProjects', () => {
+  it('GETs /api/projects and returns the items', async () => {
+    let seen = '';
+    const items = [
+      { projectId: 'proj-b', client: 'LVMH', product: 'Bottle', stages: {}, createdAt: '2026-07-01T00:00:00Z' },
+      { projectId: 'proj-a', client: 'Acme', product: 'Lid', stages: {}, createdAt: '2026-01-01T00:00:00Z' },
+    ];
+    stubFetch((url) => {
+      seen = url;
+      return json(items);
+    });
+    await expect(listProjects()).resolves.toEqual(items);
+    expect(seen).toBe('/api/projects');
+  });
+
+  // An empty record is a legitimate answer, not a failure — a fresh subscription has no projects. The
+  // dashboard renders that as an empty state, and it must never arrive as a thrown error or a sentinel.
+  it('returns an empty array on an empty record rather than a NotFound sentinel', async () => {
+    stubFetch(() => json([]));
+    await expect(listProjects()).resolves.toEqual([]);
+  });
+
+  it('throws an ApiError on a 500 — an unreachable list is not an empty one', async () => {
+    stubFetch(() => new Response('boom', { status: 500 }));
+    await expect(listProjects()).rejects.toBeInstanceOf(ApiError);
   });
 });
 

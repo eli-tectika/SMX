@@ -168,6 +168,22 @@ export interface ProjectSummary {
 }
 
 /**
+ * One item of GET /projects — the card projection. See src\Smx.Backend\Api\ProjectEndpoints.cs:52.
+ *
+ * Deliberately NOT a ProjectSummary with a date bolted on, even though it is structurally assignable to
+ * one (which is what lets the dashboard hand these to `bucket` / `whatsBlocking` unchanged). The list
+ * carries no `payload` and never will — a card renders none of it — whereas it carries `createdAt`, which
+ * the detail route drops. Two projections of one document, each shaped by its screen.
+ */
+export interface ProjectListItem {
+  projectId: string;
+  client: string;
+  product: string;
+  stages: Record<string, StageState>;
+  createdAt: string;
+}
+
+/**
  * CreateProjectRequest — src/Smx.Backend/Api/CreateProjectRequest.cs.
  *
  * Production mode: at least one `elementPools` entry (the physicist's XRF background). The

@@ -13,6 +13,7 @@ import type {
   MarkerLibraryEntry,
   MatrixDoc,
   MsdsEntry,
+  ProjectListItem,
   ProjectSummary,
   RegulatoryGate,
   ReviewRequest,
@@ -85,6 +86,18 @@ export async function createProject(req: CreateProjectRequest): Promise<CreatePr
   });
   if (!res.ok) throw await failure(res);
   return (await res.json()) as CreateProjectResponse;
+}
+
+/**
+ * Every project in the record, newest first.
+ *
+ * No NotFound sentinel: an empty record is an empty array, not a 404. A fresh subscription legitimately
+ * has no projects, and that is a state to render honestly rather than an error to report.
+ */
+export async function listProjects(): Promise<ProjectListItem[]> {
+  const res = await authorizedFetch(`${BASE}/projects`);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as ProjectListItem[];
 }
 
 export async function getProject(projectId: string): Promise<ProjectSummary | NotFound> {

@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom';
 import { matrixXlsxUrl } from '../api/client';
+import type { ProjectListItem } from '../api/types';
 import { MiniSpine } from '../components/ui/MiniSpine';
 import { Card, EmptyState, SectionHeader, Skeleton, StatCard } from '../components/ui/Primitives';
 import { VerdictRibbon } from '../components/ui/VerdictRibbon';
 import { BUCKET_LABEL, bucket, bucketTone, whatsBlocking, type Bucket } from '../domain/blocking';
-import { forgetProject, useProjectsOverview, type ProjectCard } from '../hooks/useProjectsOverview';
-import { DEMO_ENABLED, isDemo, loadDemoProject } from '../mocks/demo';
+import { useProjectsOverview, type ProjectCard } from '../hooks/useProjectsOverview';
+import { DEMO_ENABLED, forgetDemoProject, isDemo, loadDemoProject } from '../mocks/demo';
 
 /**
  * The re-entry surface (spec §2).
@@ -13,33 +14,26 @@ import { DEMO_ENABLED, isDemo, loadDemoProject } from '../mocks/demo';
  * It must answer, at a glance: what is blocked and on whom, what is ready to
  * continue, and what needs signing.
  *
- * Everything here is REAL. localStorage supplies only the project ids; the stage
- * states and verdict counts come from the record. That is why this screen carries
- * no MockBadge — there is nothing fabricated on it to warn about.
+ * Everything here is REAL — the cards come from GET /projects, so this is what the
+ * record holds rather than what this browser remembers. That is why the screen carries
+ * no MockBadge; the opt-in demo fixture is the one exception and badges itself.
  */
 export function Projects() {
-  const { cards, loading, refresh } = useProjectsOverview();
+  const { cards, loading, error, refresh } = useProjectsOverview();
 
-  const ready = cards.filter((c) => c.state.kind === 'ready');
-  const stale = cards.filter((c) => c.state.kind === 'stale');
-
-  const bucketOf = (c: ProjectCard): Bucket | null =>
-    c.state.kind === 'ready'
-      ? bucket(c.state.project, c.state.matrix, c.state.unopenedFlagged)
-      : null;
+  const bucketOf = (c: ProjectCard): Bucket => bucket(c.project, c.matrix, c.unopenedFlagged);
 
   const groups: Record<Bucket, ProjectCard[]> = {
-    'needs-you': ready.filter((c) => bucketOf(c) === 'needs-you'),
-    running: ready.filter((c) => bucketOf(c) === 'running'),
-    settled: ready.filter((c) => bucketOf(c) === 'settled'),
+    'needs-you': cards.filter((c) => bucketOf(c) === 'needs-you'),
+    running: cards.filter((c) => bucketOf(c) === 'running'),
+    settled: cards.filter((c) => bucketOf(c) === 'settled'),
   };
 
-  const flaggedVerdicts = ready.reduce(
-    (n, c) => n + (c.state.kind === 'ready' ? (c.state.matrix?.flagged.length ?? 0) : 0),
-    0,
-  );
+  const flaggedVerdicts = cards.reduce((n, c) => n + (c.matrix?.flagged.length ?? 0), 0);
 
-  if (cards.length === 0 && !loading) return <ProjectsEmpty onLoadDemo={refresh} />;
+  if (loading && cards.length === 0) return <ProjectsLoading />;
+  if (error) return <ProjectsError message={error} onRetry={refresh} />;
+  if (cards.length === 0) return <ProjectsEmpty onLoadDemo={refresh} />;
 
   return (
     <>
@@ -97,10 +91,10 @@ export function Projects() {
             <div className="card-list">
               {groups[b].map((c) => (
                 <ProjectRow
-                  key={c.recent.projectId}
+                  key={c.project.projectId}
                   card={c}
-                  onForget={() => {
-                    forgetProject(c.recent.projectId);
+                  onForgetDemo={() => {
+                    forgetDemoProject();
                     refresh();
                   }}
                 />
@@ -109,97 +103,16 @@ export function Projects() {
           </section>
         ) : null,
       )}
-
-      {loading && cards.length > 0 && ready.length === 0 && (
-        <div className="card-list">
-          {cards.map((c) => (
-            <ProjectRow
-              key={c.recent.projectId}
-              card={c}
-              onForget={() => {
-                forgetProject(c.recent.projectId);
-                refresh();
-              }}
-            />
-          ))}
-        </div>
-      )}
-
-      {stale.length > 0 && (
-        <section>
-          <SectionHeader
-            eyebrow="Stale pointers"
-            count={stale.length}
-            hint="this browser remembers an id the record no longer has"
-          />
-          {stale.map((c) => (
-            <div
-              key={c.recent.projectId}
-              className="region"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                marginBottom: 6,
-                borderStyle: 'dashed',
-              }}
-            >
-              <span className="small muted">{c.recent.product}</span>
-              <span className="tiny muted data">
-                {c.recent.projectId}
-              </span>
-              <button
-                className="btn"
-                style={{ marginLeft: 'auto' }}
-                onClick={() => {
-                  forgetProject(c.recent.projectId);
-                  refresh();
-                }}
-              >
-                Forget
-              </button>
-            </div>
-          ))}
-        </section>
-      )}
     </>
   );
 }
 
-function ProjectRow({ card, onForget }: { card: ProjectCard; onForget: () => void }) {
-  const { recent, state } = card;
-
-  if (state.kind === 'stale') return null;
-
-  if (state.kind === 'loading') {
-    // Identity renders instantly from localStorage; only live state is a skeleton.
-    return (
-      <Card>
-        <CardHead recent={recent} />
-        <div style={{ margin: '12px 0 10px' }}>
-          <Skeleton variant="spine" height={9} />
-        </div>
-        <Skeleton variant="text" width="60%" />
-      </Card>
-    );
-  }
-
-  if (state.kind === 'error') {
-    return (
-      <Card tone="danger">
-        <CardHead recent={recent} />
-        <div className="small" style={{ color: 'var(--text-danger)', marginTop: 8 }}>
-          <i className="ti ti-alert-triangle" aria-hidden="true" /> Could not read the record:{' '}
-          {state.message}
-        </div>
-      </Card>
-    );
-  }
-
-  const { project, matrix, unopenedFlagged } = state;
+function ProjectRow({ card, onForgetDemo }: { card: ProjectCard; onForgetDemo: () => void }) {
+  const { project, matrix, unopenedFlagged } = card;
   const blocking = whatsBlocking(project, matrix, unopenedFlagged);
   const b = bucket(project, matrix, unopenedFlagged);
   const tone = bucketTone(b, blocking);
+  const demo = isDemo(project.projectId);
 
   return (
     <Card tone={tone} className="card--link-wrap">
@@ -213,12 +126,12 @@ function ProjectRow({ card, onForget }: { card: ProjectCard; onForget: () => voi
           background: 'transparent',
         }}
       >
-        <CardHead recent={recent} />
+        <CardHead project={project} />
 
         {/* The dashboard is otherwise entirely real data. The demo project is the one
             exception, so it must announce itself — a fabricated card must never be
             able to pass for a real one. */}
-        {isDemo(project.projectId) && (
+        {demo && (
           <div className="banner warn" style={{ margin: '10px 0 0' }}>
             <i className="ti ti-flask" aria-hidden="true" />
             <div>
@@ -260,6 +173,15 @@ function ProjectRow({ card, onForget }: { card: ProjectCard; onForget: () => voi
           </div>
         )}
 
+        {/* The stages came from the list, so the card is still true; only the verdict ribbon is
+            missing. Saying so beats a card that silently looks like it has no matrix. */}
+        {card.error && (
+          <div className="small" style={{ color: 'var(--text-danger)', marginTop: 12 }}>
+            <i className="ti ti-alert-triangle" aria-hidden="true" /> Could not read the matrix:{' '}
+            {card.error}
+          </div>
+        )}
+
         {matrix && (
           <div style={{ marginTop: 14 }}>
             <div className="tiny muted" style={{ marginBottom: 5 }}>
@@ -287,8 +209,10 @@ function ProjectRow({ card, onForget }: { card: ProjectCard; onForget: () => voi
         )}
       </Link>
 
-      {/* Outside the link: a link must not wrap another interactive control. */}
-      {(matrix || isDemo(project.projectId)) && (
+      {/* Outside the link: a link must not wrap another interactive control. There is no Forget for
+          a real project — it lives in the record, and a button that only cleared it from this
+          browser would be undone by the next refresh. */}
+      {(matrix || demo) && (
         <div
           style={{
             marginTop: 10,
@@ -303,8 +227,8 @@ function ProjectRow({ card, onForget }: { card: ProjectCard; onForget: () => voi
               <i className="ti ti-download" aria-hidden="true" /> Matrix .xlsx
             </a>
           )}
-          {isDemo(project.projectId) && (
-            <button className="btn" style={{ marginLeft: 'auto' }} onClick={onForget}>
+          {demo && (
+            <button className="btn" style={{ marginLeft: 'auto' }} onClick={onForgetDemo}>
               <i className="ti ti-x" aria-hidden="true" /> Forget demo
             </button>
           )}
@@ -314,7 +238,7 @@ function ProjectRow({ card, onForget }: { card: ProjectCard; onForget: () => voi
   );
 }
 
-function CardHead({ recent }: { recent: ProjectCard['recent'] }) {
+function CardHead({ project }: { project: ProjectListItem }) {
   return (
     <div
       style={{
@@ -331,13 +255,61 @@ function CardHead({ recent }: { recent: ProjectCard['recent'] }) {
           color: 'var(--ink)',
         }}
       >
-        {recent.product}
+        {project.product}
       </span>
       <span className="tiny muted">
-        {recent.client} · <span className="data">{recent.projectId}</span>{' '}
-        · created {recent.createdAt.slice(0, 10)}
+        {project.client} · <span className="data">{project.projectId}</span> · created{' '}
+        {project.createdAt.slice(0, 10)}
       </span>
     </div>
+  );
+}
+
+function ProjectsLoading() {
+  return (
+    <>
+      <SectionHeader title="Projects" />
+      <div className="card-list">
+        {[0, 1].map((i) => (
+          <Card key={i}>
+            <Skeleton variant="text" width="40%" />
+            <div style={{ margin: '14px 0 10px' }}>
+              <Skeleton variant="spine" height={9} />
+            </div>
+            <Skeleton variant="text" width="60%" />
+          </Card>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/**
+ * The list itself failed. Distinct from "no projects" on purpose: an unreachable API and an empty
+ * record look identical on screen otherwise, and telling the operator "you have no projects" when
+ * the truth is "I could not ask" is exactly the kind of confident wrong answer this system exists
+ * to avoid.
+ */
+function ProjectsError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <>
+      <SectionHeader title="Projects" />
+      <EmptyState
+        icon="ti-alert-triangle"
+        title="Could not read the project list."
+        body={
+          <>
+            The record may be fine — this says only that <span className="data">GET /projects</span>{' '}
+            did not answer: {message}
+          </>
+        }
+        actions={
+          <button className="btn primary" onClick={onRetry}>
+            <i className="ti ti-refresh" aria-hidden="true" /> Try again
+          </button>
+        }
+      />
+    </>
   );
 }
 
@@ -354,12 +326,11 @@ function ProjectsEmpty({ onLoadDemo }: { onLoadDemo: () => void }) {
       />
       <EmptyState
         icon="ti-flask-2"
-        title="No projects on this browser."
+        title="No projects yet."
         body={
           <>
-            The API has no list-projects endpoint. This page remembers the ids you created here;
-            each one is re-read from the record when you open it, so a stale pointer can never put
-            wrong data on screen.
+            The record holds no projects. This is the whole record, not this browser's memory of it —
+            create one here and it will be waiting on any machine you sign in from.
           </>
         }
         actions={
@@ -389,8 +360,8 @@ function ProjectsEmpty({ onLoadDemo }: { onLoadDemo: () => void }) {
           </div>
           <MiniSpine showLabels />
           <p className="tiny muted" style={{ marginTop: 10 }}>
-            Four are backed by the API today — intake, discovery, regulatory and matrix. The rest have no agent
-            yet, and render fixture data behind a mock badge.
+            Six are backed by the API today — intake, discovery, regulatory, matrix, dosing and cost.
+            The rest have no agent yet, and render fixture data behind a mock badge.
           </p>
         </div>
       </EmptyState>
