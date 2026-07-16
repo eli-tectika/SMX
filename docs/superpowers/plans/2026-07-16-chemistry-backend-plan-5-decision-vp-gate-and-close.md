@@ -53,7 +53,7 @@ Task 1 is the stage-introduction tripwire (the Plan-4 lesson, now pinned by four
 
 ⚠️ This task is deliberately ONE commit: a `decision` stage that is chattable but has no read tools or no inputs arm is an agent holding a confident conversation about nothing.
 
-- [x] **Step 1: Make the four tripwire tests fail by adding the constant only.**
+- [ ] **Step 1: Make the four tripwire tests fail by adding the constant only.**
 
 In `src/Smx.Domain/Records/RecordIds.cs`, add to `Stages`:
 
@@ -79,12 +79,12 @@ In `RecordIds` add (same singular-per-project rationale as Dosing/Cost — the p
     public static string Decision(string projectId) => $"{projectId}|decision";
 ```
 
-- [x] **Step 2: Run to see exactly the right failures.**
+- [ ] **Step 2: Run to see exactly the right failures.**
 
 Run: `dotnet test src/Smx.Backend.sln --nologo 2>&1 | grep -E "Failed |Passed!"`
 Expected failures: `RecordDocsTests.ProjectDoc_Create_SeedsExactlyTheStagesInStagesAll` (ProjectDoc.Create doesn't seed `decision`) and `OrchestratorHostWiringTests.AChatTurnsTools_BuildFromTheRealGraph_ForEveryChattableStage` (the new stage falls into the non-empty-read-tools branch and `ReadToolsFor` returns `[]`). If **only one** fails, read why before continuing — both guards must be live.
 
-- [x] **Step 3: Close the seams.**
+- [ ] **Step 3: Close the seams.**
 
 `ProjectDoc.Create` — add to the stage dict:
 
@@ -115,7 +115,7 @@ and add next to `DosingReadTools()`:
 
 > `GetDecisionAsync` does not exist until Task 2. To keep THIS task green in one commit, Task 1 and Task 2's store surface are committed together if you cannot stub it — preferred: implement Task 2's `IRecordStore` members first within this task's branch of work, then commit both files in this task's commit. (The plan keeps them as two tasks for review granularity; the COMMIT boundary is after Task 2's Step 4 if the compiler forces it. Record whichever you did in the Deviations section.)
 
-- [x] **Step 4: Update the wiring test's expectation** — in `OrchestratorHostWiringTests.AChatTurnsTools_BuildFromTheRealGraph_ForEveryChattableStage`, `decision` must land in the NON-empty branch (it has read tools). Extend the `ChatDispatchTests.ChatOnANewStage_SeesThatStagesOwnRecord_NotAnEmptyObject` theory with the decision case once Task 2's doc exists:
+- [ ] **Step 4: Update the wiring test's expectation** — in `OrchestratorHostWiringTests.AChatTurnsTools_BuildFromTheRealGraph_ForEveryChattableStage`, `decision` must land in the NON-empty branch (it has read tools). Extend the `ChatDispatchTests.ChatOnANewStage_SeesThatStagesOwnRecord_NotAnEmptyObject` theory with the decision case once Task 2's doc exists:
 
 ```csharp
     [InlineData(Stages.Decision, "final")]   // the DecisionDoc's picked-code rationale (seed writes "final code …")
@@ -123,9 +123,9 @@ and add next to `DosingReadTools()`:
 
 (The seed extension is written in Task 2 Step 2 — the InlineData lands there if the doc shape is needed; put a `// Task 2 extends this theory` marker here.)
 
-- [x] **Step 5: Full suite green, then mutation-check the tripwire**: temporarily remove `Decision` from `Stages.All` ONLY (keep the const) → `Stages_All_ListsEveryStageConstantOnTheClass` must FAIL. Revert by hand.
+- [ ] **Step 5: Full suite green, then mutation-check the tripwire**: temporarily remove `Decision` from `Stages.All` ONLY (keep the const) → `Stages_All_ListsEveryStageConstantOnTheClass` must FAIL. Revert by hand.
 
-- [x] **Step 6: Commit** (possibly joint with Task 2's store members — see Step 3 note):
+- [ ] **Step 6: Commit** (possibly joint with Task 2's store members — see Step 3 note):
 
 ```bash
 git add src/Smx.Domain/Records/RecordIds.cs src/Smx.Domain/Records/ProjectDoc.cs src/Smx.Orchestrator/Agents/ToolBox.cs src/Smx.Orchestrator/Dispatch/StageDispatcher.cs src/Smx.Orchestrator.Tests src/Smx.Domain.Tests src/Smx.Backend.Tests
@@ -141,7 +141,7 @@ git commit -m "feat(domain): the decision stage exists — chattable, seeded, an
 - Modify: `src/Smx.Domain/IRecordStore.cs`, `src/Smx.Infrastructure/CosmosRecordStore.cs`, `src/Smx.Domain.Tests/Fakes/InMemoryRecordStore.cs`, `src/Smx.Orchestrator/Dispatch/RecordDocRouter.cs`
 - Test: `src/Smx.Domain.Tests/RecordDocsTests.cs` (round-trip), `src/Smx.Orchestrator.Tests/RecordDocRouterTests.cs` (route arm), `src/Smx.Orchestrator.Tests/CosmosRecordStorePartitionKeyTests.cs` (PK guard — Decision joins Dosing/Cost as a representative)
 
-- [x] **Step 1: Write the failing round-trip + router + PK-guard tests.**
+- [ ] **Step 1: Write the failing round-trip + router + PK-guard tests.**
 
 `RecordDocsTests` addition:
 
@@ -187,9 +187,9 @@ git commit -m "feat(domain): the decision stage exists — chattable, seeded, an
 
 `CosmosRecordStorePartitionKeyTests` — add Decision as a third representative (id `"p1|decision"` ≠ projectId `"p1"`, so a doc.Id-for-PK swap is detectable), with the same two facts Dosing/Cost have (`Decision_upsert_passes_the_partition_key_cosmos_will_extract`, `Decision_point_read_addresses_the_document_the_upsert_wrote`) calling `UpsertDecisionAsync`/`GetDecisionAsync`.
 
-- [x] **Step 2: Run to verify they fail** (missing type / missing members).
+- [ ] **Step 2: Run to verify they fail** (missing type / missing members).
 
-- [x] **Step 3: Implement.**
+- [ ] **Step 3: Implement.**
 
 `src/Smx.Domain/Records/DecisionDoc.cs`:
 
@@ -259,11 +259,11 @@ public sealed class DecisionDoc
 
 `RecordDocRouter.Route`: add `"decision" => Deserialize<DecisionDoc>(...)` beside dosing/cost.
 
-- [x] **Step 4: Run the new tests, then the full suite.** Also finish Task 1's `StageInputsJsonAsync` arm + the ChatDispatch theory InlineData now that the type exists (extend `SeedCostedProjectAsync` in `ChatDispatchTests` to also upsert a DecisionDoc whose `ProposedCode.Rationale` contains the word `final`, and add the `[InlineData(Stages.Decision, "final")]` case).
+- [ ] **Step 4: Run the new tests, then the full suite.** Also finish Task 1's `StageInputsJsonAsync` arm + the ChatDispatch theory InlineData now that the type exists (extend `SeedCostedProjectAsync` in `ChatDispatchTests` to also upsert a DecisionDoc whose `ProposedCode.Rationale` contains the word `final`, and add the `[InlineData(Stages.Decision, "final")]` case).
 
-- [x] **Step 5: Mutation checks** (report each): (a) in `CosmosRecordStore.UpsertDecisionAsync`, pass `doc.Id` as the PK → the PK-guard upsert fact must FAIL; revert. (b) In `RecordDocRouter`, point the `"decision"` arm at `DosingDoc` → the router fact must FAIL; revert.
+- [ ] **Step 5: Mutation checks** (report each): (a) in `CosmosRecordStore.UpsertDecisionAsync`, pass `doc.Id` as the PK → the PK-guard upsert fact must FAIL; revert. (b) In `RecordDocRouter`, point the `"decision"` arm at `DosingDoc` → the router fact must FAIL; revert.
 
-- [x] **Step 6: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/Smx.Domain src/Smx.Infrastructure src/Smx.Orchestrator src/Smx.Domain.Tests src/Smx.Orchestrator.Tests
@@ -817,7 +817,7 @@ The VP GateDoc landing on the change feed IS the close dispatch (writing the rec
 - Modify: `src/Smx.Backend/Program.cs`
 - Test: `src/Smx.Backend.Tests/ProjectsListEndpointsTests.cs`, `src/Smx.Orchestrator.Tests/CosmosQueryTextTests.cs` (the wire-name pin — MANDATORY, this is the first cross-partition query in the store)
 
-- [x] **Step 1: Failing tests:**
+- [ ] **Step 1: Failing tests:**
 
 ```csharp
     // Endpoint: GET /projects → [ { projectId, client, product, createdAt, stages, gates: { regulatory,
@@ -830,7 +830,7 @@ The VP GateDoc landing on the change feed IS the close dispatch (writing the rec
     //    ABSENT (the PascalCase silent-zero-rows bug class).
 ```
 
-- [x] **Step 2: fail → Step 3: implement.**
+- [ ] **Step 2: fail → Step 3: implement.**
 
 `IRecordStore`:
 
@@ -857,8 +857,8 @@ The VP GateDoc landing on the change feed IS the close dispatch (writing the rec
 
 Endpoint (`ProjectsListEndpoints.MapProjectsListEndpoints`): for each project also `GetGateAsync(id, Regulatory)` + `GetGateAsync(id, Vp)`; project to the response shape above with `Results.Json(..., Json.Options)`.
 
-- [x] **Step 4: green + full suite. Step 5: Mutation:** in the endpoint, swap the gates lookup to always return null → test 1's gate assert FAILS. In `CosmosQueryTextTests`, verify the pin actually pins: temporarily break the serializer's member-naming for this query type — if impractical, assert-inspect the emitted text contains `root["createdAt"]` and would differ under PascalCase (the existing test class shows the technique; follow it). Revert; report.
-- [x] **Step 6: Commit** `feat(api): GET /projects — the record is the list, gates included, and the query is wire-name-pinned`
+- [ ] **Step 4: green + full suite. Step 5: Mutation:** in the endpoint, swap the gates lookup to always return null → test 1's gate assert FAILS. In `CosmosQueryTextTests`, verify the pin actually pins: temporarily break the serializer's member-naming for this query type — if impractical, assert-inspect the emitted text contains `root["createdAt"]` and would differ under PascalCase (the existing test class shows the technique; follow it). Revert; report.
+- [ ] **Step 6: Commit** `feat(api): GET /projects — the record is the list, gates included, and the query is wire-name-pinned`
 
 ---
 
@@ -1085,26 +1085,3 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
 ## Deviations recorded during execution
 
 *(Fill this in as you go — the as-shipped record is worth more than the plan being right.)*
-
-- **Tasks 1 + 2 landed as ONE commit** (the boundary the Task 1 Step 3 note anticipated): the compiler forced
-  it — `StageInputsJsonAsync`'s Decision arm calls `IRecordStore.GetDecisionAsync` (Task 2's store surface),
-  and the ChatDispatchTests seed extension constructs a `DecisionDoc` — so no Task-1-only tree compiles.
-  All three mutation checks ran against the combined tree: Decision-out-of-`Stages.All` →
-  `Stages_All_ListsEveryStageConstantOnTheClass` FAILED; `doc.Id`-as-PK in `UpsertDecisionAsync` →
-  `Decision_upsert_passes_the_partition_key_cosmos_will_extract` FAILED; router arm mis-pointed at
-  `DosingDoc` → `Route_DeserializesDecisionDoc_ByDiscriminator` FAILED. Each reverted by hand.
-- The router fact is named `Route_DeserializesDecisionDoc_ByDiscriminator`, mirroring the file's existing
-  dosing/cost facts, rather than the plan's `Route_Decision` sketch (which assumed a `Route(doc)` helper the
-  test file does not have).
-- A fifth pin the plan did not name — `RecordDocsTests.ProjectCreate_SeedsAllSixStages_IntakeThroughCost`
-  (hand-enumerated stage list + `Count == 6`) — went red on the seed extension, exactly as designed; renamed
-  to `ProjectCreate_SeedsAllSevenStages_IntakeThroughDecision` with Decision added and `Count == 7`.
-- `OrchestratorHostWiringTests.AChatTurnsTools_BuildFromTheRealGraph_ForEveryChattableStage` needed no
-  structural change: the loop reflects over `Stages.All` and `decision` falls into the non-empty else branch
-  by construction. A comment now records that landing there is deliberate.
-- **Task 11 shipped first** (out of plan order, for immediate deploy); it introduced `GateTypes.Vp` ahead of
-  Task 7, so the list's `gates.vp` field reads `GetGateAsync(id, GateTypes.Vp)` — null (an explicit,
-  honest `vp: null` on the wire) until any VP gate exists. The gates object is a `Dictionary<string,string?>`,
-  not an anonymous object, because `Json.Options`' `WhenWritingNull` would drop a null anonymous PROPERTY,
-  and "no gate yet" must be a value the frontend can read; dictionary entries are exempt. The dashboard
-  (Task 12) was NOT built with it.
