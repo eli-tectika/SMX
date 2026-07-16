@@ -37,7 +37,7 @@ public sealed class IngestionPipeline
         var registryId = DedupKey.ForRegistry(meta.Cas, meta.Supplier, meta.RevisionDate);
         var chunks = new List<SdsChunk>(sections.Count);
         for (var i = 0; i < sections.Count; i++)
-            chunks.Add(new SdsChunk($"{registryId}#{i}", meta.Cas, meta.Supplier, meta.ProductName,
+            chunks.Add(new SdsChunk(DedupKey.ForChunk(registryId, i), meta.Cas, meta.Supplier, meta.ProductName,
                 meta.RevisionDate, meta.Region, meta.Language, sections[i].Section, sections[i].Content,
                 vectors[i], blobPath, meta.MasterListId));
 
