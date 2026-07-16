@@ -14,26 +14,43 @@ public sealed class ToolBox(
     IReferenceSearch reference,
     IKnowledgeStore knowledge,
     ILearnedConclusionsSearch learnedConclusions,
-    Func<SensitiveTerms, IWebSearch> webSearchFactory)
+    Func<SensitiveTerms, IWebSearch> webSearchFactory,
+    bool useHostedWebSearch)
 {
-    /// SensitiveTerms is a REQUIRED parameter, not an optional one: a Discovery tool set built without the
-    /// project's client/product names is a tool set that cannot protect the project. Forgetting it is now a
-    /// compile error — the same reasoning the codebase applies to RevisionDoc? in the agent runners.
-    public IList<AITool> DiscoveryTools(SensitiveTerms terms)
+    /// SensitiveTerms is a REQUIRED parameter, not an optional one: the PROXY tool set built without the
+    /// project's client/product names is a tool set that cannot protect the project. Forgetting it is a
+    /// compile error — the same reasoning the codebase applies to RevisionDoc? in the agent runners. (The
+    /// hosted tool cannot pre-strip terms; there the same rule is carried by the Discovery instructions and
+    /// re-enforced deterministically downstream — see HostedWebSearch.)
+    public IList<AITool> DiscoveryTools(SensitiveTerms terms) =>
+    [
+        .. DiscoveryReadTools(),
+        useHostedWebSearch ? HostedWebSearch() : ProxyWebSearch(terms),
+    ];
+
+    /// The model's built-in, provider-executed web search (Responses API, WEB_SEARCH_PROVIDER=hosted). Unlike
+    /// the proxy tool it composes and runs its OWN query server-side, so it takes no SensitiveTerms and cannot
+    /// pre-strip them: the "query must contain NO client/product/project name" rule lives in the Discovery
+    /// instructions instead. RAIL 1 (web-only ⇒ ≤ Tier B, never preferred) is NOT lost — it is re-established
+    /// in code downstream: MafAgent captures the URLs the tool actually returned (its CitationAnnotations) and
+    /// DiscoveryAgent.Validate re-stamps any candidate citation matching one as web-derived, so the tier rail
+    /// still rests on a code-observed fact, not on the model's self-reported citation source.
+    private static AITool HostedWebSearch() => new HostedWebSearchTool();
+
+    /// The legacy anonymizing egress (WEB_SEARCH_PROVIDER=proxy). Kept for revival; closes over the project's
+    /// SensitiveTerms and stamps "web:<host>" on every hit itself, which is what makes RAIL 1 deterministic on
+    /// this path without any downstream re-stamping.
+    private AITool ProxyWebSearch(SensitiveTerms terms)
     {
         var web = webSearchFactory(terms);
-        return
-        [
-            .. DiscoveryReadTools(),
-            AIFunctionFactory.Create(
-                (string query, string intent, CancellationToken ct) => SearchWebAsync(query, intent, ct, web),
-                "search_web",
-                "Anonymized external web search, for candidate forms the SMX catalog does not carry. It is a STARTING POINT, not an authority: a web hit may suggest a marker, it can never endorse one. " +
-                "Corroborate every web finding against search_catalog and search_reference before you rely on it, and NEVER state a CAS you did not read from a retrieved source. " +
-                "A candidate supported only by web citations must be Tier B with its limitation named in the rationale — it can never be Tier A or preferred. " +
-                "The query must contain NO client, product or project name — only chemistry. " +
-                "intent must be one of: discovery.candidate_forms, discovery.form_properties, discovery.supplier_availability."),
-        ];
+        return AIFunctionFactory.Create(
+            (string query, string intent, CancellationToken ct) => SearchWebAsync(query, intent, ct, web),
+            "search_web",
+            "Anonymized external web search, for candidate forms the SMX catalog does not carry. It is a STARTING POINT, not an authority: a web hit may suggest a marker, it can never endorse one. " +
+            "Corroborate every web finding against search_catalog and search_reference before you rely on it, and NEVER state a CAS you did not read from a retrieved source. " +
+            "A candidate supported only by web citations must be Tier B with its limitation named in the rationale — it can never be Tier A or preferred. " +
+            "The query must contain NO client, product or project name — only chemistry. " +
+            "intent must be one of: discovery.candidate_forms, discovery.form_properties, discovery.supplier_availability.");
     }
 
     /// The Discovery retrieval tools MINUS search_web — the read surface with no egress. A CHAT turn for

@@ -12,7 +12,7 @@ public class ChatAgentTests
     private static ToolBox Box() =>
         new(new FakeCatalogLookup(), new FakeCompatibilityLookup(), new FakeSearch(), new FakeSearch(),
             new FakeSearch(), new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore(), new FakeLearnedConclusionsSearch(),
-            _ => new FakeWebSearch());
+            _ => new FakeWebSearch(), useHostedWebSearch: false);
 
     [Fact]
     public async Task Run_GivesTheAgentTheThread_TheStageInputs_AndTheNewMessage()

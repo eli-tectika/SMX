@@ -73,7 +73,7 @@ public class RevisionRoundTripTests
         var search = new FakeSearch();
         return new ToolBox(
             new FakeCatalogLookup(), new FakeCompatibilityLookup(), search, search, search,
-            knowledge, new IndexBackedLearnedConclusionsSearch(index), _ => new FakeWebSearch());
+            knowledge, new IndexBackedLearnedConclusionsSearch(index), _ => new FakeWebSearch(), useHostedWebSearch: false);
     }
 
     [Fact]

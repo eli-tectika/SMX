@@ -134,7 +134,7 @@ public class ChatGuardrailTests
     private static ToolBox Box() =>
         new(new FakeCatalogLookup(), new FakeCompatibilityLookup(), new FakeSearch(), new FakeSearch(),
             new FakeSearch(), new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore(), new FakeLearnedConclusionsSearch(),
-            _ => new FakeWebSearch());
+            _ => new FakeWebSearch(), useHostedWebSearch: false);
 
     /// Fills every parameter in a tool's REAL JSON schema — the one the model is handed — with a plausible
     /// value, so the tool can actually be driven. Every string is the operator's ask itself, because if some

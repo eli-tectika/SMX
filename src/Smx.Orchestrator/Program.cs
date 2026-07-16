@@ -54,7 +54,7 @@ public static class OrchestratorHost
             throw new InvalidOperationException("FOUNDRY_ENDPOINT missing — required for the agent host (chat + embeddings)");
 
         Azure.Core.TokenCredential credential = opts.UamiClientId is { } id
-            ? new ManagedIdentityCredential(id)
+            ? new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(id))
             : new DefaultAzureCredential();
 
         services.AddSingleton(opts);
@@ -123,6 +123,11 @@ public static class OrchestratorHost
 
         // SearchProxyClient takes (HttpClient, TokenCredential, endpoint, audience, ILogger). The two strings
         // mean a typed-client registration cannot construct it, so name the client and build it explicitly.
+        // These types are [Obsolete] (the proxy path is deprecated in favour of the hosted tool); the
+        // registration is a deliberate, kept-for-revival use, so the CS0618 warning is suppressed here. Both
+        // singletons are lazy — in the default hosted mode ToolBox never invokes the factory, so neither the
+        // proxy client nor WebSearchTool is ever actually constructed.
+#pragma warning disable CS0618 // legacy proxy path, revivable via WEB_SEARCH_PROVIDER=proxy
         services.AddHttpClient(nameof(SearchProxyClient));
         services.AddSingleton<ISearchProxyClient>(sp => new SearchProxyClient(
             sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(SearchProxyClient)),
@@ -137,7 +142,19 @@ public static class OrchestratorHost
             webEnabled,
             opts.WebSearchMaxPerStage,
             sp.GetRequiredService<ILogger<WebSearchTool>>()));
-        services.AddSingleton<ToolBox>();
+#pragma warning restore CS0618
+        // ToolBox takes the hosted-vs-proxy web-search flag as a bool, which DI cannot auto-resolve, so it is
+        // constructed explicitly. opts.UseHostedWebSearch selects the built-in tool (default) vs the legacy proxy.
+        services.AddSingleton(sp => new ToolBox(
+            sp.GetRequiredService<ICatalogLookup>(),
+            sp.GetRequiredService<ICompatibilityLookup>(),
+            sp.GetRequiredService<IRegulatorySearch>(),
+            sp.GetRequiredService<ISdsSearch>(),
+            sp.GetRequiredService<IReferenceSearch>(),
+            sp.GetRequiredService<IKnowledgeStore>(),
+            sp.GetRequiredService<ILearnedConclusionsSearch>(),
+            sp.GetRequiredService<Func<SensitiveTerms, IWebSearch>>(),
+            opts.UseHostedWebSearch));
         services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(sp =>
             FoundryChatClientFactory.CreateAsync(opts, credential).GetAwaiter().GetResult());
         services.AddSingleton<IAgentRuns, AgentRuns>();

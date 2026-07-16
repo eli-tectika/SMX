@@ -82,8 +82,15 @@ public static class FoundryChatClientFactory
             throw new InvalidOperationException("OPENAI_ENDPOINT (or FOUNDRY_ENDPOINT) missing — required for the OpenAI provider");
 
         var azure = new AzureOpenAIClient(new Uri(endpoint), credential);
-        return azure.GetChatClient(opts.OpenAiDeployment)
-            .AsIChatClient()
+        // Responses API, not Chat Completions — deliberately. The hosted web-search tool
+        // (Microsoft.Extensions.AI HostedWebSearchTool) is a Responses-only capability; a ChatClient over
+        // /chat/completions silently drops it. This also aligns the code with the HLD's "Responses API only"
+        // note. The response client + AsIChatClient() are marked [Experimental] in the SDK — suppressed
+        // knowingly; the whole hosted path is behind WEB_SEARCH_PROVIDER=hosted and reversible.
+#pragma warning disable OPENAI001
+        return azure.GetResponsesClient()
+            .AsIChatClient(opts.OpenAiDeployment)
+#pragma warning restore OPENAI001
             .AsBuilder()
             .UseFunctionInvocation()
             .Build();

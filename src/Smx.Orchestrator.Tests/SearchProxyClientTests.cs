@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // exercises the deprecated proxy path (SearchProxyClient) on purpose — kept revivable
 using System.Net;
 using System.Text;
 using System.Text.Json;

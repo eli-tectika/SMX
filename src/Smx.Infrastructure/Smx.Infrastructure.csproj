@@ -8,7 +8,10 @@
   <ItemGroup>
     <PackageReference Include="Anthropic" Version="12.35.1" />
     <PackageReference Include="Anthropic.Foundry" Version="0.7.1" />
-    <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
+    <!-- 2.9.0-beta.1: the Responses-API client (GetOpenAIResponseClient) that the hosted web-search tool
+         needs lands only in the 2.2.0-beta+ prerelease line; 2.1.0 was the newest stable and lacks it.
+         Scoped behind WEB_SEARCH_PROVIDER=hosted and reversible. See the agent-backend design notes. -->
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.9.0-beta.1" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="Azure.Search.Documents" Version="11.6.0" />
     <PackageReference Include="Azure.Security.KeyVault.Secrets" Version="4.11.0" />

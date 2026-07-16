@@ -14,8 +14,17 @@ public static class ValidatedAgentRunner
     private const int MaxRetries = 2; // spec: 2 failed retries (3 attempts) → needs_review
 
     /// <param name="validate">returns null when valid, else a human-readable error fed back to the agent</param>
+    public static Task<AgentRunResult<T>> RunAsync<T>(
+        ISmxAgent agent, string prompt, Func<T, string?> validate, CancellationToken ct) =>
+        RunAsync<T>(agent, prompt, (parsed, _) => validate(parsed), ct);
+
+    /// The web-aware overload: <paramref name="validate"/> also receives the URLs a HOSTED web-search tool
+    /// returned on the turn that produced <c>parsed</c> (empty for every agent/turn without one). Discovery
+    /// uses it to re-stamp web-derived citations in code before its own checks run, so its Tier rail rests on
+    /// what the tool actually fetched rather than on the model's self-reported citation source.
+    /// <param name="validate">returns null when valid, else a human-readable error fed back to the agent</param>
     public static async Task<AgentRunResult<T>> RunAsync<T>(
-        ISmxAgent agent, string prompt, Func<T, string?> validate, CancellationToken ct)
+        ISmxAgent agent, string prompt, Func<T, IReadOnlyCollection<string>, string?> validate, CancellationToken ct)
     {
         var thread = await agent.StartThreadAsync(ct);
         var message = prompt;
@@ -28,7 +37,7 @@ public static class ValidatedAgentRunner
             try
             {
                 parsed = JsonSerializer.Deserialize<T>(StripFence(text), Json.Options);
-                error = parsed is null ? "response deserialized to null" : validate(parsed);
+                error = parsed is null ? "response deserialized to null" : validate(parsed, thread.LastTurnWebCitations);
             }
             catch (JsonException e)
             {

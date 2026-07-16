@@ -9,6 +9,12 @@ namespace Smx.Infrastructure.Search;
 ///   3. a per-stage query budget, so an agent loop cannot spray egress or burn the provider quota.
 ///
 /// Constructed per stage run (not a singleton) because SensitiveTerms and the budget counter are per project.
+///
+/// DEPRECATED (2026-07-15): superseded by the model's built-in hosted web search (WEB_SEARCH_PROVIDER=hosted,
+/// see ToolBox.HostedWebSearch). Kept intact and revivable — set WEB_SEARCH_PROVIDER=proxy to route Discovery's
+/// search_web through this anonymizing egress again. The anonymity controls above only matter on this path.
+[Obsolete("Legacy anonymizing Search Proxy egress; superseded by the hosted web-search tool " +
+          "(WEB_SEARCH_PROVIDER=hosted). Kept for revival via WEB_SEARCH_PROVIDER=proxy.", error: false)]
 public sealed class WebSearchTool(
     ISearchProxyClient proxy,
     SensitiveTerms terms,

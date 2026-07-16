@@ -9,14 +9,15 @@ public class ToolBoxTests
     private static ToolBox Box(
         Smx.Domain.IKnowledgeStore? knowledge = null,
         Smx.Domain.Tools.ILearnedConclusionsSearch? learnedConclusions = null,
-        Smx.Domain.Tools.IWebSearch? web = null)
+        Smx.Domain.Tools.IWebSearch? web = null,
+        bool useHostedWebSearch = false)
     {
         var search = new FakeSearch();
         return new ToolBox(
             new FakeCatalogLookup(), new FakeCompatibilityLookup(), search, search, search,
             knowledge ?? new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore(),
             learnedConclusions ?? new FakeLearnedConclusionsSearch(),
-            _ => web ?? new FakeWebSearch());
+            _ => web ?? new FakeWebSearch(), useHostedWebSearch);
     }
 
     [Fact]
@@ -26,6 +27,19 @@ public class ToolBoxTests
         Assert.Equal(
             ["lookup_compatibility", "search_catalog", "search_learned_conclusions", "search_reference", "search_web"],
             names);
+    }
+
+    // WEB_SEARCH_PROVIDER=hosted swaps the proxy `search_web` AIFunction for the model's built-in
+    // HostedWebSearchTool — the same read surface, a different egress. The proxy tool must be GONE (not merely
+    // hidden): tool-list membership is the control, so if `search_web` were still present the model could still
+    // call it.
+    [Fact]
+    public void DiscoveryTools_Hosted_UseTheBuiltInWebSearch_NotTheProxySearchWeb()
+    {
+        var tools = Box(useHostedWebSearch: true).DiscoveryTools(Smx.Domain.Tools.SensitiveTerms.None);
+        Assert.Contains(tools, t => t is HostedWebSearchTool);
+        Assert.DoesNotContain("search_web", tools.Select(t => t.Name));
+        Assert.Contains("search_catalog", tools.Select(t => t.Name));   // the read surface is unchanged
     }
 
     // THE INVARIANT (spec §3, #5). A regulatory verdict may rest ONLY on the curated, sync-dated,
@@ -139,7 +153,7 @@ public class ToolBoxTests
         var box = new ToolBox(
             new FakeCatalogLookup(), new FakeCompatibilityLookup(), search, search, search,
             new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore(), new FakeLearnedConclusionsSearch(),
-            _ => new FakeWebSearch());
+            _ => new FakeWebSearch(), useHostedWebSearch: false);
 
         var json = await box.SearchRegulatoryAsync("is Ba an SVHC?", default);
 

@@ -35,9 +35,17 @@ public sealed record BackendOptions(
     string SearchProxyEndpoint,
     string SearchProxyAudience,
     bool WebSearchEnabled,
-    int WebSearchMaxPerStage)
+    int WebSearchMaxPerStage,
+    // Discovery's web-search backend. "hosted" (default) = the model's built-in, provider-executed web
+    // search (Microsoft.Extensions.AI HostedWebSearchTool over the Responses API); "proxy" = the legacy
+    // anonymizing Search Proxy egress, kept for revival (see WebSearchTool / SearchProxyClient). The hosted
+    // tool is a Responses-API capability, so it is only meaningful on the model paths that expose it.
+    string WebSearchProvider)
 {
     public string AnthropicBaseUrl => $"{FoundryEndpoint.TrimEnd('/')}/anthropic/v1";
+
+    /// True when Discovery should use the model's built-in hosted web search rather than the legacy proxy.
+    public bool UseHostedWebSearch => WebSearchProvider.Equals("hosted", StringComparison.OrdinalIgnoreCase);
 
     /// Azure OpenAI endpoint for the "openai" provider. Falls back to the Foundry account endpoint
     /// (an AIServices account serves OpenAI there too) when OPENAI_ENDPOINT is not set.
@@ -80,5 +88,7 @@ public sealed record BackendOptions(
         // The operator kill switch. Default ON, but an empty endpoint disables it anyway (see Program.cs) —
         // so a deployment that has not been given a proxy simply never searches the web, rather than failing.
         WebSearchEnabled: !bool.TryParse(c["WEB_SEARCH_ENABLED"], out var we) || we,
-        WebSearchMaxPerStage: int.TryParse(c["WEB_SEARCH_MAX_PER_STAGE"], out var wm) ? wm : 8);
+        WebSearchMaxPerStage: int.TryParse(c["WEB_SEARCH_MAX_PER_STAGE"], out var wm) ? wm : 8,
+        // Default to the built-in hosted tool; set WEB_SEARCH_PROVIDER=proxy to re-enable the anonymizing egress.
+        WebSearchProvider: c["WEB_SEARCH_PROVIDER"] ?? "hosted");
 }
