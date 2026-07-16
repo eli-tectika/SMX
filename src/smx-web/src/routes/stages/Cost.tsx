@@ -288,7 +288,7 @@ function Head({ generatedAt }: { generatedAt?: string }) {
   return (
     <div className="cap">
       <b>Cost &amp; availability</b>
-      &nbsp;·&nbsp; spec §4.6 — supplier audit per substance
+      Supplier audit per substance
       {generatedAt && <span className="muted"> · priced {generatedAt.slice(0, 10)}</span>}
     </div>
   );

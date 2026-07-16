@@ -57,7 +57,7 @@ function CorpusStamp() {
   return (
     <div
       className="masthead__corpus"
-      title={CORPUS_SYNCED_AT ? 'Regulatory corpus — last monthly sync (spec §4.4)' : CORPUS_UNKNOWN_REASON}
+      title={CORPUS_SYNCED_AT ? 'Regulatory corpus — last monthly sync' : CORPUS_UNKNOWN_REASON}
     >
       <b>Reg corpus</b>
       {CORPUS_SYNCED_AT ? (

@@ -169,7 +169,7 @@ function Head() {
   return (
     <div className="cap">
       <b>Marker library</b>
-      spec §6 — approved codes, written at VP sign-off
+      Approved codes, written at VP sign-off
     </div>
   );
 }

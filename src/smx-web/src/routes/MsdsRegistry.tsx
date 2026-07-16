@@ -235,7 +235,7 @@ function Head() {
   return (
     <div className="cap">
       <b>MSDS registry</b>
-      spec §6 — a hard precondition on every order
+      A hard precondition on every order
     </div>
   );
 }

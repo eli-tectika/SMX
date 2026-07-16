@@ -102,7 +102,7 @@ export function Dosing({ project, refreshProject }: ScreenProps) {
     <section className="screen">
       <div className="cap">
         <b>Dosing &amp; codes</b>
-        &nbsp;·&nbsp; spec §4.5 — ppm windows + code combinations, per component
+        ppm windows + code combinations, per component
       </div>
 
       <StageStatusCard name="Dosing agent" state={stage} />

@@ -49,8 +49,7 @@ export function Discovery({ project }: { project: ProjectSummary }) {
     <section className="screen" data-provenance="mock">
       <div className="cap">
         <b>Discovery &amp; AI-screening</b>
-        spec §4.3 — candidates + regulatory
-        pre-checks
+        Candidates + regulatory pre-checks
       </div>
 
       <StageStatusCard name="Discovery agent" state={project.stages.discovery} />

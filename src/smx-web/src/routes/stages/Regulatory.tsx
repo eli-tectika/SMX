@@ -330,7 +330,7 @@ function Head({ synced }: { synced?: string }) {
   return (
     <div className="cap">
       <b>Regulatory gate</b>
-      &nbsp;·&nbsp; spec §4.4 — hard gate, the R.E.&rsquo;s sign-off
+      Hard gate, the R.E.&rsquo;s sign-off
       {synced && <span className="muted"> · signed {synced.slice(0, 10)}</span>}
     </div>
   );
