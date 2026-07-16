@@ -41,6 +41,8 @@ public sealed class InMemoryRecordStore : IRecordStore
         Read<MatrixDoc>(RecordIds.Matrix(projectId));
     public Task<DosingDoc?> GetDosingAsync(string projectId, CancellationToken ct = default) =>
         Read<DosingDoc>(RecordIds.Dosing(projectId));
+    public Task<CostDoc?> GetCostAsync(string projectId, CancellationToken ct = default) =>
+        Read<CostDoc>(RecordIds.Cost(projectId));
     public Task<IReadOnlyList<VerdictDoc>> GetVerdictsAsync(string projectId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<VerdictDoc>>(
             _docs.Values.OfType<VerdictDoc>().Where(v => v.ProjectId == projectId).Select(Copy).ToList());
@@ -81,6 +83,7 @@ public sealed class InMemoryRecordStore : IRecordStore
     public Task UpsertVerdictAsync(VerdictDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertMatrixAsync(MatrixDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertDosingAsync(DosingDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
+    public Task UpsertCostAsync(CostDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertGateAsync(GateDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertRevisionAsync(RevisionDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);

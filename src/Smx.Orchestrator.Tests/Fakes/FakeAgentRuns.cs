@@ -1,3 +1,4 @@
+using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Orchestrator.Agents;
 using Smx.Orchestrator.Dispatch;
@@ -34,6 +35,19 @@ public sealed class FakeAgentRuns : IAgentRuns
             Dimensions = [new("ElementGate", VerdictStatus.Pass, [new Citation("regulatory", "x", "t")], 0.9, "ok")],
         }));
 
+    /// The default run succeeds with an empty DosingDoc: a dispatch test exercises orchestration (does the
+    /// approved gate trigger dosing? over the compliant set only?), not the ppm arithmetic — a test that
+    /// cares about the windows scripts this. The signature mirrors the real RunDosingAsync exactly, so a
+    /// dispatcher that stops passing the floors or the loadings cannot slip past this fake unnoticed.
+    public Func<ConstraintsDoc, IReadOnlyList<VerdictDoc>,
+                IReadOnlyDictionary<(string, string), Floor>, IReadOnlyDictionary<string, double>,
+                RevisionDoc?, Task<AgentRunResult<DosingDoc>>> Dosing { get; set; } =
+        (c, _, _, _, _) => Task.FromResult(AgentRunResult<DosingDoc>.Ok(new DosingDoc
+        {
+            Id = RecordIds.Dosing(c.ProjectId), ProjectId = c.ProjectId,
+            GeneratedAt = "2026-07-15T00:00:00Z",
+        }));
+
     public Func<RevisionDoc, ConstraintsDoc, string, Task<AgentRunResult<ConclusionOutput>>> Conclusion { get; set; } =
         (r, _, _) => Task.FromResult(AgentRunResult<ConclusionOutput>.Ok(new ConclusionOutput
         {
@@ -50,7 +64,12 @@ public sealed class FakeAgentRuns : IAgentRuns
         (_, _, _, message) => Task.FromResult($"Echo: {message}");
 
     public int IntakeCalls; public int DiscoveryCalls; public int RegulatoryCalls; public int ConclusionCalls;
-    public int ChatCalls;
+    public int ChatCalls; public int DosingCalls;
+
+    /// Every agent invocation across all arms. Cost is DETERMINISTIC (§3.4) — no agent — so a Cost dispatch
+    /// test asserts this is unchanged: if Cost ever needs a model, that is a design change to argue for in the
+    /// open, not one that slips in behind a green suite.
+    public int TotalCalls => IntakeCalls + DiscoveryCalls + RegulatoryCalls + ConclusionCalls + ChatCalls + DosingCalls;
 
     Task<Smx.Orchestrator.Agents.AgentRunResult<ConstraintsDoc>> IAgentRuns.RunIntakeAsync(ProjectDoc p, CancellationToken ct)
     { Interlocked.Increment(ref IntakeCalls); return Intake(p); }
@@ -59,6 +78,11 @@ public sealed class FakeAgentRuns : IAgentRuns
     { Interlocked.Increment(ref DiscoveryCalls); return Discovery(project, c, revision); }
     Task<Smx.Orchestrator.Agents.AgentRunResult<VerdictDoc>> IAgentRuns.RunRegulatoryAsync(ConstraintsDoc c, CandidateSubstance cand, RevisionDoc? revision, CancellationToken ct)
     { Interlocked.Increment(ref RegulatoryCalls); return Regulatory(c, cand, revision); }
+    Task<AgentRunResult<DosingDoc>> IAgentRuns.RunDosingAsync(
+        ConstraintsDoc c, IReadOnlyList<VerdictDoc> compliant,
+        IReadOnlyDictionary<(string ComponentId, string Element), Floor> floors,
+        IReadOnlyDictionary<string, double> loadings, RevisionDoc? revision, CancellationToken ct)
+    { Interlocked.Increment(ref DosingCalls); return Dosing(c, compliant, floors, loadings, revision); }
     Task<AgentRunResult<ConclusionOutput>> IAgentRuns.RunConclusionAsync(RevisionDoc revision, ConstraintsDoc c, string stageOutputJson, CancellationToken ct)
     { Interlocked.Increment(ref ConclusionCalls); return Conclusion(revision, c, stageOutputJson); }
     Task<string> IAgentRuns.RunChatAsync(ChatTools chatTools, string thread, string stageInputsJson,

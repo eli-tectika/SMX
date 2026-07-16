@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tools;
 using Smx.Orchestrator.Agents;
@@ -20,6 +21,20 @@ public interface IAgentRuns
 
     /// <param name="revision">null for an ordinary run; non-null re-screens the cell applying the revision.</param>
     Task<AgentRunResult<VerdictDoc>> RunRegulatoryAsync(ConstraintsDoc constraints, CandidateSubstance candidate, RevisionDoc? revision, CancellationToken ct);
+
+    /// <param name="compliant">the operator-recommended verdicts (CompliantSet.Of) — the ONLY substances
+    /// Dosing may dose.</param>
+    /// <param name="floors">(component, element) → the MEASURED detection floor, computed by CODE from the
+    /// physicist's background. The agent sees it and doses above it; it never computes it.</param>
+    /// <param name="loadings">cas → metal loading (operator-entered). Feeds the order amount only.</param>
+    /// <param name="revision">null for an ordinary run; non-null re-runs Dosing applying the operator's
+    /// revise-with-reason. Explicit, not an overload: forgetting it is a compile error, not an agent that
+    /// silently ignores the operator.</param>
+    Task<AgentRunResult<DosingDoc>> RunDosingAsync(
+        ConstraintsDoc constraints, IReadOnlyList<VerdictDoc> compliant,
+        IReadOnlyDictionary<(string ComponentId, string Element), Floor> floors,
+        IReadOnlyDictionary<string, double> loadings,
+        RevisionDoc? revision, CancellationToken ct);
 
     Task<AgentRunResult<ConclusionOutput>> RunConclusionAsync(RevisionDoc revision, ConstraintsDoc constraints, string stageOutputJson, CancellationToken ct);
 
@@ -59,6 +74,19 @@ public sealed class AgentRuns(IChatClient chatClient, ToolBox toolBox) : IAgentR
         RegulatoryAgent.RunAsync(
             new MafAgent(chatClient, RegulatoryAgent.AgentName, RegulatoryAgent.Instructions, toolBox.RegulatoryTools()),
             constraints, candidate, revision, ct);
+
+    /// The Dosing tools are closed over THIS project's constraints — the same discipline as DiscoveryTools over
+    /// SensitiveTerms — so the deterministic floor targets this project's measured background and device and no
+    /// other's. Mirrors RunDiscoveryAsync: build the MafAgent with the stage's tools, hand the agent to the
+    /// static RunAsync that owns the reasoning.
+    public Task<AgentRunResult<DosingDoc>> RunDosingAsync(
+        ConstraintsDoc constraints, IReadOnlyList<VerdictDoc> compliant,
+        IReadOnlyDictionary<(string ComponentId, string Element), Floor> floors,
+        IReadOnlyDictionary<string, double> loadings,
+        RevisionDoc? revision, CancellationToken ct) =>
+        DosingAgent.RunAsync(
+            new MafAgent(chatClient, DosingAgent.AgentName, DosingAgent.Instructions, toolBox.DosingTools(constraints)),
+            constraints, compliant, floors, loadings, revision, ct);
 
     /// No tools: the distiller reasons only over what it is handed (the revision + the stage output it
     /// produced). Giving it search tools would let it "support" the conclusion with evidence the revision

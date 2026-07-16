@@ -15,6 +15,12 @@ public interface ISearchProxyClient
 /// Talks to the Search Proxy over its private endpoint, with an Entra token for the proxy's Easy Auth
 /// audience. Note what is NOT sent: no project id, no correlation id, no client name — the request record
 /// has no field for them, so this client could not send them if it tried.
+///
+/// DEPRECATED (2026-07-15): the client for the legacy proxy egress. Superseded by the hosted web-search tool
+/// (WEB_SEARCH_PROVIDER=hosted); kept for revival (WEB_SEARCH_PROVIDER=proxy). The Search Proxy Function app
+/// itself is untouched and can be redeployed independently.
+[Obsolete("Client for the legacy anonymizing Search Proxy; superseded by the hosted web-search tool " +
+          "(WEB_SEARCH_PROVIDER=hosted). Kept for revival via WEB_SEARCH_PROVIDER=proxy.", error: false)]
 public sealed class SearchProxyClient(
     HttpClient http, TokenCredential credential, string endpoint, string audience, ILogger<SearchProxyClient> log)
     : ISearchProxyClient

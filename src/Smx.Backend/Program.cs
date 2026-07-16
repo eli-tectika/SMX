@@ -47,7 +47,7 @@ if (builder.Configuration["COSMOS_ACCOUNT_ENDPOINT"] is { Length: > 0 })
 {
     var opts = BackendOptions.From(builder.Configuration);
     Azure.Core.TokenCredential credential = opts.UamiClientId is { } id
-        ? new ManagedIdentityCredential(id)
+        ? new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(id))
         : new DefaultAzureCredential();
     builder.Services.AddSingleton(new CosmosClient(opts.CosmosAccountEndpoint, credential, new CosmosClientOptions
     {
@@ -88,6 +88,8 @@ app.MapProjectEndpoints();
 app.MapRevisionEndpoints();
 app.MapChatEndpoints();
 app.MapKnowledgeEndpoints();
+app.MapDosingEndpoints();
+app.MapCostEndpoints();
 app.Run();
 
 public partial class Program { } // WebApplicationFactory hook

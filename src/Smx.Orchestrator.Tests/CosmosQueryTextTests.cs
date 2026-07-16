@@ -117,6 +117,22 @@ public sealed class CosmosQueryTextTests
         AssertWireName(sql, "docType");
     }
 
+    /// The Cost stage audits every supplier figure against its ref-catalog listing, so LookupAsync must carry
+    /// `price` and `pack` off each product doc. The seed writes them camelCase (Reference/Seed/catalog-products.json);
+    /// a PascalCase `root["Price"]` here would match ZERO docs in Azure and refuse every price silently. This pins
+    /// the projection's actual wire names — the exact silent-in-Azure trap this suite exists for.
+    [Fact]
+    public void CatalogLookup_projection_addresses_price_and_pack_camelCase()
+    {
+        var sql = Query<CosmosCatalogLookup.Row>()
+            .Where(r => r.DocType == "product")
+            .Select(r => new { r.Id, r.Element, r.Molecule, r.Compound, r.Cas, r.Purity, r.Supplier, r.Price, r.Pack })
+            .ToQueryDefinition().QueryText;
+
+        AssertWireName(sql, "price");
+        AssertWireName(sql, "pack");
+    }
+
     // ---- CosmosCompatibilityLookup ---------------------------------------------------------------
 
     [Fact]

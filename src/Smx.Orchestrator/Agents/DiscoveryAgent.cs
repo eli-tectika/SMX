@@ -19,10 +19,11 @@ public static class DiscoveryAgent
         one or more FULLY-SPECIFIED candidate substances: element + molecular form + CAS + (particle size,
         solvent when known). You may only use facts from your tools:
         - search_catalog(element) FIRST — the SMX catalog is the authoritative source for a CAS.
-        - search_web(query, intent) ONLY when the catalog does not carry a form you have good reason to
-          believe exists. It is a starting point, not an authority. Its results may suggest a candidate; they
-          may never endorse one. Corroborate anything you find against search_catalog / search_reference.
-          The query must contain NO client, product or project name — only chemistry.
+        - the web search tool ONLY when the catalog does not carry a form you have good reason to believe
+          exists. It is a starting point, not an authority: its results may suggest a candidate; they may
+          never endorse one. Corroborate anything you find against search_catalog / search_reference, and put
+          the page URL in that citation's `reference`. The query must contain NO client, product or project
+          name — only chemistry.
         - search_reference for solubility / XRF cleanliness / form ranking evidence.
         - lookup_compatibility(element, substrate) as a tiering signal (incompatible ⇒ lower tier or C).
         - search_learned_conclusions when tiering an element/form. A higher-confidence, more recent
@@ -61,7 +62,7 @@ public static class DiscoveryAgent
             ? $"Discover candidate substances for these components and pools:\n{prompt}"
             : RevisionTask(revision, prompt);
         var result = await ValidatedAgentRunner.RunAsync<DiscoveryOutput>(agent, task,
-            o => Validate(o, constraints), ct);
+            (o, webCitations) => { StampWebCitations(o, webCitations); return Validate(o, constraints); }, ct);
         if (!result.Succeeded) return AgentRunResult<CandidatesDoc>.NeedsReview(result.Error!);
         return AgentRunResult<CandidatesDoc>.Ok(new CandidatesDoc
         {
@@ -85,6 +86,67 @@ public static class DiscoveryAgent
 
         {prompt}
         """;
+
+    /// Deterministic RAIL-1 re-hardening for the hosted web-search path. The hosted tool composes and runs its
+    /// OWN query server-side, so — unlike the proxy tool — nothing in our code stamps "web:" on the citations
+    /// the model then writes. We do it here from a fact the model cannot forge: the set of URLs the tool
+    /// actually returned this turn (captured by MafAgent from the response's CitationAnnotations). Any citation
+    /// pointing at one of those hosts is rewritten to source "web:&lt;host&gt;", so Validate's existing
+    /// web-only Tier rail fires on it exactly as on the proxy path, and the persisted CandidatesDoc records
+    /// the web provenance either way.
+    ///
+    /// Biased toward stamping: a wrongly-stamped catalog citation only makes the rail STRICTER (the agent is
+    /// asked to re-cite and self-corrects), whereas a missed web source would let an unendorsed web candidate
+    /// reach Tier A — the one direction that produces the headline harm. No-op when the turn returned no web
+    /// URLs (the proxy path, or a run that never searched the web).
+    internal static void StampWebCitations(DiscoveryOutput o, IReadOnlyCollection<string> webCitationUrls)
+    {
+        if (webCitationUrls.Count == 0) return;
+        var webHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var u in webCitationUrls)
+            if (TryHost(u, out var h)) webHosts.Add(h);
+        if (webHosts.Count == 0) return;
+
+        for (var i = 0; i < o.Substances.Count; i++)
+        {
+            var s = o.Substances[i];
+            if (!s.Citations.Any(c => WebHostOf(c, webHosts) is not null)) continue;
+            var stamped = s.Citations
+                .Select(c => WebHostOf(c, webHosts) is { } host
+                          && !c.Source.StartsWith("web:", StringComparison.OrdinalIgnoreCase)
+                    ? c with { Source = $"web:{host}" }
+                    : c)
+                .ToList();
+            o.Substances[i] = s with { Citations = stamped };
+        }
+    }
+
+    /// The captured web host this citation points at, or null. Matches when either field parses to an http(s)
+    /// URL whose host is in the set, or textually contains one of the hosts (a bare "example.com/paper"
+    /// reference with no scheme). Deliberately generous — see the stamping bias above.
+    private static string? WebHostOf(Citation c, HashSet<string> webHosts)
+    {
+        foreach (var field in new[] { c.Reference, c.Source })
+        {
+            if (string.IsNullOrWhiteSpace(field)) continue;
+            if (TryHost(field, out var host) && webHosts.Contains(host)) return host;
+            foreach (var h in webHosts)
+                if (field.Contains(h, StringComparison.OrdinalIgnoreCase)) return h;
+        }
+        return null;
+    }
+
+    private static bool TryHost(string s, out string host)
+    {
+        host = "";
+        if (!string.IsNullOrWhiteSpace(s) && Uri.TryCreate(s.Trim(), UriKind.Absolute, out var u)
+            && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps) && u.Host.Length > 0)
+        {
+            host = u.Host;
+            return true;
+        }
+        return false;
+    }
 
     internal static string? Validate(DiscoveryOutput o, ConstraintsDoc constraints)
     {

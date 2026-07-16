@@ -86,4 +86,23 @@ public class BackendOptionsTests
         Assert.Equal("api://smx-search-proxy", o.SearchProxyAudience);
         Assert.Equal(3, o.WebSearchMaxPerStage);
     }
+
+    /// The web-search backend defaults to the built-in hosted tool; WEB_SEARCH_PROVIDER=proxy revives the
+    /// legacy anonymizing egress. UseHostedWebSearch is exactly what ToolBox switches DiscoveryTools on.
+    [Fact]
+    public void From_WebSearchProvider_DefaultsToHosted_ProxyRevivesTheLegacyPath()
+    {
+        var cosmos = new Dictionary<string, string?>
+        {
+            ["COSMOS_ACCOUNT_ENDPOINT"] = "https://cosmos-smx-dev.documents.azure.com:443/",
+        };
+
+        var hosted = BackendOptions.From(new ConfigurationBuilder().AddInMemoryCollection(cosmos).Build());
+        Assert.Equal("hosted", hosted.WebSearchProvider);
+        Assert.True(hosted.UseHostedWebSearch);
+
+        var proxy = BackendOptions.From(new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?>(cosmos) { ["WEB_SEARCH_PROVIDER"] = "proxy" }).Build());
+        Assert.False(proxy.UseHostedWebSearch);
+    }
 }

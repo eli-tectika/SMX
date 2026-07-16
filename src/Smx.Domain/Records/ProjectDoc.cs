@@ -30,6 +30,8 @@ public sealed class ProjectDoc
             [Records.Stages.Discovery] = new StageState(),
             [Records.Stages.Regulatory] = new StageState(),
             [Records.Stages.Matrix] = new StageState(),
+            [Records.Stages.Dosing] = new StageState(),
+            [Records.Stages.Cost] = new StageState(),
         },
     };
 }

@@ -12,7 +12,7 @@ public class ChatAgentTests
     private static ToolBox Box() =>
         new(new FakeCatalogLookup(), new FakeCompatibilityLookup(), new FakeSearch(), new FakeSearch(),
             new FakeSearch(), new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore(), new FakeLearnedConclusionsSearch(),
-            _ => new FakeWebSearch());
+            _ => new FakeWebSearch(), useHostedWebSearch: false);
 
     [Fact]
     public async Task Run_GivesTheAgentTheThread_TheStageInputs_AndTheNewMessage()
@@ -54,6 +54,7 @@ public class ChatAgentTests
         Assert.Equal(Names(box.DiscoveryReadTools()), Names(box.ReadToolsFor(Stages.Discovery)));
         Assert.DoesNotContain("search_web", Names(box.ReadToolsFor(Stages.Discovery)));
         Assert.Equal(Names(box.RegulatoryTools()), Names(box.ReadToolsFor(Stages.Regulatory)));
+        Assert.Equal(Names(box.DosingReadTools()), Names(box.ReadToolsFor(Stages.Dosing)));
     }
 
     // Pinned literally, not derived: this is the whole capability surface a chat turn's READ half offers the
@@ -73,17 +74,26 @@ public class ChatAgentTests
         Assert.Equal(
             ["search_reference", "search_regulatory", "search_sds"],
             box.ReadToolsFor(Stages.Regulatory).Select(t => t.Name).OrderBy(x => x));
+        // Dosing's read half is retrieval-only too — prior dosing conclusions and the reference corpus. The
+        // deterministic calculators (Task 10) are not retrieval and are not here; nothing that writes,
+        // approves or signs is either.
+        Assert.Equal(
+            ["search_learned_conclusions", "search_reference"],
+            box.ReadToolsFor(Stages.Dosing).Select(t => t.Name).OrderBy(x => x));
     }
 
-    // Matrix retrieves nothing — its output is derived from the record it is handed, so there is no source
-    // to search. A chat agent with no tools can only answer from the stage inputs in its prompt or say it
-    // has no source, which is the fail-closed answer. An unrecognised stage gets the same treatment: an
-    // unknown stage is a bug upstream, and the safe response to a bug is no capability at all.
+    // Matrix and Cost retrieve nothing. Matrix's output is derived from the record it is handed; Cost's is a
+    // deterministic table lookup — neither has a corpus to search, so a chat turn on them can only answer
+    // from the stage inputs in its prompt or say it has no source, which is the fail-closed answer. An
+    // UNRECOGNISED stage gets the same treatment, and it is the one that keeps this guarantee honest: `dosing`
+    // is now a KNOWN stage with two read tools, so an unknown string (not a real stage) is the true witness
+    // that the default arm still fails closed.
     [Fact]
-    public void ReadToolsFor_MatrixAndAnUnknownStage_GetNoTools()
+    public void ReadToolsFor_MatrixCostAndAnUnknownStage_GetNoTools()
     {
         Assert.Empty(Box().ReadToolsFor(Stages.Matrix));
-        Assert.Empty(Box().ReadToolsFor("dosing"));
+        Assert.Empty(Box().ReadToolsFor(Stages.Cost));
+        Assert.Empty(Box().ReadToolsFor("screening"));   // an unknown stage — the fail-closed default
     }
 
     // The FULL tool surface of a real chat turn — the only place read + mutating are put together, and a
@@ -108,6 +118,12 @@ public class ChatAgentTests
     [InlineData(Stages.Regulatory,
         new[] { "apply_revision", "search_reference", "search_regulatory", "search_sds" })]
     [InlineData(Stages.Matrix, new string[0])]
+    // Dosing IS revisable (a ppm change with a reason), so its turn adds apply_revision to its two read tools.
+    [InlineData(Stages.Dosing,
+        new[] { "apply_revision", "search_learned_conclusions", "search_reference" })]
+    // Cost is deterministic and NOT revisable: no read tools, no apply_revision — a read-only Q&A over the
+    // CostDoc in the prompt, holding no tools at all.
+    [InlineData(Stages.Cost, new string[0])]
     public void ChatTurnTools_AreTheStagesReadTools_PlusThisTurnsMutatingTools(string stage, string[] expected) =>
         Assert.Equal(expected, TurnTools(stage).Select(t => t.Name).OrderBy(x => x));
 
@@ -134,6 +150,8 @@ public class ChatAgentTests
     [InlineData(Stages.Discovery)]
     [InlineData(Stages.Regulatory)]
     [InlineData(Stages.Matrix)]
+    [InlineData(Stages.Dosing)]
+    [InlineData(Stages.Cost)]
     public void ChatTurnTools_ContainNothingThatCouldSignAGateOrApproveAnything(string stage)
     {
         string[] forbidden = ["approve", "gate", "sign", "determination", "finalize", "release"];

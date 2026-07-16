@@ -250,6 +250,108 @@ public class ChatDispatchTests
     }
 
     [Fact]
+    public async Task ChatMessage_OnDosing_SeesTheDosingDoc_NotEmptyInputs()
+    {
+        // Adding `dosing` to Stages.All opened POST /stages/dosing/chat immediately. Without a
+        // StageInputsJsonAsync arm the dispatcher would hand the agent "{}" — a confident conversation about
+        // a dosing analysis it cannot see. This pins the arm: the turn answers ABOUT the DosingDoc.
+        var (d, store, agents) = Sut();
+        await SeedAsync(d, store);
+        await store.UpsertDosingAsync(new DosingDoc
+        {
+            Id = RecordIds.Dosing(P), ProjectId = P,
+            Windows = [new PpmWindow("bottle", "1314-36-9", "Y",
+                Floor: new Bound(12.0, "3-sigma over measured background", BoundKinds.Measured, 1.0),
+                Upper: new Bound(1200.0, "solubility estimate", BoundKinds.Estimate, 0.4),
+                RecommendedPpm: 600.0, QuantificationPpm: 40.0)],
+            GeneratedAt = "2026-07-15T00:00:00Z",
+        });
+
+        string? inputs = null;
+        agents.Chat = (_, _, i, _) => { inputs = i; return Task.FromResult("ok"); };
+
+        await SendAsync(d, store, Message(Stages.Dosing, "d1", "why 600 ppm for Y?", "2026-07-15T09:00:00.0000000+00:00"));
+
+        // The DosingDoc's content reached the agent — its CAS and its recommended ppm. A "{}" arm carries
+        // neither, so reverting StageInputsJsonAsync's Dosing arm turns this red.
+        Assert.Contains("1314-36-9", inputs);
+        Assert.Contains("600", inputs);
+    }
+
+    [Fact]
+    public async Task ChatMessage_OnCost_SeesTheCostDoc_NotEmptyInputs()
+    {
+        // Cost holds no tools (it is deterministic), but the chat surface is still a read-only Q&A over the
+        // finished audit — so the CostDoc must reach the agent as inputs, not "{}". This is the other half of
+        // the "one commit makes the stage live" wiring: the arm exists and carries the audit.
+        var (d, store, agents) = Sut();
+        await SeedAsync(d, store);
+        await store.UpsertCostAsync(new CostDoc
+        {
+            Id = RecordIds.Cost(P), ProjectId = P, GeneratedAt = "2026-07-15T00:00:00Z",
+            Substances = [new SupplierAudit("10035-04-8", "Zr", ["OnlySource"],
+                BestQuote: null, PriceNote: "single listing", Risks: ["single-source"])],
+        });
+
+        string? inputs = null;
+        agents.Chat = (_, _, i, _) => { inputs = i; return Task.FromResult("ok"); };
+
+        await SendAsync(d, store, Message(Stages.Cost, "c1", "is Zr single-source?", "2026-07-15T09:00:00.0000000+00:00"));
+
+        Assert.Contains("10035-04-8", inputs);
+        Assert.Contains("single-source", inputs);
+    }
+
+    /// A project driven to a priced answer: a DosingDoc naming a marker and a CostDoc carrying a cited price —
+    /// enough for the chat surface on EITHER new stage to have its own record to read.
+    private static async Task SeedCostedProjectAsync(InMemoryRecordStore store)
+    {
+        var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
+        project.Stages[Stages.Dosing].Status = "done";
+        project.Stages[Stages.Cost].Status = "done";
+        await store.UpsertProjectAsync(project);
+        await store.UpsertDosingAsync(new DosingDoc
+        {
+            Id = RecordIds.Dosing(P), ProjectId = P, GeneratedAt = "t",
+            // A code is 2-3 markers (RatioSignature needs a ratio BETWEEN them) — the first is the one the
+            // theory asserts reached the agent.
+            Codes = [new MarkerCode("bottle",
+                [new CodeMarker("1314-36-9", "Y", 20, 0.787, 1, 2), new CodeMarker("10035-04-8", "Zr", 10, 0.5, 1, 2)],
+                "r")],
+        });
+        await store.UpsertCostAsync(new CostDoc
+        {
+            Id = RecordIds.Cost(P), ProjectId = P, GeneratedAt = "t",
+            Substances = [new SupplierAudit("1314-36-9", "Y", ["Acme"],
+                new PriceQuote(0.42, "USD", "Acme", "100 g", new Citation("ref-catalog", "ref-catalog/acme", "t")),
+                "note", [])],
+        });
+    }
+
+    /// PLAN-4 TRIPWIRE. Adding `dosing` and `cost` to Stages.All opened POST /stages/{stage}/chat for both,
+    /// and the chat surface (Plan 3c) works on every stage in Stages.All. The two StageInputsJsonAsync arms
+    /// that give those stages their own record already exist; break either to "{}" and the operator gets an
+    /// agent holding a confident conversation about an analysis it cannot see. This guards that they stay:
+    /// each stage's chat turn must be handed THAT stage's own record, never an empty object.
+    [Theory]
+    [InlineData(Stages.Dosing, "1314-36-9")]     // the DosingDoc's marker
+    [InlineData(Stages.Cost, "ref-catalog/")]    // the CostDoc's citation
+    public async Task ChatOnANewStage_SeesThatStagesOwnRecord_NotAnEmptyObject(string stage, string expected)
+    {
+        var (d, store, agents) = Sut();
+        await SeedCostedProjectAsync(store);
+        string? seen = null;
+        agents.Chat = (_, _, inputs, _) => { seen = inputs; return Task.FromResult("ok"); };
+
+        var m = Message(stage, "aaaa1111", "what did you dose?", "2026-07-15T00:00:00Z");
+        await store.UpsertChatMessageAsync(m);
+        await d.OnRecordChangedAsync(Delivered(m), default);
+
+        Assert.Contains(expected, seen);
+        Assert.NotEqual("{}", seen);
+    }
+
+    [Fact]
     public async Task ChatMessage_IsIdempotent_UnderChangeFeedRedelivery()
     {
         // The change feed is at-least-once, and answering the message re-enters this handler once more by

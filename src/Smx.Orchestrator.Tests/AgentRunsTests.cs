@@ -30,7 +30,7 @@ public class AgentRunsTests
         var toolBox = new ToolBox(
             new FakeCatalogLookup(), new FakeCompatibilityLookup(), search, search, search,
             new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore(), new FakeLearnedConclusionsSearch(),
-            terms => { captured = terms; return new FakeWebSearch(); });
+            terms => { captured = terms; return new FakeWebSearch(); }, useHostedWebSearch: false);
 
         IAgentRuns runs = new AgentRuns(new FakeChatClient(), toolBox);
         await runs.RunDiscoveryAsync(project, Constraints(project.ProjectId), null, default);

@@ -14,26 +14,43 @@ public sealed class ToolBox(
     IReferenceSearch reference,
     IKnowledgeStore knowledge,
     ILearnedConclusionsSearch learnedConclusions,
-    Func<SensitiveTerms, IWebSearch> webSearchFactory)
+    Func<SensitiveTerms, IWebSearch> webSearchFactory,
+    bool useHostedWebSearch)
 {
-    /// SensitiveTerms is a REQUIRED parameter, not an optional one: a Discovery tool set built without the
-    /// project's client/product names is a tool set that cannot protect the project. Forgetting it is now a
-    /// compile error — the same reasoning the codebase applies to RevisionDoc? in the agent runners.
-    public IList<AITool> DiscoveryTools(SensitiveTerms terms)
+    /// SensitiveTerms is a REQUIRED parameter, not an optional one: the PROXY tool set built without the
+    /// project's client/product names is a tool set that cannot protect the project. Forgetting it is a
+    /// compile error — the same reasoning the codebase applies to RevisionDoc? in the agent runners. (The
+    /// hosted tool cannot pre-strip terms; there the same rule is carried by the Discovery instructions and
+    /// re-enforced deterministically downstream — see HostedWebSearch.)
+    public IList<AITool> DiscoveryTools(SensitiveTerms terms) =>
+    [
+        .. DiscoveryReadTools(),
+        useHostedWebSearch ? HostedWebSearch() : ProxyWebSearch(terms),
+    ];
+
+    /// The model's built-in, provider-executed web search (Responses API, WEB_SEARCH_PROVIDER=hosted). Unlike
+    /// the proxy tool it composes and runs its OWN query server-side, so it takes no SensitiveTerms and cannot
+    /// pre-strip them: the "query must contain NO client/product/project name" rule lives in the Discovery
+    /// instructions instead. RAIL 1 (web-only ⇒ ≤ Tier B, never preferred) is NOT lost — it is re-established
+    /// in code downstream: MafAgent captures the URLs the tool actually returned (its CitationAnnotations) and
+    /// DiscoveryAgent.Validate re-stamps any candidate citation matching one as web-derived, so the tier rail
+    /// still rests on a code-observed fact, not on the model's self-reported citation source.
+    private static AITool HostedWebSearch() => new HostedWebSearchTool();
+
+    /// The legacy anonymizing egress (WEB_SEARCH_PROVIDER=proxy). Kept for revival; closes over the project's
+    /// SensitiveTerms and stamps "web:<host>" on every hit itself, which is what makes RAIL 1 deterministic on
+    /// this path without any downstream re-stamping.
+    private AITool ProxyWebSearch(SensitiveTerms terms)
     {
         var web = webSearchFactory(terms);
-        return
-        [
-            .. DiscoveryReadTools(),
-            AIFunctionFactory.Create(
-                (string query, string intent, CancellationToken ct) => SearchWebAsync(query, intent, ct, web),
-                "search_web",
-                "Anonymized external web search, for candidate forms the SMX catalog does not carry. It is a STARTING POINT, not an authority: a web hit may suggest a marker, it can never endorse one. " +
-                "Corroborate every web finding against search_catalog and search_reference before you rely on it, and NEVER state a CAS you did not read from a retrieved source. " +
-                "A candidate supported only by web citations must be Tier B with its limitation named in the rationale — it can never be Tier A or preferred. " +
-                "The query must contain NO client, product or project name — only chemistry. " +
-                "intent must be one of: discovery.candidate_forms, discovery.form_properties, discovery.supplier_availability."),
-        ];
+        return AIFunctionFactory.Create(
+            (string query, string intent, CancellationToken ct) => SearchWebAsync(query, intent, ct, web),
+            "search_web",
+            "Anonymized external web search, for candidate forms the SMX catalog does not carry. It is a STARTING POINT, not an authority: a web hit may suggest a marker, it can never endorse one. " +
+            "Corroborate every web finding against search_catalog and search_reference before you rely on it, and NEVER state a CAS you did not read from a retrieved source. " +
+            "A candidate supported only by web citations must be Tier B with its limitation named in the rationale — it can never be Tier A or preferred. " +
+            "The query must contain NO client, product or project name — only chemistry. " +
+            "intent must be one of: discovery.candidate_forms, discovery.form_properties, discovery.supplier_availability.");
     }
 
     /// The Discovery retrieval tools MINUS search_web — the read surface with no egress. A CHAT turn for
@@ -75,6 +92,43 @@ public sealed class ToolBox(
             "Search accumulated Learned Conclusions (prior material/regulatory findings with confidence + provenance) relevant to this intake. Treat them as prior evidence, not fact; a higher-confidence, more recent conclusion supersedes an older one."),
     ];
 
+    /// The Dosing retrieval tools MINUS the two calculators — the read surface with no computation. A CHAT
+    /// turn for the Dosing stage gets exactly this (ReadToolsFor): it answers from the already-computed
+    /// DosingDoc and these sources, it does NOT recompute a floor or an order amount. Mirrors
+    /// DiscoveryReadTools (the read half) vs DiscoveryTools (the autonomous run's full set).
+    public IList<AITool> DosingReadTools() =>
+    [
+        AIFunctionFactory.Create(SearchLearnedConclusionsAsync, "search_learned_conclusions",
+            "Prior ppm and dosing findings from earlier projects, with the reasons they were recorded."),
+        AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
+            "The reference corpus — formulation-impact basis, application notes, typical loadings."),
+    ];
+
+    /// The Dosing stage's tools. The two calculators are DETERMINISTIC and the agent may not do their
+    /// arithmetic itself: a model that computes its own floor can compute one that is too low, and a low
+    /// floor ships a marker nobody can detect. It calls these, and picks a ppm INSIDE what they return.
+    ///
+    /// Closed over the project's ConstraintsDoc for the same reason DiscoveryTools closes over SensitiveTerms:
+    /// the floor is targeted at THIS project's measured background and device, and no method here may compute
+    /// against another project's physics. The DosingAgent (Task 11) is the consumer; the CHAT surface gets
+    /// DosingReadTools() only — it answers from the already-computed DosingDoc, it does not recompute a floor.
+    public IList<AITool> DosingTools(ConstraintsDoc constraints) =>
+    [
+        AIFunctionFactory.Create(
+            (string componentId, string element, CancellationToken ct) => DetectionFloorJson(constraints, componentId, element),
+            "detection_floor",
+            "The ppm detection and quantification floors for an element in a component, computed from the " +
+            "physicist's MEASURED background and the deployment device's LOD. If the measurement is missing " +
+            "this returns an error and NO number — say so; never estimate a floor."),
+        AIFunctionFactory.Create(
+            (string cas, double ppm, string componentId, CancellationToken ct) => OrderAmountAsync(constraints, cas, ppm, componentId, ct),
+            "order_amount",
+            "How many grams of the COMPOUND to order for a given ppm in a component, from the batch mass and " +
+            "the substance's metal loading. If the loading is unknown this returns an error naming the CAS — " +
+            "the operator must supply it; never assume one."),
+        .. DosingReadTools(),
+    ];
+
     /// The READ tools a CHAT turn gets for a stage (ChatAgent, design §5) — deliberately the same retrieval
     /// surface the stage's own agent reasoned with, so chat can answer for what the stage produced FROM ITS
     /// SOURCES rather than from the model's memory. A switch over the existing sets, never a new set: chat
@@ -93,6 +147,11 @@ public sealed class ToolBox(
         Stages.Intake => IntakeTools(),
         Stages.Discovery => DiscoveryReadTools(),
         Stages.Regulatory => RegulatoryTools(),
+        Stages.Dosing => DosingReadTools(),
+        // Cost is deterministic — its output is a table lookup, not a reasoned claim over a corpus — so a
+        // chat turn on it holds NO read tools and answers only from the CostDoc in its prompt. Listed
+        // explicitly (not left to the default) so the intent reads as deliberate, not as an unknown stage.
+        Stages.Cost => [],
         _ => [],
     };
 
@@ -130,6 +189,45 @@ public sealed class ToolBox(
         return chunks.Count == 0
             ? "{\"results\":[],\"note\":\"no matches — no prior conclusions on this; reason from primary sources, do not fabricate a prior finding\"}"
             : Render(chunks);
+    }
+
+    /// The ppm detection/quantification floor for one element in one component. PURE over the project's
+    /// constraints — the physicist's measured background + the deployment device's LOD — so it takes no
+    /// CancellationToken body and never touches the knowledge store: there is nothing to fetch, and the
+    /// arithmetic must be the one thing the agent cannot influence. On any missing/ambiguous input
+    /// DetectionFloor.Compute returns an error and NO Floor, and this emits the error VERBATIM with no
+    /// number in any field — a floor the agent could talk down is a marker nobody can detect.
+    private string DetectionFloorJson(ConstraintsDoc constraints, string componentId, string element)
+    {
+        var (floor, error) = DetectionFloor.Compute(constraints.MeasuredBackgrounds, constraints.Device, componentId, element);
+        return floor is not null
+            ? JsonSerializer.Serialize(new { floor }, Json.Options)
+            : JsonSerializer.Serialize(new { error }, Json.Options);
+    }
+
+    /// Grams of the COMPOUND to order for a ppm in a component. The metal loading lives in NO catalog we have;
+    /// it is read by CAS from the cross-project knowledge layer, and a cold miss is a REFUSAL that names the
+    /// CAS and tells the operator to supply it — never a default to 1.0 ("it's the pure metal"), which is the
+    /// exact assumption that under-orders an oxide below the detection floor. The batch mass comes from the
+    /// component; an absent one is surfaced by OrderAmount.Compute's own refusal, not crashed on.
+    private async Task<string> OrderAmountAsync(
+        ConstraintsDoc constraints, string cas, double ppm, string componentId, CancellationToken ct)
+    {
+        var component = constraints.Components.FirstOrDefault(c => c.Id == componentId);
+
+        var property = await knowledge.GetSubstancePropertyAsync(cas, ct);
+        if (property is null)
+            return JsonSerializer.Serialize(new
+            {
+                error = $"no metal loading is recorded for CAS {cas}, so the order amount cannot be computed. " +
+                        "The operator must enter the substance's metal loading (with its basis) — it lives in no " +
+                        "catalog, and assuming the pure metal (1.0) under-orders an oxide below the detection floor.",
+            }, Json.Options);
+
+        var (order, error) = OrderAmount.Compute(ppm, component?.BatchMassKg, property.MetalLoading);
+        return order is not null
+            ? JsonSerializer.Serialize(new { order }, Json.Options)
+            : JsonSerializer.Serialize(new { error }, Json.Options);
     }
 
     /// A web hit is NOT a RetrievedChunk. Its source is "web:<host>" so that a citation built from it stays
