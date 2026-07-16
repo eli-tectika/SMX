@@ -53,6 +53,7 @@ var host = new HostBuilder()
             sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.RegistryContainer)));
         services.AddSingleton<MasterListRepo>();
         services.AddSingleton<RegistryRepo>();
+        services.AddSingleton<Smx.Functions.Sds.Seeding.MasterListSeeder>();  // operator seed of the manifest
 
         // Bronze (ADLS)
         services.AddSingleton<IBronzeStore>(_ =>

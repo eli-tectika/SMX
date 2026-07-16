@@ -20,6 +20,7 @@ public sealed class SdsOptions
     public int RevisionRecheckDays { get; init; } = 90;
     public bool DryRun { get; init; }
     public string AllowlistPath { get; init; } = "Sds/Config/suppliers.allowlist.json";
+    public string SeedCatalogPath { get; init; } = "Reference/Seed/catalog-products.json";
     public int MaxPdfBytes { get; init; } = 25 * 1024 * 1024;
     public int MinGhsSections { get; init; } = 10;
 
@@ -41,5 +42,6 @@ public sealed class SdsOptions
         RevisionRecheckDays = int.TryParse(c["SDS_REVISION_RECHECK_DAYS"], out var d) ? d : 90,
         DryRun = bool.TryParse(c["SDS_DRY_RUN"], out var dr) && dr,
         AllowlistPath = c["SDS_ALLOWLIST_PATH"] ?? "Sds/Config/suppliers.allowlist.json",
+        SeedCatalogPath = c["SDS_SEED_CATALOG_PATH"] ?? "Reference/Seed/catalog-products.json",
     };
 }
