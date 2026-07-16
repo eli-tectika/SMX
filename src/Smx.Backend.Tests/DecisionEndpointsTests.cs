@@ -307,4 +307,98 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         Assert.Equal("approved", after.GetProperty("status").GetString());
         Assert.False(string.IsNullOrEmpty(after.GetProperty("approvedAt").GetString()));
     }
+
+    // ---- MSDS-before-order (Task 10): the last hard precondition ---------------------------------------
+
+    /// A closed project: VP-confirmed codes and released procurement — what the close dispatch leaves behind.
+    private async Task SeedReleasedAsync()
+    {
+        await SeedAwaitingVpAsync();
+        var decision = (await _store.GetDecisionAsync(P))!;
+        decision.Components = [.. decision.Components.Select(c => c with
+        {
+            ConfirmedCode = Ratio(c.ComponentId), ConfirmedBy = "VP R&D", ConfirmedReason = "reviewed",
+        })];
+        decision.Procurement.Status = ProcurementStatus.Released;
+        await _store.UpsertDecisionAsync(decision);
+    }
+
+    private async Task SeedReviewedMsdsAsync(string cas) =>
+        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc
+        {
+            Id = KnowledgeIds.Msds(cas), Cas = cas, Supplier = "Acme Chemicals", Version = "3.1",
+            Date = "2026-05-01", ReviewStatus = MsdsReviewStatus.Reviewed, ReviewedAt = "2026-07-15T00:00:00Z",
+        });
+
+    [Fact]
+    public async Task PostOrder_BeforeTheVpGate_Is422()
+    {
+        // Procurement is a state flag (§4) and only the close dispatch releases it — an order before the
+        // VP signature is an order for a product nobody approved.
+        await SeedAwaitingVpAsync();   // decision exists, procurement still unreleased
+        await SeedReviewedMsdsAsync("cas-zr");
+
+        var res = await _client.PostAsync($"/projects/{P}/orders/cas-zr", null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, res.StatusCode);
+        Assert.Contains("procurement is not released", await res.Content.ReadAsStringAsync());
+        Assert.Empty((await _store.GetDecisionAsync(P))!.Procurement.OrderedCas);
+    }
+
+    [Fact]
+    public async Task PostOrder_WithoutAReviewedMsds_Is422()
+    {
+        // THE hard precondition (§4: MSDS-before-order gates an individual order). No MsdsRegistryDoc, or
+        // one still unreviewed — either way the order must not exist. 422 names the cas and the rule.
+        await SeedReleasedAsync();
+        // an entry EXISTS but nobody signed the review — currency is the operator's signature, not the file
+        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc
+        {
+            Id = KnowledgeIds.Msds("cas-zr"), Cas = "cas-zr", Supplier = "Acme Chemicals", Version = "3.1",
+            Date = "2026-05-01", ReviewStatus = MsdsReviewStatus.Unreviewed,
+        });
+
+        var res = await _client.PostAsync($"/projects/{P}/orders/cas-zr", null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, res.StatusCode);
+        var body = await res.Content.ReadAsStringAsync();
+        Assert.Contains("cas-zr", body);
+        Assert.Contains("MSDS-before-order", body);
+        Assert.Empty((await _store.GetDecisionAsync(P))!.Procurement.OrderedCas);
+
+        // and an entirely ABSENT registry entry blocks identically
+        var res2 = await _client.PostAsync($"/projects/{P}/orders/cas-y", null);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, res2.StatusCode);
+        Assert.Empty((await _store.GetDecisionAsync(P))!.Procurement.OrderedCas);
+    }
+
+    [Fact]
+    public async Task PostOrder_ForACasOutsideTheConfirmedCodes_Is422()
+    {
+        // You cannot order what the VP did not sign — even with a perfectly reviewed MSDS on file.
+        await SeedReleasedAsync();
+        await SeedReviewedMsdsAsync("cas-ba");   // reviewed, but in NO confirmed code
+
+        var res = await _client.PostAsync($"/projects/{P}/orders/cas-ba", null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, res.StatusCode);
+        Assert.Contains("cas-ba", await res.Content.ReadAsStringAsync());
+        Assert.Empty((await _store.GetDecisionAsync(P))!.Procurement.OrderedCas);
+    }
+
+    [Fact]
+    public async Task PostOrder_WithReviewedMsds_RecordsTheOrder()
+    {
+        await SeedReleasedAsync();
+        await SeedReviewedMsdsAsync("cas-zr");
+
+        var res = await _client.PostAsync($"/projects/{P}/orders/cas-zr", null);
+        Assert.Equal(HttpStatusCode.Accepted, res.StatusCode);
+        Assert.Equal(["cas-zr"], (await _store.GetDecisionAsync(P))!.Procurement.OrderedCas);
+
+        // idempotent: re-POST is 202 and still ONE entry — an order is a record, not a counter
+        var again = await _client.PostAsync($"/projects/{P}/orders/cas-zr", null);
+        Assert.Equal(HttpStatusCode.Accepted, again.StatusCode);
+        Assert.Equal(["cas-zr"], (await _store.GetDecisionAsync(P))!.Procurement.OrderedCas);
+    }
 }

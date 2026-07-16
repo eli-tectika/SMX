@@ -646,7 +646,7 @@ Spec §4 gates table: VP arms only when "Regulatory cleared + all components hav
 
 Mirror `POST /regulatory/approve`'s discipline: arm on the LIVE records, 422 with named blockers, idempotent approved-timestamp, and this endpoint is **the only writer of an approved VP GateDoc** (the dispatcher trusts that — same contract as the regulatory gate).
 
-- [ ] **Step 1: Failing tests** (WebApplicationFactory + InMemoryRecordStore, the DosingEndpointsTests pattern):
+- [x] **Step 1: Failing tests** (WebApplicationFactory + InMemoryRecordStore, the DosingEndpointsTests pattern):
 
 ```csharp
     // Body: { determination: "approved" | "rejected", reason, confirmations: [ { componentId, code } ] }
@@ -673,7 +673,7 @@ Mirror `POST /regulatory/approve`'s discipline: arm on the LIVE records, 422 wit
     // 8. Idempotent re-approve: second identical POST → 200, ApprovedAt unchanged.
 ```
 
-- [ ] **Step 2: fail → Step 3: implement.** Request records:
+- [x] **Step 2: fail → Step 3: implement.** Request records:
 
 ```csharp
 public sealed record VpConfirmation(string ComponentId, string Code);
@@ -727,9 +727,9 @@ app.MapPost("/projects/{projectId}/decision/determination", async (string projec
 
 `GET /projects/{projectId}/gate/vp` mirrors the regulatory gate read (status/armable/blockers/approvedAt via `VpGate.Armable`).
 
-- [ ] **Step 4: green + full suite.**
-- [ ] **Step 5: Mutations:** (a) drop the unknown-code check → test 3 FAILS; (b) drop the all-components check → test 4 FAILS; (c) make rejection write `Status = "approved"` → test 6 FAILS. Revert all; report.
-- [ ] **Step 6: Commit** `feat(api): the VP gate — a signature over real codes only, every component, with a reason, or 422`
+- [x] **Step 4: green + full suite.**
+- [x] **Step 5: Mutations:** (a) drop the unknown-code check → test 3 FAILS; (b) drop the all-components check → test 4 FAILS; (c) make rejection write `Status = "approved"` → test 6 FAILS. Revert all; report.
+- [x] **Step 6: Commit** `feat(api): the VP gate — a signature over real codes only, every component, with a reason, or 422`
 
 ---
 
@@ -741,7 +741,7 @@ app.MapPost("/projects/{projectId}/decision/determination", async (string projec
 
 The VP GateDoc landing on the change feed IS the close dispatch (writing the record is the trigger — same as every other stage). Close writes: **Marker Library** entries for the confirmed codes (+ idempotent reuse counting), a **Learned Conclusion** for the close, Decision stage → `done`, `Procurement.Status` → `released`.
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
 
 ```csharp
     // Sut: StageDispatcher with InMemoryKnowledgeStore (the 5th arg) — the close writes go THERE.
@@ -765,7 +765,7 @@ The VP GateDoc landing on the change feed IS the close dispatch (writing the rec
     //    skipped — mirror the catalog-null degrade; the E2E covers the wired path).
 ```
 
-- [ ] **Step 2: fail → Step 3: implement** — extend the `OnGateAsync` pattern-match:
+- [x] **Step 2: fail → Step 3: implement** — extend the `OnGateAsync` pattern-match:
 
 ```csharp
     private async Task OnGateAsync(GateDoc g, CancellationToken ct)
@@ -777,8 +777,8 @@ The VP GateDoc landing on the change feed IS the close dispatch (writing the rec
 
 `CloseProjectAsync`: idempotency guard on `Stages[Decision].Status is "awaiting-VP"` (once `done`, redeliveries no-op for the stage flip; the knowledge writes are idempotent by id regardless); read decision+dosing+constraints; per confirmed component code build the `MarkerLibraryDoc` (shape per inventory §6.2 + `MarkerLibraryDoc.cs` — read it first); write the Learned Conclusion via the existing `ILearnedConclusionWriter`; flip Procurement + stage.
 
-- [ ] **Step 4: green + full suite. Step 5: Mutations:** (a) drop the `awaiting-VP` guard → redelivery test must still pass (the writes are id-idempotent) BUT the stage-flip assert in test 2 must be strengthened to catch double-transition side effects — if no test fails under this mutation, note it as accepted-idempotent and move on (do not fake a kill). (b) Make the content-key ordinal (index-based) instead of content-based → test 3 (reuse) FAILS. Revert; report.
-- [ ] **Step 6: Commit** `feat(dispatch): the VP signature closes the project — library codes, a conclusion, released procurement`
+- [x] **Step 4: green + full suite. Step 5: Mutations:** (a) drop the `awaiting-VP` guard → redelivery test must still pass (the writes are id-idempotent) BUT the stage-flip assert in test 2 must be strengthened to catch double-transition side effects — if no test fails under this mutation, note it as accepted-idempotent and move on (do not fake a kill). (b) Make the content-key ordinal (index-based) instead of content-based → test 3 (reuse) FAILS. Revert; report.
+- [x] **Step 6: Commit** `feat(dispatch): the VP signature closes the project — library codes, a conclusion, released procurement`
 
 ---
 
@@ -790,7 +790,7 @@ The VP GateDoc landing on the change feed IS the close dispatch (writing the rec
 
 §4: procurement is a state flag; MSDS-before-order gates **an individual order**: MSDS **current + reviewed** for the substance. "Current" = the registry entry's `ReviewStatus == reviewed` (the operator's signed review is the currency claim — `POST /msds-registry/{cas}/review` already exists and stamps `ReviewedAt`).
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
 
 ```csharp
     // 1. PostOrder_BeforeTheVpGate_Is422 ("procurement is not released").
@@ -801,11 +801,11 @@ The VP GateDoc landing on the change feed IS the close dispatch (writing the rec
     //    the cas; idempotent re-POST → 202, still one entry.
 ```
 
-- [ ] **Step 2: fail → Step 3: implement** (needs `[FromServices] IKnowledgeStore` too — the MSDS read):
+- [x] **Step 2: fail → Step 3: implement** (needs `[FromServices] IKnowledgeStore` too — the MSDS read):
 422 checks in order: procurement released → cas ∈ confirmed codes' markers → `GetMsdsAsync(cas)` is `ReviewStatus == MsdsReviewStatus.Reviewed`. Then add to `OrderedCas` (Contains-guarded), upsert, 202.
 
-- [ ] **Step 4: green + full suite. Step 5: Mutations:** drop the MSDS check → test 2 FAILS (this IS the hard precondition — its mutation kill is the point of the task). Drop the confirmed-code check → test 3 FAILS. Revert; report.
-- [ ] **Step 6: Commit** `feat(api): MSDS-before-order — an order is a record, and it will not exist without a reviewed MSDS`
+- [x] **Step 4: green + full suite. Step 5: Mutations:** drop the MSDS check → test 2 FAILS (this IS the hard precondition — its mutation kill is the point of the task). Drop the confirmed-code check → test 3 FAILS. Revert; report.
+- [x] **Step 6: Commit** `feat(api): MSDS-before-order — an order is a record, and it will not exist without a reviewed MSDS`
 
 ---
 

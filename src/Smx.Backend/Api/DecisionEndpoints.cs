@@ -92,6 +92,41 @@ public static class DecisionEndpoints
             return Results.Ok(new { status = "approved" });
         });
 
+        // MSDS-before-order (spec §4): procurement is a state flag, and this precondition gates each
+        // INDIVIDUAL order — MSDS current + reviewed for the substance, where "current" is the operator's
+        // signed review (POST /msds-registry/{cas}/review stamps it). The 422 chain runs release →
+        // signed-code membership → MSDS, so the error the operator sees is always the FIRST rule their
+        // order breaks, and a 4xx always means no order record exists.
+        app.MapPost("/projects/{projectId}/orders/{cas}", async (string projectId, string cas,
+            [FromServices] IRecordStore store, [FromServices] IKnowledgeStore knowledge, CancellationToken ct) =>
+        {
+            var decision = await store.GetDecisionAsync(projectId, ct);
+            if (decision is null || decision.Procurement.Status != ProcurementStatus.Released)
+                return Results.UnprocessableEntity(new { error = "procurement is not released — only the VP gate's signature releases it" });
+
+            // You cannot order what the VP did not sign: the orderable set is exactly the markers of the
+            // CONFIRMED codes (never the proposals — Law 9 reaches procurement too).
+            var dosing = await store.GetDosingAsync(projectId, ct);
+            var signed = decision.Components
+                .Where(c => c.ConfirmedCode is not null)
+                .SelectMany(c => (dosing?.Codes ?? [])
+                    .Where(k => k.ComponentId == c.ComponentId && k.RatioSignature == c.ConfirmedCode))
+                .SelectMany(k => k.Markers).Select(m => m.Cas).ToHashSet();
+            if (!signed.Contains(cas))
+                return Results.UnprocessableEntity(new { error = $"'{cas}' is not a marker in any VP-confirmed code — you cannot order what the VP did not sign" });
+
+            var msds = await knowledge.GetMsdsAsync(cas, ct);
+            if (msds?.ReviewStatus != MsdsReviewStatus.Reviewed)
+                return Results.UnprocessableEntity(new { error = $"MSDS-before-order: no reviewed MSDS on file for '{cas}' — review it via POST /msds-registry/{cas}/review first" });
+
+            if (!decision.Procurement.OrderedCas.Contains(cas))
+            {
+                decision.Procurement.OrderedCas.Add(cas);
+                await store.UpsertDecisionAsync(decision, ct);
+            }
+            return Results.Accepted($"/projects/{projectId}/decision", new { ordered = cas });
+        });
+
         app.MapGet("/projects/{projectId}/gate/vp",
             async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
         {
