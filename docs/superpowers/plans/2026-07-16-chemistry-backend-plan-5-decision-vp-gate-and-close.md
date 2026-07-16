@@ -1129,3 +1129,10 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
   (`Fake_DefaultDecision_MirrorsTheAssemblyProposesTheFirstCode_AndCountsTheCall`). The plan's intended
   dispatch-level kill (CostDispatchTests' `TotalCalls == 0` pin catching a decision call inside Cost
   dispatch) only becomes live with Task 6 — re-run the mutation there as Step 4 already instructs.
+- **Review of Tasks 3-5 added a Dosing window-uniqueness invariant** (source-fix for the assembler's
+  `ToDictionary` crash path: `DecisionAssembler.Assemble`'s window lookup throws on a duplicate
+  `(component, cas)` window, and DosingAgent used to validate-and-persist such an output) **and removed the
+  silent `GroupBy(...).First()` collapse** in `DosingAgent.RunAsync`'s code builder — a dedup that would
+  have shipped one of two conflicting ppms while the record showed both. Duplicates are now refused at the
+  boundary with a retryable error naming the component and CAS; Task 6 additionally calls `Assemble` inside
+  the stage try/catch as defense-in-depth for any pre-invariant persisted DosingDoc.
