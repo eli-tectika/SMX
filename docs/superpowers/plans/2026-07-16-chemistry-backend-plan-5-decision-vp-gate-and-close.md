@@ -544,7 +544,7 @@ git commit -m "feat(agents): DecisionAgent — picks only among real codes, prop
 
 Today `CostDoc` falls through `OnRecordChangedAsync` with no case (inventory §6). The CostDoc landing IS the Decision trigger.
 
-- [ ] **Step 1: Failing tests** (`DecisionDispatchTests`, Sut mirrors CostDispatchTests but wires FakeAgentRuns.Decision):
+- [x] **Step 1: Failing tests** (`DecisionDispatchTests`, Sut mirrors CostDispatchTests but wires FakeAgentRuns.Decision):
 
 ```csharp
     // 1. ACostDocLanding_RunsDecision_AssemblyPlusPick: seed project (…, cost done, decision pending) +
@@ -558,9 +558,9 @@ Today `CostDoc` falls through `OnRecordChangedAsync` with no case (inventory §6
     //    (resolve-all-inputs-first, the TryDoseAsync discipline).
 ```
 
-- [ ] **Step 2: Verify they fail** (no case → nothing happens).
+- [x] **Step 2: Verify they fail** (no case → nothing happens).
 
-- [ ] **Step 3: Implement** `TryDecideAsync` beside `TryDoseAsync`:
+- [x] **Step 3: Implement** `TryDecideAsync` beside `TryDoseAsync`:
 
 ```csharp
     case CostDoc c: await TryDecideAsync(c.ProjectId, ct); break;
@@ -603,9 +603,9 @@ Today `CostDoc` falls through `OnRecordChangedAsync` with no case (inventory §6
     }
 ```
 
-- [ ] **Step 4: Run tests + full suite.** Re-run Task 5's deferred `TotalCalls` mutation now.
-- [ ] **Step 5: Mutation checks:** (a) guard `is not "pending"` → guard on doc-existence instead → the idempotency test must FAIL. (b) `awaiting-VP` → `done` → test 1 must FAIL (a decision "done" without a signature is the gate bypass). Revert both; report.
-- [ ] **Step 6: Commit** `feat(dispatch): Cost triggers Decision — assembly + pick, parked awaiting-VP because a proposal is not a signature`
+- [x] **Step 4: Run tests + full suite.** Re-run Task 5's deferred `TotalCalls` mutation now.
+- [x] **Step 5: Mutation checks:** (a) guard `is not "pending"` → guard on doc-existence instead → the idempotency test must FAIL. (b) `awaiting-VP` → `done` → test 1 must FAIL (a decision "done" without a signature is the gate bypass). Revert both; report.
+- [x] **Step 6: Commit** `feat(dispatch): Cost triggers Decision — assembly + pick, parked awaiting-VP because a proposal is not a signature`
 
 ---
 
@@ -1136,3 +1136,25 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
   have shipped one of two conflicting ppms while the record showed both. Duplicates are now refused at the
   boundary with a retryable error naming the component and CAS; Task 6 additionally calls `Assemble` inside
   the stage try/catch as defense-in-depth for any pre-invariant persisted DosingDoc.
+- **Task 6 AMENDMENT (review-mandated, applied):** the plan's `TryDecideAsync` sketch called
+  `DecisionAssembler.Assemble` BEFORE the try/catch. It now runs INSIDE: the stage is set `running` first,
+  then `try { Assemble … RunDecisionAsync … }`. A pre-invariant persisted DosingDoc with a duplicate
+  `(component, cas)` window makes `Assemble`'s `ToDictionary` throw `ArgumentException`; outside the try
+  that escapes into the change-feed processor as a poison redelivery loop (stage stuck `pending`, no visible
+  error) — inside it, the stage lands `failed` with the error surfaced (§11's "nothing dies silently").
+  Pinned by `DecisionDispatchTests.APreInvariantDuplicateWindow_FailsTheStage_WithNoAgentCall_AndNoPoisonLoop`
+  (stage `failed`, error carries the ArgumentException's "same key" text, `DecisionCalls == 0`, and a second
+  delivery is a no-op because the status is no longer `pending`). Mutation-verified: hoisting `Assemble`
+  back above the try made that test fail with the escaped `ArgumentException` — exactly the poison loop.
+- **Task 6: the plan's mutation (a) kill was mis-predicted and the tests were strengthened to make it real.**
+  Under the doc-existence-guard mutation, `Redelivery_IsIdempotent` PASSES (the happy-path first run writes a
+  DecisionDoc, so both guard semantics absorb the redelivery — they only diverge when no doc was persisted).
+  The kill is carried instead by (i) a fifth test the plan did not name,
+  `Decision_GuardsOnStageStatus_NotWhetherADecisionDocExists` (stage `awaiting-VP`, no doc on file — the
+  mirror of `Cost_GuardsOnStageStatus_NotWhetherACostDocExists`), and (ii) redelivery-is-a-no-op asserts
+  appended to the needs-review and amendment tests (a failed run persists no doc, so a doc-existence guard
+  re-runs the agent there). All three FAILED under the mutation; reverted by hand.
+- **Task 6: `Decision_RequiresItsInputs` is a 3-case theory** (missing dosing / cost / constraints — the
+  plan named only "dosing or cost", but `TryDecideAsync` also resolves constraints for the component list).
+  Note these guard pins pass vacuously BEFORE the case exists (no case → nothing happens → stage stays
+  `pending`); their teeth are the post-implementation mutations above.

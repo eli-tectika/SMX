@@ -39,6 +39,7 @@ public sealed class StageDispatcher(
             case RevisionDoc r: await OnRevisionAsync(r, ct); break;
             case ChatMessageDoc m: await OnChatMessageAsync(m, ct); break;
             case DosingDoc d: await OnDosingAsync(d, ct); break;
+            case CostDoc c: await TryDecideAsync(c.ProjectId, ct); break;
             case MatrixDoc: break; // terminal
         }
     }
@@ -309,6 +310,54 @@ public sealed class StageDispatcher(
         catch (Exception e)
         {
             await SetStageAsync(d.ProjectId, Stages.Cost, s => { s.Status = "failed"; s.Error = e.Message; }, ct);
+        }
+    }
+
+    /// Cost finished — the journey's last mile. The decision matrix is DETERMINISTIC assembly over the four
+    /// upstream records (DecisionAssembler); only the final-code PICK is an agent, and its output is a
+    /// PROPOSAL. The stage therefore parks at `awaiting-VP`, never `done`: only the VP gate's signature
+    /// (Task 9) completes it — a Decision that went `done` off the agent's own pick would be the agent
+    /// signing the hard gate (Law 9).
+    private async Task TryDecideAsync(string projectId, CancellationToken ct)
+    {
+        var project = await store.GetProjectAsync(projectId, ct);
+        // Guard on the STAGE STATUS, not on "does a DecisionDoc exist" — the OnDosingAsync lesson. The two
+        // diverge exactly when it matters: a failed/needs-review run persists NO doc, and a doc-existence
+        // guard would re-run the pick on every redelivery of the same CostDoc.
+        if (project is null || project.Stages[Stages.Decision].Status is not "pending") return;
+        var verdicts = await store.GetVerdictsAsync(projectId, ct);
+        var dosing = await store.GetDosingAsync(projectId, ct);
+        var cost = await store.GetCostAsync(projectId, ct);
+        var constraints = await store.GetConstraintsAsync(projectId, ct);
+        if (dosing is null || cost is null || constraints is null) return; // inputs first; the feed will redeliver
+
+        await SetStageAsync(projectId, Stages.Decision, s => { s.Status = "running"; s.Attempts++; }, ct);
+        try
+        {
+            // INSIDE the try, deliberately (the Tasks-3-5 review amendment): a pre-invariant persisted
+            // DosingDoc with a duplicate (component, cas) window makes Assemble's ToDictionary throw
+            // ArgumentException. Outside the try that escapes into the change-feed processor as a poison
+            // redelivery loop — stage stuck `pending`, no visible error. In here it lands as stage `failed`
+            // with the error surfaced: §11's "nothing dies silently".
+            var assembled = DecisionAssembler.Assemble(
+                verdicts, dosing, cost, [.. constraints.Components.Select(c => c.Id)]);
+
+            var result = await agents.RunDecisionAsync(assembled, dosing, null, ct);
+            if (!result.Succeeded)
+            {
+                await SetStageAsync(projectId, Stages.Decision,
+                    s => { s.Status = "needs-review"; s.Error = result.Error; }, ct);
+                return;
+            }
+            result.Output!.Id = RecordIds.Decision(projectId);
+            result.Output.ProjectId = projectId;
+            await store.UpsertDecisionAsync(result.Output, ct);
+            // awaiting-VP, NOT done: the stage completes only when the VP gate is signed (Task 9 flips it).
+            await SetStageAsync(projectId, Stages.Decision, s => { s.Status = "awaiting-VP"; s.Error = null; }, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            await SetStageAsync(projectId, Stages.Decision, s => { s.Status = "failed"; s.Error = e.Message; }, ct);
         }
     }
 
