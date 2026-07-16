@@ -1180,3 +1180,24 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
   above), so the plan's `GateDoc.cs` modification was already done and was not re-applied.
   `NotArmable_WithoutTheRegulatorySignature` covers BOTH the locked gate and the absent (null) gate —
   neither is a signature, and the two must block identically.
+- **Task 8 REVIEW ADDITION (hardening): `VpGate.Armable` gained a zero-components blocker** —
+  `"decision covers no components"`. Zero components is unreachable today via upstream guarantees
+  (DecisionAssembler emits one ComponentDecision per constraints component), but Armable is a STANDALONE
+  predicate AND the signing endpoint's confirm loop iterates `decision.Components`, so an armable
+  zero-component decision would let an approval vacuously "confirm" nothing. Pinned by
+  `VpGateTests.NotArmable_WhenTheDecisionCoversNoComponents`; mutation-verified (blocker dropped → that
+  test FAILED; reverted by hand).
+- **Task 8 REVIEW ADDITION (consistency): the determination endpoint re-checks the REGULATORY gate's
+  coverage** the way `TryDoseAsync` does (StageDispatcher ~:207-228): after `VpGate.Armable` passes, it
+  also verifies `RegulatoryGate.Armable(candidates, verdicts).Ok` — the gate record carries no binding to
+  the verdicts it was signed over, so a live unreviewed non-pass verdict that appeared after the regulatory
+  approval blocks the VP determination (422, blockers surfaced verbatim). `GET /gate/vp` runs the same
+  re-check so the read never reports `armable` for a gate the POST would refuse. Pinned by
+  `PostDetermination_RefusesWhenTheRegulatorySignatureNoLongerCoversTheAnalysis_422`; mutation-verified
+  (re-check dropped → that test FAILED; reverted by hand). Absent candidates 422 identically ("no
+  candidates on file") — coverage cannot be re-checked against nothing.
+- **Task 8, two small deltas from the sketch:** (i) a null DosingDoc on the approve path 422s with
+  "dosing has not run — there are no finalized codes to confirm" instead of the sketch's `dosing!` deref (a
+  500 is not an answer an operator can act on); (ii) an unlisted theory
+  (`PostDetermination_ThatIsNeitherApprovedNorRejected_422`) pins the determination-literal guard the
+  skeleton carries, per the standing rule that every guard gets a test.

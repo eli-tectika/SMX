@@ -25,6 +25,12 @@ public static class VpGate
 
         if (decision is null)
             blockers.Add("decision has not run");
+        else if (decision.Components.Count == 0)
+            // Unreachable today via upstream guarantees (DecisionAssembler emits one ComponentDecision per
+            // constraints component), but Armable is a STANDALONE predicate — and the signing endpoint's
+            // confirm loop iterates decision.Components, so an armable zero-component decision would let an
+            // approval vacuously "confirm" nothing. An empty decision is not a decision.
+            blockers.Add("decision covers no components");
         else
             blockers.AddRange(decision.Components
                 .Where(c => c.ProposedCode is null)

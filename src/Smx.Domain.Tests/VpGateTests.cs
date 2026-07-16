@@ -84,4 +84,19 @@ public class VpGateTests
         var blocker = Assert.Single(blockers);
         Assert.Equal("decision has not run", blocker);
     }
+
+    [Fact]
+    public void NotArmable_WhenTheDecisionCoversNoComponents()
+    {
+        // Zero components is unreachable today via the upstream guarantees (DecisionAssembler emits one
+        // ComponentDecision per constraints component), but Armable is a STANDALONE predicate — and the
+        // signing endpoint's confirm loop iterates decision.Components, so a zero-component decision would
+        // otherwise arm a gate whose approval vacuously "confirmed" nothing. An empty decision is not a
+        // decision; it must not be signable.
+        var (ok, blockers) = VpGate.Armable(Gate("approved"), Decision());
+
+        Assert.False(ok);
+        var blocker = Assert.Single(blockers);
+        Assert.Equal("decision covers no components", blocker);
+    }
 }
