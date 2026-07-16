@@ -17,6 +17,11 @@ param deployClaude = false
 // the module default is true) once the role is assigned, then redeploy. Mirrors deployClaude.
 param deployPolicyGuardrails = false
 
+// No Anthropic quota on this subscription yet (deployClaude=false above), so the agents run on the
+// gpt-5-mini Responses path. Flip to 'anthropic' (or delete the line — the default is 'anthropic')
+// together with deployClaude=true once Claude TPM quota lands.
+param modelProvider = 'openai'
+
 param tags = {
   costCenter: 'RnD'
   owner: 'platform'

@@ -53,6 +53,9 @@ param keyVaultUri string = ''
 @description('Search Proxy base URL (https://<app>.azurewebsites.net), reached over its private endpoint.')
 param searchProxyEndpoint string = ''
 
+@description('MODEL_PROVIDER for the agent apps: anthropic | openai.')
+param modelProvider string = 'anthropic'
+
 @description('Entra audience of the Search Proxy (api://<proxyAuthClientId>). Web search is gated on SEARCH_PROXY_ENDPOINT, not this: with an endpoint set but no audience the tool is ON but every call fails safe at token acquisition.')
 param searchProxyAudience string = ''
 
@@ -103,6 +106,15 @@ var sharedEnv = [
   { name: 'SEARCH_ENDPOINT', value: searchEndpoint }
   { name: 'KEYVAULT_URI', value: keyVaultUri }
   { name: 'CLAUDE_DEPLOYMENT', value: 'claude-opus-4-7' }
+  { name: 'OPENAI_DEPLOYMENT', value: 'gpt-5-mini' }
+  // Which of the two the agents actually use. BackendOptions defaults to "anthropic"; this makes the
+  // choice an explicit estate fact so an env without Claude quota (deployClaude=false) can run on gpt-5-mini.
+  { name: 'MODEL_PROVIDER', value: modelProvider }
+  // The estate's regulatory index is named regulatory-corpus (created by the reg-sync pipeline).
+  // BackendOptions' code default says 'regulatory-index' — written before the estate existed — and a
+  // wrong name here is a 404 that fails intake/regulatory outright (deliberately: a silenced regulatory
+  // 404 would read as "no restrictions found", the exact false pass this system exists to prevent).
+  { name: 'REGULATORY_SEARCH_INDEX', value: 'regulatory-corpus' }
   // Both sides of the learned-conclusions loop (query embedding + document push) resolve the model from
   // this one setting, so they cannot drift apart. Must stay text-embedding-3-large: ai.bicep deploys
   // exactly that (unconditionally), and the index's vector field is sized to its 3072 dims.

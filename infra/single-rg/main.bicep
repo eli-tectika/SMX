@@ -29,6 +29,9 @@ param deployGpt4o bool = false
 @description('Deploy the Claude Opus 4.7 reasoning model on Foundry (Anthropic, GlobalStandard). ON by default — the agent backend needs it.')
 param deployClaude bool = true
 
+@description('Chat provider for the agents: "anthropic" (Claude on Foundry — the SOW target) or "openai" (the gpt-5-mini Responses path). Set "openai" in envs where deployClaude is off (no Anthropic quota) — an "anthropic" provider with no Claude deployment fails every agent run with api_not_supported.')
+param modelProvider string = 'anthropic'
+
 @description('Frontend SPA image (ACR path incl. tag). Empty = placeholder.')
 param frontendImage string = ''
 
@@ -219,6 +222,7 @@ module compute 'modules/compute.bicep' = {
     searchProxyEndpoint: 'https://${functions.outputs.searchProxyDefaultHostName}'
     searchProxyAudience: empty(proxyAuthClientId) ? '' : 'api://${proxyAuthClientId}'
     webSearchEnabled: webSearchEnabled
+    modelProvider: modelProvider
     entraTenantId: empty(apiClientId) ? '' : tenant().tenantId
     apiClientId: apiClientId
   }
