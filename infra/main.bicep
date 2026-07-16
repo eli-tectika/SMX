@@ -36,6 +36,8 @@ param deployGpt5Mini bool = true
 // parameter, so the two can never contradict each other: a deploy that passed deployClaude=false while the
 // app defaulted to the Anthropic provider is exactly how every agent turn came to die on a 404
 // `api_not_supported` — an account with no Anthropic deployment does not serve /anthropic at all.
+// origin/main made this a parameter instead; deriving it is kept deliberately, because a parameter
+// permits exactly the deployClaude=false + modelProvider='anthropic' pairing that caused that outage.
 var modelProvider = deployClaude ? 'anthropic' : 'openai'
 
 @description('Frontend SPA image (ACR path incl. tag). Empty = placeholder.')

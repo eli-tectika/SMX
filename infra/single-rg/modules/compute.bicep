@@ -123,6 +123,11 @@ var sharedEnv = [
   { name: 'MODEL_PROVIDER', value: modelProvider }
   { name: 'CLAUDE_DEPLOYMENT', value: claudeDeployment }
   { name: 'OPENAI_DEPLOYMENT', value: openAiDeployment }
+  // The estate's regulatory index is named regulatory-corpus (created by the reg-sync pipeline).
+  // BackendOptions' code default says 'regulatory-index' — written before the estate existed — and a
+  // wrong name here is a 404 that fails intake/regulatory outright (deliberately: a silenced regulatory
+  // 404 would read as "no restrictions found", the exact false pass this system exists to prevent).
+  { name: 'REGULATORY_SEARCH_INDEX', value: 'regulatory-corpus' }
   // Both sides of the learned-conclusions loop (query embedding + document push) resolve the model from
   // this one setting, so they cannot drift apart. Must stay text-embedding-3-large: ai.bicep deploys
   // exactly that (unconditionally), and the index's vector field is sized to its 3072 dims.

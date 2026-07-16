@@ -36,6 +36,7 @@ param deployGpt5Mini bool = true
 // parameter, so the two can never contradict each other: a deploy that passed deployClaude=false while the
 // app defaulted to the Anthropic provider is exactly how every agent turn came to die on a 404
 // `api_not_supported` — an account with no Anthropic deployment does not serve /anthropic at all.
+// A settable parameter would permit that same pairing again, which is the reason this is not one.
 var modelProvider = deployClaude ? 'anthropic' : 'openai'
 
 @description('Frontend SPA image (ACR path incl. tag). Empty = placeholder.')
