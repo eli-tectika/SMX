@@ -9,8 +9,13 @@ const st = (status: StageStatus, attempts = 1, error?: string): StageState => ({
   error,
 });
 
-type StageKey = 'intake' | 'discovery' | 'regulatory' | 'matrix';
+type StageKey = 'intake' | 'discovery' | 'regulatory' | 'matrix' | 'dosing' | 'cost';
 
+/**
+ * The four positional stages are the ones most tests care about. Dosing and cost sit at the tail of the
+ * pipeline and default to matrix's status, so `project('done','done','done','done')` still means "every
+ * stage is done" — the tests that exercise the tail set it explicitly through `overrides`.
+ */
 const project = (
   intake: StageStatus,
   discovery: StageStatus,
@@ -26,6 +31,8 @@ const project = (
     discovery: overrides.discovery ?? st(discovery),
     regulatory: overrides.regulatory ?? st(regulatory),
     matrix: overrides.matrix ?? st(matrix),
+    dosing: overrides.dosing ?? st(matrix),
+    cost: overrides.cost ?? st(matrix),
   },
 });
 
@@ -111,10 +118,46 @@ describe('whatsBlocking — priority order', () => {
     expect(whatsBlocking(p)?.text).toContain('Waiting on upstream: Regulatory');
   });
 
-  it('NEVER claims an offline human is awaited — pending is not "awaiting physics XRF"', () => {
+  /**
+   * The rule that wrote this test is unchanged: name an awaited human only when the record says so.
+   * What changed is that the record CAN now say so — so the test splits in two.
+   *
+   * `pending` still must not be dressed up as a park. It means the agent has not started, not that a
+   * physicist is standing at a machine, and those are different facts.
+   */
+  it('NEVER claims an offline human is awaited when the record only says "pending"', () => {
     const b = whatsBlocking(project('pending', 'pending', 'pending', 'pending'));
     expect(b?.text.toLowerCase()).not.toContain('awaiting');
     expect(b?.text.toLowerCase()).not.toContain('physics');
+  });
+
+  it('DOES name physics when the record actually says awaiting-physics', () => {
+    const p = project('done', 'done', 'done', 'done', {
+      dosing: st('awaiting-physics', 1, 'no measured background for Y in bottle'),
+    });
+    const b = whatsBlocking(p);
+    expect(b?.tone).toBe('warning');
+    expect(b?.text).toContain('Dosing awaiting physics');
+    // The record's own words, verbatim — it is the most useful string a park carries.
+    expect(b?.detail).toBe('no measured background for Y in bottle');
+  });
+
+  it('names the R.E. when regulatory parks awaiting their determination', () => {
+    const p = project('done', 'done', 'awaiting-RE', 'pending');
+    expect(whatsBlocking(p)?.text).toContain("awaiting the Regulatory Expert's determination");
+  });
+
+  /**
+   * The one park the operator can clear without chasing anybody, so it outranks the others — and it
+   * outranks `needs-review` too, because the record says exactly what it wants.
+   */
+  it('ranks a park the operator can clear above every other park', () => {
+    const p = project('done', 'done', 'needs-review', 'done', {
+      dosing: st('awaiting-operator', 1, 'POST /projects/p1/dosing/loading for CAS 1314-36-9'),
+    });
+    const b = whatsBlocking(p);
+    expect(b?.text).toContain('Dosing awaiting you');
+    expect(b?.detail).toContain('dosing/loading');
   });
 
   it('returns null when nothing blocks', () => {

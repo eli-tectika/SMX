@@ -18,11 +18,32 @@ export const VERDICT_DIMENSIONS = [
 ] as const;
 export type VerdictDimension = (typeof VERDICT_DIMENSIONS)[number];
 
-/** StageState.Status — src/Smx.Domain/Records/ProjectDoc.cs */
-export type StageStatus = 'pending' | 'running' | 'failed' | 'needs-review' | 'done';
+/**
+ * StageState.Status — src/Smx.Domain/Records/ProjectDoc.cs + StageDispatcher.
+ *
+ * The three `awaiting-*` states are the spec's PARK states, and they are real: the dispatcher writes
+ * `awaiting-physics` and `awaiting-operator` (StageDispatcher.cs:248,255) and `awaiting-RE` (:185). They are
+ * not "pending". `pending` means the agent has not started; an `awaiting-*` means the record is stopped on a
+ * named human, and for `awaiting-operator` the stage's `error` string says exactly what to enter.
+ */
+export type StageStatus =
+  | 'pending'
+  | 'running'
+  | 'failed'
+  | 'needs-review'
+  | 'done'
+  | 'awaiting-RE'
+  | 'awaiting-physics'
+  | 'awaiting-operator';
+
+/** The park states, and who each one is stopped on. Order = the operator's ability to act. */
+export const AWAITING_STATES = ['awaiting-operator', 'awaiting-physics', 'awaiting-RE'] as const;
+export type AwaitingStatus = (typeof AWAITING_STATES)[number];
+export const isAwaiting = (s: StageStatus): s is AwaitingStatus =>
+  (AWAITING_STATES as readonly string[]).includes(s);
 
 /** Stage keys the backend actually tracks — src/Smx.Domain/Records/RecordIds.cs (Stages.All). */
-export const BACKED_STAGES = ['intake', 'discovery', 'regulatory', 'matrix'] as const;
+export const BACKED_STAGES = ['intake', 'discovery', 'regulatory', 'matrix', 'dosing', 'cost'] as const;
 export type BackedStage = (typeof BACKED_STAGES)[number];
 
 /** ComponentSpec — src/Smx.Domain/Records/ConstraintsDoc.cs */
@@ -240,8 +261,11 @@ export interface ReviseAccepted extends AcceptedWrite {
 }
 
 /**
- * ReviseRequest — RevisionEndpoints.cs. "No direct edits — tell the agent WHY." Only discovery and
- * regulatory are revisable; a regulatory revision must name the verdict's cas + componentId.
+ * ReviseRequest — RevisionEndpoints.cs. "No direct edits — tell the agent WHY."
+ *
+ * Revisable: discovery, regulatory, dosing (RevisionEffects.IsRevisable). NOT matrix (deterministically
+ * assembled), NOT cost (a table lookup — there is no "why" to record over a price fetch), NOT intake (the
+ * blast radius is the whole project). A regulatory revision must name the verdict's cas + componentId.
  */
 export interface ReviseRequest {
   target: string;
@@ -264,6 +288,159 @@ export interface RevisionDoc {
   conclusionId?: string;
   createdAt: string;
   appliedAt?: string;
+}
+
+/* ---------------------------------------------------------------------------
+   DOSING — src/Smx.Domain/Records/DosingDoc.cs.
+
+   NOTE the casing split: VerdictStatus is PascalCase on the wire ("Pass"), because it is a C# enum. Every
+   value here is a `const string` and arrives LOWERCASE. They are not the same convention; do not unify them.
+   --------------------------------------------------------------------------- */
+
+/**
+ * BoundKinds — DosingDoc.cs:8-18. Lowercase.
+ *
+ * "measured" is the physicist's data and is NEVER produced by the agent: DosingAgent rejects an
+ * agent-authored bound claiming it. That asymmetry is the point — an agent that could label its own estimate
+ * "measured" would launder a guess into the one field the operator trusts absolutely. The UI renders the two
+ * differently for the same reason.
+ */
+export const BOUND_KINDS = ['measured', 'regulatory', 'estimate'] as const;
+export type BoundKind = (typeof BOUND_KINDS)[number];
+
+/**
+ * One end of a ppm window, WITH WHERE IT CAME FROM (DosingDoc.cs:28).
+ *
+ * The two ends are not equally trustworthy: the floor is measured (confidence 1.0), while an upper bound with
+ * no regulatory cap is an estimate known to run low. `basis` is free prose, not a structured Citation —
+ * Dosing carries no Citation objects at all. Render it as prose; do not build a citation chip for it.
+ */
+export interface Bound {
+  ppm: number;
+  basis: string;
+  kind: BoundKind;
+  confidence: number;
+}
+
+/**
+ * The dosable range for one substance in one component (DosingDoc.cs:33-35).
+ *
+ * `recommendedPpm` is a single SCALAR that sits strictly inside (floor.ppm, upper.ppm) — there is no
+ * recommended low/high band. A ppm at or below the floor is a marker nobody can read in the field, and
+ * nothing downstream catches it.
+ */
+export interface PpmWindow {
+  componentId: string;
+  cas: string;
+  element: string;
+  floor: Bound;
+  upper: Bound;
+  recommendedPpm: number;
+  quantificationPpm: number;
+}
+
+/**
+ * One marker inside a code (DosingDoc.cs:38-39). Both masses are MILLIGRAMS and they are DIFFERENT numbers.
+ *
+ * `elementMassMg` is what must end up in the batch; `compoundMassMg` is what you BUY. Rendering the element
+ * mass as the order quantity under-doses an oxide by its non-metal fraction.
+ */
+export interface CodeMarker {
+  cas: string;
+  element: string;
+  ppm: number;
+  metalLoading: number;
+  elementMassMg: number;
+  compoundMassMg: number;
+}
+
+/**
+ * A code: 2–3 markers in ONE component, identified by their ppm ratio (DosingDoc.cs:43-68).
+ *
+ * A code has no name and no kind — its identity IS `ratioSignature`, e.g. "Y:Zr = 1.00:0.50". That field is
+ * DERIVED server-side on every read and IGNORED on write (STJ drops it inbound), so it is read-only here:
+ * never send it back, and never render it to more precision than the 2dp the domain deliberately chose —
+ * that precision silently defines the resolution limit of a code's identity.
+ */
+export interface MarkerCode {
+  componentId: string;
+  markers: CodeMarker[];
+  rationale: string;
+  readonly ratioSignature: string;
+}
+
+/** DosingDoc — DosingDoc.cs:70-84. One per project; the per-component split lives INSIDE, on each row. */
+export interface DosingDoc {
+  id: string;
+  projectId: string;
+  type: string;
+  windows: PpmWindow[];
+  codes: MarkerCode[];
+  /** The SOFT checkpoint (UX §4.5). A review note, NOT a gate — it blocks nothing and must never be made to. */
+  reviewNote?: string;
+  reviewedAt?: string;
+  generatedAt: string;
+}
+
+/**
+ * POST /projects/{id}/dosing/loading — DosingEndpoints.cs:79.
+ *
+ * The one number in no catalog: the mass fraction of the marker element in the compound (Y₂O₃ = 0.787). It is
+ * written to the CROSS-PROJECT knowledge layer keyed by CAS alone, so the next project never asks again.
+ * `metalLoading` must be in (0, 1]; `basis` is required — it is the source that makes the number checkable.
+ */
+export interface LoadingRequest {
+  cas: string;
+  element: string;
+  form: string;
+  metalLoading: number;
+  basis: string;
+}
+
+/** POST /projects/{id}/dosing/review — DosingEndpoints.cs:82. The note is required. */
+export interface DosingReviewRequest {
+  note: string;
+}
+
+/* ---------------------------------------------------------------------------
+   COST — src/Smx.Domain/Records/CostDoc.cs. Read-only: Cost holds no agent and is not revisable.
+   --------------------------------------------------------------------------- */
+
+/** A price and the listing it came from (CostDoc.cs:5). Per GRAM. `currency` can only ever be "USD". */
+export interface PriceQuote {
+  usdPerGram: number;
+  currency: string;
+  supplier: string;
+  pack: string;
+  citation: Citation;
+}
+
+/**
+ * The audit for one substance (CostDoc.cs:11-16).
+ *
+ * `bestQuote` is ABSENT (nulls are omitted) when nothing parseable was on file, and `priceNote` says so in
+ * words. Nothing is interpolated, averaged, or currency-converted into existence — a Cost stage that invented
+ * a price would be fabricating the single number procurement acts on. Render the absence, never a zero.
+ *
+ * `suppliers` is NAMES ONLY — there is no per-supplier price to compare, and no lead time anywhere in Cost.
+ */
+export interface SupplierAudit {
+  cas: string;
+  element: string;
+  suppliers: string[];
+  bestQuote?: PriceQuote;
+  priceNote: string;
+  /** "single-source" | "not-off-the-shelf" — CostAudit.cs:46,48 */
+  risks: string[];
+}
+
+/** CostDoc — CostDoc.cs:18-25. Note the field is `substances`, not `molecules`. */
+export interface CostDoc {
+  id: string;
+  projectId: string;
+  type: string;
+  substances: SupplierAudit[];
+  generatedAt: string;
 }
 
 /* ---------------------------------------------------------------------------

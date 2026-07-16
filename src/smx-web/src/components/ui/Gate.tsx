@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 export interface Requirement {
   id: string;
@@ -16,9 +16,9 @@ export interface Requirement {
  * enumerates exactly which requirements are unmet and links to each one. Making
  * the remaining work concrete and reachable is what makes rubber-stamping hard.
  *
- * The sign control is disabled REGARDLESS of arming. A gate is an operator-signed
- * record and no endpoint exists to sign one; a button that looked live at 4-of-4
- * would be promising something the system cannot do.
+ * `kind` is a real distinction, not styling: a HARD gate blocks (regulatory, VP), a SOFT one advises
+ * (dosing's code-finalization checkpoint, which records that a review happened and unlocks nothing).
+ * The copy a caller passes must not blur them.
  *
  * The arming meter never animates on update, and nothing here ever sweeps to
  * "unlocked". Drama belongs to withholding, never to granting.
@@ -33,6 +33,7 @@ export function Gate({
   ledgerNote,
   onSign,
   signBusy,
+  signNote,
 }: {
   kind: 'hard' | 'soft';
   title: string;
@@ -43,16 +44,27 @@ export function Gate({
   ledgerNote?: boolean;
   /**
    * When provided, the sign button is LIVE: enabled only at full arming, and it calls this.
-   * Omitted (the mock gates — VP, code-finalization), the button stays disabled, because there is
-   * no endpoint to sign those and a live-looking button would promise what the system cannot do.
+   * Omitted (the gates with no endpoint — VP), the button stays disabled, because a live-looking
+   * button would promise what the system cannot do.
+   *
+   * The argument carries `signNote`'s text when that prop is set, and is undefined otherwise — so a
+   * caller that does not ask for a note can ignore it entirely.
    */
-  onSign?: () => void;
+  onSign?: (note?: string) => void;
   signBusy?: boolean;
+  /**
+   * Ask for a mandatory note as part of signing. Dosing's soft checkpoint needs one — the note IS the
+   * record of what was reviewed, and the backend 422s a blank one. Signing stays disabled until it is
+   * non-blank, so the note cannot be skipped by clicking fast.
+   */
+  signNote?: { placeholder: string };
 }) {
+  const [note, setNote] = useState('');
   const met = requirements.filter((r) => r.met).length;
   const total = requirements.length;
   const armed = met === total;
-  const canSign = Boolean(onSign) && armed && !signBusy;
+  const noteReady = !signNote || note.trim().length > 0;
+  const canSign = Boolean(onSign) && armed && !signBusy && noteReady;
 
   return (
     <section className="gatebox" data-kind={kind} aria-label={title}>
@@ -115,15 +127,39 @@ export function Gate({
         ))}
       </div>
 
+      {/* The note is part of signing, not an afterthought beside it: it IS what was reviewed. */}
+      {signNote && onSign && (
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder={signNote.placeholder}
+          rows={2}
+          aria-label={`${signLabel} — note`}
+          disabled={signBusy}
+          style={{
+            width: '100%',
+            font: 'inherit',
+            fontSize: 'var(--t-small)',
+            padding: '6px 8px',
+            marginTop: 'var(--s2)',
+            border: '0.5px solid var(--border-strong)',
+            borderRadius: 'var(--r1)',
+            resize: 'vertical',
+          }}
+        />
+      )}
+
       <div className="gatebox__actions">
         <button
           className="btn primary"
           disabled={!canSign}
-          onClick={onSign}
+          onClick={() => onSign?.(signNote ? note.trim() : undefined)}
           title={
             onSign
               ? armed
-                ? undefined
+                ? noteReady
+                  ? undefined
+                  : 'A note is required — it records what was reviewed'
                 : 'Locked until every requirement above is met'
               : 'No endpoint exists to sign this gate'
           }
@@ -139,9 +175,13 @@ export function Gate({
         <span className="tiny" style={{ color: 'var(--text-warning)', alignSelf: 'center' }}>
           {!onSign
             ? 'No endpoint to sign this gate — this control is inert.'
-            : armed
-              ? 'Requirements met — sign to record the determination.'
-              : 'Locked until every requirement above is met.'}
+            : !armed
+              ? 'Locked until every requirement above is met.'
+              : !noteReady
+                ? 'A note is required — it records what was reviewed.'
+                : kind === 'soft'
+                  ? 'Records that the review happened. It does not unlock anything.'
+                  : 'Requirements met — sign to record the determination.'}
         </span>
       </div>
 

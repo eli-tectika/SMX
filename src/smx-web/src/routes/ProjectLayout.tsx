@@ -15,7 +15,17 @@ import { Matrix } from './stages/Matrix';
 import { Regulatory } from './stages/Regulatory';
 import type { ProjectSummary } from '../api/types';
 
-const SCREENS: Record<string, (p: { project: ProjectSummary }) => JSX.Element> = {
+/**
+ * Every screen takes the project; a screen that WRITES to the record also takes `refreshProject`, so it
+ * can restart the settled poll loop after its own write (Dosing un-parking is the case that needs it).
+ * Screens that ignore the second prop are still assignable — they simply never call it.
+ */
+export interface ScreenProps {
+  project: ProjectSummary;
+  refreshProject: () => void;
+}
+
+const SCREENS: Record<string, (p: ScreenProps) => JSX.Element> = {
   intake: Intake,
   background: Background,
   discovery: Discovery,
@@ -28,7 +38,7 @@ const SCREENS: Record<string, (p: { project: ProjectSummary }) => JSX.Element> =
 
 export function ProjectLayout() {
   const { projectId, stage } = useParams<{ projectId: string; stage?: string }>();
-  const state = useProject(projectId);
+  const { state, refresh } = useProject(projectId);
 
   if (!stage) return <Navigate to={`/p/${projectId}/intake`} replace />;
   if (state.kind === 'loading') return <Loading what="project" />;
@@ -54,7 +64,7 @@ export function ProjectLayout() {
           />
         }
       >
-        <Screen project={state.project} />
+        <Screen project={state.project} refreshProject={refresh} />
       </Dock>
     </>
   );

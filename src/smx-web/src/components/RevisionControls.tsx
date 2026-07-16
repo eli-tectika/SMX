@@ -15,7 +15,11 @@ import { usePolling } from '../hooks/usePolling';
 /**
  * Request a revision. `target` is either fixed (a specific cell, on regulatory) or typed by the
  * operator (a free description, on discovery, where the candidate list is not yet a real endpoint).
- * A regulatory revision must carry cas + componentId; discovery must not.
+ * A regulatory revision must carry cas + componentId; the other stages must not.
+ *
+ * Only these three stages are revisable (RevisionEffects.IsRevisable). Note the blast radius differs:
+ * a discovery or regulatory revision VOIDS the regulatory gate, a dosing one does not — dosing is
+ * downstream of the signature and consumes the already-signed compliant set.
  */
 export function ReviseForm({
   projectId,
@@ -26,7 +30,7 @@ export function ReviseForm({
   onRequested,
 }: {
   projectId: string;
-  stage: 'discovery' | 'regulatory';
+  stage: 'discovery' | 'regulatory' | 'dosing';
   /** When set, the target is not editable — it names the exact thing being revised. */
   fixedTarget?: string;
   cas?: string;

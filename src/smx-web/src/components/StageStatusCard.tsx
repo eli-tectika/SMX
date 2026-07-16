@@ -1,3 +1,4 @@
+import { isAwaiting } from '../api/types';
 import type { StageState, StageStatus } from '../api/types';
 
 const TOKEN: Record<StageStatus, string> = {
@@ -6,18 +7,18 @@ const TOKEN: Record<StageStatus, string> = {
   done: 'success',
   failed: 'danger',
   'needs-review': 'warning',
+  'awaiting-operator': 'warning',
+  'awaiting-physics': 'warning',
+  'awaiting-RE': 'warning',
 };
 
 /**
  * The record's own vocabulary, in the operator's words.
  *
- * The spec's "awaiting [X]" park states have no backend representation, and we do not
- * invent one: rendering `pending` as "awaiting physics XRF" would fabricate a claim
- * about an offline human being. `pending` means the agent has not started — not that a
- * physicist is standing at a machine.
- *
- * `needs-review` is the one status that genuinely means "the agent stopped and wants a
- * human", so that is the only one described as parked.
+ * The spec's "awaiting [X]" park states are REAL now — the dispatcher writes them — so we name the
+ * human each one is stopped on. The rule that produced this comment still holds, though, and is why
+ * `pending` is still described as queued: we say a person is awaited only when the record says so.
+ * `pending` means the agent has not started, never that a physicist is standing at a machine.
  */
 const MEANING: Record<StageStatus, string> = {
   pending: 'Queued — the agent has not started.',
@@ -25,6 +26,9 @@ const MEANING: Record<StageStatus, string> = {
   done: 'Complete.',
   failed: 'Halted.',
   'needs-review': 'Parked — the agent stopped and wants a human.',
+  'awaiting-operator': 'Parked — waiting on you to enter something.',
+  'awaiting-physics': 'Parked — waiting on physics for an XRF background.',
+  'awaiting-RE': 'Parked — waiting on the Regulatory Expert.',
 };
 
 export function StageStatusCard({ name, state }: { name: string; state: StageState | undefined }) {
@@ -69,6 +73,20 @@ export function StageStatusCard({ name, state }: { name: string; state: StageSta
           <div>
             <b>The agent failed.</b>
             {/* Verbatim, in mono. A paraphrased error is a lost error. */}
+            <div className="data" style={{ marginTop: 3, fontSize: 11 }}>
+              {state.error}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* A park carries its reason in the same field a failure does, and on `awaiting-operator` that
+          string is the dispatcher telling the operator exactly what to enter. Verbatim, same as an error. */}
+      {isAwaiting(state.status) && state.error && (
+        <div className="banner warn" style={{ margin: '10px 0 0' }}>
+          <i className="ti ti-player-pause" aria-hidden="true" />
+          <div>
+            <b>What this is waiting for</b>
             <div className="data" style={{ marginTop: 3, fontSize: 11 }}>
               {state.error}
             </div>

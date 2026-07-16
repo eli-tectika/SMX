@@ -1,4 +1,5 @@
-import type { ProjectSummary, StageState } from '../api/types';
+import { isAwaiting } from '../api/types';
+import type { AwaitingStatus, ProjectSummary, StageState } from '../api/types';
 import type { MatrixSummary } from './matrixSummary';
 
 /**
@@ -7,14 +8,14 @@ import type { MatrixSummary } from './matrixSummary';
  *
  * A hard rule runs through all of it: we report only what the record proves.
  *
- * The backend knows five stage statuses — pending | running | failed |
- * needs-review | done. It does NOT know the spec's "awaiting [X]" park states.
- * Rendering `pending` as "awaiting physics XRF" would fabricate a claim about an
- * offline human being; `pending` means "the agent has not started", not "a
- * physicist is standing at a machine". So we never map it that way.
+ * That rule used to mean we NEVER named an awaited human, because the backend had
+ * no park states and mapping `pending` to "awaiting physics XRF" would have been a
+ * fabrication. The dispatcher now writes `awaiting-physics`, `awaiting-operator`
+ * and `awaiting-RE`, so naming the person is no longer a guess — it is the record
+ * speaking. The rule is unchanged; what changed is what the record proves.
  *
- * `needs-review` is the one status that genuinely means "the agent stopped and
- * wants a human", and that is the closest honest analogue of a park.
+ * `pending` still means "the agent has not started" and must never be dressed up as
+ * a park. The two are different facts and stay different sentences.
  */
 
 export type BlockTone = 'danger' | 'warning' | 'accent' | 'muted';
@@ -27,12 +28,19 @@ export interface Blocking {
   detail?: string;
 }
 
-/** Upstream order of the four stages the backend actually tracks (intake → discovery → regulatory → matrix). */
+/**
+ * Upstream order of the six stages the backend tracks.
+ *
+ * Dosing's real precondition is the SIGNED regulatory gate, not the matrix — the dispatcher re-checks
+ * `gate.Status == "approved"` before it runs (StageDispatcher.cs:210). Cost is triggered by Dosing.
+ */
 const UPSTREAM: Record<string, string | undefined> = {
   intake: undefined,
   discovery: 'intake',
   regulatory: 'discovery',
   matrix: 'regulatory',
+  dosing: 'regulatory',
+  cost: 'dosing',
 };
 
 const LABEL: Record<string, string> = {
@@ -40,6 +48,15 @@ const LABEL: Record<string, string> = {
   discovery: 'Discovery',
   regulatory: 'Regulatory',
   matrix: 'Matrix',
+  dosing: 'Dosing',
+  cost: 'Cost',
+};
+
+/** Who each park is stopped on — the record's own claim, in the operator's words. */
+const AWAITED: Record<AwaitingStatus, string> = {
+  'awaiting-operator': 'you — the record needs an input',
+  'awaiting-physics': 'physics — the XRF background',
+  'awaiting-RE': "the Regulatory Expert's determination",
 };
 
 function attemptSuffix(s: StageState): string {
@@ -88,13 +105,42 @@ export function whatsBlocking(
     };
   }
 
-  // 4. The agent stopped and wants a human. The honest analogue of a park.
+  // 4. A park the operator can clear RIGHT NOW. Ranked above the other parks because it is the only
+  //    one they can act on without chasing anybody, and above needs-review because the record says
+  //    exactly what it wants — `error` carries the dispatcher's own instruction, verbatim.
+  const awaitingOperator = entries.find(([, s]) => s.status === 'awaiting-operator');
+  if (awaitingOperator) {
+    const [name, s] = awaitingOperator;
+    return {
+      tone: 'warning',
+      icon: 'ti-player-pause',
+      text: `${LABEL[name] ?? name} awaiting ${AWAITED['awaiting-operator']}`,
+      detail: s.error ?? undefined,
+    };
+  }
+
+  // 5. The agent stopped and wants a human.
   const parked = entries.find(([, s]) => s.status === 'needs-review');
   if (parked) {
     return {
       tone: 'warning',
       icon: 'ti-player-pause',
       text: `${LABEL[parked[0]] ?? parked[0]} parked — the agent stopped and wants a human`,
+    };
+  }
+
+  // 6. Parked on someone offline. Nothing in this app will move it — the operator has to go and get
+  //    the answer from a person, so we name the person rather than implying a button exists.
+  const awaitingPerson = entries.find(
+    ([, s]) => s.status === 'awaiting-physics' || s.status === 'awaiting-RE',
+  );
+  if (awaitingPerson) {
+    const [name, s] = awaitingPerson;
+    return {
+      tone: 'warning',
+      icon: 'ti-player-pause',
+      text: `${LABEL[name] ?? name} awaiting ${AWAITED[s.status as AwaitingStatus]}`,
+      detail: s.error ?? undefined,
     };
   }
 
@@ -156,8 +202,10 @@ export function bucket(
 ): Bucket {
   const states = Object.values(project.stages);
 
+  // A park is "needs you" whoever it names: either you enter something, or you go and get it from the
+  // person who owes it. Either way the project is stopped and will not move on its own.
   if (
-    states.some((s) => s.status === 'failed' || s.status === 'needs-review') ||
+    states.some((s) => s.status === 'failed' || s.status === 'needs-review' || isAwaiting(s.status)) ||
     (matrix && (matrix.inconsistent > 0 || matrix.uncited > 0)) ||
     unopenedFlagged > 0
   ) {

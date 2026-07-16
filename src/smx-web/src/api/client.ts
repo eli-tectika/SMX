@@ -1,11 +1,15 @@
 import type {
   ChatAccepted,
   ChatTurn,
+  CostDoc,
   CreateProjectRequest,
   CreateProjectResponse,
   Determination,
   DeterminationRequest,
+  DosingDoc,
+  DosingReviewRequest,
   LearnedConclusion,
+  LoadingRequest,
   MarkerLibraryEntry,
   MatrixDoc,
   MsdsEntry,
@@ -264,4 +268,59 @@ export async function getRevisions(projectId: string): Promise<RevisionDoc[]> {
   const res = await authorizedFetch(`${p(projectId)}/revisions`);
   if (!res.ok) throw await failure(res);
   return (await res.json()) as RevisionDoc[];
+}
+
+/* ---------------------------------------------------------------------------
+   DOSING & COST — the Plan 4 surface.
+
+   Both GETs 404 before their stage has run. That is the normal pre-run state, not a failure, so it comes
+   back as the NotFound sentinel and the screens render an empty state rather than an error.
+   --------------------------------------------------------------------------- */
+
+export async function getDosing(projectId: string): Promise<DosingDoc | NotFound> {
+  const res = await authorizedFetch(`${p(projectId)}/dosing`);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as DosingDoc;
+}
+
+export async function getCost(projectId: string): Promise<CostDoc | NotFound> {
+  const res = await authorizedFetch(`${p(projectId)}/cost`);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as CostDoc;
+}
+
+/**
+ * Enter the metal loading — the operator un-parking Dosing (spec §1.2's pause/resume loop).
+ *
+ * This is the one number in no catalog, and it is written to the CROSS-PROJECT knowledge layer keyed by CAS
+ * alone: entering it here answers it for every future project too. 202 record-as-bus — the write flips the
+ * dosing stage back to `pending` and the agent RE-RUNS, so the caller polls rather than expecting an
+ * in-place edit. The backend 422s a loading outside (0, 1] or a blank basis.
+ */
+export async function recordLoading(
+  projectId: string,
+  req: LoadingRequest,
+): Promise<{ status: 'pending' } | NotFound> {
+  const res = await postJson(`${p(projectId)}/dosing/loading`, req);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as { status: 'pending' };
+}
+
+/**
+ * Record the soft code-finalization checkpoint (UX §4.5).
+ *
+ * A REVIEW NOTE, not a gate: it writes `reviewNote` + `reviewedAt` and touches no stage status and no gate.
+ * It unlocks nothing, and the UI must not imply otherwise. The note is required — it is what was reviewed.
+ */
+export async function reviewDosing(
+  projectId: string,
+  req: DosingReviewRequest,
+): Promise<{ reviewed: true } | NotFound> {
+  const res = await postJson(`${p(projectId)}/dosing/review`, req);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as { reviewed: true };
 }

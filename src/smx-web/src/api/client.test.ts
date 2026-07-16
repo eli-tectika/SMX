@@ -5,18 +5,22 @@ import {
   approveRegulatory,
   createProject,
   getChatThread,
+  getCost,
+  getDosing,
   getMatrix,
   getProject,
   getRegulatoryGate,
   getRevisions,
   matrixXlsxUrl,
   recordDetermination,
+  recordLoading,
+  reviewDosing,
   reviewEvidence,
   reviseStage,
   sendChatMessage,
   setAccessTokenProvider,
 } from './client';
-import type { CreateProjectRequest } from './types';
+import type { CostDoc, CreateProjectRequest } from './types';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -217,9 +221,12 @@ describe('sendChatMessage', () => {
     expect(JSON.parse(String(seen?.init?.body))).toEqual({ text: 'why is Pb failing?' });
   });
 
+  // Was written against "unknown stage 'dosing'" — but dosing is one of the six stages chat accepts now.
+  // The response is stubbed, so that version kept passing while asserting something the backend no longer
+  // does. Pointed at a stage that is genuinely unknown.
   it('surfaces a 422 for an unknown stage', async () => {
-    stubFetch(() => json({ error: "unknown stage 'dosing'" }, 422));
-    await expect(sendChatMessage('p1', 'dosing', 'hi')).rejects.toThrow("unknown stage 'dosing'");
+    stubFetch(() => json({ error: "unknown stage 'decision'" }, 422));
+    await expect(sendChatMessage('p1', 'decision', 'hi')).rejects.toThrow("unknown stage 'decision'");
   });
 });
 
@@ -267,5 +274,118 @@ describe('getRevisions', () => {
     const revs = [{ id: 'r1', projectId: 'p1', stage: 'discovery', target: 't', reason: 'r', status: 'applied', createdAt: '' }];
     stubFetch(() => json(revs));
     await expect(getRevisions('p1')).resolves.toEqual(revs);
+  });
+});
+
+/* ---- Plan 4: dosing & cost -------------------------------------------------- */
+
+describe('getDosing', () => {
+  // 404 is the normal pre-run state — dosing waits for a signed regulatory gate. The screen renders an
+  // empty state for it, so it must never arrive as a thrown error.
+  it('returns the NotFound sentinel before the stage has run', async () => {
+    stubFetch(() => new Response('', { status: 404 }));
+    await expect(getDosing('p1')).resolves.toBe(NotFound);
+  });
+
+  it('returns the parsed DosingDoc on 200', async () => {
+    const doc = {
+      id: 'p1|dosing',
+      projectId: 'p1',
+      type: 'dosing',
+      windows: [],
+      codes: [],
+      generatedAt: '2026-07-08T00:00:00Z',
+    };
+    stubFetch(() => json(doc));
+    await expect(getDosing('p1')).resolves.toEqual(doc);
+  });
+});
+
+describe('getCost', () => {
+  it('returns the NotFound sentinel before the stage has run', async () => {
+    stubFetch(() => new Response('', { status: 404 }));
+    await expect(getCost('p1')).resolves.toBe(NotFound);
+  });
+
+  it('returns the parsed CostDoc on 200, preserving an absent bestQuote', async () => {
+    const doc = {
+      id: 'p1|cost',
+      projectId: 'p1',
+      type: 'cost',
+      generatedAt: '2026-07-08T00:00:00Z',
+      // bestQuote is OMITTED, not null — the wire contract for "nothing parseable was on file".
+      substances: [
+        { cas: '1314-36-9', element: 'Y', suppliers: ['Strem'], priceNote: 'no price on file — quote required', risks: ['single-source'] },
+      ],
+    };
+    stubFetch(() => json(doc));
+    const res = await getCost('p1');
+    expect(res).toEqual(doc);
+    expect((res as CostDoc).substances[0].bestQuote).toBeUndefined();
+  });
+});
+
+describe('recordLoading', () => {
+  it('POSTs the loading entry to the dosing/loading endpoint', async () => {
+    let seen: { url: string; init?: RequestInit } | undefined;
+    stubFetch((url, init) => {
+      seen = { url, init };
+      return json({ status: 'pending' }, 202);
+    });
+    const req = { cas: '1314-36-9', element: 'Y', form: 'oxide', metalLoading: 0.787, basis: 'stoichiometric Y2O3' };
+    await expect(recordLoading('p1', req)).resolves.toEqual({ status: 'pending' });
+    expect(seen?.url).toBe('/api/projects/p1/dosing/loading');
+    expect(seen?.init?.method).toBe('POST');
+    expect(JSON.parse(String(seen?.init?.body))).toEqual(req);
+  });
+
+  it("surfaces the server's 422 for a loading outside (0, 1]", async () => {
+    stubFetch(() => json({ error: 'metalLoading must be a mass fraction in (0, 1]' }, 422));
+    await expect(
+      recordLoading('p1', { cas: 'c', element: 'Y', form: 'oxide', metalLoading: 78.7, basis: 'b' }),
+    ).rejects.toThrow('metalLoading must be a mass fraction in (0, 1]');
+  });
+
+  it("surfaces the server's 422 for a blank basis", async () => {
+    stubFetch(() =>
+      json({ error: 'a metal loading requires a basis — the source that makes it checkable' }, 422),
+    );
+    await expect(
+      recordLoading('p1', { cas: 'c', element: 'Y', form: 'oxide', metalLoading: 0.787, basis: '' }),
+    ).rejects.toThrow('a metal loading requires a basis');
+  });
+
+  it('returns NotFound when the project is gone', async () => {
+    stubFetch(() => new Response('', { status: 404 }));
+    await expect(
+      recordLoading('p1', { cas: 'c', element: 'Y', form: 'oxide', metalLoading: 0.5, basis: 'b' }),
+    ).resolves.toBe(NotFound);
+  });
+});
+
+describe('reviewDosing', () => {
+  it('POSTs the note to the dosing/review endpoint', async () => {
+    let seen: { url: string; init?: RequestInit } | undefined;
+    stubFetch((url, init) => {
+      seen = { url, init };
+      return json({ reviewed: true }, 202);
+    });
+    await expect(reviewDosing('p1', { note: 'PL + physics reviewed the ratios' })).resolves.toEqual({
+      reviewed: true,
+    });
+    expect(seen?.url).toBe('/api/projects/p1/dosing/review');
+    expect(JSON.parse(String(seen?.init?.body))).toEqual({ note: 'PL + physics reviewed the ratios' });
+  });
+
+  it("surfaces the server's 422 for a blank note", async () => {
+    stubFetch(() =>
+      json({ error: 'a review note is required — the checkpoint records what was reviewed' }, 422),
+    );
+    await expect(reviewDosing('p1', { note: '' })).rejects.toThrow('a review note is required');
+  });
+
+  it('returns NotFound when there is no dosing record to review', async () => {
+    stubFetch(() => new Response('', { status: 404 }));
+    await expect(reviewDosing('p1', { note: 'n' })).resolves.toBe(NotFound);
   });
 });
