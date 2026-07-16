@@ -1271,3 +1271,21 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
   Tier-C filter dropped → the coverage pin still PASSED and the complementary
   `Assert.DoesNotContain("cas-pb", …)` FAILED; citations pass-through emptied → the verbatim-citations pin
   FAILED (`Assert.Single` on the ElementGate citations). Both reverted by hand.
+- **Tasks 12-14 review (four findings, one commit): the dashboard and the exports tell the operator the
+  truth the endpoints enforce.** (1) The dashboard's vp armability mirrored `VpGate.Armable` alone while
+  the POST (and Task 13's `GET /gate/vp`) additionally refuse on absent candidates / regulatory-coverage
+  blockers — the vp card could advertise a gate the POST 422s. It now runs the same coverage re-check
+  (candidates+verdicts fetched once for both gate entries); `Dashboard_NamesTheBlocker`'s fixture was
+  STRENGTHENED to seed the live analysis its `armable: true` now genuinely means, and
+  `Dashboard_VpEntry_IsNotArmable_WhenCandidatesAreAbsent` pins the blocker verbatim
+  (mutation: coverage mirror dropped → that pin FAILED on `Assert.False`; reverted by hand).
+  (2) `compliance-package` scopes to LIVE cells (`MatrixAssembler.Cells`) so a revise's orphan verdicts
+  cannot resurface in the R.E.'s package and the two offline artifacts always agree about scope; the
+  honest no-candidates behavior is a 404 even when orphan verdicts exist (all orphans ⇒ no analysis),
+  and the count pin now counts live verdicts. (3) `elements-to-check` names market gaps: a live component
+  with no constraints entry emits `warnings: ["markets unknown for component '<id>' — …"]` instead of
+  silently folding an empty market list that looks complete; `warnings: []` when constraints cover
+  everything. (4) An unmapped future `awaiting-*` status falls back to blocked-on-"operator" instead of
+  vanishing from the dashboard (`var s when s.StartsWith("awaiting-")` before the null arm) — a park that
+  drops off the blocked list is a stall nobody notices. All four TDD'd: six new/strengthened facts
+  observed failing before the fixes.

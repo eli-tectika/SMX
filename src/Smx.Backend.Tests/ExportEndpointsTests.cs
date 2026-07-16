@@ -76,6 +76,11 @@ public class ExportEndpointsTests : IClassFixture<WebApplicationFactory<Program>
         await _store.UpsertVerdictAsync(Verdict("cas-zr", "Zr", "label", [ZrCitation]));
         await _store.UpsertVerdictAsync(Verdict("cas-y", "Y", "bottle",
             [new Citation("regulatory", "CLP Annex VI", "2026-07-01T00:00:00Z")]));
+        // An ORPHAN: a verdict left behind by a revise, for a cas no candidate row carries any more. It
+        // appears in no matrix and the operator signs over no cell of it — the R.E.'s package must not
+        // resurrect it (the two offline artifacts must agree about scope).
+        await _store.UpsertVerdictAsync(Verdict("cas-orphan", "Ba", "bottle",
+            [new Citation("regulatory", "stale", "2026-06-01T00:00:00Z")]));
     }
 
     // ---- elements-to-check -------------------------------------------------------------------------------
@@ -125,6 +130,35 @@ public class ExportEndpointsTests : IClassFixture<WebApplicationFactory<Program>
         var y = byCas["cas-y"];
         Assert.Equal(["bottle"], y.GetProperty("components").EnumerateArray().Select(c => c.GetString()!).ToArray());
         Assert.Equal(["EU", "US"], y.GetProperty("markets").EnumerateArray().Select(m => m.GetString()!).Order().ToArray());
+
+        // Constraints cover every live component here — no gaps to warn about, and the honest empty
+        // state says so explicitly.
+        Assert.Equal(0, doc.GetProperty("warnings").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task ElementsToCheck_NamesTheGap_WhenAComponentHasNoConstraintsEntry()
+    {
+        // A transient constraints/discovery mismatch must not SILENTLY narrow a market list: an item whose
+        // markets quietly shrank looks complete, and the R.E. reviews against too few jurisdictions. The
+        // gap gets a NAME the R.E. can see.
+        await _store.UpsertCandidatesAsync(Candidates());
+        await _store.UpsertConstraintsAsync(new ConstraintsDoc
+        {
+            Id = RecordIds.Constraints(P), ProjectId = P,
+            Components = [new ComponentSpec("bottle", "HDPE", "packaging", ["EU", "US"], "brand")],
+            // no entry for "label" — cas-zr still rides on it
+        });
+
+        var doc = await _client.GetFromJsonAsync<JsonElement>($"/projects/{P}/regulatory/elements-to-check");
+
+        var warning = Assert.Single(doc.GetProperty("warnings").EnumerateArray());
+        Assert.Contains("label", warning.GetString());
+        Assert.Contains("markets unknown", warning.GetString());
+        // ... and the known components' markets still fold normally.
+        var zr = doc.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("cas").GetString() == "cas-zr");
+        Assert.Equal(["EU", "US"],
+            zr.GetProperty("markets").EnumerateArray().Select(m => m.GetString()!).Order().ToArray());
     }
 
     // ---- compliance-package ------------------------------------------------------------------------------
@@ -134,6 +168,18 @@ public class ExportEndpointsTests : IClassFixture<WebApplicationFactory<Program>
     {
         // No verdicts ⇒ no package: handing the R.E. an EMPTY package would be the degenerate form of the
         // narrowed review — zero entries that look like a completed screening.
+        var resp = await _client.GetAsync($"/projects/{P}/regulatory/compliance-package");
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task CompliancePackage_404WithoutCandidates_EvenWhenOrphanVerdictsExist()
+    {
+        // The package equals what the operator signs over: the LIVE analysis. Verdicts with no candidates
+        // on file (a transient revise state) are ALL orphans — a package built from them would hand the
+        // R.E. an analysis nobody is screening. 404, same as elements-to-check.
+        await _store.UpsertVerdictAsync(Verdict("cas-zr", "Zr", "bottle", [ZrCitation]));
+
         var resp = await _client.GetAsync($"/projects/{P}/regulatory/compliance-package");
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
@@ -151,11 +197,16 @@ public class ExportEndpointsTests : IClassFixture<WebApplicationFactory<Program>
         Assert.False(string.IsNullOrEmpty(doc.GetProperty("generatedAt").GetString()));
         Assert.False(string.IsNullOrEmpty(doc.GetProperty("corpusSyncNote").GetString()));
 
-        // THE COUNT PIN: one entry per verdict — 3 verdicts on file, 3 entries in the package. An entry
-        // that went missing is a substance×component the R.E. never sees.
+        // THE COUNT PIN: one entry per LIVE verdict — the same cells the operator signs over, computed
+        // from the same source of truth (MatrixAssembler.Cells). 4 verdicts on file, but the orphan
+        // (cas-orphan — no candidate row carries it) is NOT in the package: the two offline artifacts
+        // must agree about scope, and a resurrected orphan widens the review past the analysis.
         var entries = doc.GetProperty("entries");
-        Assert.Equal((await _store.GetVerdictsAsync(P)).Count, entries.GetArrayLength());
+        var live = MatrixAssembler.Cells(Candidates()).ToHashSet();
+        Assert.Equal((await _store.GetVerdictsAsync(P)).Count(v => live.Contains((v.Cas, v.ComponentId))),
+            entries.GetArrayLength());
         Assert.Equal(3, entries.GetArrayLength());
+        Assert.DoesNotContain(entries.EnumerateArray(), e => e.GetProperty("cas").GetString() == "cas-orphan");
 
         var zrBottle = entries.EnumerateArray().Single(e =>
             e.GetProperty("cas").GetString() == "cas-zr" && e.GetProperty("componentId").GetString() == "bottle");

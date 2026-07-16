@@ -51,11 +51,21 @@ public static class ExportEndpoints
                 })
                 .ToList();
 
+            // A live component with no constraints entry (a transient constraints/discovery mismatch)
+            // must not SILENTLY narrow a market list: an item whose markets quietly shrank looks complete,
+            // and the R.E. reviews against too few jurisdictions. The gap gets a NAME the R.E. can see.
+            var warnings = candidates.Substances
+                .Where(s => s.Tier != "C").Select(s => s.ComponentId).Distinct()
+                .Where(id => !marketsByComponent.ContainsKey(id))
+                .Select(id => $"markets unknown for component '{id}' — no constraints entry on file")
+                .ToList();
+
             return Results.Json(new
             {
                 projectId,
                 generatedAt = DateTimeOffset.UtcNow.ToString("O"),
                 items,
+                warnings,
             }, Json.Options);
         });
 
@@ -66,8 +76,17 @@ public static class ExportEndpoints
         app.MapGet("/projects/{projectId}/regulatory/compliance-package",
             async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
         {
-            var verdicts = await store.GetVerdictsAsync(projectId, ct);
-            // No verdicts ⇒ no package. Unlike GET /verdicts (where [] is a state), an EMPTY package
+            // The package equals what the operator signs over: the LIVE analysis (MatrixAssembler.Cells —
+            // the same source of truth the matrix and elements-to-check use, so the two artifacts handed
+            // offline together can never disagree about scope). A revise can orphan verdicts that appear
+            // in no matrix; resurrecting them here would widen the R.E.'s review past the analysis. No
+            // candidates ⇒ every verdict is an orphan ⇒ no package (404, same as elements-to-check).
+            var candidates = await store.GetCandidatesAsync(projectId, ct);
+            if (candidates is null) return Results.NotFound();
+            var live = MatrixAssembler.Cells(candidates).ToHashSet();
+            var verdicts = (await store.GetVerdictsAsync(projectId, ct))
+                .Where(v => live.Contains((v.Cas, v.ComponentId))).ToList();
+            // No live verdicts ⇒ no package. Unlike GET /verdicts (where [] is a state), an EMPTY package
             // handed to the R.E. is the degenerate narrowed review: zero entries posing as a screening.
             if (verdicts.Count == 0) return Results.NotFound();
 

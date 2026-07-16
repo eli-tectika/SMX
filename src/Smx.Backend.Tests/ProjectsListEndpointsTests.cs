@@ -164,6 +164,20 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
             Components = [new ComponentDecision("bottle", [],
                 new ProposedCode("Zr:Y = 1.00:0.50", ["cas-zr", "cas-y"], "agent rationale"))],
         });
+        // The LIVE analysis the regulatory signature covers — armable must mean the POST would accept,
+        // and the POST re-checks coverage against candidates + verdicts, not just VpGate.Armable.
+        await _store.UpsertCandidatesAsync(new CandidatesDoc
+        {
+            Id = RecordIds.Candidates("proj-dash"), ProjectId = "proj-dash",
+            Substances = [new CandidateSubstance("bottle", "Zr", "f", "cas-zr", null, null, false, "A", "s", [])],
+        });
+        await _store.UpsertVerdictAsync(new VerdictDoc
+        {
+            Id = RecordIds.Verdict("proj-dash", "cas-zr", "bottle"), ProjectId = "proj-dash",
+            Cas = "cas-zr", ComponentId = "bottle", Element = "Zr", Form = "f",
+            Dimensions = [new("ElementGate", VerdictStatus.Pass, [new Citation("regulatory", "x", "t")], 0.9, "ok")],
+            EvidenceReviewed = true,
+        });
 
         var dash = await _client.GetFromJsonAsync<JsonElement>("/projects/proj-dash/dashboard");
 
@@ -186,6 +200,56 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
         Assert.Equal("vp", signing[0].GetProperty("gate").GetString());
         Assert.True(signing[0].GetProperty("armable").GetBoolean());
         Assert.Equal(0, signing[0].GetProperty("blockers").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Dashboard_VpEntry_IsNotArmable_WhenCandidatesAreAbsent()
+    {
+        // The dashboard must never advertise a gate the POST would refuse: with an approved regulatory
+        // gate and a proposing decision but NO candidates on file, POST …/decision/determination 422s
+        // "no candidates on file" — so the vp card must say NOT armable, with that same blocker. This is
+        // the identical asymmetry Task 13 closed on GET /gate/vp; the dashboard mirrors it.
+        var p = Project("proj-dash-nocand", "Acme", "Bottle", "2026-07-16T09:00:00.0000000+00:00");
+        p.Stages[Stages.Decision].Status = "awaiting-VP";
+        await _store.UpsertProjectAsync(p);
+        await _store.UpsertGateAsync(new GateDoc
+        {
+            Id = RecordIds.Gate("proj-dash-nocand", GateTypes.Regulatory), ProjectId = "proj-dash-nocand",
+            GateType = GateTypes.Regulatory, Status = "approved", ApprovedAt = "2026-07-16T00:00:00.0000000+00:00",
+        });
+        await _store.UpsertDecisionAsync(new DecisionDoc
+        {
+            Id = RecordIds.Decision("proj-dash-nocand"), ProjectId = "proj-dash-nocand", GeneratedAt = "t",
+            Components = [new ComponentDecision("bottle", [],
+                new ProposedCode("Zr:Y = 1.00:0.50", ["cas-zr", "cas-y"], "agent rationale"))],
+        });
+
+        var dash = await _client.GetFromJsonAsync<JsonElement>("/projects/proj-dash-nocand/dashboard");
+
+        var vp = Find(dash.GetProperty("needsSigning"), "gate", "vp");
+        Assert.NotNull(vp);
+        Assert.False(vp!.Value.GetProperty("armable").GetBoolean());
+        Assert.Contains("no candidates on file", vp.Value.GetProperty("blockers").ToString());
+    }
+
+    [Fact]
+    public async Task Dashboard_AnUnmappedAwaitingStatus_SurfacesOnTheOperator_NeverVanishes()
+    {
+        // A future awaiting-* the mapping doesn't know yet must still SURFACE — a park that silently
+        // drops off the blocked list is a stall nobody notices (§11). The operator is the honest
+        // fallback owner: they triage every park anyway.
+        var p = Project("proj-dash-newpark", "Acme", "Bottle", "2026-07-16T09:00:00.0000000+00:00");
+        p.Stages[Stages.Dosing].Status = "awaiting-somethingnew";
+        p.Stages[Stages.Dosing].Error = "parked on a state this build has never heard of";
+        await _store.UpsertProjectAsync(p);
+
+        var dash = await _client.GetFromJsonAsync<JsonElement>("/projects/proj-dash-newpark/dashboard");
+
+        var blocked = dash.GetProperty("blocked");
+        var dosing = Find(blocked, "stage", "dosing");
+        Assert.NotNull(dosing);
+        Assert.Equal("operator", dosing!.Value.GetProperty("on").GetString());
+        Assert.Equal("parked on a state this build has never heard of", dosing.Value.GetProperty("detail").GetString());
     }
 
     [Fact]

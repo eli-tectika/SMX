@@ -63,6 +63,10 @@ public static class ProjectsListEndpoints
                     "awaiting-VP" => "VP R&D",
                     "awaiting-samples" => "client",
                     "needs-review" or "failed" => "operator",
+                    // Any awaiting-* this mapping doesn't know yet still SURFACES — a park that silently
+                    // drops off the blocked list is a stall nobody notices (§11). The operator is the
+                    // honest fallback owner: they triage every park anyway.
+                    var s when s.StartsWith("awaiting-") => "operator",
                     _ => null,
                 };
                 if (owner is not null)
@@ -85,29 +89,43 @@ public static class ProjectsListEndpoints
             // locate is a gate they cannot ever arm.
             var needsSigning = new List<object>();
             var regGate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
-            if (regGate?.Status != "approved")
+            var vpGate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
+            if (regGate?.Status != "approved" || vpGate?.Status != "approved")
             {
-                // Mirrors GET /gate/regulatory: completeness first (no candidates ⇒ nothing screened yet),
-                // then RegulatoryGate.Armable over the live cells.
                 var verdicts = await store.GetVerdictsAsync(projectId, ct);
                 var candidates = await store.GetCandidatesAsync(projectId, ct);
-                var complete = candidates is not null && MatrixAssembler.IsComplete(candidates, verdicts);
-                var (armed, blockers) = candidates is null
-                    ? (Ok: false, Blockers: (IReadOnlyList<string>)[])
-                    : RegulatoryGate.Armable(candidates, verdicts);
-                needsSigning.Add(new
+                if (regGate?.Status != "approved")
                 {
-                    gate = GateTypes.Regulatory,
-                    armable = complete && armed,
-                    blockers = complete ? blockers : blockers.Prepend("incomplete: not every candidate has a verdict yet").ToList(),
-                });
-            }
-            var vpGate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
-            if (vpGate?.Status != "approved")
-            {
-                var decision = await store.GetDecisionAsync(projectId, ct);
-                var (armed, blockers) = VpGate.Armable(regGate, decision);
-                needsSigning.Add(new { gate = GateTypes.Vp, armable = armed, blockers });
+                    // Mirrors GET /gate/regulatory: completeness first (no candidates ⇒ nothing screened
+                    // yet), then RegulatoryGate.Armable over the live cells.
+                    var complete = candidates is not null && MatrixAssembler.IsComplete(candidates, verdicts);
+                    var (armed, blockers) = candidates is null
+                        ? (Ok: false, Blockers: (IReadOnlyList<string>)[])
+                        : RegulatoryGate.Armable(candidates, verdicts);
+                    needsSigning.Add(new
+                    {
+                        gate = GateTypes.Regulatory,
+                        armable = complete && armed,
+                        blockers = complete ? blockers : blockers.Prepend("incomplete: not every candidate has a verdict yet").ToList(),
+                    });
+                }
+                if (vpGate?.Status != "approved")
+                {
+                    // Mirrors GET /gate/vp, coverage re-check included: the POST additionally 422s on
+                    // absent candidates and on regulatory-coverage blockers, so an armable computed from
+                    // VpGate.Armable alone would advertise a gate the POST refuses.
+                    var decision = await store.GetDecisionAsync(projectId, ct);
+                    var (armed, blockers) = VpGate.Armable(regGate, decision);
+                    IReadOnlyList<string> uncovered = candidates is null
+                        ? ["no candidates on file — there is no analysis under the regulatory signature"]
+                        : RegulatoryGate.Armable(candidates, verdicts).Blockers;
+                    needsSigning.Add(new
+                    {
+                        gate = GateTypes.Vp,
+                        armable = armed && uncovered.Count == 0,
+                        blockers = blockers.Concat(uncovered).ToList(),
+                    });
+                }
             }
 
             return Results.Json(new { projectId, blocked, readyToContinue, needsSigning }, Json.Options);
