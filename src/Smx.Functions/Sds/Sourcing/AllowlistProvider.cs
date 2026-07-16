@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Smx.Functions.Common;
 using Smx.Functions.Sds.Domain;
 
 namespace Smx.Functions.Sds.Sourcing;
@@ -10,7 +11,9 @@ public sealed class AllowlistProvider
     public AllowlistProvider(IReadOnlyList<AllowlistEntry> entries)
         => _entries = entries.OrderBy(e => e.Priority).ToList();
 
-    public static AllowlistProvider FromFile(string path) => FromJson(File.ReadAllText(path));
+    // ContentRoot.Resolve: relative paths must anchor to the content root, never the CWD —
+    // on Flex Consumption the CWD is a standby dir and the raw read crashed the first live sweep.
+    public static AllowlistProvider FromFile(string path) => FromJson(File.ReadAllText(ContentRoot.Resolve(path)));
 
     public static AllowlistProvider FromJson(string json)
     {

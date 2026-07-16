@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Smx.Functions.Common;
 using Smx.Functions.Reg.Domain;
 
 namespace Smx.Functions.Reg.Sourcing;
@@ -13,7 +14,8 @@ public sealed class RegRegistryProvider
     public RegRegistryProvider(IReadOnlyList<RegSource> sources)
         => _sources = sources.Select(s => s with { Id = s.SourceId }).ToList();
 
-    public static RegRegistryProvider FromFile(string path) => FromJson(File.ReadAllText(path));
+    // ContentRoot.Resolve: same CWD-vs-content-root trap that crashed the first live SdsSweep.
+    public static RegRegistryProvider FromFile(string path) => FromJson(File.ReadAllText(ContentRoot.Resolve(path)));
 
     public static RegRegistryProvider FromJson(string json)
     {
