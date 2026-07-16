@@ -235,6 +235,22 @@ strong {
   }
 }
 
+/* ---- record frame: a signing surface, not a workspace ------------------------
+
+   The decision screen carries no dock (domain/stages.ts — `surface: 'record'`), and that
+   removes the whole reason the instrument frame is --canvas-max wide: that ceiling exists
+   for a canvas holding a matrix AND a docked panel beside it (see the .wrap note above).
+   Neither is here.
+
+   A determination a human signs is a document, and a document wants a measure. So the record
+   takes one back from inside the wide frame — which keeps AppShell's per-route rule untouched
+   and leaves the seven workspace stages exactly as they were. */
+
+.recordframe {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
 .screen {
   border: 1px solid var(--border);
   border-radius: var(--r3);

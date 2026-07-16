@@ -51,21 +51,36 @@ export function ProjectLayout() {
   const Screen = def ? SCREENS[def.slug] : undefined;
   if (!def || !Screen) return <Navigate to={`/p/${projectId}/intake`} replace />;
 
+  const screen = <Screen project={state.project} refreshProject={refresh} />;
+
   return (
     <>
       <ContextBar project={state.project} />
 
-      <Dock
-        panel={
-          <AgentPanel
-            projectId={state.project.projectId}
-            stageSlug={def.slug}
-            stageLabel={def.label}
-          />
-        }
-      >
-        <Screen project={state.project} refreshProject={refresh} />
-      </Dock>
+      {def.surface === 'record' ? (
+        /*
+         * A signing surface takes no dock (domain/stages.ts — `surface: 'record'`).
+         *
+         * The dock's "always present" doctrine is about the agent being undismissable on a screen
+         * where the operator works THROUGH an agent. The VP gate is not that screen: nobody instructs
+         * anything here, they sign. Docking a panel that only apologises for not existing spends the
+         * last screen of the journey on an absence — and it is the one screen whose subject is a
+         * human's own signature.
+         */
+        <div className="recordframe">{screen}</div>
+      ) : (
+        <Dock
+          panel={
+            <AgentPanel
+              projectId={state.project.projectId}
+              stageSlug={def.slug}
+              stageLabel={def.label}
+            />
+          }
+        >
+          {screen}
+        </Dock>
+      )}
     </>
   );
 }

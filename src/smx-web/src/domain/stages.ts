@@ -10,6 +10,16 @@ import type { StageState, StageStatus } from '../api/types';
  *
  * `backedBy` names the ProjectDoc stage key whose real status drives the pill. `gate` marks a
  * hard gate; regulatory is BOTH a backed stage and a gate. The decision/VP gate has no backend.
+ *
+ * `surface: 'record'` marks a screen that is a SIGNING SURFACE rather than a work surface: no agent
+ * dock, a document measure, the gate as its terminus (ProjectLayout). Only `decision` is one.
+ *
+ * It is DECLARED here rather than derived, because both things you would derive it from are wrong.
+ * `canChat` is false for `background` too, and it states a TRANSIENT fact about the backend ("no chat
+ * endpoint yet") — a background agent landing later would silently restyle that page. `gate` is true
+ * for `regulatory`, which is a gate WITH an agent and rightly keeps its dock. What is permanent about
+ * the VP gate is not that the backend lacks something: it is that a human signature is not a
+ * conversation. That survives a Decision agent ever being built.
  */
 export type BackendStage = 'intake' | 'discovery' | 'regulatory' | 'matrix' | 'dosing' | 'cost';
 
@@ -18,6 +28,7 @@ export interface StageDef {
   label: string;
   backedBy?: BackendStage;
   gate?: boolean;
+  surface?: 'record';
 }
 
 export const STAGES: readonly StageDef[] = [
@@ -28,7 +39,7 @@ export const STAGES: readonly StageDef[] = [
   { slug: 'dosing', label: 'Dosing', backedBy: 'dosing' },
   { slug: 'cost', label: 'Cost', backedBy: 'cost' },
   { slug: 'matrix', label: 'Matrix', backedBy: 'matrix' },
-  { slug: 'decision', label: 'VP gate', gate: true },
+  { slug: 'decision', label: 'VP gate', gate: true, surface: 'record' },
 ];
 
 export const isMocked = (stage: StageDef) => stage.backedBy === undefined;
