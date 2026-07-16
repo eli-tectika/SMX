@@ -28,8 +28,8 @@ param deployGpt4o bool = false
 @description('gpt-4o deployment capacity (thousands of TPM). Kept minimal.')
 param gpt4oCapacity int = 1
 
-@description('text-embedding-3-large deployment capacity (thousands of TPM). Kept minimal.')
-param embeddingCapacity int = 1
+@description('text-embedding-3-large deployment capacity (thousands of TPM). Standard TPM capacity is a rate limit, not a cost — 1 (=1K TPM) starved a single 16-chunk SDS embed batch into HTTP 429 (live 2026-07-16).')
+param embeddingCapacity int = 50
 
 @description('Deploy the Claude Opus 4.7 reasoning model (Anthropic on Foundry). ON by default — named by the SOW. Verified available in swedencentral (format Anthropic, GlobalStandard, version 1).')
 param deployClaude bool = true
