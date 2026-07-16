@@ -971,6 +971,15 @@ git commit -m "feat(api): candidates, verdicts and decision reads — thin, cite
 >   re-pricing a closed project under its signed decision.
 > - **(c)** Mutation-test both: drop the Decision reset → the stale-proposal test FAILS; drop the closed
 >   refusal → the closed-project test FAILS.
+> - **(d) (from the Tasks 8-10 review)** `POST …/decision/determination` gains a stage-status guard:
+>   **422 unless `Stages[Decision].Status == "awaiting-VP"`** ("a signature answers a park"). This closes
+>   BOTH review findings at once: (i) with Task 15(a) live, a Dosing revision resets Decision to `pending`
+>   while the stale DecisionDoc is still on file — without the guard the VP can sign stale proposals and
+>   the in-flight re-pick then OVERWRITES the stamped doc under an approved gate (close finds zero
+>   confirmed codes, procurement releases over an empty conclusion); (ii) a post-close determination
+>   (status `done`) — approve or REJECT — is refused, killing the "revocation that revokes nothing"
+>   incoherence (gate flipped locked while Procurement stays Released). TDD both refusals; mutation-test
+>   the guard (drop it → both tests FAIL).
 
 **Files:**
 - Modify: `src/Smx.Orchestrator/Dispatch/StageDispatcher.cs` (`OnRevisionAsync` gets a `Stages.Decision` arm → `ReviseDecisionAsync`)
