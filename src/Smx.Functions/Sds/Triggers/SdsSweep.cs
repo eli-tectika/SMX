@@ -33,26 +33,46 @@ public sealed class SdsSweep
 
         EgressFetch fetch = (url, c) => _egress.FetchAsync(url, c);
 
+        // Batch robustness: a single bad supplier response or resolver blow-up must cost only that
+        // candidate/entry, never the rest of the bulk run — the bulk-and-scheduled property is the
+        // leak mitigation, so the batch must always complete. Cancellation still aborts the sweep.
         foreach (var entry in due)
         {
-            var key = new SubstanceKey(entry.Element, entry.Form, entry.Cas);
-            var candidates = await _resolver.ResolveAsync(key, fetch, ct);
-            var ingested = false;
-
-            foreach (var candidate in candidates)
+            try
             {
-                var fetched = await _egress.FetchAsync(candidate.Url, ct);
-                if (fetched is null) continue;
+                var key = new SubstanceKey(entry.Element, entry.Form, entry.Cas);
+                var candidates = await _resolver.ResolveAsync(key, fetch, ct);
+                var ingested = false;
 
-                var meta = new SdsMetadata(entry.Cas, candidate.Supplier, entry.Form, nowUtc[..10],
-                    null, null, candidate.Url.ToString(), entry.Id);
-                var result = await _pipeline.IngestAsync(fetched.Content, meta, candidate.Domain, ct);
-                if (result.Ok) { ingested = true; break; }
-                _log.LogInformation("Candidate {Url} rejected: {Reason}", candidate.Url, result.Reason);
+                foreach (var candidate in candidates)
+                {
+                    try
+                    {
+                        var fetched = await _egress.FetchAsync(candidate.Url, ct);
+                        if (fetched is null) continue;
+
+                        var meta = new SdsMetadata(entry.Cas, candidate.Supplier, entry.Form, nowUtc[..10],
+                            null, null, candidate.Url.ToString(), entry.Id);
+                        var result = await _pipeline.IngestAsync(fetched.Content, meta, candidate.Domain, ct);
+                        if (result.Ok) { ingested = true; break; }
+                        _log.LogInformation("Candidate {Url} rejected: {Reason}", candidate.Url, result.Reason);
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                    catch (Exception ex)
+                    {
+                        _log.LogWarning(ex, "Candidate {Url} threw; trying next supplier", candidate.Url);
+                    }
+                }
+
+                if (ingested) await _masterList.MarkFetchedAsync(entry, nowUtc, ct);
+                else await _masterList.RecordFailureAsync(entry, _opts.RetryCap, nowUtc, ct);
             }
-
-            if (ingested) await _masterList.MarkFetchedAsync(entry, nowUtc, ct);
-            else await _masterList.RecordFailureAsync(entry, _opts.RetryCap, nowUtc, ct);
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Sweep entry {Id} threw; recording failure and continuing", entry.Id);
+                await _masterList.RecordFailureAsync(entry, _opts.RetryCap, nowUtc, ct);
+            }
         }
     }
 }
