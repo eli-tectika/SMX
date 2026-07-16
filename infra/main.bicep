@@ -32,13 +32,23 @@ param deployClaude bool = true
 @description('Deploy the gpt-5-mini chat model — the stand-in the agents run on when Claude is off. ON by default so the account always offers a chat model.')
 param deployGpt5Mini bool = true
 
-// The agents call Claude when it was deployed, and the gpt-5-mini stand-in otherwise. DERIVED, not a
-// parameter, so the two can never contradict each other: a deploy that passed deployClaude=false while the
-// app defaulted to the Anthropic provider is exactly how every agent turn came to die on a 404
-// `api_not_supported` — an account with no Anthropic deployment does not serve /anthropic at all.
-// origin/main made this a parameter instead; deriving it is kept deliberately, because a parameter
-// permits exactly the deployClaude=false + modelProvider='anthropic' pairing that caused that outage.
-var modelProvider = deployClaude ? 'anthropic' : 'openai'
+// The agents call Claude when it was deployed, and the gpt-5-mini stand-in otherwise. The DEFAULT is
+// derived rather than fixed, because a fixed 'anthropic' default is what caused the outage: a deploy
+// passed deployClaude=false, nothing connected that to the provider, and every agent turn died on a 404
+// `api_not_supported` — an account with no Anthropic deployment does not serve /anthropic at all. Derived,
+// that pairing cannot arise by omission; it takes someone typing 'anthropic' next to deployClaude=false.
+//
+// It stays overridable because one pairing IS legitimate and a derivation forbids it: Claude deployed but
+// the agents deliberately on the openai path — exercising that path, or riding out an exhausted Claude
+// quota without tearing down the deployment. Overriding to 'openai' needs deployGpt5Mini on (it is, by
+// default); overriding to 'anthropic' with deployClaude=false reproduces the outage, which is why the
+// default never does it for you.
+@description('Chat provider for the agents: "anthropic" (Claude on Foundry — the SOW target) or "openai" (the gpt-5-mini Responses path). Defaults to whichever model was actually deployed; set it explicitly only to run the openai path on an estate that HAS Claude.')
+@allowed([
+  'anthropic'
+  'openai'
+])
+param modelProvider string = deployClaude ? 'anthropic' : 'openai'
 
 @description('Frontend SPA image (ACR path incl. tag). Empty = placeholder.')
 param frontendImage string = ''
