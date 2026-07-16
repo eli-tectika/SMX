@@ -177,7 +177,9 @@ public sealed class StageDispatcher(
 
     // Trusts the gate record: does NOT re-check arming/completeness here. The false-pass-safety
     // invariant is that POST /regulatory/approve (armable + IsComplete) is the ONLY writer of an
-    // approved regulatory GateDoc. Do not add another writer without those two checks.
+    // approved regulatory GateDoc — and POST /decision/determination (VpGate.Armable + the regulatory
+    // coverage re-check + real-code confirmations) the ONLY writer of an approved VP one. Do not add
+    // another writer without those checks.
     private async Task OnGateAsync(GateDoc g, CancellationToken ct)
     {
         if (g is { GateType: GateTypes.Regulatory, Status: "approved" })
@@ -192,6 +194,111 @@ public sealed class StageDispatcher(
             // would dose an UNSIGNED gate — the hard regulatory gate bypassed by the stage right after it.
             await TryDoseAsync(g.ProjectId, ct);
         }
+        else if (g is { GateType: GateTypes.Vp, Status: "approved" })
+            await CloseProjectAsync(g.ProjectId, ct);
+    }
+
+    /// The VP signature closes the project (spec §4: the VP gate "releases procurement + writes to Marker
+    /// Library + Learned Conclusions"). The approved VP GateDoc landing on the change feed IS the close
+    /// dispatch — writing the record is the trigger, same as every other stage.
+    private async Task CloseProjectAsync(string projectId, CancellationToken ct)
+    {
+        var project = await store.GetProjectAsync(projectId, ct);
+        // The idempotency latch: only the awaiting-VP → done transition closes. Once `done`, redeliveries
+        // no-op here entirely — the knowledge writes are idempotent by deterministic id regardless, but the
+        // latch is what keeps them from re-RUNNING at all (re-stamping CreatedAt, re-embedding and
+        // re-pushing the conclusion on every at-least-once delivery).
+        if (project is null || project.Stages[Stages.Decision].Status is not "awaiting-VP") return;
+
+        var decision = await store.GetDecisionAsync(projectId, ct);
+        var dosing = await store.GetDosingAsync(projectId, ct);
+        var constraints = await store.GetConstraintsAsync(projectId, ct);
+        if (decision is null || dosing is null || constraints is null) return; // nothing signed over nothing
+
+        // The confirmed codes, resolved back to the DosingDoc records they name. The endpoint 422'd any
+        // confirmation that names no real code, so First() is a contract here, not a hope.
+        var confirmed = decision.Components
+            .Where(c => c.ConfirmedCode is not null)
+            .Select(c => (Component: c, Code: dosing.Codes.First(
+                k => k.ComponentId == c.ComponentId && k.RatioSignature == c.ConfirmedCode)))
+            .ToList();
+
+        // Knowledge-null degrade, mirroring the catalog-null Cost path: the writes are skipped, the project
+        // still closes. DEFERRED like the others: production DI must pass the real IKnowledgeStore.
+        if (knowledge is not null)
+        {
+            var now = DateTimeOffset.UtcNow.ToString("O");
+            foreach (var (component, code) in confirmed)
+            {
+                var spec = constraints.Components.First(c => c.Id == component.ComponentId);
+                var id = KnowledgeIds.Marker(MarkerContentKey(code));
+                var existing = await knowledge.GetMarkerAsync(id, ct);
+                if (existing is null)
+                    await knowledge.UpsertMarkerAsync(new MarkerLibraryDoc
+                    {
+                        Id = id,
+                        // Ppm is the ANCHOR — the largest marker's ppm, the ratio's "1.00". Together with
+                        // the scale-invariant ratio it reconstructs every marker's ppm; storing any other
+                        // single number would not.
+                        Composition = new([.. code.Markers.Select(m => m.Cas)],
+                            code.Markers.Max(m => m.Ppm), code.RatioSignature),
+                        ValidatedFor = new(spec.Application, spec.Material, spec.Objective),
+                        SourceProject = projectId,
+                        LinkedProjects = [projectId],
+                        CreatedAt = now,
+                    }, ct);
+                else if (!existing.LinkedProjects.Contains(projectId))
+                {
+                    // A reuse: another project confirmed the same code. Counted ONCE per project — the
+                    // projects-list is the pin, so a redelivered gate cannot double-count (see
+                    // MarkerLibraryDoc.LinkedProjects). SourceProject is provenance and never rewritten.
+                    existing.ReuseCount++;
+                    existing.LinkedProjects.Add(projectId);
+                    await knowledge.UpsertMarkerAsync(existing, ct);
+                }
+            }
+
+            var ratios = string.Join("; ", confirmed.Select(c => $"{c.Component.ComponentId}: {c.Component.ConfirmedCode}"));
+            await conclusions.WriteAsync(new LearnedConclusionDoc
+            {
+                // Deterministic in the project's close — an at-least-once redelivery upserts one doc.
+                Id = KnowledgeIds.LearnedConclusion(KnowledgeKinds.Decision, $"{projectId}|close"),
+                Kind = KnowledgeKinds.Decision,
+                Scope = new(null, null, null, null, null, null), // project-wide: the codes span components
+                Finding = $"Project closed under VP approval; confirmed final codes — {ratios}.",
+                // 1.0: this records an operator-signed determination, not an inference.
+                Confidence = 1.0,
+                Provenance = new([projectId], [$"VP determination on project {projectId} — confirmed codes: {ratios}"]),
+                CreatedAt = now,
+            }, ct);
+        }
+
+        decision.Procurement.Status = ProcurementStatus.Released;
+        await store.UpsertDecisionAsync(decision, ct);
+        // LAST, deliberately: the stage flip is the latch above, so a crash before this line redelivers
+        // into a re-run whose writes all converge (deterministic ids, the projects-list pin).
+        await SetStageAsync(projectId, Stages.Decision, s => { s.Status = "done"; s.Error = null; }, ct);
+    }
+
+    /// A library code's identity is its CONTENT — the ratio signature plus every (cas, ppm) pair — so the
+    /// same code confirmed by two projects maps to ONE doc (that is what makes reuse countable), and a
+    /// redelivered gate upserts rather than appends. Pairs are ordered by CAS because input order is not
+    /// identity, and every field is LENGTH-PREFIXED rather than delimiter-joined (the Plan-3c /
+    /// ChatTools.ContentKey lesson: a delimiter that can occur inside a field lets two different codes
+    /// encode to the same bytes). SHA-256, never string.GetHashCode — .NET randomises string hashes per
+    /// process, and this id must be the same one across every restart forever.
+    private static string MarkerContentKey(MarkerCode code)
+    {
+        var tuple = new System.Text.StringBuilder();
+        void Append(string field) => tuple.Append(field.Length).Append(':').Append(field);
+        Append(code.RatioSignature);
+        foreach (var m in code.Markers.OrderBy(m => m.Cas, StringComparer.Ordinal))
+        {
+            Append(m.Cas);
+            Append(m.Ppm.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+        }
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(tuple.ToString()))).ToLowerInvariant()[..16];
     }
 
     /// The shared Dosing resolver, called from TWO places — OnGateAsync (the signature triggers the stage) and
@@ -336,9 +443,11 @@ public sealed class StageDispatcher(
         {
             // INSIDE the try, deliberately (the Tasks-3-5 review amendment): a pre-invariant persisted
             // DosingDoc with a duplicate (component, cas) window makes Assemble's ToDictionary throw
-            // ArgumentException. Outside the try that escapes into the change-feed processor as a poison
-            // redelivery loop — stage stuck `pending`, no visible error. In here it lands as stage `failed`
-            // with the error surfaced: §11's "nothing dies silently".
+            // ArgumentException. Outside the try that throw escapes into the ChangeFeedWorker — which
+            // CATCHES dispatch exceptions, logs, and CHECKPOINTS the batch anyway. So the failure mode is
+            // checkpoint-and-lose: the stage sits silently stuck at `pending` (nothing left on the feed to
+            // redeliver it), not an endless redelivery loop. The amendment's value is the visible `failed`
+            // stamp with the error surfaced — §11's "nothing dies silently" — not loop prevention.
             var assembled = DecisionAssembler.Assemble(
                 verdicts, dosing, cost, [.. constraints.Components.Select(c => c.Id)]);
 

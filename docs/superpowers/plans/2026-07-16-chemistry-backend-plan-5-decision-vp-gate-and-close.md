@@ -1201,3 +1201,34 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
   500 is not an answer an operator can act on); (ii) an unlisted theory
   (`PostDetermination_ThatIsNeitherApprovedNorRejected_422`) pins the determination-literal guard the
   skeleton carries, per the standing rule that every guard gets a test.
+- **Task 9 REVIEW ADDITION (docs-only): the Assemble-inside-try comment's narrative was corrected.** The
+  original claimed an escaped exception becomes "a poison redelivery loop … redelivered forever"; in fact
+  the ChangeFeedWorker CATCHES dispatch exceptions, logs, and CHECKPOINTS the batch anyway, so an escaped
+  exception is **checkpoint-and-lose** — the stage sits silently stuck `pending` with nothing left on the
+  feed to redeliver it. The amendment's value is the visible `failed` stamp with the error surfaced, not
+  loop prevention. (The DecisionDispatchTests comment still tells the older story; the code comment is the
+  corrected one.)
+- **Crashed-`running` posture, recorded as accepted:** every stage runner (Intake, Discovery, Regulatory,
+  Dosing, Cost, Decision) stamps `running` BEFORE its try block, so a process crash between that write and
+  any terminal write (`done`/`failed`/`needs-review`/`awaiting-*`) leaves the stage `running` forever —
+  the redelivered trigger no-ops on the status guard, and nothing else ever rewrites it. Shared by all six
+  runners; accepted for the single-operator estate (the operator sees a stage stuck `running` and can
+  re-trigger by re-upserting the input record). A stale-`running` reaper (age-based reset to `pending`) is
+  a deferred follow-on.
+- **Task 9: `MarkerLibraryDoc` gained `LinkedProjects`** (mirroring MsdsRegistryDoc's field) — the plan's
+  "pin via a projects-list on the doc": reuse increments only when the closing project is not already
+  listed, so a redelivered gate cannot double-count and the source history shows every project that
+  confirmed the code. `KnowledgeKinds` gained `Decision = "decision"` for the close conclusion (the plan's
+  "reuse the existing constant family" — none of the four existing kinds describes a close).
+  `Composition.Ppm` is the ANCHOR ppm (the largest marker's — the ratio's "1.00"), which together with the
+  scale-invariant ratio reconstructs every marker's ppm; no other single number does.
+- **Task 9 mutation (a) was a REAL kill, not accepted-idempotent:** dropping the `awaiting-VP` latch fails
+  `Redelivery_DoesNotDoubleWrite` via its strengthened assert — `Assert.Single(index.Pushed)` — because an
+  unlatched redelivery re-runs the conclusion write (re-embed + re-push + re-stamped CreatedAt). The
+  marker-library writes themselves DID survive the mutation exactly as the plan predicted (content-keyed id
+  + projects-list pin), so the latch's observable value is the conclusion path. Mutation (b)
+  (ordinal/project-scoped key instead of content key) failed `AReusedCode_IncrementsReuseCount_OncePerProject`
+  — a key not derived from content never maps two projects' identical codes to one doc. Both reverted by hand.
+- **Task 9: test 3 seeds the reused code by closing a FIRST project through the pipeline** (p1's close
+  mints the library entry, p2's close is the reuse) rather than hand-seeding a doc with a precomputed
+  content key — the key stays production-owned and the test cannot drift from the real derivation.
