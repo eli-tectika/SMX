@@ -4,7 +4,10 @@ namespace Smx.Domain.Records;
 
 public sealed class StageState
 {
-    public string Status { get; set; } = "pending"; // pending|running|awaiting-RE|failed|needs-review|done
+    // The three awaiting-* are the spec's PARK states, written by StageDispatcher: awaiting-RE on
+    // Regulatory, awaiting-physics and awaiting-operator on Dosing. They are not "pending" — pending
+    // means the agent has not started, an awaiting-* means the record is stopped on a named human.
+    public string Status { get; set; } = "pending"; // pending|running|awaiting-RE|awaiting-physics|awaiting-operator|failed|needs-review|done
     public int Attempts { get; set; }
     public string? Error { get; set; }
 }

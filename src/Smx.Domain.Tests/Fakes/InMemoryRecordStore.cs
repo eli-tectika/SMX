@@ -33,6 +33,14 @@ public sealed class InMemoryRecordStore : IRecordStore
 
     private Task Write<T>(T doc, string id) { _docs[id] = Copy(doc)!; return Task.CompletedTask; }
 
+    /// Ordinal, descending — the twin of the Cosmos ORDER BY. Both sort the raw "O"-format string rather
+    /// than a parsed instant, which is only correct because that format is fixed-width and always +00:00.
+    public Task<IReadOnlyList<ProjectDoc>> ListProjectsAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ProjectDoc>>(_docs.Values.OfType<ProjectDoc>()
+            .OrderByDescending(p => p.CreatedAt, StringComparer.Ordinal)
+            .Select(Copy)
+            .ToList());
+
     public Task<ProjectDoc?> GetProjectAsync(string projectId, CancellationToken ct = default) =>
         Read<ProjectDoc>(projectId);
     public Task<ConstraintsDoc?> GetConstraintsAsync(string projectId, CancellationToken ct = default) =>
