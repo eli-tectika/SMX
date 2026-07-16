@@ -4,12 +4,16 @@ namespace Smx.Domain;
 
 public interface IRecordStore
 {
-    /// The one accessor with no projectId. Every other read here is partition-scoped by design; this one
-    /// fans out, because "which projects exist" is the question a client cannot ask any other way — without
-    /// it a project id is discoverable only to whoever just created it.
-    Task<IReadOnlyList<ProjectDoc>> ListProjectsAsync(CancellationToken ct = default);
-
     Task<ProjectDoc?> GetProjectAsync(string projectId, CancellationToken ct = default);
+
+    /// The one accessor with no projectId: every other read here is partition-scoped by design, and this one
+    /// fans out because "which projects exist" is the question a client cannot ask any other way — without it
+    /// a project id is discoverable only to whoever just created it.
+    ///
+    /// Returns EVERY project, deliberately unbounded. A cap would silently drop the oldest, and this list is
+    /// the only route to a project and the source of the "Needs signing" card. See
+    /// CosmosRecordStore.GetProjectsAsync, which bounds the page size instead.
+    Task<IReadOnlyList<ProjectDoc>> GetProjectsAsync(CancellationToken ct = default);
     Task<ConstraintsDoc?> GetConstraintsAsync(string projectId, CancellationToken ct = default);
     Task<MatrixDoc?> GetMatrixAsync(string projectId, CancellationToken ct = default);
     Task<DosingDoc?> GetDosingAsync(string projectId, CancellationToken ct = default);

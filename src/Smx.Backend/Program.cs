@@ -85,6 +85,7 @@ else
     app.Logger.LogInformation("Entra auth DISABLED — ENTRA_TENANT_ID/API_CLIENT_ID not set; all endpoints are open.");
 }
 app.MapProjectEndpoints();
+app.MapProjectsListEndpoints();
 app.MapRevisionEndpoints();
 app.MapChatEndpoints();
 app.MapKnowledgeEndpoints();

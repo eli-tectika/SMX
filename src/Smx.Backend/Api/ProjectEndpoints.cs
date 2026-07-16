@@ -37,21 +37,8 @@ public static class ProjectEndpoints
             return Results.Accepted($"/projects/{projectId}", new { projectId });
         });
 
-        // The only route by which a client can discover a project it did not just create. Newest first.
-        // An empty record is a 200 and an empty array, never a 404 — "no projects yet" is an answer.
-        //
-        // It PROJECTS, and the contrast with the detail route below is the point. `payload` is the whole
-        // intake body; the detail route returns it because ONE screen renders it, and a list of cards
-        // renders none of it, so shipping one per project would be pure weight. `stages` is the opposite
-        // case: the spine and the entire blocked/running/settled split are computed from it, so leaving it
-        // out would only push the client straight back into the N+1 of GET /projects/{id} that this route
-        // exists to end.
-        //
-        // No paging. One operator, projects in the tens; CosmosRecordStore.ListProjectsAsync carries the
-        // cost note and the point at which that stops being true.
-        app.MapGet("/projects", async ([FromServices] IRecordStore store, CancellationToken ct) =>
-            Results.Json((await store.ListProjectsAsync(ct))
-                .Select(d => new { d.ProjectId, d.Client, d.Product, d.Stages, d.CreatedAt }), Json.Options));
+        // GET /projects lives in ProjectsListEndpoints, not here: it carries the gate statuses the
+        // "Needs signing" card is computed from, so it reads gates as well as projects.
 
         // The payload is returned, not just the stage spine. It is the operator's OWN submitted input —
         // never an agent's output — so echoing it back cannot launder a fabricated verdict into the UI;

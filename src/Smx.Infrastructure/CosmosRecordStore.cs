@@ -24,35 +24,48 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
     public Task<VerdictDoc?> GetVerdictAsync(string projectId, string cas, string componentId, CancellationToken ct = default) =>
         ReadAsync<VerdictDoc>(RecordIds.Verdict(projectId, cas, componentId), projectId, ct);
 
-    public async Task<IReadOnlyList<VerdictDoc>> GetVerdictsAsync(string projectId, CancellationToken ct = default)
+    /// The ONE query in this class with no PartitionKey in its request options — that absence is what makes
+    /// it cross-partition. The container is partitioned by /projectId, so "every project" is a fan-out by
+    /// definition, and that is acceptable here rather than something to engineer around: one operator,
+    /// projects in the tens, and the dashboard asks on mount and window focus rather than on a timer. The
+    /// container takes the default indexing policy (infra/modules/data.bicep), so every path is indexed and
+    /// both the `type` filter and the ORDER BY are index-served — a composite index is only needed for a
+    /// multi-property sort. Wire names pinned by CosmosQueryTextTests.
+    ///
+    /// PAGE size is bounded; the RESULT is not, and the difference is the design. MaxItemCount caps the
+    /// fan-out per round trip while the loop drains every page, so a large estate costs more requests rather
+    /// than returning a short answer. A `Take(n)` here would silently drop the oldest projects, and this list
+    /// is the only route to a project — there is no search or paging on the dashboard — so a dropped project
+    /// is an unreachable one. Worse, GET /projects feeds the "Needs signing" card: a truncated list means a
+    /// gate awaiting the VP on an older project stops being surfaced by the surface that exists to surface
+    /// it, and parked projects are exactly the ones that age. At thousands of projects this wants a
+    /// continuation token exposed to the client, NOT a cap.
+    ///
+    /// Newest first, ordered on the STRING: CreatedAt is always DateTimeOffset.UtcNow.ToString("O"), so the
+    /// offset is fixed-width and always +00:00 and lexicographic order IS chronological order.
+    /// GetRevisionsAsync below leans on the same property.
+    public async Task<IReadOnlyList<ProjectDoc>> GetProjectsAsync(CancellationToken ct = default)
     {
-        var results = new List<VerdictDoc>();
-        var query = container.GetItemLinqQueryable<VerdictDoc>(
-                requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(projectId) })
-            .Where(d => d.Type == RecordTypes.Verdict)
+        var results = new List<ProjectDoc>();
+        var query = container.GetItemLinqQueryable<ProjectDoc>(
+                requestOptions: new QueryRequestOptions { MaxItemCount = PageSize })
+            .Where(d => d.Type == RecordTypes.Project)
+            .OrderByDescending(d => d.CreatedAt)
             .ToFeedIterator();
         while (query.HasMoreResults)
             results.AddRange(await query.ReadNextAsync(ct));
         return results;
     }
 
-    /// The only CROSS-PARTITION query in this store — note the absent PartitionKey request option, which is
-    /// what makes it one. The container is partitioned by /projectId, so "every project" is a fan-out by
-    /// definition, and that is fine here rather than something to engineer around: one operator, projects in
-    /// the tens, and the dashboard asks on mount and window focus rather than on a timer. The container takes
-    /// the default indexing policy (infra/modules/data.bicep), so every path is indexed and both the `type`
-    /// filter and the ORDER BY are index-served — a composite index is only needed for a multi-property sort.
-    /// The cost is linear in project count; at thousands this would want a continuation token.
-    ///
-    /// Newest first, ordered on the STRING: CreatedAt is always DateTimeOffset.UtcNow.ToString("O"), so the
-    /// offset is fixed-width and always +00:00 and lexicographic order IS chronological order.
-    /// GetRevisionsAsync below leans on the same property.
-    public async Task<IReadOnlyList<ProjectDoc>> ListProjectsAsync(CancellationToken ct = default)
+    /// Round-trip size for the projects fan-out, not a limit on it. See GetProjectsAsync.
+    private const int PageSize = 50;
+
+    public async Task<IReadOnlyList<VerdictDoc>> GetVerdictsAsync(string projectId, CancellationToken ct = default)
     {
-        var results = new List<ProjectDoc>();
-        var query = container.GetItemLinqQueryable<ProjectDoc>()
-            .Where(d => d.Type == RecordTypes.Project)
-            .OrderByDescending(d => d.CreatedAt)
+        var results = new List<VerdictDoc>();
+        var query = container.GetItemLinqQueryable<VerdictDoc>(
+                requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(projectId) })
+            .Where(d => d.Type == RecordTypes.Verdict)
             .ToFeedIterator();
         while (query.HasMoreResults)
             results.AddRange(await query.ReadNextAsync(ct));
