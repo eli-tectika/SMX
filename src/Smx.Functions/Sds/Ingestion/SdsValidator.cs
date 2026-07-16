@@ -27,10 +27,5 @@ public sealed class SdsValidator
     }
 
     private static int CountGhsSections(string text)
-    {
-        var found = new HashSet<int>();
-        foreach (Match m in Regex.Matches(text, @"(?im)^\s*SECTION\s+(\d{1,2})\b"))
-            if (int.TryParse(m.Groups[1].Value, out var n) && n is >= 1 and <= 16) found.Add(n);
-        return found.Count;
-    }
+        => GhsSections.FindHeaders(text).Select(h => h.Number).Distinct().Count();
 }

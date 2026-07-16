@@ -1,6 +1,25 @@
 [
   {
-    "supplier": "Sigma-Aldrich", "domain": "sigmaaldrich.com", "priority": 10,
+    "supplier": "Alfa Aesar (Fisher)", "domain": "fishersci.com", "priority": 10,
+    "strategy": "staticMap",
+    "sdsUrlTemplate": "https://www.fishersci.com/store/msds?countryCode=US&language=en&partNumber={productNumber}&vendorId=VN00024248",
+    "casMap": {
+      "1313-97-9": "AA11250",
+      "1314-36-9": "AA11181",
+      "1312-81-8": "AA11264",
+      "12061-16-4": "AA11309",
+      "1308-96-9": "AA11299",
+      "1314-37-0": "AA11191",
+      "1313-96-8": "AA11366",
+      "1304-76-3": "AA10658",
+      "1314-62-1": "AA11093",
+      "7440-25-7": "AA10345",
+      "1306-38-3": "AA11328",
+      "1308-87-8": "AA11319"
+    }
+  },
+  {
+    "supplier": "Sigma-Aldrich", "domain": "sigmaaldrich.com", "priority": 50,
     "strategy": "productLookup",
     "searchUrlTemplate": "https://www.sigmaaldrich.com/US/en/search/{cas}?focus=products&type=cas_number",
     "productNumberRegex": "/sds/(?<brand>[a-z]+)/(?<productNumber>[a-z0-9]+)",

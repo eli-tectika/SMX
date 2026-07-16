@@ -4,22 +4,17 @@ namespace Smx.Functions.Sds.Ingestion;
 
 public sealed class GhsChunker
 {
-    private static readonly Regex Header = new(@"(?im)^\s*SECTION\s+(\d{1,2})\b.*$", RegexOptions.Compiled);
-
     public IReadOnlyList<(string Section, string Content)> Chunk(string text)
     {
-        var matches = Header.Matches(text)
-            .Where(m => int.TryParse(m.Groups[1].Value, out var n) && n is >= 1 and <= 16)
-            .ToList();
+        var headers = GhsSections.FindHeaders(text);   // shared dialect-aware parser
 
         var chunks = new List<(string, string)>();
-        for (var i = 0; i < matches.Count; i++)
+        for (var i = 0; i < headers.Count; i++)
         {
-            var start = matches[i].Index;
-            var end = i + 1 < matches.Count ? matches[i + 1].Index : text.Length;
-            var section = matches[i].Groups[1].Value;
+            var start = headers[i].Index;
+            var end = i + 1 < headers.Count ? headers[i + 1].Index : text.Length;
             var content = text[start..end].Trim();
-            chunks.Add((section, content));
+            chunks.Add((headers[i].Number.ToString(), content));
         }
         return chunks;
     }

@@ -24,7 +24,8 @@ public sealed record SdsChunk(
 
 public sealed record AllowlistEntry(
     string Supplier, string Domain, int Priority, string Strategy,
-    string SdsUrlTemplate, string? SearchUrlTemplate, string? ProductNumberRegex);
+    string SdsUrlTemplate, string? SearchUrlTemplate, string? ProductNumberRegex,
+    Dictionary<string, string>? CasMap = null);   // staticMap: curated CAS -> product number
 
 public sealed record SubstanceKey(string Element, string Form, string Cas);
 

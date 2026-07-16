@@ -47,6 +47,7 @@ var host = new HostBuilder()
         services.AddSingleton(_ => AllowlistProvider.FromFile(opts.AllowlistPath));
         services.AddSingleton<ISourceStrategy, CasTemplateStrategy>();
         services.AddSingleton<ISourceStrategy, ProductLookupStrategy>();
+        services.AddSingleton<ISourceStrategy, StaticMapStrategy>();
         services.AddSingleton<SourceResolver>();
 
         // Cosmos (camelCase so records map to /element, /cas partition keys + registry field queries)
