@@ -38,6 +38,9 @@ param uamiId string = ''
 #disable-next-line secure-secrets-in-params
 param certKeyVaultSecretId string = ''
 
+@description('DNS label for the gateway public IP, giving <label>.<region>.cloudapp.azure.com. Empty = no name, IP only. The label must be globally unique within the region, so callers pass one carrying the estate uniqueSuffix.')
+param dnsLabel string = ''
+
 var gwName = 'agw-${namePrefix}-${env}-${regionShort}'
 var pipName = 'pip-${namePrefix}-${env}-agw-${regionShort}'
 var gwId = resourceId('Microsoft.Network/applicationGateways', gwName)
@@ -101,6 +104,9 @@ resource pip 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
   }
   properties: {
     publicIPAllocationMethod: 'Static'
+    dnsSettings: empty(dnsLabel) ? null : {
+      domainNameLabel: dnsLabel
+    }
   }
 }
 
@@ -378,3 +384,6 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
 
 output gatewayPublicIp string = pip.properties.ipAddress
 output gatewayName string = appGw.name
+
+@description('Public hostname of the gateway, or empty when no dnsLabel was set.')
+output gatewayFqdn string = empty(dnsLabel) ? '' : pip.properties.dnsSettings.fqdn

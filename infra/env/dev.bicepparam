@@ -9,6 +9,13 @@ param regionShort = 'swc'
 // (currently 0 for every Claude model). The deployment Bicep is correct and validated;
 // flip this to true (or delete the line — the module default is true) once quota lands,
 // then redeploy to create the model. Mirrors the deployGpt4o gate.
+//
+// This line now also decides WHICH MODEL THE AGENTS CALL: main.bicep derives
+// `modelProvider = deployClaude ? 'anthropic' : 'openai'`, so with Claude off the agents run on the
+// gpt-5-mini stand-in. That coupling exists because this flag being false while the app defaulted to
+// the Anthropic provider is exactly what broke every agent turn: an account with no Anthropic
+// deployment does not serve /anthropic at all, so each turn died on a 404 `api_not_supported`.
+// Flipping this to true moves the agents back to Claude in the same redeploy — nothing else to change.
 param deployClaude = false
 
 // Policy-assignment writes need the Resource Policy Contributor role, which the dev deployer

@@ -28,6 +28,12 @@ param deployGpt4o bool = false
 @description('gpt-4o deployment capacity (thousands of TPM). Kept minimal.')
 param gpt4oCapacity int = 1
 
+@description('Deploy the gpt-5-mini chat model. ON by default: it is the OpenAI-provider stand-in the agents run on when Claude is not deployed, and the account must always offer SOME chat model — otherwise MODEL_PROVIDER=openai resolves to a deployment that does not exist.')
+param deployGpt5Mini bool = true
+
+@description('gpt-5-mini deployment capacity (thousands of TPM). Kept minimal.')
+param gpt5MiniCapacity int = 1
+
 @description('text-embedding-3-large deployment capacity (thousands of TPM). Kept minimal.')
 param embeddingCapacity int = 1
 
@@ -156,8 +162,30 @@ resource gpt4o 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = i
   }
 }
 
+// gpt-5-mini (reasoning) — the OpenAI-provider stand-in the agents run on when Claude is not deployed.
+// It is what BackendOptions.OpenAiDeployment defaults to, and MODEL_PROVIDER=openai selects it.
+// GlobalStandard (as listed by `az cognitiveservices model list -l swedencentral`), not Standard.
+resource gpt5Mini 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = if (deployGpt5Mini) {
+  parent: foundry
+  name: 'gpt-5-mini'
+  sku: {
+    name: 'GlobalStandard'
+    capacity: gpt5MiniCapacity
+  }
+  dependsOn: [
+    gpt4o
+  ]
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'gpt-5-mini'
+      version: '2025-08-07'
+    }
+  }
+}
+
 // text-embedding-3-large (vectorization). Deployments on one account must be
-// serialized; dependsOn gpt-4o is a no-op when gpt-4o is not deployed.
+// serialized; each dependsOn is a no-op when that model is not deployed.
 resource embedding 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
   parent: foundry
   name: 'text-embedding-3-large'
@@ -166,7 +194,7 @@ resource embedding 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01'
     capacity: embeddingCapacity
   }
   dependsOn: [
-    gpt4o
+    gpt5Mini
   ]
   properties: {
     model: {

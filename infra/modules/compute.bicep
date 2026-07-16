@@ -38,6 +38,19 @@ param uamiClientId string = ''
 @description('Foundry account endpoint; the app derives the /anthropic/v1 base itself.')
 param foundryEndpoint string = ''
 
+@description('Which model the agents call: "anthropic" (Claude on Foundry) or "openai" (the gpt-5-mini stand-in). main.bicep derives this from deployClaude so it cannot name a model that was never deployed.')
+@allowed([
+  'anthropic'
+  'openai'
+])
+param modelProvider string = 'anthropic'
+
+@description('Claude deployment name; used only when modelProvider is "anthropic". Must match the deployment ai.bicep creates.')
+param claudeDeployment string = 'claude-opus-4-7'
+
+@description('OpenAI chat deployment name; used only when modelProvider is "openai". Must match the deployment ai.bicep creates.')
+param openAiDeployment string = 'gpt-5-mini'
+
 @description('Cosmos account document endpoint.')
 param cosmosEndpoint string = ''
 
@@ -102,7 +115,14 @@ var sharedEnv = [
   { name: 'COSMOS_ACCOUNT_ENDPOINT', value: cosmosEndpoint }
   { name: 'SEARCH_ENDPOINT', value: searchEndpoint }
   { name: 'KEYVAULT_URI', value: keyVaultUri }
-  { name: 'CLAUDE_DEPLOYMENT', value: 'claude-opus-4-7' }
+  // Which model the agents actually call. This is passed in rather than defaulted in code, and main.bicep
+  // derives it from `deployClaude`, because the two drifting apart is not a hypothetical: the code defaults
+  // to 'anthropic', a deploy passed deployClaude=false, and every agent turn then died on a 404
+  // `api_not_supported` — the /anthropic API surface is not even enabled on an account with no Anthropic
+  // deployment. Deriving the provider from what was deployed makes that combination unrepresentable.
+  { name: 'MODEL_PROVIDER', value: modelProvider }
+  { name: 'CLAUDE_DEPLOYMENT', value: claudeDeployment }
+  { name: 'OPENAI_DEPLOYMENT', value: openAiDeployment }
   // Both sides of the learned-conclusions loop (query embedding + document push) resolve the model from
   // this one setting, so they cannot drift apart. Must stay text-embedding-3-large: ai.bicep deploys
   // exactly that (unconditionally), and the index's vector field is sized to its 3072 dims.

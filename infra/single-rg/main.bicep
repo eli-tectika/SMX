@@ -29,6 +29,15 @@ param deployGpt4o bool = false
 @description('Deploy the Claude Opus 4.7 reasoning model on Foundry (Anthropic, GlobalStandard). ON by default — the agent backend needs it.')
 param deployClaude bool = true
 
+@description('Deploy the gpt-5-mini chat model — the stand-in the agents run on when Claude is off. ON by default so the account always offers a chat model.')
+param deployGpt5Mini bool = true
+
+// The agents call Claude when it was deployed, and the gpt-5-mini stand-in otherwise. DERIVED, not a
+// parameter, so the two can never contradict each other: a deploy that passed deployClaude=false while the
+// app defaulted to the Anthropic provider is exactly how every agent turn came to die on a 404
+// `api_not_supported` — an account with no Anthropic deployment does not serve /anthropic at all.
+var modelProvider = deployClaude ? 'anthropic' : 'openai'
+
 @description('Frontend SPA image (ACR path incl. tag). Empty = placeholder.')
 param frontendImage string = ''
 
@@ -143,6 +152,7 @@ module ai 'modules/ai.bicep' = {
     searchSku: searchSku
     deployGpt4o: deployGpt4o
     deployClaude: deployClaude
+    deployGpt5Mini: deployGpt5Mini
   }
 }
 
@@ -210,6 +220,7 @@ module compute 'modules/compute.bicep' = {
     orchestratorImage: orchestratorImage
     uamiClientId: security.outputs.uamiClientId
     foundryEndpoint: ai.outputs.foundryEndpoint
+    modelProvider: modelProvider
     cosmosEndpoint: data.outputs.cosmosDocumentEndpoint
     searchEndpoint: 'https://${ai.outputs.searchName}.search.windows.net'
     keyVaultUri: security.outputs.keyVaultUri
@@ -274,6 +285,9 @@ module gateway 'modules/gateway.bicep' = {
     gatewaySku: env == 'prod' ? 'WAF_v2' : 'Standard_v2'
     uamiId: security.outputs.uamiId
     certKeyVaultSecretId: certKeyVaultSecretId
+    // Gives the gateway a real hostname instead of a bare IP. uniqueSuffix keeps the label
+    // globally unique within the region, which cloudapp.azure.com requires.
+    dnsLabel: '${namePrefix}-${env}-${uniqueSuffix}'
   }
 }
 
@@ -308,5 +322,7 @@ output foundryEndpoint string = ai.outputs.foundryEndpoint
 output acrLoginServer string = acr.outputs.acrLoginServer
 output frontendFqdn string = compute.outputs.frontendFqdn
 output gatewayPublicIp string = gateway.outputs.gatewayPublicIp
+output gatewayFqdn string = gateway.outputs.gatewayFqdn
+output gatewayUrl string = 'http://${gateway.outputs.gatewayFqdn}'
 output searchProxyAppName string = functions.outputs.searchProxyAppName
 output regSyncAppName string = functions.outputs.regSyncAppName
