@@ -817,7 +817,7 @@ The VP GateDoc landing on the change feed IS the close dispatch (writing the rec
 - Modify: `src/Smx.Backend/Program.cs`
 - Test: `src/Smx.Backend.Tests/ProjectsListEndpointsTests.cs`, `src/Smx.Orchestrator.Tests/CosmosQueryTextTests.cs` (the wire-name pin — MANDATORY, this is the first cross-partition query in the store)
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
 
 ```csharp
     // Endpoint: GET /projects → [ { projectId, client, product, createdAt, stages, gates: { regulatory,
@@ -830,7 +830,7 @@ The VP GateDoc landing on the change feed IS the close dispatch (writing the rec
     //    ABSENT (the PascalCase silent-zero-rows bug class).
 ```
 
-- [ ] **Step 2: fail → Step 3: implement.**
+- [x] **Step 2: fail → Step 3: implement.**
 
 `IRecordStore`:
 
@@ -857,8 +857,8 @@ The VP GateDoc landing on the change feed IS the close dispatch (writing the rec
 
 Endpoint (`ProjectsListEndpoints.MapProjectsListEndpoints`): for each project also `GetGateAsync(id, Regulatory)` + `GetGateAsync(id, Vp)`; project to the response shape above with `Results.Json(..., Json.Options)`.
 
-- [ ] **Step 4: green + full suite. Step 5: Mutation:** in the endpoint, swap the gates lookup to always return null → test 1's gate assert FAILS. In `CosmosQueryTextTests`, verify the pin actually pins: temporarily break the serializer's member-naming for this query type — if impractical, assert-inspect the emitted text contains `root["createdAt"]` and would differ under PascalCase (the existing test class shows the technique; follow it). Revert; report.
-- [ ] **Step 6: Commit** `feat(api): GET /projects — the record is the list, gates included, and the query is wire-name-pinned`
+- [x] **Step 4: green + full suite. Step 5: Mutation:** in the endpoint, swap the gates lookup to always return null → test 1's gate assert FAILS. In `CosmosQueryTextTests`, verify the pin actually pins: temporarily break the serializer's member-naming for this query type — if impractical, assert-inspect the emitted text contains `root["createdAt"]` and would differ under PascalCase (the existing test class shows the technique; follow it). Revert; report.
+- [x] **Step 6: Commit** `feat(api): GET /projects — the record is the list, gates included, and the query is wire-name-pinned`
 
 ---
 
@@ -1102,3 +1102,9 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
 - `OrchestratorHostWiringTests.AChatTurnsTools_BuildFromTheRealGraph_ForEveryChattableStage` needed no
   structural change: the loop reflects over `Stages.All` and `decision` falls into the non-empty else branch
   by construction. A comment now records that landing there is deliberate.
+- **Task 11 shipped first** (out of plan order, for immediate deploy); it introduced `GateTypes.Vp` ahead of
+  Task 7, so the list's `gates.vp` field reads `GetGateAsync(id, GateTypes.Vp)` — null (an explicit,
+  honest `vp: null` on the wire) until any VP gate exists. The gates object is a `Dictionary<string,string?>`,
+  not an anonymous object, because `Json.Options`' `WhenWritingNull` would drop a null anonymous PROPERTY,
+  and "no gate yet" must be a value the frontend can read; dictionary entries are exempt. The dashboard
+  (Task 12) was NOT built with it.
