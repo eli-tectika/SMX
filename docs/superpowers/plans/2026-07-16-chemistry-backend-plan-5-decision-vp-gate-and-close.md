@@ -870,7 +870,7 @@ Endpoint (`ProjectsListEndpoints.MapProjectsListEndpoints`): for each project al
 
 §7: "the aggregation the operator lands on: what's blocked and on whom (awaiting physics/R.E./client/VP), what's ready to continue, what needs signing — computed over the project + gate docs." Pure projection — every fact already lives in `StageState.Status`, `StageState.Error`, and the two GateDocs.
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
 
 ```csharp
     // Response: { projectId, blocked: [ { stage, on, detail } ], readyToContinue: [stage],
@@ -886,9 +886,9 @@ Endpoint (`ProjectsListEndpoints.MapProjectsListEndpoints`): for each project al
     // 3. Dashboard_404_ForUnknownProject.
 ```
 
-- [ ] **Step 2: fail → Step 3: implement → Step 4: green + full suite.**
-- [ ] **Step 5: Mutation:** swap the awaiting-physics owner mapping to "operator" → test 1 FAILS (the whole point is naming the RIGHT owner — the operator chasing themselves for the physicist's number is the UX failure the spec calls out). Revert.
-- [ ] **Step 6: Commit** `feat(api): the dashboard — blocked-on-whom, ready-next, needs-signing, all from the record`
+- [x] **Step 2: fail → Step 3: implement → Step 4: green + full suite.**
+- [x] **Step 5: Mutation:** swap the awaiting-physics owner mapping to "operator" → test 1 FAILS (the whole point is naming the RIGHT owner — the operator chasing themselves for the physicist's number is the UX failure the spec calls out). Revert.
+- [x] **Step 6: Commit** `feat(api): the dashboard — blocked-on-whom, ready-next, needs-signing, all from the record`
 
 ---
 
@@ -898,7 +898,7 @@ Endpoint (`ProjectsListEndpoints.MapProjectsListEndpoints`): for each project al
 - Modify: `src/Smx.Backend/Api/ProjectEndpoints.cs` (candidates + verdicts) and `src/Smx.Backend/Api/DecisionEndpoints.cs` (decision)
 - Test: extend the matching test classes
 
-- [ ] **Step 1: Failing tests** — three trivially-shaped reads, each `Results.Json(doc, Json.Options)` or 404, mirroring `GET /dosing`:
+- [x] **Step 1: Failing tests** — three trivially-shaped reads, each `Results.Json(doc, Json.Options)` or 404, mirroring `GET /dosing`:
 
 ```csharp
     // GET /projects/{id}/candidates  → CandidatesDoc | 404
@@ -911,7 +911,7 @@ Endpoint (`ProjectsListEndpoints.MapProjectsListEndpoints`): for each project al
     // "proposed" from "signed" without guessing (Law 9 on the wire).
 ```
 
-- [ ] **Step 2: fail → Step 3: implement → Step 4: green + full suite → Step 5: commit**
+- [x] **Step 2: fail → Step 3: implement → Step 4: green + full suite → Step 5: commit**
 
 ```bash
 git commit -m "feat(api): candidates, verdicts and decision reads — thin, cited, and proposal/signature distinct on the wire"
@@ -928,7 +928,7 @@ git commit -m "feat(api): candidates, verdicts and decision reads — thin, cite
 
 §7: "deterministically assembled from the verdict/candidate docs (like the xlsx export), exportable"; the return inbox is the existing operator-entry endpoints. These are what the operator hands the R.E. — a wrong or incomplete package silently narrows the offline review, so the tests pin COVERAGE, not just shape.
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
 
 ```csharp
     // GET /projects/{id}/regulatory/elements-to-check →
@@ -946,9 +946,9 @@ git commit -m "feat(api): candidates, verdicts and decision reads — thin, cite
     //   dimension's honest empty state — never silently dropped.
 ```
 
-- [ ] **Step 2: fail → Step 3: implement** (pure projections; JSON now, xlsx later if the operator asks — record that as a deferred follow-on) **→ Step 4: green + full suite.**
-- [ ] **Step 5: Mutation:** drop Tier-C filtering → elements-to-check pin still passes (Tier-C cells aren't live) BUT add + verify the complementary assert: no Tier-C cas appears (the R.E.'s time is the budget; auditing dead candidates spends it). Then drop the citations pass-through → the compliance-package pin FAILS. Revert; report.
-- [ ] **Step 6: Commit** `feat(api): the offline round-trip artifacts — full coverage, verbatim citations, deterministic`
+- [x] **Step 2: fail → Step 3: implement** (pure projections; JSON now, xlsx later if the operator asks — record that as a deferred follow-on) **→ Step 4: green + full suite.**
+- [x] **Step 5: Mutation:** drop Tier-C filtering → elements-to-check pin still passes (Tier-C cells aren't live) BUT add + verify the complementary assert: no Tier-C cas appears (the R.E.'s time is the budget; auditing dead candidates spends it). Then drop the citations pass-through → the compliance-package pin FAILS. Revert; report.
+- [x] **Step 6: Commit** `feat(api): the offline round-trip artifacts — full coverage, verbatim citations, deterministic`
 
 ---
 
@@ -1241,3 +1241,33 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
 - **Task 9: test 3 seeds the reused code by closing a FIRST project through the pipeline** (p1's close
   mints the library entry, p2's close is the reuse) rather than hand-seeding a doc with a precomputed
   content key — the key stays production-owned and the test cannot drift from the real derivation.
+- **Task 12: a fourth fact beyond the plan's three** —
+  `Dashboard_NeedsReviewAndFailed_BlockOnTheOperator_WithTheStageError` pins the needs-review/failed →
+  "operator" + StageState.Error-as-detail mapping on its own (the plan folded it into the comment block
+  but named no test for it; an error nobody surfaces is a stall nobody notices). `needsSigning` lists only
+  UNAPPROVED gates (a signed gate needs nothing), the regulatory entry mirroring GET /gate/regulatory's
+  completeness-first logic and the vp entry using `VpGate.Armable` exactly as the plan specifies. The
+  first stage (intake) counts as ready-to-continue when pending — it has no upstream to wait on.
+  Owner-mapping mutation ran as written: awaiting-physics → "operator" FAILED `Dashboard_NamesTheBlocker`
+  (string assert, "physics" ≠ "operator"); reverted by hand.
+- **Task 13 REVIEW-MANDATED FIX (rode this commit): the `GET /gate/vp` candidates-null asymmetry.** With
+  candidates absent the read computed `uncovered = []` and could report `armable: true` where the POST
+  422s "no candidates on file". The read now emits that same blocker verbatim when candidates are null
+  (armable false), pinned by `GetGateVp_WithNoCandidatesOnFile_IsNotArmable_AndNamesTheBlocker` — which
+  FAILED before the two-line fix (TDD'd, not retrofitted).
+- **Task 13: the explicit `confirmedCode: null` needed a domain attribute, not endpoint code** —
+  `Json.Options` is globally `WhenWritingNull`, so an unconfirmed decision would DROP the key entirely.
+  `ComponentDecision.ConfirmedCode` now carries `[property: JsonIgnore(Condition = JsonIgnoreCondition.Never)]`
+  with a comment explaining the Law-9 legibility rationale; ConfirmedBy/ConfirmedReason stay droppable
+  (the plan pinned only confirmedCode as the wire's proposed-vs-signed discriminator).
+- **Task 13 side-effect, no code change:** the new `GET /projects/{id}/decision` incidentally makes the
+  202 Location header the order endpoint returns (`Results.Accepted($"/projects/{projectId}/decision", …)`)
+  point at a real route for the first time.
+- **Task 14: `compliance-package` 404s when ZERO verdicts exist** (the plan left the empty case open; an
+  EMPTY package handed to the R.E. is the degenerate narrowed review — zero entries posing as a completed
+  screening). A null ConstraintsDoc folds `markets: []` per item rather than failing — the components
+  themselves still ride from the candidate rows. Shapes are JSON-only; **xlsx export stays a deferred
+  follow-on until the operator asks** (also recorded in Open questions). Both mutations ran as written:
+  Tier-C filter dropped → the coverage pin still PASSED and the complementary
+  `Assert.DoesNotContain("cas-pb", …)` FAILED; citations pass-through emptied → the verbatim-citations pin
+  FAILED (`Assert.Single` on the ElementGate citations). Both reverted by hand.
