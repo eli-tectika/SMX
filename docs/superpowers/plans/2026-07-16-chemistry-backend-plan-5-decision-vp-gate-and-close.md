@@ -954,6 +954,24 @@ git commit -m "feat(api): candidates, verdicts and decision reads — thin, cite
 
 ## Task 15: Revise-with-reason for Decision
 
+> **REVIEW-MANDATED SCOPE ADDITION (from the Tasks 6+7 code review — the cross-task stale-decision cascade):**
+> `ReviseDosingAsync`'s persist closure (StageDispatcher.cs, the Cost reset at ~:562) resets Cost to
+> `pending` but NOT Decision. So a Dosing revision on a project parked `awaiting-VP` re-prices Cost, the
+> fresh CostDoc redelivers, `TryDecideAsync`'s guard sees `awaiting-VP` and ABSORBS it — the DecisionDoc
+> keeps stale rows/proposals over the revised dosing/cost, and the VP endpoint (which validates
+> confirmations only against the live DosingDoc's ratio signatures) would let a signature land on stale
+> ppm/price rows if the re-picked ratio survives the revision. The false pass, one layer up. Task 15 must
+> ALSO:
+> - **(a)** In `ReviseDosingAsync`'s persist closure, alongside the Cost reset:
+>   `Decision: awaiting-VP | needs-review | failed → pending` (error cleared) — the fresh CostDoc then IS
+>   the re-trigger; `done` is EXCLUDED (closed = history). TDD: a Dosing revision on an awaiting-VP
+>   project ends with Decision re-run over the NEW dosing (fresh proposal), not the stale one.
+> - **(b)** `ReviseDosingAsync` (and `ReviseDecisionAsync`) REFUSE outright on a closed project (VP gate
+>   approved): needs-review with the closed-project message — today nothing stops a Dosing revision from
+>   re-pricing a closed project under its signed decision.
+> - **(c)** Mutation-test both: drop the Decision reset → the stale-proposal test FAILS; drop the closed
+>   refusal → the closed-project test FAILS.
+
 **Files:**
 - Modify: `src/Smx.Orchestrator/Dispatch/StageDispatcher.cs` (`OnRevisionAsync` gets a `Stages.Decision` arm → `ReviseDecisionAsync`)
 - Test: `src/Smx.Orchestrator.Tests/DecisionRevisionTests.cs` (new — model on `DosingRevisionTests` + the Plan-4 holistic lesson)
