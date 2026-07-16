@@ -987,7 +987,7 @@ git commit -m "feat(api): candidates, verdicts and decision reads — thin, cite
 
 Law 4: the operator never hand-edits the pick — they tell the agent why, the agent re-picks, the reason becomes a Learned Conclusion. The Plan-4 holistic bug (a revision leaving a downstream stage stale) has a direct analog here: **a Decision revision must void an un-actioned VP gate and re-park at awaiting-VP** — but it must never touch an ALREADY-CLOSED project (confirmed + closed = history; revising history is a new project decision, refuse it).
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
 
 ```csharp
     // 1. ARevision_RerunsThePick_WithTheReasonInThePrompt (fake Decision arm captures the RevisionDoc).
@@ -1001,9 +1001,9 @@ Law 4: the operator never hand-edits the pick — they tell the agent why, the a
     //    then cover words the VP never read.)
 ```
 
-- [ ] **Step 2: fail → Step 3: implement** `ReviseDecisionAsync` (mirror `ReviseDosingAsync`'s shape: re-assemble, re-run with revision, upsert, reset stage; plus the closed-project refusal FIRST) **→ Step 4: green + full suite.**
-- [ ] **Step 5: Mutation:** remove the closed-project refusal → test 4 FAILS. Revert.
-- [ ] **Step 6: Commit** `feat(dispatch): revise Decision with a reason — and a signed close is history, not an editable draft`
+- [x] **Step 2: fail → Step 3: implement** `ReviseDecisionAsync` (mirror `ReviseDosingAsync`'s shape: re-assemble, re-run with revision, upsert, reset stage; plus the closed-project refusal FIRST) **→ Step 4: green + full suite.**
+- [x] **Step 5: Mutation:** remove the closed-project refusal → test 4 FAILS. Revert.
+- [x] **Step 6: Commit** `feat(dispatch): revise Decision with a reason — and a signature answers a park, never a draft, never history` (the (d)-inclusive message; the sketch's message predated the scope additions)
 
 ---
 
@@ -1289,3 +1289,41 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
   vanishing from the dashboard (`var s when s.StartsWith("awaiting-")` before the null arm) — a park that
   drops off the blocked list is a stall nobody notices. All four TDD'd: six new/strengthened facts
   observed failing before the fixes.
+- **Task 15: "lands needs-review" implemented as `RevisionStatus.Failed` + the closed-project message.**
+  `RevisionStatus` has three values (pending/applied/failed), the executor's single refusal mechanism is
+  `FailAsync`, and this task's file list touches neither `RevisionDoc.cs` nor the status vocabulary — a
+  fourth status for one refusal would ripple the wire contract for no audit gain. The Error field carries
+  the closed-project message verbatim; both closed tests pin it.
+- **Task 15 touched three files beyond the plan's list, each forced by the task itself:**
+  (i) `RevisionEffects.cs` (+ its tests) — Decision joins `IsRevisable` (the POST /revise and chat
+  apply_revision front doors route on nothing else), answers `false` to `BreaksRegulatoryGate` (the pick
+  is strictly downstream of the regulatory signature), and maps to `KnowledgeKinds.Decision` in
+  `ConclusionKind` (without which `WriteConclusionAsync` THROWS for a decision revision) — the same
+  front-door move Plan-4's Task 8 made for Dosing. The `IsRevisable` theory was renamed
+  `…DiscoveryRegulatoryDosingAndDecisionOnly` to match.
+  (ii) `VpGate.cs` gained **`ParkBlocker`** (+ a VpGateTests pin): ONE domain helper answering
+  "may a determination be posted at this stage status", consumed by all three surfaces — the POST's 422,
+  `GET /gate/vp`, and the dashboard's vp card — so the reads can never drift from the guard they mirror.
+  (iii) `DecisionEndpoints.cs` + `ProjectsListEndpoints.cs` — the (d) guard and its two read mirrors.
+- **Task 15(d) guard placement:** first of the RECORD-STATE checks — after the two request-shape 422s
+  (determination literal, reason), before `VpGate.Armable` and the coverage re-check, before the
+  rejected/approve split (it covers BOTH verbs), and before any write. The park is the precondition the
+  armability checks refine: in the mid-re-pick state (`pending` + stale DecisionDoc) `VpGate.Armable`
+  PASSES, so ordering the park guard later would not save it — it must exist, not merely come first.
+- **Task 15(d) mutation nuance:** with the guard dropped, the two READ tests kept passing (the read and
+  the dashboard mirror `ParkBlocker` independently) — the kill was carried entirely by the two POST
+  refusal theories (4 cases: pending/done × approve/reject, all FAILED under the mutation). That is why
+  (d) demanded the endpoint tests and not just read parity.
+- **Task 15: all six dispatcher-level tests live in `DecisionRevisionTests.cs`** — tests 1-4 plus the
+  (a) stale-decision cascade and the (b) dosing-closed refusal — with BOTH optional stores wired
+  (knowledge + catalog) through one dispatcher, the Plan-4 holistic lesson made structural. The cascade
+  test reads every expected ratio OFF the records (`Codes.Single().RatioSignature`) because RatioSignature
+  is derived from the markers, never stored — a hard-coded string drifts from the rendering.
+- **Task 15 mutations, all four real kills, all reverted by hand:** (1) Decision reset dropped from
+  `ReviseDosingAsync`'s persist closure → `ADosingRevision_OnAnAwaitingVpProject_EndsWithDecisionRePickedOverTheNewDosing`
+  FAILED (stage stuck `awaiting-VP`, the fresh CostDoc absorbed, stale proposal standing); (2a) closed
+  refusal dropped from `ReviseDecisionAsync` → `ARevision_AfterClose_IsRefused` FAILED (revision `applied`
+  over the signed decision); (2b) closed refusal dropped from `ReviseDosingAsync` →
+  `ADosingRevision_AfterClose_IsRefused_NothingReRun_NothingRePriced` FAILED (a closed project re-dosed);
+  (3) the (d) stage guard dropped from the endpoint → all four POST refusal cases FAILED (200 OK where a
+  422 must be).

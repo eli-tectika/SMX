@@ -255,6 +255,90 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         Assert.NotNull(comp.ProposedCode);   // the proposal survives the rejection — it is history
     }
 
+    // ---- (d): a signature answers a park — 422 unless Stages[decision] == awaiting-VP ---------------------
+
+    [Theory]
+    [InlineData("approved")]
+    [InlineData("rejected")]
+    public async Task PostDetermination_WhileTheDecisionIsMidRePick_Refuses_NothingStamped(string determination)
+    {
+        // Task 15(a) resets Decision to `pending` on a Dosing revision while the STALE DecisionDoc is
+        // still on file. Without the stage guard the VP could sign that stale proposal — and the in-flight
+        // re-pick would then OVERWRITE the stamped doc under an approved gate: close finds zero confirmed
+        // codes and procurement releases over an empty conclusion. The park is the precondition.
+        await SeedAwaitingVpAsync();
+        var project = (await _store.GetProjectAsync(P))!;
+        project.Stages[Stages.Decision].Status = "pending";   // mid-re-pick: reset, stale doc on file
+        await _store.UpsertProjectAsync(project);
+
+        var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
+            determination == "approved"
+                ? Approve("sign the stale one", ("bottle", Ratio("bottle")))
+                : new { determination = "rejected", reason = "no" });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, res.StatusCode);
+        var body = await res.Content.ReadAsStringAsync();
+        Assert.Contains("pending", body);                     // the blocker names the actual status
+        Assert.Contains("awaiting-VP", body);                 // and the park a signature answers
+        Assert.Null(await _store.GetGateAsync(P, GateTypes.Vp));                       // nothing written
+        Assert.Null(Assert.Single((await _store.GetDecisionAsync(P))!.Components).ConfirmedCode);
+    }
+
+    [Theory]
+    [InlineData("approved")]
+    [InlineData("rejected")]
+    public async Task PostDetermination_AfterClose_Refuses_ApproveAndRejectAlike(string determination)
+    {
+        // Decision `done` means the VP signed and the project CLOSED — Marker Library written, conclusion
+        // filed, procurement Released. A post-close approve would re-stamp history; a post-close REJECT is
+        // the "revocation that revokes nothing": the gate would flip locked while Procurement stays
+        // Released. Both are refused, and the signed gate is untouched either way.
+        await SeedAwaitingVpAsync();
+        await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
+            Approve("codes reviewed", ("bottle", Ratio("bottle"))));         // the real signature
+        var signedAt = (await _store.GetGateAsync(P, GateTypes.Vp))!.ApprovedAt;
+        var project = (await _store.GetProjectAsync(P))!;
+        project.Stages[Stages.Decision].Status = "done";                      // what the close dispatch stamps
+        await _store.UpsertProjectAsync(project);
+        var decision = (await _store.GetDecisionAsync(P))!;
+        decision.Procurement.Status = ProcurementStatus.Released;             // ...and releases
+        await _store.UpsertDecisionAsync(decision);
+
+        var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
+            determination == "approved"
+                ? Approve("stamp it again", ("bottle", Ratio("bottle")))
+                : new { determination = "rejected", reason = "revoke it" });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, res.StatusCode);
+        Assert.Contains("done", await res.Content.ReadAsStringAsync());
+        // The close is HISTORY: the gate is still approved with the ORIGINAL timestamp — in particular the
+        // reject did NOT lock it over Released procurement — and the confirmations still stand.
+        var gate = (await _store.GetGateAsync(P, GateTypes.Vp))!;
+        Assert.Equal("approved", gate.Status);
+        Assert.Equal(signedAt, gate.ApprovedAt);
+        var comp = Assert.Single((await _store.GetDecisionAsync(P))!.Components);
+        Assert.Equal(Ratio("bottle"), comp.ConfirmedCode);
+        Assert.Equal(ProcurementStatus.Released, (await _store.GetDecisionAsync(P))!.Procurement.Status);
+    }
+
+    [Fact]
+    public async Task GetGateVp_WhileTheStageIsNotParked_IsNotArmable_AndNamesTheBlocker()
+    {
+        // The read must never advertise what the POST refuses (the Task-13 lesson, applied to (d)): with
+        // everything else armable but the stage mid-re-pick, `armable: true` here would be the lying
+        // affordance that gets a stale proposal signed.
+        await SeedAwaitingVpAsync();
+        var project = (await _store.GetProjectAsync(P))!;
+        project.Stages[Stages.Decision].Status = "pending";
+        await _store.UpsertProjectAsync(project);
+
+        var g = await _client.GetFromJsonAsync<JsonElement>($"/projects/{P}/gate/vp");
+
+        Assert.False(g.GetProperty("armable").GetBoolean());
+        var blockers = g.GetProperty("blockers").EnumerateArray().Select(b => b.GetString()).ToList();
+        Assert.Contains(blockers, b => b!.Contains("'pending'") && b.Contains("not 'awaiting-VP'"));
+    }
+
     [Fact]
     public async Task PostDetermination_ApproveTwice_PreservesApprovedAt()
     {

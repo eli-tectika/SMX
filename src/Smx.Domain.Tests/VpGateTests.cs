@@ -86,6 +86,28 @@ public class VpGateTests
     }
 
     [Fact]
+    public void ParkBlocker_IsNullOnlyWhileTheStageAwaitsTheVp()
+    {
+        // "A signature answers a park" (Task 15(d)): the determination endpoint refuses unless the
+        // Decision stage is parked `awaiting-VP`, and the gate read + dashboard must surface the SAME
+        // blocker so no affordance ever advertises a POST that would 422. One helper, three surfaces —
+        // this pin is what keeps them from drifting.
+        Assert.Null(VpGate.ParkBlocker("awaiting-VP"));
+
+        foreach (var status in new[] { "pending", "running", "needs-review", "failed", "done" })
+        {
+            var blocker = VpGate.ParkBlocker(status);
+            Assert.NotNull(blocker);
+            Assert.Contains($"'{status}'", blocker);            // names the actual status the operator sees
+            Assert.Contains("not 'awaiting-VP'", blocker);      // and the one a signature answers
+        }
+
+        // No project / no stage record is not a park either — a determination cannot answer nothing.
+        Assert.NotNull(VpGate.ParkBlocker(null));
+        Assert.Contains("not 'awaiting-VP'", VpGate.ParkBlocker(null));
+    }
+
+    [Fact]
     public void NotArmable_WhenTheDecisionCoversNoComponents()
     {
         // Zero components is unreachable today via the upstream guarantees (DecisionAssembler emits one

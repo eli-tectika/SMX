@@ -233,6 +233,51 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
     }
 
     [Fact]
+    public async Task Dashboard_VpEntry_IsNotArmable_WhileTheDecisionStageIsNotParked()
+    {
+        // Task 15(d): the POST refuses any determination unless the Decision stage is parked
+        // `awaiting-VP` — a Dosing revision resets it to `pending` while the STALE DecisionDoc is still
+        // on file. The dashboard mirrors the gate read's coverage logic (the Tasks 12-14 review), so it
+        // must surface the same park blocker instead of advertising the gate the POST 422s.
+        var p = Project("proj-dash-repick", "Acme", "Bottle", "2026-07-16T09:00:00.0000000+00:00");
+        p.Stages[Stages.Decision].Status = "pending";   // mid-re-pick
+        await _store.UpsertProjectAsync(p);
+        await _store.UpsertGateAsync(new GateDoc
+        {
+            Id = RecordIds.Gate("proj-dash-repick", GateTypes.Regulatory), ProjectId = "proj-dash-repick",
+            GateType = GateTypes.Regulatory, Status = "approved", ApprovedAt = "2026-07-16T00:00:00.0000000+00:00",
+        });
+        // Everything ELSE armable — the stale DecisionDoc proposes, the live analysis is covered — so the
+        // park blocker is the ONLY thing standing, and a dropped mirror would flip armable to true.
+        await _store.UpsertDecisionAsync(new DecisionDoc
+        {
+            Id = RecordIds.Decision("proj-dash-repick"), ProjectId = "proj-dash-repick", GeneratedAt = "t",
+            Components = [new ComponentDecision("bottle", [],
+                new ProposedCode("Zr:Y = 1.00:0.50", ["cas-zr", "cas-y"], "the stale pick"))],
+        });
+        await _store.UpsertCandidatesAsync(new CandidatesDoc
+        {
+            Id = RecordIds.Candidates("proj-dash-repick"), ProjectId = "proj-dash-repick",
+            Substances = [new CandidateSubstance("bottle", "Zr", "f", "cas-zr", null, null, false, "A", "s", [])],
+        });
+        await _store.UpsertVerdictAsync(new VerdictDoc
+        {
+            Id = RecordIds.Verdict("proj-dash-repick", "cas-zr", "bottle"), ProjectId = "proj-dash-repick",
+            Cas = "cas-zr", ComponentId = "bottle", Element = "Zr", Form = "f",
+            Dimensions = [new("ElementGate", VerdictStatus.Pass, [new Citation("regulatory", "x", "t")], 0.9, "ok")],
+            EvidenceReviewed = true,
+        });
+
+        var dash = await _client.GetFromJsonAsync<JsonElement>("/projects/proj-dash-repick/dashboard");
+
+        var vp = Find(dash.GetProperty("needsSigning"), "gate", "vp");
+        Assert.NotNull(vp);
+        Assert.False(vp!.Value.GetProperty("armable").GetBoolean());
+        var blockers = vp.Value.GetProperty("blockers").EnumerateArray().Select(b => b.GetString()).ToList();
+        Assert.Contains(blockers, b => b!.Contains("'pending'") && b.Contains("not 'awaiting-VP'"));
+    }
+
+    [Fact]
     public async Task Dashboard_AnUnmappedAwaitingStatus_SurfacesOnTheOperator_NeverVanishes()
     {
         // A future awaiting-* the mapping doesn't know yet must still SURFACE — a park that silently

@@ -541,6 +541,7 @@ public sealed class StageDispatcher(
                 Stages.Discovery => await ReviseDiscoveryAsync(constraints, r, ct),
                 Stages.Regulatory => await ReviseRegulatoryAsync(constraints, r, ct),
                 Stages.Dosing => await ReviseDosingAsync(constraints, r, ct),
+                Stages.Decision => await ReviseDecisionAsync(constraints, r, ct),
                 _ => throw new InvalidOperationException($"stage '{r.Stage}' is not revisable"),
             };
 
@@ -636,6 +637,11 @@ public sealed class StageDispatcher(
         // regulatory false pass — but "Dosing runs only behind the signed gate" is the invariant the
         // first-run path enforces, and the revision path must not be the one hole in it. Throw so the
         // revision fails cleanly with the analysis untouched (the ordered-mutation contract of this method).
+        //
+        // And before even that: the closed-project refusal (Task 15(b)). Once the VP gate is approved the
+        // project is history — nothing may be re-dosed, and nothing re-priced, under a signed decision.
+        await ThrowIfClosedAsync(c.ProjectId, "project", ct);
+
         var verdicts = await store.GetVerdictsAsync(c.ProjectId, ct);
         var gate = await store.GetGateAsync(c.ProjectId, GateTypes.Regulatory, ct);
         if (gate?.Status != "approved")
@@ -670,8 +676,72 @@ public sealed class StageDispatcher(
                 // travel this path, so the "a review note does not re-price" guard is preserved.
                 await SetStageAsync(c.ProjectId, Stages.Cost,
                     s => { if (s.Status is "done" or "failed") { s.Status = "pending"; s.Error = null; } }, token);
+                // ...and Decision with it (Task 15(a)): the DecisionDoc's rows and proposal were assembled
+                // over the OLD dosing/cost, so a project parked `awaiting-VP` would otherwise keep a STALE
+                // proposal at the VP's door — TryDecideAsync's status guard would ABSORB the fresh CostDoc.
+                // Reset to `pending` (park error cleared) so the re-priced CostDoc IS the re-trigger and the
+                // pick re-runs over the NEW dosing. `done` is deliberately EXCLUDED: done means the VP
+                // signed and the project closed — history, which the refusal above keeps this path off
+                // anyway (defense in depth).
+                await SetStageAsync(c.ProjectId, Stages.Decision,
+                    s => { if (s.Status is "awaiting-VP" or "needs-review" or "failed") { s.Status = "pending"; s.Error = null; } }, token);
                 await store.UpsertDosingAsync(dosing, token);
             });
+    }
+
+    /// Revise-with-reason for the PICK (Task 15). Mirrors ReviseDosingAsync's shape: re-assemble from the
+    /// LIVE records through the same deterministic fold the first run used (DecisionAssembler — the revise
+    /// path cannot relax what the first run enforced), re-run the pick WITH the directive, and re-park at
+    /// `awaiting-VP`. An unsigned/locked vp gate is left exactly as it stands: locked is already the safe
+    /// state a void would produce, and nothing on this path may move a gate toward `approved` (Law 9).
+    private async Task<RevisedStage> ReviseDecisionAsync(ConstraintsDoc c, RevisionDoc r, CancellationToken ct)
+    {
+        // The closed-project refusal FIRST (Task 15(b)) — before the agent, before the conclusion, before
+        // anything that could look like progress. Decision `done` means the VP SIGNED: a revision that
+        // rewrote the DecisionDoc now would put words under a signature the VP never read.
+        await ThrowIfClosedAsync(c.ProjectId, "decision", ct);
+
+        var verdicts = await store.GetVerdictsAsync(c.ProjectId, ct);
+        var dosing = await store.GetDosingAsync(c.ProjectId, ct)
+            ?? throw new InvalidOperationException("no dosing on file — there are no finalized codes to re-pick over");
+        var cost = await store.GetCostAsync(c.ProjectId, ct)
+            ?? throw new InvalidOperationException("no cost audit on file — Decision has not run for this project");
+
+        // Assemble may throw (the pre-invariant duplicate-window ArgumentException TryDecideAsync guards);
+        // here the OnRevisionAsync catch turns that into an honestly-failed revision, analysis untouched.
+        var assembled = DecisionAssembler.Assemble(
+            verdicts, dosing, cost, [.. c.Components.Select(k => k.Id)]);
+
+        var result = await agents.RunDecisionAsync(assembled, dosing, r, ct);
+        if (!result.Succeeded)
+            throw new InvalidOperationException($"the decision agent could not apply the revision: {result.Error}");
+
+        var decision = result.Output!;
+        decision.Id = RecordIds.Decision(c.ProjectId);
+        decision.ProjectId = c.ProjectId;
+        return new RevisedStage(
+            JsonSerializer.Serialize(decision, Json.Options),
+            async token =>
+            {
+                // Doc FIRST, park SECOND — the park is the "a proposal awaits your signature" signal, and
+                // POST /decision/determination signs whatever DecisionDoc is on file at `awaiting-VP`. The
+                // reverse order opens a window where the stage advertises the park while the STALE proposal
+                // is still the one on file.
+                await store.UpsertDecisionAsync(decision, token);
+                await SetStageAsync(c.ProjectId, Stages.Decision,
+                    s => { s.Status = "awaiting-VP"; s.Error = null; }, token);
+            });
+    }
+
+    /// Task 15(b): an approved VP gate IS the project's close, and everything behind it is history — the
+    /// Marker Library entry, the close conclusion, the released procurement all cite the SIGNED decision.
+    /// Any revision that would regenerate an analytical record on a closed project is refused outright,
+    /// before the agent runs and before anything is re-priced; revising history is a new project decision.
+    private async Task ThrowIfClosedAsync(string projectId, string what, CancellationToken ct)
+    {
+        if ((await store.GetGateAsync(projectId, GateTypes.Vp, ct))?.Status == "approved")
+            throw new InvalidOperationException(
+                $"the project is closed — the VP signature is history; revising a closed {what} requires a new project");
     }
 
     /// A gate is an operator's signature over a SPECIFIC analysis, and the revision just replaced that

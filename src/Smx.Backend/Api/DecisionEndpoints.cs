@@ -24,6 +24,21 @@ public static class DecisionEndpoints
             if (string.IsNullOrWhiteSpace(req.Reason))
                 return Results.UnprocessableEntity(new { error = "every determination requires a reason" });
 
+            // A signature answers a park (Task 15(d)): first of the record-state checks, ahead of the
+            // armability refinements and every write, and covering APPROVE and REJECT alike. It closes two
+            // false passes the armability checks cannot see: `pending` mid-re-pick (a Dosing revision reset
+            // the stage while the STALE DecisionDoc is still on file — VpGate.Armable would happily arm
+            // over it, and the in-flight re-pick would then overwrite the stamped doc under an approved
+            // gate) and `done` post-close (a rejection would flip the gate locked while Procurement stays
+            // Released — a revocation that revokes nothing).
+            var project = await store.GetProjectAsync(projectId, ct);
+            if (VpGate.ParkBlocker(project?.Stages.GetValueOrDefault(Stages.Decision)?.Status) is { } notParked)
+                return Results.UnprocessableEntity(new
+                {
+                    error = "VP gate not armable",
+                    blockers = (IReadOnlyList<string>)[notParked],
+                });
+
             var regGate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
             var decision = await store.GetDecisionAsync(projectId, ct);
             if (VpGate.Armable(regGate, decision) is { Ok: false } blocked)
@@ -152,12 +167,17 @@ public static class DecisionEndpoints
                 ? ["no candidates on file — there is no analysis under the regulatory signature"]
                 : RegulatoryGate.Armable(candidates, verdicts).Blockers;
 
+            // ...and the POST's park guard, mirrored for the same reason (Task 15(d)): a stage mid-re-pick
+            // or post-close reads not-armable HERE, with the blocker the POST would answer with.
+            var project = await store.GetProjectAsync(projectId, ct);
+            var notParked = VpGate.ParkBlocker(project?.Stages.GetValueOrDefault(Stages.Decision)?.Status);
+
             var gate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
             return Results.Json(new
             {
                 status = gate?.Status ?? "locked",
-                armable = armed && uncovered.Count == 0,
-                blockers = blockers.Concat(uncovered).ToList(),
+                armable = armed && uncovered.Count == 0 && notParked is null,
+                blockers = blockers.Concat(uncovered).Concat(notParked is null ? [] : new[] { notParked }).ToList(),
                 approvedAt = gate?.ApprovedAt,
             }, Json.Options);
         });

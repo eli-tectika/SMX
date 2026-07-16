@@ -38,4 +38,18 @@ public static class VpGate
 
         return (blockers.Count == 0, blockers);
     }
+
+    /// "A signature answers a park" (Task 15(d)): a VP determination is only meaningful while the Decision
+    /// stage is parked `awaiting-VP`. Null means signable; anything else returns the blocker naming the
+    /// actual status. The one helper serves three surfaces — POST …/decision/determination (the 422),
+    /// GET …/gate/vp and the dashboard's vp card — so the reads can never advertise a gate the POST
+    /// refuses. The two states it exists to refuse: `pending` mid-re-pick (a Dosing revision reset the
+    /// stage while the STALE DecisionDoc is still on file — signing it would let the in-flight re-pick
+    /// overwrite a stamped doc under an approved gate) and `done` post-close (approve or REJECT would
+    /// rewrite history — a gate flipped locked over Released procurement revokes nothing).
+    public static string? ParkBlocker(string? decisionStageStatus) =>
+        decisionStageStatus == "awaiting-VP"
+            ? null
+            : $"the decision stage is '{decisionStageStatus ?? "absent"}', not 'awaiting-VP' — " +
+              "a signature answers a park, never a draft, never history";
 }

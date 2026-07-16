@@ -119,11 +119,15 @@ public static class ProjectsListEndpoints
                     IReadOnlyList<string> uncovered = candidates is null
                         ? ["no candidates on file — there is no analysis under the regulatory signature"]
                         : RegulatoryGate.Armable(candidates, verdicts).Blockers;
+                    // ...and the POST's park guard (Task 15(d)), for the same reason: a Dosing revision
+                    // resets Decision to `pending` with the STALE DecisionDoc still on file — this card
+                    // must not invite a signature the POST refuses.
+                    var notParked = VpGate.ParkBlocker(project.Stages.GetValueOrDefault(Stages.Decision)?.Status);
                     needsSigning.Add(new
                     {
                         gate = GateTypes.Vp,
-                        armable = armed && uncovered.Count == 0,
-                        blockers = blockers.Concat(uncovered).ToList(),
+                        armable = armed && uncovered.Count == 0 && notParked is null,
+                        blockers = blockers.Concat(uncovered).Concat(notParked is null ? [] : new[] { notParked }).ToList(),
                     });
                 }
             }
