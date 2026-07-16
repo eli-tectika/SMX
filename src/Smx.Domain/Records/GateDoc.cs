@@ -3,7 +3,7 @@ namespace Smx.Domain.Records;
 public static class GateTypes
 {
     public const string Regulatory = "regulatory";
-    // Vp added in Plan 5 — GateDoc is deliberately generic so the VP gate reuses this machinery.
+    public const string Vp = "vp";
 }
 
 /// Operator-signed set-level gate record. Per-cell determinations live on the VerdictDoc.

@@ -78,6 +78,26 @@ public sealed class CosmosQueryTextTests
         AssertWireName(sql, "createdAt");   // the ORDER BY: a PascalCase key here silently unsorts the audit trail
     }
 
+    // ---- CosmosRecordStore.GetProjectsAsync ------------------------------------------------------
+
+    /// The store's FIRST cross-partition query: the projects list spans every partition, so its request
+    /// options carry no PartitionKey (options never reach the QueryText, so the shared helper still pins
+    /// it faithfully). The stakes are the landing page itself — a PascalCase `root["Type"]` matches ZERO
+    /// docs in Azure and the estate renders empty; a PascalCase `root["CreatedAt"]` in the ORDER BY DESC
+    /// silently unsorts "newest first".
+    [Fact]
+    public void GetProjects_query_uses_wire_property_names()
+    {
+        var sql = Query<ProjectDoc>()
+            .Where(d => d.Type == RecordTypes.Project)
+            .OrderByDescending(d => d.CreatedAt)
+            .Take(50)
+            .ToQueryDefinition().QueryText;
+
+        AssertWireName(sql, "type");
+        AssertWireName(sql, "createdAt");
+    }
+
     // ---- CosmosRecordStore.GetChatThreadAsync ----------------------------------------------------
 
     /// The thread is two queries, one per doc type. Both filter on `stage` as well as `type` — a PascalCase
