@@ -46,11 +46,22 @@ foreach (var gc in cases)
     // sign the gate, or record loadings, so most cases never reach Dosing — a 404 here is expected and
     // scores nothing. When a DosingDoc DOES exist, an invariant breach in it is a harm case: it counts as a
     // FALSE PASS and trips the non-zero exit, exactly like a matrix false-pass.
-    var dosingResp = await http.GetAsync($"projects/{projectId}/dosing");
-    if (dosingResp.IsSuccessStatusCode)
+    // A transport failure here (timeout, reset — seen live during an ACA revision swap) must not abort
+    // the harness: the matrix half of this case is already scored, and losing the whole report to an
+    // optional read would hide it. Not silent, though — the skip is printed, because "dosing unchecked"
+    // and "dosing checked clean" must never look the same.
+    try
     {
-        var dosing = JsonSerializer.Deserialize<DosingDoc>(await dosingResp.Content.ReadAsStringAsync(), Json.Options)!;
-        EvalMetrics.ScoreDosing(dosing, report);
+        var dosingResp = await http.GetAsync($"projects/{projectId}/dosing");
+        if (dosingResp.IsSuccessStatusCode)
+        {
+            var dosing = JsonSerializer.Deserialize<DosingDoc>(await dosingResp.Content.ReadAsStringAsync(), Json.Options)!;
+            EvalMetrics.ScoreDosing(dosing, report);
+        }
+    }
+    catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
+    {
+        Console.WriteLine($"   dosing check SKIPPED (transport failure: {e.Message}) — matrix scores above still stand");
     }
 
     Merge(overall, report);
