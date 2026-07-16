@@ -563,6 +563,15 @@ public sealed class StageDispatcher(
         {
             // ORDER IS THE WHOLE POINT OF THIS METHOD. Every FALLIBLE step runs before anything is MUTATED.
             //
+            // 0. The closed-project refusal, hoisted OVER the switch: ONE guard, all four arms. An approved
+            //    VP gate is the close, and everything behind it is history — the signed DecisionDoc's
+            //    TraceRefs cite the upstream records BY ID, so ANY arm's re-run would replace a cited record
+            //    in place; a Discovery/Regulatory re-run would additionally clear the R.E. determination and
+            //    void the approved regulatory gate — a CLOSED project reappearing on the dashboard, blocked
+            //    on an R.E. who already ruled. `what` keeps each arm's message; the persist closures still
+            //    re-check (the mid-run race is theirs to catch).
+            await ThrowIfClosedAsync(r.ProjectId, r.Stage == Stages.Decision ? "decision" : "project", ct);
+
             // 1. Re-run the stage's agent. The new output stays in memory — nothing is persisted yet.
             var revised = r.Stage switch
             {
@@ -666,10 +675,9 @@ public sealed class StageDispatcher(
         // first-run path enforces, and the revision path must not be the one hole in it. Throw so the
         // revision fails cleanly with the analysis untouched (the ordered-mutation contract of this method).
         //
-        // And before even that: the closed-project refusal (Task 15(b)). Once the VP gate is approved the
-        // project is history — nothing may be re-dosed, and nothing re-priced, under a signed decision.
-        await ThrowIfClosedAsync(c.ProjectId, "project", ct);
-
+        // (The closed-project refusal (Task 15(b)) ran before even that — hoisted into OnRevisionAsync,
+        // one guard over all four arms. Once the VP gate is approved the project is history: nothing may
+        // be re-dosed, and nothing re-priced, under a signed decision.)
         var verdicts = await store.GetVerdictsAsync(c.ProjectId, ct);
         var gate = await store.GetGateAsync(c.ProjectId, GateTypes.Regulatory, ct);
         if (gate?.Status != "approved")
@@ -732,10 +740,10 @@ public sealed class StageDispatcher(
     /// state a void would produce, and nothing on this path may move a gate toward `approved` (Law 9).
     private async Task<RevisedStage> ReviseDecisionAsync(ConstraintsDoc c, RevisionDoc r, CancellationToken ct)
     {
-        // The closed-project refusal FIRST (Task 15(b)) — before the agent, before the conclusion, before
-        // anything that could look like progress. Decision `done` means the VP SIGNED: a revision that
-        // rewrote the DecisionDoc now would put words under a signature the VP never read.
-        await ThrowIfClosedAsync(c.ProjectId, "decision", ct);
+        // The closed-project refusal (Task 15(b)) already ran — hoisted into OnRevisionAsync, before the
+        // agent, before the conclusion, before anything that could look like progress. Decision `done`
+        // means the VP SIGNED: a revision that rewrote the DecisionDoc now would put words under a
+        // signature the VP never read.
 
         // Captured NOW so the persist closure can prove the stage did not move while the agent ran —
         // see the re-check below.

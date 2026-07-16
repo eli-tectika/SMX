@@ -235,6 +235,23 @@ public class DecisionRevisionTests
         CreatedAt = "2026-07-16T10:00:00.0000000+00:00",
     };
 
+    private static RevisionDoc DiscoveryRevision(string reason) => new()
+    {
+        Id = RecordIds.Revision(P, Stages.Discovery, "rev1"), ProjectId = P, Stage = Stages.Discovery,
+        Target = "the candidate set",
+        Reason = reason,
+        CreatedAt = "2026-07-16T10:00:00.0000000+00:00",
+    };
+
+    private static RevisionDoc RegulatoryRevision(string reason) => new()
+    {
+        Id = RecordIds.Revision(P, Stages.Regulatory, "rev1"), ProjectId = P, Stage = Stages.Regulatory,
+        Target = "the cas-zr verdict",
+        Reason = reason,
+        Cas = "cas-zr", ComponentId = "bottle",
+        CreatedAt = "2026-07-16T10:00:00.0000000+00:00",
+    };
+
     private static StageState Stage(InMemoryRecordStore store, string stage) =>
         store.Documents.OfType<ProjectDoc>().Single().Stages[stage];
 
@@ -445,6 +462,83 @@ public class DecisionRevisionTests
         Assert.Equal(SeededDecisionGeneratedAt, (await store.GetDecisionAsync(P))!.GeneratedAt);
         Assert.Equal("done", Stage(store, Stages.Cost).Status);
         Assert.Equal("done", Stage(store, Stages.Decision).Status);
+        Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Vp))!.Status);
+    }
+
+    // ---- the closed refusal covers ALL FOUR arms, not just the two that grew up next to the gate ----------
+    //
+    // The signed DecisionDoc.TraceRefs cite the verdict/dosing/cost records BY ID, and the CandidatesDoc is
+    // the set those verdicts screened. A Discovery or Regulatory revision on a closed project would re-run
+    // the agent, replace a CITED record under the same id (an audit trail rewritten under a standing
+    // signature), clear the R.E. determination, and VoidRegulatoryGateAsync would flip the approved
+    // regulatory gate to `locked` — a CLOSED project reappearing on the dashboard, blocked on an R.E. who
+    // already ruled. Both are refused outright, before the agent runs.
+
+    [Fact]
+    public async Task ADiscoveryRevision_AfterClose_IsRefused_AndTheCitedRecordsSurvive()
+    {
+        var (d, store, agents, knowledge, _) = Sut();
+        await SeedClosedAsync(store, knowledge);
+
+        await d.OnRecordChangedAsync(Delivered(DiscoveryRevision("try lanthanides instead")), default);
+
+        var refused = Assert.Single(await store.GetRevisionsAsync(P));
+        Assert.Equal(RevisionStatus.Failed, refused.Status);
+        Assert.Contains("the project is closed — the VP signature is history; revising a closed project " +
+                        "requires a new project", refused.Error);
+        Assert.Null(refused.ConclusionId);
+        Assert.Null(refused.AppliedAt);
+
+        // Nothing re-ran and nothing was half-learned.
+        Assert.Equal(0, agents.DiscoveryCalls);
+        Assert.Equal(0, agents.ConclusionCalls);
+        Assert.Empty(await knowledge.QueryLearnedConclusionsAsync(null));
+
+        // The candidate set the signed decision's trace runs through is UNCHANGED...
+        var candidates = (await store.GetCandidatesAsync(P))!;
+        Assert.Equal(new[] { "cas-zr", "cas-y", "cas-fe" }, candidates.Substances.Select(s => s.Cas));
+
+        // ...the approved regulatory gate was NOT voided and no stage flipped — the project stays closed.
+        Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
+        Assert.Equal("done", Stage(store, Stages.Discovery).Status);
+        Assert.Equal("done", Stage(store, Stages.Regulatory).Status);
+        Assert.Equal("done", Stage(store, Stages.Decision).Status);
+        Assert.Equal(SeededDecisionGeneratedAt, (await store.GetDecisionAsync(P))!.GeneratedAt);
+        Assert.Equal(ProcurementStatus.Released, (await store.GetDecisionAsync(P))!.Procurement.Status);
+        Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Vp))!.Status);
+    }
+
+    [Fact]
+    public async Task ARegulatoryRevision_AfterClose_IsRefused_AndTheDeterminationSurvives()
+    {
+        var (d, store, agents, knowledge, _) = Sut();
+        await SeedClosedAsync(store, knowledge);
+
+        await d.OnRecordChangedAsync(Delivered(RegulatoryRevision("re-screen cas-zr against the new annex")), default);
+
+        var refused = Assert.Single(await store.GetRevisionsAsync(P));
+        Assert.Equal(RevisionStatus.Failed, refused.Status);
+        Assert.Contains("the project is closed — the VP signature is history; revising a closed project " +
+                        "requires a new project", refused.Error);
+        Assert.Null(refused.ConclusionId);
+        Assert.Null(refused.AppliedAt);
+
+        // Nothing re-ran and nothing was half-learned.
+        Assert.Equal(0, agents.RegulatoryCalls);
+        Assert.Equal(0, agents.ConclusionCalls);
+        Assert.Empty(await knowledge.QueryLearnedConclusionsAsync(null));
+
+        // The verdict the signed TraceRefs cite is UNCHANGED — the R.E. determination was NOT cleared...
+        var verdict = (await store.GetVerdictAsync(P, "cas-zr", "bottle"))!;
+        Assert.Equal(Determinations.Recommended, verdict.Determination);
+        Assert.True(verdict.EvidenceReviewed);
+
+        // ...the approved regulatory gate was NOT voided and no stage flipped — the project stays closed.
+        Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
+        Assert.Equal("done", Stage(store, Stages.Regulatory).Status);
+        Assert.Equal("done", Stage(store, Stages.Decision).Status);
+        Assert.Equal(SeededDecisionGeneratedAt, (await store.GetDecisionAsync(P))!.GeneratedAt);
+        Assert.Equal(ProcurementStatus.Released, (await store.GetDecisionAsync(P))!.Procurement.Status);
         Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Vp))!.Status);
     }
 
