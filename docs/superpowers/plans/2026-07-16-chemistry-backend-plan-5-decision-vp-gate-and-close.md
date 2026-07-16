@@ -1014,7 +1014,7 @@ Law 4: the operator never hand-edits the pick — they tell the agent why, the a
 
 Extend the Plan-4 E2E pattern (`DosingCostEndToEndTests` — shared stores, real HTTP + real dispatcher, `Delivered<T>` pumping): pick up where it ends (a priced CostDoc) and drive to close.
 
-- [ ] **Step 1: The test** (one fact, `TheWholeJourney_ToASignedClosedOrderedProject`):
+- [x] **Step 1: The test** (one fact, `TheWholeJourney_ToASignedClosedOrderedProject`):
 
 ```csharp
     // Seed exactly as DosingCostEndToEndTests (2-substance compliant set), drive through dosing+cost
@@ -1037,9 +1037,9 @@ Extend the Plan-4 E2E pattern (`DosingCostEndToEndTests` — shared stores, real
     //   Assert.All(markerLibraryDocs, m => Assert.Equal(MarkerStatus.Approved, m.Status)); // library holds only signed
 ```
 
-- [ ] **Step 2: run → drive it green** (seed/pump fixes only — NEVER weaken an assert; if a pump doesn't advance, read the dispatcher and fix the seed).
-- [ ] **Step 3: Mutation:** confirm one — skip the VP POST (go straight to pumping a hand-built approved vp gate WITHOUT confirmations) → the ConfirmedCode tripwire must FAIL (proves close doesn't manufacture confirmations). Revert.
-- [ ] **Step 4: Full suite + commit** `test(e2e): the whole journey — signed by the VP, closed into the library, ordered behind the MSDS`
+- [x] **Step 2: run → drive it green** (seed/pump fixes only — NEVER weaken an assert; if a pump doesn't advance, read the dispatcher and fix the seed).
+- [x] **Step 3: Mutation:** confirm one — skip the VP POST (go straight to pumping a hand-built approved vp gate WITHOUT confirmations) → the ConfirmedCode tripwire must FAIL (proves close doesn't manufacture confirmations). Revert.
+- [x] **Step 4: Full suite + commit** `test(e2e): the whole journey — signed by the VP, closed into the library, ordered behind the MSDS`
 
 ---
 
@@ -1051,7 +1051,7 @@ Extend the Plan-4 E2E pattern (`DosingCostEndToEndTests` — shared stores, real
 
 Same contract as `ScoreDosing`: invariants only, each breach a **false pass** (non-zero exit), self-contained from the fetched docs, and a 404 scores nothing (the harness still doesn't sign gates).
 
-- [ ] **Step 1: Failing unit facts:**
+- [x] **Step 1: Failing unit facts:**
 
 ```csharp
     // ScoreDecision(DecisionDoc decision, DosingDoc dosing, EvalReport report):
@@ -1062,15 +1062,15 @@ Same contract as `ScoreDosing`: invariants only, each breach a **false pass** (n
     //    false-pass (a signature over an uncleared row is the harm case, verbatim).
 ```
 
-- [ ] **Step 2: fail → Step 3: implement + wire the optional fetch in Program.cs (after the dosing block, same try/catch transport guard) → Step 4: green; `dotnet build tools/Smx.Eval/Smx.Eval.csproj` clean.**
-- [ ] **Step 5: Mutation:** drop invariant 2's check → fact 2 FAILS. Revert.
-- [ ] **Step 6: Commit** `feat(eval): decision invariants — a signed nonexistent code is a false pass, and the exit code says so`
+- [x] **Step 2: fail → Step 3: implement + wire the optional fetch in Program.cs (after the dosing block, same try/catch transport guard) → Step 4: green; `dotnet build tools/Smx.Eval/Smx.Eval.csproj` clean.**
+- [x] **Step 5: Mutation:** drop invariant 2's check → fact 2 FAILS. Revert.
+- [x] **Step 6: Commit** `feat(eval): decision invariants — a signed nonexistent code is a false pass, and the exit code says so`
 
 ---
 
 ## Task 18: Final verification + docs
 
-- [ ] **Step 1:** Full matrix:
+- [x] **Step 1:** Full matrix:
 
 ```bash
 dotnet build src/Smx.Backend.sln     # 0 warnings
@@ -1080,8 +1080,8 @@ az bicep build --file infra/main.bicep --stdout > /dev/null            # unchang
 az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
 ```
 
-- [ ] **Step 2:** Update `CLAUDE.md`'s agent-backend bullet (the journey now ends at a signed close; name the new endpoints) and this plan's **Deviations** section (the as-shipped record).
-- [ ] **Step 3:** Commit `docs: plan 5 as-shipped`.
+- [x] **Step 2:** Update `CLAUDE.md`'s agent-backend bullet (the journey now ends at a signed close; name the new endpoints) and this plan's **Deviations** section (the as-shipped record).
+- [x] **Step 3:** Commit `docs: plan 5 as-shipped`.
 
 ---
 
@@ -1112,6 +1112,13 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
 ## Deviations recorded during execution
 
 *(Fill this in as you go — the as-shipped record is worth more than the plan being right.)*
+
+> **As shipped:** all 18 tasks landed on `feat/chemistry-backend-plan-5`, one commit per task (Tasks 1+2
+> joint as anticipated; Task 11 early, out of order), every mutation a real kill, plus three review
+> follow-up commits (the Tasks-3-5 window-uniqueness fix, the Tasks-12-14 dashboard/exports truth fix,
+> and the Task-15 F1/F3/F4 signature-vs-revision interlock) — final suite 808 backend + 161 Functions,
+> zero build warnings, zero infra diff vs main. The itemized record below is the authoritative delta
+> from the plan text.
 
 - **Tasks 1 + 2 landed as ONE commit** (the boundary the Task 1 Step 3 note anticipated): the compiler forced
   it — `StageInputsJsonAsync`'s Decision arm calls `IRecordStore.GetDecisionAsync` (Task 2's store surface),
@@ -1364,3 +1371,27 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
   (iii) `OnRevisionAsync` acts on the fed snapshot's `Status` rather than re-reading the RevisionDoc —
   the same latest-version-feed mode-dependence the chat handler documents (and closes with a point read);
   pre-existing, unchanged by this task.
+- **Task 16: the skipped-POST mutation kills at the stage-`done` assert, not the ConfirmedCode tripwire.**
+  A hand-built approved vp gate, PERSISTED (F3's point-read only sees the store) and pumped without the
+  determination POST, is caught by the F1-layer-1 zero-confirmation park: the close runs, refuses to
+  manufacture confirmations, and parks Decision `needs-review` — so the E2E fails three asserts EARLIER
+  (`done` vs `needs-review`) than the plan predicted, at the stronger guard shipped after the plan was
+  written. The ConfirmedCode tripwire stays in the test unchanged (it still pins the green path); the
+  mutation's real kill is the park. Reverted by hand.
+- **Task 16: the TDD red was a refusing decision fake, not an unscripted one** — the plan-4 harness's
+  `FakeAgentRuns.Decision` default already fits this flow (one component, one code), so "run before
+  scripting the decision fake" had nothing to leave unscripted. The red was produced by temporarily
+  scripting the fake to `NeedsReview("not yet scripted")`: the E2E failed for real at the awaiting-VP
+  assert (stage landed `needs-review`), proving the test observes the decision run; the line was then
+  removed and the default drives the green path.
+- **Task 17: the DosingDoc fetch was HOISTED, not re-fetched** — `ScoreDecision(decision, dosing, report)`
+  needs the codes, so Program.cs's dosing variable moved above its try block and the decision block reuses
+  it; a DecisionDoc-with-no-DosingDoc state (impossible in pipeline order, possible under a transport
+  failure on the dosing GET) prints "decision check SKIPPED" rather than scoring against nothing — the
+  same "unchecked must never look like checked clean" rule as the dosing block.
+- **Task 18: the Functions suite is 161, not the plan's 158** — three tests arrived with `8191064`
+  (`fix(sds): sweep survives per-candidate/per-entry exceptions`, a pre-plan commit riding this branch),
+  not with this plan; 0 failures, unregressed. The backend suite landed at 808 vs the plan's "~760+"
+  estimate (the review follow-ups added tests the estimate never counted). Both Bicep twins compile with
+  only the pre-existing BCP037 type-definition warning, identical on main; `git diff main -- infra/` is
+  empty.
