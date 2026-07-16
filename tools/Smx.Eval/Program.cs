@@ -8,13 +8,17 @@ var baseUrl = args.Length > 0 ? args[0] : Environment.GetEnvironmentVariable("SM
     ?? throw new InvalidOperationException("usage: Smx.Eval <api-base-url> [golden.json] — or set SMX_API_URL");
 var goldenPath = args.Length > 1 ? args[1] : Path.Combine(AppContext.BaseDirectory, "golden", "starter.json");
 var cases = JsonSerializer.Deserialize<List<GoldenCase>>(File.ReadAllText(goldenPath), Json.Options)!;
-using var http = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromSeconds(120) };
+// Trailing slash is load-bearing: request paths are RELATIVE ("projects/…"), so a slash-less base
+// ("…/api") would have its last segment replaced, and a rooted path ("/projects/…") would discard the
+// gateway's /api prefix entirely. Relative-on-slashed-base is the one combination that survives both
+// direct (":5169/") and gateway-fronted ("…/api/") bases.
+using var http = new HttpClient { BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/"), Timeout = TimeSpan.FromSeconds(120) };
 
 var overall = new EvalReport();
 foreach (var gc in cases)
 {
     Console.WriteLine($"== case: {gc.Name}");
-    var post = await http.PostAsJsonAsync("/projects", gc.ProjectPayload);
+    var post = await http.PostAsJsonAsync("projects", gc.ProjectPayload);
     post.EnsureSuccessStatusCode();
     var projectId = (await post.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("projectId").GetString()!;
 
@@ -22,13 +26,13 @@ foreach (var gc in cases)
     var deadline = DateTimeOffset.UtcNow.AddMinutes(20); // agent runs take minutes; poll patiently
     while (DateTimeOffset.UtcNow < deadline)
     {
-        var resp = await http.GetAsync($"/projects/{projectId}/matrix");
+        var resp = await http.GetAsync($"projects/{projectId}/matrix");
         if (resp.IsSuccessStatusCode)
         {
             matrix = JsonSerializer.Deserialize<MatrixDoc>(await resp.Content.ReadAsStringAsync(), Json.Options);
             break;
         }
-        var status = await http.GetFromJsonAsync<JsonElement>($"/projects/{projectId}");
+        var status = await http.GetFromJsonAsync<JsonElement>($"projects/{projectId}");
         var stages = status.GetProperty("stages");
         Console.WriteLine($"   waiting... intake={S(stages, "intake")} discovery={S(stages, "discovery")} regulatory={S(stages, "regulatory")} matrix={S(stages, "matrix")}");
         if (S(stages, "intake") == "failed" || S(stages, "discovery") == "failed" || S(stages, "regulatory") == "failed") break;
@@ -42,7 +46,7 @@ foreach (var gc in cases)
     // sign the gate, or record loadings, so most cases never reach Dosing — a 404 here is expected and
     // scores nothing. When a DosingDoc DOES exist, an invariant breach in it is a harm case: it counts as a
     // FALSE PASS and trips the non-zero exit, exactly like a matrix false-pass.
-    var dosingResp = await http.GetAsync($"/projects/{projectId}/dosing");
+    var dosingResp = await http.GetAsync($"projects/{projectId}/dosing");
     if (dosingResp.IsSuccessStatusCode)
     {
         var dosing = JsonSerializer.Deserialize<DosingDoc>(await dosingResp.Content.ReadAsStringAsync(), Json.Options)!;
