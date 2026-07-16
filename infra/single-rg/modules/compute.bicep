@@ -123,6 +123,9 @@ var sharedEnv = [
   { name: 'LEARNED_CONCLUSIONS_CONTAINER', value: 'learned-conclusions' }
   { name: 'MARKER_LIBRARY_CONTAINER', value: 'marker-library' }
   { name: 'MSDS_REGISTRY_CONTAINER', value: 'msds-registry' }
+  // The SDS subsystem's corpus registry, read-only here: GET /msds-registry composes sheet
+  // facts from it and overlays the review signature from msds-registry (design §6.3).
+  { name: 'SDS_REGISTRY_CONTAINER', value: 'sds-registry' }
   { name: 'SUBSTANCE_PROPERTIES_CONTAINER', value: 'substance-properties' }
   { name: 'LEARNED_CONCLUSIONS_SEARCH_INDEX', value: 'learned-conclusions' }
 ]

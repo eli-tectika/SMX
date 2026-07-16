@@ -66,6 +66,12 @@ if (builder.Configuration["COSMOS_ACCOUNT_ENDPOINT"] is { Length: > 0 })
             cosmos.GetContainer(opts.CosmosDatabase, opts.MsdsRegistryContainer),
             cosmos.GetContainer(opts.CosmosDatabase, opts.SubstancePropertiesContainer));
     });
+
+    // Read-only view over the SDS subsystem's corpus registry: the MSDS Registry surface
+    // composes sheet facts from it at read time (design §6.3 — reference, don't duplicate).
+    builder.Services.AddSingleton<ISdsCorpusReader>(sp =>
+        new CosmosSdsCorpusReader(
+            sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.SdsRegistryContainer)));
 }
 if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] is { Length: > 0 })
     builder.Services.AddOpenTelemetry().UseAzureMonitor();

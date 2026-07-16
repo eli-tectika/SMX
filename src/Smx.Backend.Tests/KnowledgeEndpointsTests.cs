@@ -12,12 +12,17 @@ namespace Smx.Backend.Tests;
 public class KnowledgeEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly InMemoryKnowledgeStore _knowledge = new();
+    private readonly InMemorySdsCorpusReader _corpus = new();
     private readonly HttpClient _client;
 
     public KnowledgeEndpointsTests(WebApplicationFactory<Program> factory)
     {
         _client = factory.WithWebHostBuilder(b =>
-            b.ConfigureServices(s => s.AddSingleton<IKnowledgeStore>(_knowledge))).CreateClient();
+            b.ConfigureServices(s =>
+            {
+                s.AddSingleton<IKnowledgeStore>(_knowledge);
+                s.AddSingleton<ISdsCorpusReader>(_corpus);
+            })).CreateClient();
     }
 
     [Fact]
@@ -78,5 +83,84 @@ public class KnowledgeEndpointsTests : IClassFixture<WebApplicationFactory<Progr
         });
         var all = await _client.GetFromJsonAsync<JsonElement>("/msds-registry");
         Assert.Equal(1, all.GetArrayLength());
+    }
+
+    // ---- compose-at-read: the SDS corpus is the source of sheet facts; msds-registry is a
+    // governance overlay (review signature). Design §6.3: reference the corpus, don't copy it. ----
+
+    private static SdsCorpusSheet Sheet(string cas, string supplier, string rev, string ingested = "2026-07-16T12:00:00Z")
+        => new(cas, supplier, "product", rev, ingested);
+
+    [Fact]
+    public async Task GetMsds_ListsCorpusSheets_DefaultingToUnreviewed()
+    {
+        _corpus.Sheets.Add(Sheet("1313-97-9", "Stanford Advanced Materials", "2022-11-02"));
+
+        var rows = await _client.GetFromJsonAsync<List<MsdsRegistryDoc>>("/msds-registry", Json.Options);
+
+        var row = Assert.Single(rows!);
+        Assert.Equal("1313-97-9", row.Cas);
+        Assert.Equal("Stanford Advanced Materials", row.Supplier);
+        Assert.Equal("2022-11-02", row.Date);
+        Assert.Equal(MsdsReviewStatus.Unreviewed, row.ReviewStatus);
+    }
+
+    [Fact]
+    public async Task GetMsds_OverlaysReview_OnlyWhenItSignedTheCurrentRevision()
+    {
+        _corpus.Sheets.Add(Sheet("100-00-0", "Acme", "2026-01-01"));
+        _corpus.Sheets.Add(Sheet("200-00-0", "Acme", "2026-03-01"));
+        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc      // signed THE current revision
+        {
+            Id = KnowledgeIds.Msds("100-00-0"), Cas = "100-00-0", Supplier = "Acme", Version = "",
+            Date = "2026-01-01", ReviewStatus = MsdsReviewStatus.Reviewed, ReviewedAt = "2026-02-01T00:00:00Z",
+        });
+        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc      // signed an OLDER revision
+        {
+            Id = KnowledgeIds.Msds("200-00-0"), Cas = "200-00-0", Supplier = "Acme", Version = "",
+            Date = "2026-02-01", ReviewStatus = MsdsReviewStatus.Reviewed, ReviewedAt = "2026-02-02T00:00:00Z",
+        });
+
+        var rows = (await _client.GetFromJsonAsync<List<MsdsRegistryDoc>>("/msds-registry", Json.Options))!;
+
+        Assert.Equal(MsdsReviewStatus.Reviewed, rows.Single(r => r.Cas == "100-00-0").ReviewStatus);
+        // A newer sheet arrived after the signature: the review must NOT silently bless it.
+        var stale = rows.Single(r => r.Cas == "200-00-0");
+        Assert.Equal(MsdsReviewStatus.Unreviewed, stale.ReviewStatus);
+        Assert.Equal("2026-03-01", stale.Date);
+    }
+
+    [Fact]
+    public async Task GetMsds_PicksLatestSheetPerCas_AndKeepsGovernanceOnlyRows()
+    {
+        _corpus.Sheets.Add(Sheet("300-00-0", "Acme", "2025-01-01"));
+        _corpus.Sheets.Add(Sheet("300-00-0", "Beta", "2026-01-01"));
+        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc      // manual/legacy row, not in corpus
+        {
+            Id = KnowledgeIds.Msds("999-99-9"), Cas = "999-99-9", Supplier = "Manual", Version = "1", Date = "d",
+        });
+
+        var rows = (await _client.GetFromJsonAsync<List<MsdsRegistryDoc>>("/msds-registry", Json.Options))!;
+
+        Assert.Equal(2, rows.Count);
+        var corpusRow = rows.Single(r => r.Cas == "300-00-0");
+        Assert.Equal("Beta", corpusRow.Supplier);                 // latest revision wins
+        Assert.Equal("2026-01-01", corpusRow.Date);
+        Assert.Contains(rows, r => r.Cas == "999-99-9");          // governance-only row stays visible
+    }
+
+    [Fact]
+    public async Task Msds_Review_CreatesTheGovernanceDocFromTheCorpus_WhenMissing()
+    {
+        _corpus.Sheets.Add(Sheet("1313-97-9", "Stanford Advanced Materials", "2022-11-02"));
+
+        var ok = await _client.PostAsJsonAsync("/msds-registry/1313-97-9/review", new { });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+
+        var doc = (await _knowledge.GetMsdsAsync("1313-97-9"))!;
+        Assert.Equal(MsdsReviewStatus.Reviewed, doc.ReviewStatus);
+        Assert.Equal("Stanford Advanced Materials", doc.Supplier);
+        Assert.Equal("2022-11-02", doc.Date);                     // the signature names the revision it signed
+        Assert.NotNull(doc.ReviewedAt);
     }
 }

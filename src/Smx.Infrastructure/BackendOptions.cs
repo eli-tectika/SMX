@@ -16,6 +16,9 @@ public sealed record BackendOptions(
     string MarkerLibraryContainer,
     string MsdsRegistryContainer,
     string SubstancePropertiesContainer,
+    // The SDS library subsystem's corpus registry (read-only here): the MSDS Registry surface
+    // composes sheet facts from it at read time (design §6.3 — reference, don't duplicate).
+    string SdsRegistryContainer,
     string SearchEndpoint,
     string SdsIndex,
     string ReferenceIndex,
@@ -71,6 +74,7 @@ public sealed record BackendOptions(
         MarkerLibraryContainer: c["MARKER_LIBRARY_CONTAINER"] ?? "marker-library",
         MsdsRegistryContainer: c["MSDS_REGISTRY_CONTAINER"] ?? "msds-registry",
         SubstancePropertiesContainer: c["SUBSTANCE_PROPERTIES_CONTAINER"] ?? "substance-properties",
+        SdsRegistryContainer: c["SDS_REGISTRY_CONTAINER"] ?? "sds-registry",
         SearchEndpoint: c["SEARCH_ENDPOINT"] ?? "",
         SdsIndex: c["SDS_SEARCH_INDEX"] ?? "sds-index",
         ReferenceIndex: c["REFERENCE_SEARCH_INDEX"] ?? "smx-reference",
