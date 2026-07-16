@@ -308,6 +308,61 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         Assert.False(string.IsNullOrEmpty(after.GetProperty("approvedAt").GetString()));
     }
 
+    [Fact]
+    public async Task GetGateVp_WithNoCandidatesOnFile_IsNotArmable_AndNamesTheBlocker()
+    {
+        // The read must report the same blocker the POST enforces: with an approved regulatory gate and a
+        // proposing decision but NO candidates, the POST 422s "no candidates on file" — a read that says
+        // `armable: true` over that state is the lying affordance that gets a gate rubber-stamped.
+        await _store.UpsertGateAsync(new GateDoc
+        {
+            Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
+            Status = "approved", ApprovedAt = "2026-07-16T00:00:00.0000000+00:00",
+        });
+        await _store.UpsertDecisionAsync(new DecisionDoc
+        {
+            Id = RecordIds.Decision(P), ProjectId = P, GeneratedAt = "t", Components = [Component("bottle")],
+        });
+
+        var g = await _client.GetFromJsonAsync<JsonElement>($"/projects/{P}/gate/vp");
+
+        Assert.False(g.GetProperty("armable").GetBoolean());
+        Assert.Contains("no candidates on file", g.GetProperty("blockers").ToString());
+    }
+
+    // ---- the decision read (Task 13) ---------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetDecision_404UntilTheDecisionExists()
+    {
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/projects/{P}/decision")).StatusCode);
+    }
+
+    [Fact]
+    public async Task GetDecision_ProposalAndSignatureAreDistinctOnTheWire()
+    {
+        // Law 9 legible to the UI: proposedCode and confirmedCode both serialize camelCase, and an
+        // UNCONFIRMED decision shows an EXPLICIT confirmedCode: null — the frontend must be able to tell
+        // "proposed" from "signed" by reading the wire, never by guessing at an absent key.
+        await SeedAwaitingVpAsync();
+
+        var resp = await _client.GetAsync($"/projects/{P}/decision");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var doc = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var comp = doc.GetProperty("components")[0];
+
+        Assert.Equal(Ratio("bottle"), comp.GetProperty("proposedCode").GetProperty("ratioSignature").GetString());
+        Assert.True(comp.TryGetProperty("confirmedCode", out var confirmed),
+            "confirmedCode must be PRESENT on the wire even while null");
+        Assert.Equal(JsonValueKind.Null, confirmed.ValueKind);
+
+        // ... and once the VP signs, the same key carries the signature.
+        await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
+            Approve("codes reviewed", ("bottle", Ratio("bottle"))));
+        var signed = await _client.GetFromJsonAsync<JsonElement>($"/projects/{P}/decision");
+        Assert.Equal(Ratio("bottle"), signed.GetProperty("components")[0].GetProperty("confirmedCode").GetString());
+    }
+
     // ---- MSDS-before-order (Task 10): the last hard precondition ---------------------------------------
 
     /// A closed project: VP-confirmed codes and released procurement — what the close dispatch leaves behind.

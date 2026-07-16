@@ -127,6 +127,15 @@ public static class DecisionEndpoints
             return Results.Accepted($"/projects/{projectId}/decision", new { ordered = cas });
         });
 
+        // The decision read (§7): the doc verbatim or a 404 — and the 202 Location on the determination
+        // endpoint now points at a real route. ConfirmedCode serializes as an EXPLICIT null while
+        // unconfirmed (see the attribute on ComponentDecision): Law 9 legible to the UI.
+        app.MapGet("/projects/{projectId}/decision",
+            async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
+            await store.GetDecisionAsync(projectId, ct) is { } decision
+                ? Results.Json(decision, Json.Options)
+                : Results.NotFound());
+
         app.MapGet("/projects/{projectId}/gate/vp",
             async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
         {
@@ -135,12 +144,12 @@ public static class DecisionEndpoints
             var (armed, blockers) = VpGate.Armable(regGate, decision);
 
             // The same coverage re-check the POST enforces, so this read never reports `armable` for a
-            // gate the POST would refuse — a lying affordance is how a gate gets rubber-stamped. No
-            // candidates ⇒ nothing to check coverage against; VpGate's own blockers carry the story.
+            // gate the POST would refuse — a lying affordance is how a gate gets rubber-stamped. Absent
+            // candidates are the POST's blocker verbatim: there is no analysis under the signature.
             var candidates = await store.GetCandidatesAsync(projectId, ct);
             var verdicts = await store.GetVerdictsAsync(projectId, ct);
             IReadOnlyList<string> uncovered = candidates is null
-                ? []
+                ? ["no candidates on file — there is no analysis under the regulatory signature"]
                 : RegulatoryGate.Armable(candidates, verdicts).Blockers;
 
             var gate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Smx.Domain.Records;
 
 /// Which criteria a row has actually cleared — booleans computed by DecisionAssembler from the RECORD
@@ -21,9 +23,15 @@ public sealed record ProposedCode(string RatioSignature, IReadOnlyList<string> M
 /// A component's decision. ProposedCode is the AGENT's; ConfirmedCode/ConfirmedBy/ConfirmedReason are
 /// the VP's, written ONLY by POST …/decision/determination. The split is Law 9 in a type: nothing that
 /// reads ConfirmedCode can mistake a proposal for a signature, because a proposal never occupies it.
+///
+/// ConfirmedCode opts OUT of Json.Options' WhenWritingNull: an unconfirmed decision must serialize an
+/// EXPLICIT `confirmedCode: null` — "not signed yet" is a value the UI reads off the wire, never a
+/// missing key it has to infer. A dropped key beside a present proposedCode is exactly the ambiguity
+/// that lets a proposal be READ as a signature.
 public sealed record ComponentDecision(
     string ComponentId, IReadOnlyList<DecisionRow> Rows, ProposedCode? ProposedCode,
-    string? ConfirmedCode = null, string? ConfirmedBy = null, string? ConfirmedReason = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? ConfirmedCode = null,
+    string? ConfirmedBy = null, string? ConfirmedReason = null);
 
 public static class ProcurementStatus
 {

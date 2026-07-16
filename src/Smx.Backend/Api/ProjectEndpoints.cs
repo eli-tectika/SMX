@@ -138,6 +138,18 @@ public static class ProjectEndpoints
             }, Json.Options);
         });
 
+        // The per-stage reads (§7): thin projections mirroring GET /dosing — the doc verbatim or a 404.
+        app.MapGet("/projects/{projectId}/candidates",
+            async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
+            await store.GetCandidatesAsync(projectId, ct) is { } candidates
+                ? Results.Json(candidates, Json.Options)
+                : Results.NotFound());
+
+        // A partition query, never a 404: an empty analysis is a state, not an error (mirror GetVerdictsAsync).
+        app.MapGet("/projects/{projectId}/verdicts",
+            async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
+            Results.Json(await store.GetVerdictsAsync(projectId, ct), Json.Options));
+
         app.MapGet("/healthz", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
     }
 }
