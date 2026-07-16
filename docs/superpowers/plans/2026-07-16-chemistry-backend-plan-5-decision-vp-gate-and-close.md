@@ -280,7 +280,7 @@ git commit -m "feat(domain): DecisionDoc — the proposal and the signature are 
 
 The assembly folds the four upstream records into per-component `DecisionRow`s. It is pure domain code: §3.4/§8.1 put "decision-matrix assembly" on the deterministic side of the line. The agent (Task 4) only *picks* among codes that already exist.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```csharp
 using Smx.Domain;
@@ -366,9 +366,9 @@ public class DecisionAssemblerTests
 }
 ```
 
-- [ ] **Step 2: Run to verify they fail** (type missing).
+- [x] **Step 2: Run to verify they fail** (type missing).
 
-- [ ] **Step 3: Implement** `src/Smx.Domain/DecisionAssembler.cs`:
+- [x] **Step 3: Implement** `src/Smx.Domain/DecisionAssembler.cs`:
 
 ```csharp
 using Smx.Domain.Records;
@@ -418,11 +418,11 @@ public static class DecisionAssembler
 }
 ```
 
-- [ ] **Step 4: Run tests → green. Then the full suite.**
+- [x] **Step 4: Run tests → green. Then the full suite.**
 
-- [ ] **Step 5: Mutation checks:** (a) change `v.Determination == Determinations.Recommended` to `!= Determinations.Rejected` (would admit undetermined rows) → `Assemble_FoldsOnlyRecommendedSubstances…` must still pass? NO — construct it properly: that test has only recommended+rejected; add an UNDETERMINED verdict (`det: null`) to the first test's input and assert it is absent, THEN run the mutation and watch it fail. (b) change `Cost: audit?.BestQuote is not null` to `audit is not null` → `…IsNotClearedForCost…` must FAIL. Revert both by hand; report.
+- [x] **Step 5: Mutation checks:** (a) change `v.Determination == Determinations.Recommended` to `!= Determinations.Rejected` (would admit undetermined rows) → `Assemble_FoldsOnlyRecommendedSubstances…` must still pass? NO — construct it properly: that test has only recommended+rejected; add an UNDETERMINED verdict (`det: null`) to the first test's input and assert it is absent, THEN run the mutation and watch it fail. (b) change `Cost: audit?.BestQuote is not null` to `audit is not null` → `…IsNotClearedForCost…` must FAIL. Revert both by hand; report.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/Smx.Domain src/Smx.Domain.Tests
@@ -439,7 +439,7 @@ git commit -m "feat(domain): DecisionAssembler — deterministic rows, honest ze
 
 Model `DosingAgent.cs` exactly (output records → `ValidatedAgentRunner.RunAsync<T>` → validate → build the domain doc in code). The agent sees the assembled rows + the dosing codes and, per component, RECOMMENDS one code with a rationale.
 
-- [ ] **Step 1: Write the failing tests** — drive `DecisionAgent.RunAsync` with a scripted `ISmxAgent` fake (copy the pattern from `DosingAgentTests`), and unit-test `Validate` directly:
+- [x] **Step 1: Write the failing tests** — drive `DecisionAgent.RunAsync` with a scripted `ISmxAgent` fake (copy the pattern from `DosingAgentTests`), and unit-test `Validate` directly:
 
 ```csharp
 public class DecisionAgentTests
@@ -468,9 +468,9 @@ public class DecisionAgentTests
 }
 ```
 
-- [ ] **Step 2: Run to verify they fail.**
+- [x] **Step 2: Run to verify they fail.**
 
-- [ ] **Step 3: Implement** `DecisionAgent` with:
+- [x] **Step 3: Implement** `DecisionAgent` with:
 
 ```csharp
 public sealed record DecisionPickOutput(string ComponentId, string RatioSignature, List<string> MarkerCas, string Rationale);
@@ -502,9 +502,9 @@ public static class DecisionAgent
 
 (The complete bodies are a structural mirror of the in-repo template: `DosingAgent.RunAsync` at `src/Smx.Orchestrator/Agents/DosingAgent.cs:72-165` — prompt serialization via `Json.Options`, the `revision is null` branch, `ValidatedAgentRunner.RunAsync<DecisionOutput>`, then the doc built entirely in code — and `DosingAgent.Validate` at :195-295 for the numbered-invariant style. Step 1's four invariants are the complete Validate contract; implement exactly those, in that order, first-violation-wins.)
 
-- [ ] **Step 4: Run tests + full suite.**
-- [ ] **Step 5: Mutation-test all four `Validate` invariants** (patch each check out → its fact fails → revert; report four results).
-- [ ] **Step 6: Commit**
+- [x] **Step 4: Run tests + full suite.**
+- [x] **Step 5: Mutation-test all four `Validate` invariants** (patch each check out → its fact fails → revert; report four results).
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/Smx.Orchestrator src/Smx.Orchestrator.Tests
@@ -519,7 +519,7 @@ git commit -m "feat(agents): DecisionAgent — picks only among real codes, prop
 - Modify: `src/Smx.Orchestrator/Dispatch/AgentRuns.cs` (IAgentRuns + AgentRuns), `src/Smx.Orchestrator.Tests/Fakes/FakeAgentRuns.cs`
 - Test: `src/Smx.Orchestrator.Tests/AgentRunsTests.cs` (whatever pattern pins the other arms — mirror it)
 
-- [ ] **Step 1:** Add to `IAgentRuns`:
+- [x] **Step 1:** Add to `IAgentRuns`:
 
 ```csharp
     Task<AgentRunResult<DecisionDoc>> RunDecisionAsync(
@@ -530,9 +530,9 @@ git commit -m "feat(agents): DecisionAgent — picks only among real codes, prop
 
 `FakeAgentRuns`: a scriptable `Decision` func + `DecisionCalls` counter + add it to `TotalCalls` (the Cost-is-agent-free pin depends on `TotalCalls` being exhaustive — a missing counter here silently weakens that test).
 
-- [ ] **Step 2: Full suite green** (compile ripples: any class implementing IAgentRuns).
-- [ ] **Step 3: Mutation check:** remove `DecisionCalls` from `TotalCalls` → find which test fails (the Cost dispatch `TotalCalls` pin must, once Task 6's dispatch exists — if nothing fails YET, note it and re-run this mutation after Task 6; do not skip it). Revert.
-- [ ] **Step 4: Commit** `feat(agents): RunDecisionAsync — the decision arm, counted like every other agent call`
+- [x] **Step 2: Full suite green** (compile ripples: any class implementing IAgentRuns).
+- [x] **Step 3: Mutation check:** remove `DecisionCalls` from `TotalCalls` → find which test fails (the Cost dispatch `TotalCalls` pin must, once Task 6's dispatch exists — if nothing fails YET, note it and re-run this mutation after Task 6; do not skip it). Revert.
+- [x] **Step 4: Commit** `feat(agents): RunDecisionAsync — the decision arm, counted like every other agent call`
 
 ---
 
@@ -1108,3 +1108,24 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
   not an anonymous object, because `Json.Options`' `WhenWritingNull` would drop a null anonymous PROPERTY,
   and "no gate yet" must be a value the frontend can read; dictionary entries are exempt. The dashboard
   (Task 12) was NOT built with it.
+- **Task 4: `DecisionAgent.RunAsync` derives the projectId from `dosing.ProjectId`** (the plan's sketch left
+  the source open — `ConstraintsDoc` first param vs. the DosingDoc). The DosingDoc is already a required
+  data param carrying the finalized codes, so its `ProjectId` keys the doc (`RecordIds.Decision`,
+  `DecisionDoc.ProjectId`) and no `ConstraintsDoc` param was added.
+- **Task 4: Validate's invariant 1 is a bijection**, not just "exactly one pick per assembled component": a
+  pick naming a component NOT on the matrix is also refused under invariant 1 (it would otherwise crash
+  invariant 4's `First()` — or, worse, ride invariant 2 if dosing ever carried a code for an unassembled
+  component). Its fact pins THIS guard's message ("not on the decision matrix") specifically, because
+  invariant 2's error also happens to name the component and could mask a dropped check.
+- **Task 4: the valid-pick fixture actively smuggles a confirmation** — the scripted model reply carries
+  `confirmedCode`/`confirmedBy`/`confirmedReason` at both the pick and top level; the output contract has no
+  such fields, so the test proves the model's output CANNOT touch `ConfirmedCode`, not merely that this
+  particular reply didn't.
+- **Task 5: the fake's Decision default is pinned in `FakeAgentRunsSmokeTests`** (the file that pins the
+  other fake defaults), not `AgentRunsTests` — the latter's pattern (asserting what the REAL AgentRuns hands
+  the agent) exists only for Discovery's sensitive terms, and Decision has no equivalent secret to pin.
+- **Task 5's `TotalCalls` mutation KILLED at Task 5**, not deferred: the new smoke fact asserts
+  `TotalCalls == 1` after one Decision call, so dropping `DecisionCalls` from the sum fails it
+  (`Fake_DefaultDecision_MirrorsTheAssemblyProposesTheFirstCode_AndCountsTheCall`). The plan's intended
+  dispatch-level kill (CostDispatchTests' `TotalCalls == 0` pin catching a decision call inside Cost
+  dispatch) only becomes live with Task 6 — re-run the mutation there as Step 4 already instructs.

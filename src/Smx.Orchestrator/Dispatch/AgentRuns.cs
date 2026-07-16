@@ -36,6 +36,16 @@ public interface IAgentRuns
         IReadOnlyDictionary<string, double> loadings,
         RevisionDoc? revision, CancellationToken ct);
 
+    /// <param name="assembled">the DETERMINISTIC decision matrix (DecisionAssembler.Assemble) — the agent
+    /// only PICKS a code over these rows; it authors none of them.</param>
+    /// <param name="dosing">the finalized codes the pick chooses among, and the ProjectId the doc is keyed
+    /// by.</param>
+    /// <param name="revision">null for an ordinary run; non-null re-picks applying the operator's
+    /// revise-with-reason. Explicit rather than an overload: forgetting it is a compile error, not an agent
+    /// that silently ignores the operator.</param>
+    Task<AgentRunResult<DecisionDoc>> RunDecisionAsync(
+        IReadOnlyList<ComponentDecision> assembled, DosingDoc dosing, RevisionDoc? revision, CancellationToken ct);
+
     Task<AgentRunResult<ConclusionOutput>> RunConclusionAsync(RevisionDoc revision, ConstraintsDoc constraints, string stageOutputJson, CancellationToken ct);
 
     /// One chat turn. Returns the agent's reply text; the tool-call trail is collected by the ChatTools
@@ -87,6 +97,15 @@ public sealed class AgentRuns(IChatClient chatClient, ToolBox toolBox) : IAgentR
         DosingAgent.RunAsync(
             new MafAgent(chatClient, DosingAgent.AgentName, DosingAgent.Instructions, toolBox.DosingTools(constraints)),
             constraints, compliant, floors, loadings, revision, ct);
+
+    /// Decision reads what Dosing reads (learned conclusions + reference) — the matrix it picks over is
+    /// already assembled deterministically, so there is deliberately no tool that could let the model "look
+    /// up" a different answer than the record it is proposing over.
+    public Task<AgentRunResult<DecisionDoc>> RunDecisionAsync(
+        IReadOnlyList<ComponentDecision> assembled, DosingDoc dosing, RevisionDoc? revision, CancellationToken ct) =>
+        DecisionAgent.RunAsync(
+            new MafAgent(chatClient, DecisionAgent.AgentName, DecisionAgent.Instructions, toolBox.DecisionReadTools()),
+            assembled, dosing, revision, ct);
 
     /// No tools: the distiller reasons only over what it is handed (the revision + the stage output it
     /// produced). Giving it search tools would let it "support" the conclusion with evidence the revision
