@@ -30,13 +30,30 @@ public sealed class NatEgressClient : IEgressClient
         }
         try
         {
-            using var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+            // The fetch timeout must bound the WHOLE fetch. With ResponseHeadersRead,
+            // HttpClient.Timeout stops covering the body read — a tarpit server that sent headers
+            // and then trickled the body hung the live sweep for 40+ minutes (2026-07-16).
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_opts.FetchTimeoutSeconds));
+
+            using var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token);
             if (!resp.IsSuccessStatusCode) return null;
-            var bytes = await resp.Content.ReadAsByteArrayAsync(ct);
-            if (bytes.Length > _opts.MaxPdfBytes) { _log.LogWarning("Egress oversize {Len}", bytes.Length); return null; }
+
+            // Cap the size DURING the read — buffering an unbounded body before checking would
+            // let a hostile server exhaust memory long before the length check.
+            await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token);
+            using var buffer = new MemoryStream();
+            var chunk = new byte[81920];
+            int read;
+            while ((read = await stream.ReadAsync(chunk, cts.Token)) > 0)
+            {
+                buffer.Write(chunk, 0, read);
+                if (buffer.Length > _opts.MaxPdfBytes) { _log.LogWarning("Egress oversize (> {Max} bytes)", _opts.MaxPdfBytes); return null; }
+            }
             var ctype = resp.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
-            return new EgressResult(bytes, ctype, resp.RequestMessage?.RequestUri ?? url);
+            return new EgressResult(buffer.ToArray(), ctype, resp.RequestMessage?.RequestUri ?? url);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex) { _log.LogWarning(ex, "Egress fetch failed for {Url}", url); return null; }
     }
 }
