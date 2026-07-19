@@ -41,6 +41,12 @@ public sealed class StageDispatcher(
             case DosingDoc d: await OnDosingAsync(d, ct); break;
             case CostDoc c: await TryDecideAsync(c.ProjectId, ct); break;
             case MatrixDoc: break; // terminal
+            // Terminal too, and spelled out rather than left to fall out of the switch. The DecisionDoc is
+            // the Decision stage's OUTPUT: the runner that wrote it already parked the stage at
+            // `awaiting-VP` in the same breath, so its delivery has nothing left to do. The CLOSE hangs off
+            // the VP GateDoc (OnGateAsync → CloseProjectAsync) — a SIGNATURE, never the analysis it covers.
+            // Dispatching anything here would act on the decision ahead of the signature authorizing it.
+            case DecisionDoc: break;
         }
     }
 

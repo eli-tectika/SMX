@@ -1395,3 +1395,29 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
   estimate (the review follow-ups added tests the estimate never counted). Both Bicep twins compile with
   only the pre-existing BCP037 type-definition warning, identical on main; `git diff main -- infra/` is
   empty.
+
+### Final-review follow-ups (deferred)
+
+Three findings from the final holistic review of the branch, verified against the code and deliberately NOT
+fixed here — each is a real asymmetry, none is a false pass on its own. Recorded so they are not rediscovered
+from scratch:
+
+- **(a) Reject-after-approve leaves `Confirmed*` stamped under a locked gate.** `POST
+  /decision/determination` with `rejected` writes the locked GateDoc with the VP's reason
+  (`DecisionEndpoints.cs:77-86`) but never touches `DecisionDoc.Components`. Approve-then-reject therefore
+  leaves `ConfirmedCode`/`ConfirmedBy`/`ConfirmedReason` on file reading "VP R&D" under a gate that says no.
+  The close cannot fire on it (`CloseProjectAsync` re-reads the gate and returns on a non-`approved` status),
+  so procurement is safe — but the record shows a confirmation the VP withdrew. The reject path should clear
+  `Confirmed*` the same way the approve path sets them.
+- **(b) Orphan verdicts ride into dosing/decision but are excluded from the compliance-package export.**
+  `TryDoseAsync` builds its input from `CompliantSet.Of(verdicts)` over ALL verdicts
+  (`StageDispatcher.cs:388`), while `compliance-package` filters to the live matrix cells
+  (`ExportEndpoints.cs:86-88`). After a Discovery revision drops a candidate, its leftover `Recommended`
+  verdict is invisible to the R.E.'s package yet still feeds a dosing code. The artifact and the pipeline
+  disagree about scope; one of the two rules should win explicitly.
+- **(c) The two regulatory exports disagree about the empty case.** `elements-to-check` returns 200 with
+  `items: []` when every candidate is Tier C, where `compliance-package` 404s its equivalent empty state
+  (`ExportEndpoints.cs:89-91`, reasoning that zero entries posing as a screening is the degenerate narrowed
+  review). Both 404 a missing CandidatesDoc; only one 404s an empty result. The same reasoning applies to
+  both artifacts — an empty elements-to-check handed offline looks like "nothing to check" rather than
+  "nothing survived".
