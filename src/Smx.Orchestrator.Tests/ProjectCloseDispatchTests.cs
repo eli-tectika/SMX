@@ -271,6 +271,52 @@ public class ProjectCloseDispatchTests
     }
 
     [Fact]
+    public async Task AClose_ThatDiesMidWrite_StampsFailed_AndTheExceptionNeverEscapes()
+    {
+        // The close is the single highest-stakes transition and the only multi-step dispatch path doing
+        // remote I/O (marker-library writes, the conclusion's embed + search push) — and ChangeFeedWorker
+        // catches dispatch exceptions, LOGS, and CHECKPOINTS ANYWAY. An exception that escaped here is
+        // checkpoint-and-lose: the project sits `awaiting-VP` forever under a signed gate, the dashboard
+        // blaming a VP who already signed, and nothing ever redelivers. §11: nothing dies silently — the
+        // close must stamp `failed` with the error, exactly like every stage runner.
+        var (d, store, knowledge, index) = Sut();
+        await SeedClosableAsync(store, P);
+        knowledge.ThrowOnUpsertMarker = new InvalidOperationException("cosmos died mid-write — injected");
+
+        await store.UpsertGateAsync(VpGateDoc(P));
+        var escaped = await Record.ExceptionAsync(() => d.OnRecordChangedAsync(Delivered(VpGateDoc(P)), default));
+
+        // The exception did NOT escape to the feed...
+        Assert.Null(escaped);
+        // ...the stage is stamped `failed` with the error visible...
+        var stage = DecisionStage(store, P);
+        Assert.Equal("failed", stage.Status);
+        Assert.Contains("cosmos died mid-write — injected", stage.Error);
+        // ...and nothing half-closed: procurement unreleased, no conclusion pushed.
+        Assert.Equal(ProcurementStatus.Unreleased, (await store.GetDecisionAsync(P))!.Procurement.Status);
+        Assert.Empty(index.Pushed);
+
+        // The `failed` stamp left `awaiting-VP`, so the latch absorbs redeliveries — the failure is
+        // stable and visible, not a retry loop against a dead store.
+        await d.OnRecordChangedAsync(Delivered(VpGateDoc(P)), default);
+        Assert.Equal("failed", DecisionStage(store, P).Status);
+
+        // Every write inside close is idempotent (content-keyed ids, the LinkedProjects pin, the
+        // deterministic conclusion id), so once the operator clears the failure — re-arming the latch —
+        // the SAME signed gate converges to a full close.
+        knowledge.ThrowOnUpsertMarker = null;
+        var project = (await store.GetProjectAsync(P))!;
+        project.Stages[Stages.Decision].Status = "awaiting-VP";
+        await store.UpsertProjectAsync(project);
+        await d.OnRecordChangedAsync(Delivered(VpGateDoc(P)), default);
+
+        Assert.Equal("done", DecisionStage(store, P).Status);
+        Assert.Single(await knowledge.QueryMarkersAsync(null));
+        Assert.Single(index.Pushed);
+        Assert.Equal(ProcurementStatus.Released, (await store.GetDecisionAsync(P))!.Procurement.Status);
+    }
+
+    [Fact]
     public async Task Close_WithNoKnowledgeStore_DegradesSafely()
     {
         // Mirror of the catalog-null degrade: no knowledge store ⇒ the knowledge writes are skipped, but

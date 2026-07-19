@@ -210,102 +210,119 @@ public sealed class StageDispatcher(
         // re-pushing the conclusion on every at-least-once delivery).
         if (project is null || project.Stages[Stages.Decision].Status is not "awaiting-VP") return;
 
-        // F3: trust the RECORD, not the fed snapshot (the OnChatMessageAsync lesson). The feed's element
-        // is a snapshot of the gate at some change: an approval revoked a moment later delivers the
-        // approved version while the store already holds `locked`. Closing off the fed element would
-        // release procurement under a gate that is no longer signed — re-read, and a by-now-unsigned
-        // gate closes nothing (the reject's own delivery is a no-op in OnGateAsync).
-        var gate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
-        if (gate?.Status != "approved") return;
-
-        var decision = await store.GetDecisionAsync(projectId, ct);
-        var dosing = await store.GetDosingAsync(projectId, ct);
-        var constraints = await store.GetConstraintsAsync(projectId, ct);
-        if (decision is null || dosing is null || constraints is null) return; // nothing signed over nothing
-
-        // The raced-close refusal (Task 15 review F1, layer 1). The determination endpoint stamps EVERY
-        // component before the gate is written, so an unconfirmed component here means the DecisionDoc on
-        // file is NOT the one the VP signed — a revision's persist replaced it in the window between the
-        // stamp and this delivery. Filtering to an empty confirmed list and carrying on would release
-        // procurement over NOTHING (an empty conclusion under a real signature). Park LOUD instead;
-        // the re-pick re-parks at awaiting-VP and the VP signs what they can actually read.
-        var unconfirmed = decision.Components
-            .Where(c => c.ConfirmedCode is null).Select(c => c.ComponentId).ToList();
-        if (unconfirmed.Count > 0)
+        // The whole post-latch body in ONE try (every stage runner's posture): this is the single
+        // highest-stakes transition, the only multi-step dispatch path talking to remote surfaces beyond
+        // the record store (marker-library writes, the conclusion's embed + search push), plus two
+        // contract `First()`s. An exception that escaped here would hit ChangeFeedWorker — which logs and
+        // CHECKPOINTS ANYWAY — so the failure mode is checkpoint-and-lose: the project sits `awaiting-VP`
+        // forever under a signed gate, the dashboard blaming a VP who already signed. Stamp `failed`
+        // instead (§11: nothing dies silently). The zero-confirmation park below is a deliberate RETURN,
+        // never an exception — it keeps its own needs-review stamp. Every write inside is idempotent
+        // (content-keyed ids, the LinkedProjects pin, the deterministic conclusion id), so once the
+        // operator clears the failure a re-signed determination converges.
+        try
         {
-            await SetStageAsync(projectId, Stages.Decision, s =>
-            {
-                s.Status = "needs-review";
-                s.Error = "the gate is signed but the decision on file carries no confirmation for: " +
-                          string.Join(", ", unconfirmed) +
-                          " — a revision may have raced the signature; re-sign after the re-pick";
-            }, ct);
-            return;
-        }
+            // F3: trust the RECORD, not the fed snapshot (the OnChatMessageAsync lesson). The feed's element
+            // is a snapshot of the gate at some change: an approval revoked a moment later delivers the
+            // approved version while the store already holds `locked`. Closing off the fed element would
+            // release procurement under a gate that is no longer signed — re-read, and a by-now-unsigned
+            // gate closes nothing (the reject's own delivery is a no-op in OnGateAsync).
+            var gate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
+            if (gate?.Status != "approved") return;
 
-        // The confirmed codes, resolved back to the DosingDoc records they name. The endpoint 422'd any
-        // confirmation that names no real code, so First() is a contract here, not a hope.
-        var confirmed = decision.Components
-            .Where(c => c.ConfirmedCode is not null)
-            .Select(c => (Component: c, Code: dosing.Codes.First(
-                k => k.ComponentId == c.ComponentId && k.RatioSignature == c.ConfirmedCode)))
-            .ToList();
+            var decision = await store.GetDecisionAsync(projectId, ct);
+            var dosing = await store.GetDosingAsync(projectId, ct);
+            var constraints = await store.GetConstraintsAsync(projectId, ct);
+            if (decision is null || dosing is null || constraints is null) return; // nothing signed over nothing
 
-        // Knowledge-null degrade, mirroring the catalog-null Cost path: the writes are skipped, the project
-        // still closes. DEFERRED like the others: production DI must pass the real IKnowledgeStore.
-        if (knowledge is not null)
-        {
-            var now = DateTimeOffset.UtcNow.ToString("O");
-            foreach (var (component, code) in confirmed)
+            // The raced-close refusal (Task 15 review F1, layer 1). The determination endpoint stamps EVERY
+            // component before the gate is written, so an unconfirmed component here means the DecisionDoc on
+            // file is NOT the one the VP signed — a revision's persist replaced it in the window between the
+            // stamp and this delivery. Filtering to an empty confirmed list and carrying on would release
+            // procurement over NOTHING (an empty conclusion under a real signature). Park LOUD instead;
+            // the re-pick re-parks at awaiting-VP and the VP signs what they can actually read.
+            var unconfirmed = decision.Components
+                .Where(c => c.ConfirmedCode is null).Select(c => c.ComponentId).ToList();
+            if (unconfirmed.Count > 0)
             {
-                var spec = constraints.Components.First(c => c.Id == component.ComponentId);
-                var id = KnowledgeIds.Marker(MarkerContentKey(code));
-                var existing = await knowledge.GetMarkerAsync(id, ct);
-                if (existing is null)
-                    await knowledge.UpsertMarkerAsync(new MarkerLibraryDoc
-                    {
-                        Id = id,
-                        // Ppm is the ANCHOR — the largest marker's ppm, the ratio's "1.00". Together with
-                        // the scale-invariant ratio it reconstructs every marker's ppm; storing any other
-                        // single number would not.
-                        Composition = new([.. code.Markers.Select(m => m.Cas)],
-                            code.Markers.Max(m => m.Ppm), code.RatioSignature),
-                        ValidatedFor = new(spec.Application, spec.Material, spec.Objective),
-                        SourceProject = projectId,
-                        LinkedProjects = [projectId],
-                        CreatedAt = now,
-                    }, ct);
-                else if (!existing.LinkedProjects.Contains(projectId))
+                await SetStageAsync(projectId, Stages.Decision, s =>
                 {
-                    // A reuse: another project confirmed the same code. Counted ONCE per project — the
-                    // projects-list is the pin, so a redelivered gate cannot double-count (see
-                    // MarkerLibraryDoc.LinkedProjects). SourceProject is provenance and never rewritten.
-                    existing.ReuseCount++;
-                    existing.LinkedProjects.Add(projectId);
-                    await knowledge.UpsertMarkerAsync(existing, ct);
-                }
+                    s.Status = "needs-review";
+                    s.Error = "the gate is signed but the decision on file carries no confirmation for: " +
+                              string.Join(", ", unconfirmed) +
+                              " — a revision may have raced the signature; re-sign after the re-pick";
+                }, ct);
+                return;
             }
 
-            var ratios = string.Join("; ", confirmed.Select(c => $"{c.Component.ComponentId}: {c.Component.ConfirmedCode}"));
-            await conclusions.WriteAsync(new LearnedConclusionDoc
-            {
-                // Deterministic in the project's close — an at-least-once redelivery upserts one doc.
-                Id = KnowledgeIds.LearnedConclusion(KnowledgeKinds.Decision, $"{projectId}|close"),
-                Kind = KnowledgeKinds.Decision,
-                Scope = new(null, null, null, null, null, null), // project-wide: the codes span components
-                Finding = $"Project closed under VP approval; confirmed final codes — {ratios}.",
-                // 1.0: this records an operator-signed determination, not an inference.
-                Confidence = 1.0,
-                Provenance = new([projectId], [$"VP determination on project {projectId} — confirmed codes: {ratios}"]),
-                CreatedAt = now,
-            }, ct);
-        }
+            // The confirmed codes, resolved back to the DosingDoc records they name. The endpoint 422'd any
+            // confirmation that names no real code, so First() is a contract here, not a hope.
+            var confirmed = decision.Components
+                .Where(c => c.ConfirmedCode is not null)
+                .Select(c => (Component: c, Code: dosing.Codes.First(
+                    k => k.ComponentId == c.ComponentId && k.RatioSignature == c.ConfirmedCode)))
+                .ToList();
 
-        decision.Procurement.Status = ProcurementStatus.Released;
-        await store.UpsertDecisionAsync(decision, ct);
-        // LAST, deliberately: the stage flip is the latch above, so a crash before this line redelivers
-        // into a re-run whose writes all converge (deterministic ids, the projects-list pin).
-        await SetStageAsync(projectId, Stages.Decision, s => { s.Status = "done"; s.Error = null; }, ct);
+            // Knowledge-null degrade, mirroring the catalog-null Cost path: the writes are skipped, the project
+            // still closes. DEFERRED like the others: production DI must pass the real IKnowledgeStore.
+            if (knowledge is not null)
+            {
+                var now = DateTimeOffset.UtcNow.ToString("O");
+                foreach (var (component, code) in confirmed)
+                {
+                    var spec = constraints.Components.First(c => c.Id == component.ComponentId);
+                    var id = KnowledgeIds.Marker(MarkerContentKey(code));
+                    var existing = await knowledge.GetMarkerAsync(id, ct);
+                    if (existing is null)
+                        await knowledge.UpsertMarkerAsync(new MarkerLibraryDoc
+                        {
+                            Id = id,
+                            // Ppm is the ANCHOR — the largest marker's ppm, the ratio's "1.00". Together with
+                            // the scale-invariant ratio it reconstructs every marker's ppm; storing any other
+                            // single number would not.
+                            Composition = new([.. code.Markers.Select(m => m.Cas)],
+                                code.Markers.Max(m => m.Ppm), code.RatioSignature),
+                            ValidatedFor = new(spec.Application, spec.Material, spec.Objective),
+                            SourceProject = projectId,
+                            LinkedProjects = [projectId],
+                            CreatedAt = now,
+                        }, ct);
+                    else if (!existing.LinkedProjects.Contains(projectId))
+                    {
+                        // A reuse: another project confirmed the same code. Counted ONCE per project — the
+                        // projects-list is the pin, so a redelivered gate cannot double-count (see
+                        // MarkerLibraryDoc.LinkedProjects). SourceProject is provenance and never rewritten.
+                        existing.ReuseCount++;
+                        existing.LinkedProjects.Add(projectId);
+                        await knowledge.UpsertMarkerAsync(existing, ct);
+                    }
+                }
+
+                var ratios = string.Join("; ", confirmed.Select(c => $"{c.Component.ComponentId}: {c.Component.ConfirmedCode}"));
+                await conclusions.WriteAsync(new LearnedConclusionDoc
+                {
+                    // Deterministic in the project's close — an at-least-once redelivery upserts one doc.
+                    Id = KnowledgeIds.LearnedConclusion(KnowledgeKinds.Decision, $"{projectId}|close"),
+                    Kind = KnowledgeKinds.Decision,
+                    Scope = new(null, null, null, null, null, null), // project-wide: the codes span components
+                    Finding = $"Project closed under VP approval; confirmed final codes — {ratios}.",
+                    // 1.0: this records an operator-signed determination, not an inference.
+                    Confidence = 1.0,
+                    Provenance = new([projectId], [$"VP determination on project {projectId} — confirmed codes: {ratios}"]),
+                    CreatedAt = now,
+                }, ct);
+            }
+
+            decision.Procurement.Status = ProcurementStatus.Released;
+            await store.UpsertDecisionAsync(decision, ct);
+            // LAST, deliberately: the stage flip is the latch above, so a crash before this line redelivers
+            // into a re-run whose writes all converge (deterministic ids, the projects-list pin).
+            await SetStageAsync(projectId, Stages.Decision, s => { s.Status = "done"; s.Error = null; }, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            await SetStageAsync(projectId, Stages.Decision, s => { s.Status = "failed"; s.Error = e.Message; }, ct);
+        }
     }
 
     /// A library code's identity is its CONTENT — the ratio signature plus every (cas, ppm) pair — so the
