@@ -5,12 +5,12 @@ import { StageSpine } from './StageSpine';
 import { Data } from './ui/Data';
 
 /**
- * The project context bar — sticky, and the reason the masthead is allowed to be big.
+ * The project context bar — sticky, pinned directly beneath the masthead.
  *
- * The masthead's identity tier scrolls away; this pins in its place. That split is the
- * whole point: thirty rows into a compatibility matrix you need to know which project you
- * are in and which stages are parked, and you emphatically do not need to be told the app
- * is called SMX. Making the wordmark large is only defensible because it leaves.
+ * The masthead is a compact brand/utility top bar (logo, finder, corpus stamp); this is
+ * the per-project status board. Thirty rows into a compatibility matrix you need to know
+ * which project you are in and which stages are parked — so this pins where it stays
+ * useful, while the masthead stays small enough to keep permanently.
  *
  * This replaces the old free-scrolling `ProjectHeader`, which used to drift off the top of
  * the page along with the spine — so on the one screen where the operator scrolls furthest,

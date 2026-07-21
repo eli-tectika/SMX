@@ -61,6 +61,8 @@ strong {
    target: without it a 4K monitor would produce a 3000px-wide table, which is not density,
    just distance. */
 .wrap {
+  flex: 1;
+  min-width: 0;
   max-width: 1100px;
   margin: 0 auto;
   padding: 20px 24px 48px;
@@ -75,8 +77,8 @@ strong {
 
 .ctxbar {
   position: sticky;
-  /* sits directly under the sticky nav tier */
-  top: var(--appnav-h);
+  /* sits directly under the sticky masthead */
+  top: var(--masthead-h);
   z-index: 15;
   background: var(--page-bg);
   border-bottom: var(--hair) solid var(--border);
@@ -157,8 +159,8 @@ strong {
    dock has a width. The canvas gets everything else. */
 .dock {
   position: sticky;
-  top: calc(var(--appnav-h) + var(--ctxbar-h));
-  height: calc(100vh - var(--appnav-h) - var(--ctxbar-h) - var(--s5));
+  top: calc(var(--masthead-h) + var(--ctxbar-h));
+  height: calc(100vh - var(--masthead-h) - var(--ctxbar-h) - var(--s5));
   min-height: 320px;
   display: flex;
   flex-direction: column;
@@ -276,12 +278,11 @@ strong {
 .cap b {
   display: block;
   color: var(--ink);
+  /* Georgia is the SMX brand's title face. Titles only — the data below stays Plex. */
+  font-family: var(--font-serif);
   font-weight: var(--w-semibold);
   font-size: var(--t-title);
   line-height: var(--lh-tight);
-  /* Tracking tightens as size grows. At 20px the default spacing of Plex Sans is
-     slightly loose for a heading. */
-  letter-spacing: -0.005em;
   margin-bottom: 3px;
 }
 
@@ -304,66 +305,51 @@ strong {
   font-size: var(--t-small);
 }
 
-/* ---- masthead -------------------------------------------------------------
-   Two tiers. The identity tier scrolls away; the nav tier sticks.
-
-   That split is the whole design. Thirty rows into a compatibility matrix you need the
-   stage spine and the project id, and you emphatically do not need to be told the app is
-   called SMX. So the wordmark is allowed to be large precisely BECAUSE it is allowed to
-   leave. */
+/* ---- masthead (full-width top bar, sticky) --------------------------------
+   The brand lockup lives here, the way the SMX web product carries its logo. It stays
+   put — the logo IS the product's identity, and the top bar is where the ⌘K finder and
+   the corpus-calibration stamp belong. The rail and the context bar pin directly beneath
+   it, which is why its height is a token the sticky stack can agree on. */
 
 .masthead {
+  position: sticky;
+  top: 0;
+  z-index: 25; /* over the rail (20), the context bar (15), and the matrix thead (2/3) */
   display: flex;
   align-items: center;
-  gap: var(--s5);
-  padding: var(--s4) var(--s5);
+  height: var(--masthead-h);
+  padding: 0 var(--s5);
   background: var(--surface-0);
   border-bottom: var(--hair) solid var(--border);
 }
 
-/* The wordmark.
+.masthead__end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+}
 
-   No glyph. An abstract mark — a hexagon, an atom, a spectrum wave — would be the only
-   purely decorative object in the whole application, and this one is a chemistry
-   instrument, not a brand. Note also the trap the letters set: X is this app's own
-   vocabulary for FAIL. No letter of the wordmark may ever carry a palette colour.
+/* The brand lockup — the official SMX mark, as one image.
 
-   So the mark takes its authority from scale, tracking, and the face — and the face is
-   IBM Plex MONO, which is the idea that makes it work. A monospaced wordmark reads as
-   the silkscreen on the front of a laboratory instrument. It is also already loaded, for
-   the data, so the mark costs nothing. */
-.wordmark {
+   The colour lives in the artwork and nowhere else. The "SMX" letterforms are inside the
+   PNG, so there is no separate, tintable text node — and the old rule the wordmark
+   protected still holds: `X` is this app's vocabulary for FAIL, and nothing in the
+   semantic surface is ever coloured brand-navy. */
+.brand {
   display: flex;
   align-items: center;
   gap: var(--s3);
   flex: none;
 }
 
-.wordmark__rule {
-  width: 4px;
-  height: 26px;
-  border-radius: 1px;
-  /* Teal MEANS operator, and the frame around the work is the operator's. This is the one
-     licence the mark takes, and it is grammar-correct. */
-  background: var(--text-teal);
+.brand__logo {
+  height: 28px;
+  width: auto;
+  display: block;
 }
 
-.wordmark__name {
-  font-family: var(--font-mono);
-  font-size: var(--t-mast);
-  font-weight: var(--w-semibold);
-  color: var(--ink);
-  line-height: 1;
-  /* Tracking tightens as size grows — the inverse relationship is the whole tell of a
-     real typographic hand. At 15px this mark wanted 0.14em; mono at 34px is already wide,
-     and the same value would have gaped. */
-  letter-spacing: 0.08em;
-  /* letter-spacing adds a trailing space after the final glyph; pull it back so the
-     divider sits at an even optical gap. */
-  margin-right: -0.08em;
-}
-
-.wordmark__sub {
+.brand__sub {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -371,7 +357,7 @@ strong {
   border-left: var(--hair) solid var(--border-strong);
 }
 
-.wordmark__system {
+.brand__system {
   font-size: var(--t-tiny);
   text-transform: uppercase;
   letter-spacing: var(--track-eyebrow);
@@ -379,7 +365,7 @@ strong {
   color: var(--text-secondary);
 }
 
-.wordmark__tag {
+.brand__tag {
   font-size: var(--t-tiny);
   color: var(--text-muted);
 }
@@ -389,7 +375,6 @@ strong {
    an instrument tells you when it was last calibrated. This is information, not decoration
    — which is the only reason it is allowed to sit here. */
 .masthead__corpus {
-  margin-left: auto;
   display: flex;
   align-items: baseline;
   gap: var(--s2);
@@ -415,42 +400,75 @@ strong {
   cursor: help;
 }
 
-/* ---- nav tier (sticky) ---------------------------------------------------- */
+/* ---- shell: nav rail + content -------------------------------------------- */
 
-.appnav {
+.shell {
+  display: flex;
+  align-items: flex-start;
+}
+
+/* The navigation is a vertical icon rail, matching the SMX web product. It pins beneath
+   the masthead and runs the full height of the viewport, with the operator identity at
+   its foot — the way that product seats the signed-in user. */
+.rail {
   position: sticky;
-  top: 0;
-  z-index: 20; /* must clear the matrix's own sticky thead (z-index 2/3) */
+  top: var(--masthead-h);
+  z-index: 20; /* over the context bar (15) and the matrix thead (2/3) */
+  flex: none;
+  align-self: stretch;
+  width: var(--rail-w);
+  height: calc(100vh - var(--masthead-h));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--s3) 0;
+  background: var(--surface-0);
+  border-right: var(--hair) solid var(--border);
+}
+
+.rail__nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.rail__item {
   display: flex;
   align-items: center;
-  gap: var(--s5);
-  border-bottom: var(--hair) solid var(--border);
-  padding: 0 var(--s5);
-  background: var(--surface-0);
-}
-
-.tab {
-  font-size: var(--t-small);
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r2);
   color: var(--text-secondary);
-  padding: 11px 2px;
-  border-bottom: 2px solid transparent;
-  white-space: nowrap;
+  font-size: 20px;
 }
-.tab.on {
-  color: var(--ink);
-  font-weight: var(--w-medium);
-  border-bottom-color: var(--text-accent);
-}
-.tab:hover {
+.rail__item:hover {
   text-decoration: none;
   color: var(--text-primary);
+  background: var(--surface-2);
+}
+/* Active nav item = the accent tint. Grammar-correct: an active destination IS
+   "active/selected", the one meaning accent-blue carries. */
+.rail__item.on {
+  background: var(--bg-accent);
+  color: var(--text-accent);
 }
 
-.appnav__end {
-  margin-left: auto;
+.rail__operator {
+  margin-top: auto;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--s3);
+  gap: 2px;
+  /* Teal MEANS operator, and the frame around the work is the operator's. */
+  color: var(--text-teal);
+  font-size: 18px;
+}
+.rail__operator-label {
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
 }
 
 /* The ⌘K finder trigger. Not a launcher — a finder: it takes a CAS number, an element
@@ -688,8 +706,10 @@ select:focus {
   background: var(--surface-2);
 }
 .btn.primary {
-  background: var(--text-accent);
-  border-color: var(--text-accent);
+  /* Brand chrome: the primary action wears SMX navy, matching the web product. This is
+     the action colour, not a verdict — the semantic accent-blue keeps its own meaning. */
+  background: var(--brand-navy);
+  border-color: var(--brand-navy);
   color: #fff;
 }
 .btn.primary:hover:not(:disabled) {

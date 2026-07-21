@@ -13,9 +13,11 @@ function shell(path = '/') {
 }
 
 describe('AppShell masthead', () => {
-  it('carries the wordmark and every cross-project surface', () => {
+  it('carries the brand lockup and every cross-project surface', () => {
     shell();
-    expect(screen.getByText('SMX')).toBeInTheDocument();
+    // The brand mark is the official SMX logo image; its accessible name is "SMX".
+    expect(screen.getByAltText('SMX')).toBeInTheDocument();
+    // Each rail destination is icon-only, so its accessible name comes from aria-label.
     for (const tab of ['Projects', 'Marker library', 'Learned conclusions', 'MSDS registry']) {
       expect(screen.getByRole('link', { name: tab })).toBeInTheDocument();
     }
@@ -43,15 +45,17 @@ describe('AppShell masthead', () => {
   });
 
   /**
-   * The wordmark is monochrome by rule: `X` is this app's own vocabulary for FAIL, so no
-   * letter of the mark may ever carry a palette colour. A "brand refresh" that tinted it
-   * would quietly overload the one glyph that must only ever mean one thing.
+   * The brand mark is the official SMX logo image — the colour lives inside the artwork.
+   * The rule it used to protect still holds: `X` is this app's vocabulary for FAIL, so
+   * there must be no separate, tintable "SMX" TEXT node in the chrome that a later refresh
+   * could colour. The lockup is one image; the letters are inside it, not loose in the DOM.
    */
-  it('renders the wordmark with no palette colour on the letters', () => {
+  it('renders the brand as a logo image, not a tintable text node', () => {
     shell();
-    const name = screen.getByText('SMX');
-    expect(name.getAttribute('style')).toBeNull();
-    expect(name.className).toBe('wordmark__name');
+    const logo = screen.getByAltText('SMX');
+    expect(logo.tagName).toBe('IMG');
+    // No bare "SMX" text node exists in the chrome to overload the FAIL glyph.
+    expect(screen.queryByText('SMX')).toBeNull();
   });
 
   /** The instrument frame is for the project workspace only; lists and prose keep a measure. */

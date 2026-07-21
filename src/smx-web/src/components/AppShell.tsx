@@ -2,38 +2,35 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { CORPUS_SYNCED_AT, CORPUS_UNKNOWN_REASON } from '../domain/corpus';
 import { Finder } from './Finder';
 import { Data } from './ui/Data';
+import logoUrl from '../assets/smx-logo.png';
 
 const TABS = [
-  { to: '/', label: 'Projects', end: true },
-  { to: '/marker-library', label: 'Marker library' },
-  { to: '/learned-conclusions', label: 'Learned conclusions' },
-  { to: '/msds-registry', label: 'MSDS registry' },
+  { to: '/', label: 'Projects', end: true, icon: 'ti-layout-grid' },
+  { to: '/marker-library', label: 'Marker library', icon: 'ti-books' },
+  { to: '/learned-conclusions', label: 'Learned conclusions', icon: 'ti-bulb' },
+  { to: '/msds-registry', label: 'MSDS registry', icon: 'ti-clipboard-list' },
 ];
 
 /**
- * The wordmark is typographic and monochrome, deliberately.
+ * The brand lockup — the official SMX mark (prism + wordmark), rendered as one image.
  *
- * An abstract mark — a hexagon, an atom, a spectrum wave — would be the only purely
- * decorative element in the app, and would undercut the instrument tone the spec asks
- * for. And note the trap: the X in SMX is this app's own vocabulary for Fail. No letter
- * of the wordmark may ever carry a palette colour.
+ * This replaces the earlier monochrome typographic wordmark. The company supplied a
+ * corporate identity, and the app now wears it: the prism carries the brand colour, and
+ * the "SMX" letterforms live INSIDE the artwork — there is no separate, tintable text
+ * node. The old rule still holds where it matters: `X` is this app's vocabulary for FAIL,
+ * and nothing in the semantic surface is ever coloured brand-navy. Colour lives in the
+ * logo and only in the logo.
  *
- * So it gets its presence from scale, tracking, and the face. The face is the idea: it is
- * set in IBM Plex **Mono**, the same family that carries every CAS number and ppm value in
- * the app. A monospaced wordmark reads as the silkscreen on the front panel of a lab
- * instrument, and it costs no new asset, because the family is already loaded for the data.
- *
- * The teal rule that leads it is the one licence taken, and it is grammar-correct: teal
- * MEANS operator, and the app frame is the operator's.
+ * The subtitle beside it is the application's own identity ("Marker system"), the way the
+ * SMX web product sets a product name next to the same mark.
  */
-function Wordmark() {
+function Brand() {
   return (
-    <div className="wordmark">
-      <span aria-hidden="true" className="wordmark__rule" />
-      <span className="wordmark__name">SMX</span>
-      <span className="wordmark__sub">
-        <span className="wordmark__system">Marker system</span>
-        <span className="wordmark__tag">taggant selection · regulatory</span>
+    <div className="brand">
+      <img className="brand__logo" src={logoUrl} alt="SMX" />
+      <span className="brand__sub">
+        <span className="brand__system">Marker system</span>
+        <span className="brand__tag">taggant selection · regulatory</span>
       </span>
     </div>
   );
@@ -87,36 +84,42 @@ export function AppShell() {
   return (
     <>
       <header className="masthead">
-        <Wordmark />
-        <CorpusStamp />
+        <Brand />
+        <div className="masthead__end">
+          <Finder />
+          <CorpusStamp />
+        </div>
       </header>
 
-      <nav className="appnav" aria-label="Sections">
-        {TABS.map((t) => (
-          <NavLink
-            key={t.to}
-            to={t.to}
-            end={t.end}
-            className={({ isActive }) => (isActive ? 'tab on' : 'tab')}
-          >
-            {t.label}
-          </NavLink>
-        ))}
-        <div className="appnav__end">
-          <Finder />
-          <span
-            className="chip"
-            style={{ background: 'var(--bg-teal)', color: 'var(--text-teal)' }}
-          >
+      <div className="shell">
+        {/* The navigation is a vertical icon rail, matching the SMX web product. The active
+            destination gets the accent tint — grammar-correct, because an active nav item
+            IS "active/selected", the one thing accent-blue means. */}
+        <nav className="rail" aria-label="Sections">
+          <div className="rail__nav">
+            {TABS.map((t) => (
+              <NavLink
+                key={t.to}
+                to={t.to}
+                end={t.end}
+                aria-label={t.label}
+                title={t.label}
+                className={({ isActive }) => (isActive ? 'rail__item on' : 'rail__item')}
+              >
+                <i className={`ti ${t.icon}`} aria-hidden="true" />
+              </NavLink>
+            ))}
+          </div>
+          <span className="rail__operator" title="operator">
             <i className="ti ti-user" aria-hidden="true" />
-            &nbsp;operator
+            <span className="rail__operator-label">operator</span>
           </span>
-        </div>
-      </nav>
+        </nav>
 
-      <main className="wrap" data-frame={frame}>
-        <Outlet />
-      </main>
+        <main className="wrap" data-frame={frame}>
+          <Outlet />
+        </main>
+      </div>
     </>
   );
 }

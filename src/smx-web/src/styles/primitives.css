@@ -400,6 +400,7 @@
 }
 
 .sec__title {
+  font-family: var(--font-serif); /* SMX brand title face */
   font-size: var(--t-lead);
   font-weight: 500;
   color: var(--ink);
