@@ -21,3 +21,6 @@ Regulations/
 
 # Claude code's internal files
 .claude/
+
+# superpowers brainstorming visual companion (local mockups)
+.superpowers/
