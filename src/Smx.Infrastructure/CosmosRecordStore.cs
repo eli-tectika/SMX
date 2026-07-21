@@ -17,6 +17,8 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
         ReadAsync<DosingDoc>(RecordIds.Dosing(projectId), projectId, ct);
     public Task<CostDoc?> GetCostAsync(string projectId, CancellationToken ct = default) =>
         ReadAsync<CostDoc>(RecordIds.Cost(projectId), projectId, ct);
+    public Task<DecisionDoc?> GetDecisionAsync(string projectId, CancellationToken ct = default) =>
+        ReadAsync<DecisionDoc>(RecordIds.Decision(projectId), projectId, ct);
     public Task<CandidatesDoc?> GetCandidatesAsync(string projectId, CancellationToken ct = default) =>
         ReadAsync<CandidatesDoc>(RecordIds.Candidates(projectId), projectId, ct);
     public Task<GateDoc?> GetGateAsync(string projectId, string gateType, CancellationToken ct = default) =>
@@ -132,6 +134,7 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
     public Task UpsertMatrixAsync(MatrixDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertDosingAsync(DosingDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertCostAsync(CostDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
+    public Task UpsertDecisionAsync(DecisionDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertGateAsync(GateDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertRevisionAsync(RevisionDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);

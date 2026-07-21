@@ -67,4 +67,20 @@ public class RecordDocRouterTests
         }, Smx.Domain.Json.Options);
         Assert.IsType<CostDoc>(RecordDocRouter.Route(json));
     }
+
+    /// The DecisionDoc is TERMINAL on the feed: the Decision runner parks the project at `awaiting-VP`
+    /// itself (TryDecideAsync, off the CostDoc), and the close hangs off the VP GateDoc — neither waits on
+    /// this delivery. So a missing arm is merely inert. The hazard this fact pins is an arm MIS-POINTED at
+    /// another doc type: `type: decision` deserializing as, say, a DosingDoc would hand the dispatcher a
+    /// doc that hits a LIVE arm and re-runs another stage off the decision's own output — silently. This
+    /// goes red instead.
+    [Fact]
+    public void Route_DeserializesDecisionDoc_ByDiscriminator()
+    {
+        var json = System.Text.Json.JsonSerializer.SerializeToElement(new DecisionDoc
+        {
+            Id = RecordIds.Decision("p1"), ProjectId = "p1", GeneratedAt = "t",
+        }, Smx.Domain.Json.Options);
+        Assert.IsType<DecisionDoc>(RecordDocRouter.Route(json));
+    }
 }

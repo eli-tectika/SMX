@@ -280,7 +280,7 @@ git commit -m "feat(domain): DecisionDoc — the proposal and the signature are 
 
 The assembly folds the four upstream records into per-component `DecisionRow`s. It is pure domain code: §3.4/§8.1 put "decision-matrix assembly" on the deterministic side of the line. The agent (Task 4) only *picks* among codes that already exist.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```csharp
 using Smx.Domain;
@@ -366,9 +366,9 @@ public class DecisionAssemblerTests
 }
 ```
 
-- [ ] **Step 2: Run to verify they fail** (type missing).
+- [x] **Step 2: Run to verify they fail** (type missing).
 
-- [ ] **Step 3: Implement** `src/Smx.Domain/DecisionAssembler.cs`:
+- [x] **Step 3: Implement** `src/Smx.Domain/DecisionAssembler.cs`:
 
 ```csharp
 using Smx.Domain.Records;
@@ -418,11 +418,11 @@ public static class DecisionAssembler
 }
 ```
 
-- [ ] **Step 4: Run tests → green. Then the full suite.**
+- [x] **Step 4: Run tests → green. Then the full suite.**
 
-- [ ] **Step 5: Mutation checks:** (a) change `v.Determination == Determinations.Recommended` to `!= Determinations.Rejected` (would admit undetermined rows) → `Assemble_FoldsOnlyRecommendedSubstances…` must still pass? NO — construct it properly: that test has only recommended+rejected; add an UNDETERMINED verdict (`det: null`) to the first test's input and assert it is absent, THEN run the mutation and watch it fail. (b) change `Cost: audit?.BestQuote is not null` to `audit is not null` → `…IsNotClearedForCost…` must FAIL. Revert both by hand; report.
+- [x] **Step 5: Mutation checks:** (a) change `v.Determination == Determinations.Recommended` to `!= Determinations.Rejected` (would admit undetermined rows) → `Assemble_FoldsOnlyRecommendedSubstances…` must still pass? NO — construct it properly: that test has only recommended+rejected; add an UNDETERMINED verdict (`det: null`) to the first test's input and assert it is absent, THEN run the mutation and watch it fail. (b) change `Cost: audit?.BestQuote is not null` to `audit is not null` → `…IsNotClearedForCost…` must FAIL. Revert both by hand; report.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/Smx.Domain src/Smx.Domain.Tests
@@ -439,7 +439,7 @@ git commit -m "feat(domain): DecisionAssembler — deterministic rows, honest ze
 
 Model `DosingAgent.cs` exactly (output records → `ValidatedAgentRunner.RunAsync<T>` → validate → build the domain doc in code). The agent sees the assembled rows + the dosing codes and, per component, RECOMMENDS one code with a rationale.
 
-- [ ] **Step 1: Write the failing tests** — drive `DecisionAgent.RunAsync` with a scripted `ISmxAgent` fake (copy the pattern from `DosingAgentTests`), and unit-test `Validate` directly:
+- [x] **Step 1: Write the failing tests** — drive `DecisionAgent.RunAsync` with a scripted `ISmxAgent` fake (copy the pattern from `DosingAgentTests`), and unit-test `Validate` directly:
 
 ```csharp
 public class DecisionAgentTests
@@ -468,9 +468,9 @@ public class DecisionAgentTests
 }
 ```
 
-- [ ] **Step 2: Run to verify they fail.**
+- [x] **Step 2: Run to verify they fail.**
 
-- [ ] **Step 3: Implement** `DecisionAgent` with:
+- [x] **Step 3: Implement** `DecisionAgent` with:
 
 ```csharp
 public sealed record DecisionPickOutput(string ComponentId, string RatioSignature, List<string> MarkerCas, string Rationale);
@@ -502,9 +502,9 @@ public static class DecisionAgent
 
 (The complete bodies are a structural mirror of the in-repo template: `DosingAgent.RunAsync` at `src/Smx.Orchestrator/Agents/DosingAgent.cs:72-165` — prompt serialization via `Json.Options`, the `revision is null` branch, `ValidatedAgentRunner.RunAsync<DecisionOutput>`, then the doc built entirely in code — and `DosingAgent.Validate` at :195-295 for the numbered-invariant style. Step 1's four invariants are the complete Validate contract; implement exactly those, in that order, first-violation-wins.)
 
-- [ ] **Step 4: Run tests + full suite.**
-- [ ] **Step 5: Mutation-test all four `Validate` invariants** (patch each check out → its fact fails → revert; report four results).
-- [ ] **Step 6: Commit**
+- [x] **Step 4: Run tests + full suite.**
+- [x] **Step 5: Mutation-test all four `Validate` invariants** (patch each check out → its fact fails → revert; report four results).
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/Smx.Orchestrator src/Smx.Orchestrator.Tests
@@ -519,7 +519,7 @@ git commit -m "feat(agents): DecisionAgent — picks only among real codes, prop
 - Modify: `src/Smx.Orchestrator/Dispatch/AgentRuns.cs` (IAgentRuns + AgentRuns), `src/Smx.Orchestrator.Tests/Fakes/FakeAgentRuns.cs`
 - Test: `src/Smx.Orchestrator.Tests/AgentRunsTests.cs` (whatever pattern pins the other arms — mirror it)
 
-- [ ] **Step 1:** Add to `IAgentRuns`:
+- [x] **Step 1:** Add to `IAgentRuns`:
 
 ```csharp
     Task<AgentRunResult<DecisionDoc>> RunDecisionAsync(
@@ -530,9 +530,9 @@ git commit -m "feat(agents): DecisionAgent — picks only among real codes, prop
 
 `FakeAgentRuns`: a scriptable `Decision` func + `DecisionCalls` counter + add it to `TotalCalls` (the Cost-is-agent-free pin depends on `TotalCalls` being exhaustive — a missing counter here silently weakens that test).
 
-- [ ] **Step 2: Full suite green** (compile ripples: any class implementing IAgentRuns).
-- [ ] **Step 3: Mutation check:** remove `DecisionCalls` from `TotalCalls` → find which test fails (the Cost dispatch `TotalCalls` pin must, once Task 6's dispatch exists — if nothing fails YET, note it and re-run this mutation after Task 6; do not skip it). Revert.
-- [ ] **Step 4: Commit** `feat(agents): RunDecisionAsync — the decision arm, counted like every other agent call`
+- [x] **Step 2: Full suite green** (compile ripples: any class implementing IAgentRuns).
+- [x] **Step 3: Mutation check:** remove `DecisionCalls` from `TotalCalls` → find which test fails (the Cost dispatch `TotalCalls` pin must, once Task 6's dispatch exists — if nothing fails YET, note it and re-run this mutation after Task 6; do not skip it). Revert.
+- [x] **Step 4: Commit** `feat(agents): RunDecisionAsync — the decision arm, counted like every other agent call`
 
 ---
 
@@ -544,7 +544,7 @@ git commit -m "feat(agents): DecisionAgent — picks only among real codes, prop
 
 Today `CostDoc` falls through `OnRecordChangedAsync` with no case (inventory §6). The CostDoc landing IS the Decision trigger.
 
-- [ ] **Step 1: Failing tests** (`DecisionDispatchTests`, Sut mirrors CostDispatchTests but wires FakeAgentRuns.Decision):
+- [x] **Step 1: Failing tests** (`DecisionDispatchTests`, Sut mirrors CostDispatchTests but wires FakeAgentRuns.Decision):
 
 ```csharp
     // 1. ACostDocLanding_RunsDecision_AssemblyPlusPick: seed project (…, cost done, decision pending) +
@@ -558,9 +558,9 @@ Today `CostDoc` falls through `OnRecordChangedAsync` with no case (inventory §6
     //    (resolve-all-inputs-first, the TryDoseAsync discipline).
 ```
 
-- [ ] **Step 2: Verify they fail** (no case → nothing happens).
+- [x] **Step 2: Verify they fail** (no case → nothing happens).
 
-- [ ] **Step 3: Implement** `TryDecideAsync` beside `TryDoseAsync`:
+- [x] **Step 3: Implement** `TryDecideAsync` beside `TryDoseAsync`:
 
 ```csharp
     case CostDoc c: await TryDecideAsync(c.ProjectId, ct); break;
@@ -603,9 +603,9 @@ Today `CostDoc` falls through `OnRecordChangedAsync` with no case (inventory §6
     }
 ```
 
-- [ ] **Step 4: Run tests + full suite.** Re-run Task 5's deferred `TotalCalls` mutation now.
-- [ ] **Step 5: Mutation checks:** (a) guard `is not "pending"` → guard on doc-existence instead → the idempotency test must FAIL. (b) `awaiting-VP` → `done` → test 1 must FAIL (a decision "done" without a signature is the gate bypass). Revert both; report.
-- [ ] **Step 6: Commit** `feat(dispatch): Cost triggers Decision — assembly + pick, parked awaiting-VP because a proposal is not a signature`
+- [x] **Step 4: Run tests + full suite.** Re-run Task 5's deferred `TotalCalls` mutation now.
+- [x] **Step 5: Mutation checks:** (a) guard `is not "pending"` → guard on doc-existence instead → the idempotency test must FAIL. (b) `awaiting-VP` → `done` → test 1 must FAIL (a decision "done" without a signature is the gate bypass). Revert both; report.
+- [x] **Step 6: Commit** `feat(dispatch): Cost triggers Decision — assembly + pick, parked awaiting-VP because a proposal is not a signature`
 
 ---
 
@@ -618,7 +618,7 @@ Today `CostDoc` falls through `OnRecordChangedAsync` with no case (inventory §6
 
 Spec §4 gates table: VP arms only when "Regulatory cleared + all components have a selected code". "Selected" at ARM time means the DecisionDoc offers a code per component (proposal present); the VP's confirmation happens IN the signing call.
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
 
 ```csharp
     // Armable == (regulatory gate approved) && (decision doc exists) && (every component id in the
@@ -631,9 +631,9 @@ Spec §4 gates table: VP arms only when "Regulatory cleared + all components hav
     // 4. NotArmable_WithNoDecisionDoc → blocker "decision has not run"
 ```
 
-- [ ] **Step 2: fail → Step 3: implement** (pure function, `(bool Ok, IReadOnlyList<string> Blockers)`, mirror `RegulatoryGate.Armable`'s shape) **→ Step 4: green + full suite.**
-- [ ] **Step 5: Mutation:** drop the regulatory-approved check → test 2 FAILS. Revert.
-- [ ] **Step 6: Commit** `feat(domain): VpGate.Armable — no VP signature over an unsigned analysis or a code-less component`
+- [x] **Step 2: fail → Step 3: implement** (pure function, `(bool Ok, IReadOnlyList<string> Blockers)`, mirror `RegulatoryGate.Armable`'s shape) **→ Step 4: green + full suite.**
+- [x] **Step 5: Mutation:** drop the regulatory-approved check → test 2 FAILS. Revert.
+- [x] **Step 6: Commit** `feat(domain): VpGate.Armable — no VP signature over an unsigned analysis or a code-less component`
 
 ---
 
@@ -646,7 +646,7 @@ Spec §4 gates table: VP arms only when "Regulatory cleared + all components hav
 
 Mirror `POST /regulatory/approve`'s discipline: arm on the LIVE records, 422 with named blockers, idempotent approved-timestamp, and this endpoint is **the only writer of an approved VP GateDoc** (the dispatcher trusts that — same contract as the regulatory gate).
 
-- [ ] **Step 1: Failing tests** (WebApplicationFactory + InMemoryRecordStore, the DosingEndpointsTests pattern):
+- [x] **Step 1: Failing tests** (WebApplicationFactory + InMemoryRecordStore, the DosingEndpointsTests pattern):
 
 ```csharp
     // Body: { determination: "approved" | "rejected", reason, confirmations: [ { componentId, code } ] }
@@ -673,7 +673,7 @@ Mirror `POST /regulatory/approve`'s discipline: arm on the LIVE records, 422 wit
     // 8. Idempotent re-approve: second identical POST → 200, ApprovedAt unchanged.
 ```
 
-- [ ] **Step 2: fail → Step 3: implement.** Request records:
+- [x] **Step 2: fail → Step 3: implement.** Request records:
 
 ```csharp
 public sealed record VpConfirmation(string ComponentId, string Code);
@@ -727,9 +727,9 @@ app.MapPost("/projects/{projectId}/decision/determination", async (string projec
 
 `GET /projects/{projectId}/gate/vp` mirrors the regulatory gate read (status/armable/blockers/approvedAt via `VpGate.Armable`).
 
-- [ ] **Step 4: green + full suite.**
-- [ ] **Step 5: Mutations:** (a) drop the unknown-code check → test 3 FAILS; (b) drop the all-components check → test 4 FAILS; (c) make rejection write `Status = "approved"` → test 6 FAILS. Revert all; report.
-- [ ] **Step 6: Commit** `feat(api): the VP gate — a signature over real codes only, every component, with a reason, or 422`
+- [x] **Step 4: green + full suite.**
+- [x] **Step 5: Mutations:** (a) drop the unknown-code check → test 3 FAILS; (b) drop the all-components check → test 4 FAILS; (c) make rejection write `Status = "approved"` → test 6 FAILS. Revert all; report.
+- [x] **Step 6: Commit** `feat(api): the VP gate — a signature over real codes only, every component, with a reason, or 422`
 
 ---
 
@@ -741,7 +741,7 @@ app.MapPost("/projects/{projectId}/decision/determination", async (string projec
 
 The VP GateDoc landing on the change feed IS the close dispatch (writing the record is the trigger — same as every other stage). Close writes: **Marker Library** entries for the confirmed codes (+ idempotent reuse counting), a **Learned Conclusion** for the close, Decision stage → `done`, `Procurement.Status` → `released`.
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
 
 ```csharp
     // Sut: StageDispatcher with InMemoryKnowledgeStore (the 5th arg) — the close writes go THERE.
@@ -765,7 +765,7 @@ The VP GateDoc landing on the change feed IS the close dispatch (writing the rec
     //    skipped — mirror the catalog-null degrade; the E2E covers the wired path).
 ```
 
-- [ ] **Step 2: fail → Step 3: implement** — extend the `OnGateAsync` pattern-match:
+- [x] **Step 2: fail → Step 3: implement** — extend the `OnGateAsync` pattern-match:
 
 ```csharp
     private async Task OnGateAsync(GateDoc g, CancellationToken ct)
@@ -777,8 +777,8 @@ The VP GateDoc landing on the change feed IS the close dispatch (writing the rec
 
 `CloseProjectAsync`: idempotency guard on `Stages[Decision].Status is "awaiting-VP"` (once `done`, redeliveries no-op for the stage flip; the knowledge writes are idempotent by id regardless); read decision+dosing+constraints; per confirmed component code build the `MarkerLibraryDoc` (shape per inventory §6.2 + `MarkerLibraryDoc.cs` — read it first); write the Learned Conclusion via the existing `ILearnedConclusionWriter`; flip Procurement + stage.
 
-- [ ] **Step 4: green + full suite. Step 5: Mutations:** (a) drop the `awaiting-VP` guard → redelivery test must still pass (the writes are id-idempotent) BUT the stage-flip assert in test 2 must be strengthened to catch double-transition side effects — if no test fails under this mutation, note it as accepted-idempotent and move on (do not fake a kill). (b) Make the content-key ordinal (index-based) instead of content-based → test 3 (reuse) FAILS. Revert; report.
-- [ ] **Step 6: Commit** `feat(dispatch): the VP signature closes the project — library codes, a conclusion, released procurement`
+- [x] **Step 4: green + full suite. Step 5: Mutations:** (a) drop the `awaiting-VP` guard → redelivery test must still pass (the writes are id-idempotent) BUT the stage-flip assert in test 2 must be strengthened to catch double-transition side effects — if no test fails under this mutation, note it as accepted-idempotent and move on (do not fake a kill). (b) Make the content-key ordinal (index-based) instead of content-based → test 3 (reuse) FAILS. Revert; report.
+- [x] **Step 6: Commit** `feat(dispatch): the VP signature closes the project — library codes, a conclusion, released procurement`
 
 ---
 
@@ -790,7 +790,7 @@ The VP GateDoc landing on the change feed IS the close dispatch (writing the rec
 
 §4: procurement is a state flag; MSDS-before-order gates **an individual order**: MSDS **current + reviewed** for the substance. "Current" = the registry entry's `ReviewStatus == reviewed` (the operator's signed review is the currency claim — `POST /msds-registry/{cas}/review` already exists and stamps `ReviewedAt`).
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
 
 ```csharp
     // 1. PostOrder_BeforeTheVpGate_Is422 ("procurement is not released").
@@ -801,11 +801,11 @@ The VP GateDoc landing on the change feed IS the close dispatch (writing the rec
     //    the cas; idempotent re-POST → 202, still one entry.
 ```
 
-- [ ] **Step 2: fail → Step 3: implement** (needs `[FromServices] IKnowledgeStore` too — the MSDS read):
+- [x] **Step 2: fail → Step 3: implement** (needs `[FromServices] IKnowledgeStore` too — the MSDS read):
 422 checks in order: procurement released → cas ∈ confirmed codes' markers → `GetMsdsAsync(cas)` is `ReviewStatus == MsdsReviewStatus.Reviewed`. Then add to `OrderedCas` (Contains-guarded), upsert, 202.
 
-- [ ] **Step 4: green + full suite. Step 5: Mutations:** drop the MSDS check → test 2 FAILS (this IS the hard precondition — its mutation kill is the point of the task). Drop the confirmed-code check → test 3 FAILS. Revert; report.
-- [ ] **Step 6: Commit** `feat(api): MSDS-before-order — an order is a record, and it will not exist without a reviewed MSDS`
+- [x] **Step 4: green + full suite. Step 5: Mutations:** drop the MSDS check → test 2 FAILS (this IS the hard precondition — its mutation kill is the point of the task). Drop the confirmed-code check → test 3 FAILS. Revert; report.
+- [x] **Step 6: Commit** `feat(api): MSDS-before-order — an order is a record, and it will not exist without a reviewed MSDS`
 
 ---
 
@@ -870,7 +870,7 @@ Endpoint (`ProjectsListEndpoints.MapProjectsListEndpoints`): for each project al
 
 §7: "the aggregation the operator lands on: what's blocked and on whom (awaiting physics/R.E./client/VP), what's ready to continue, what needs signing — computed over the project + gate docs." Pure projection — every fact already lives in `StageState.Status`, `StageState.Error`, and the two GateDocs.
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
 
 ```csharp
     // Response: { projectId, blocked: [ { stage, on, detail } ], readyToContinue: [stage],
@@ -886,9 +886,9 @@ Endpoint (`ProjectsListEndpoints.MapProjectsListEndpoints`): for each project al
     // 3. Dashboard_404_ForUnknownProject.
 ```
 
-- [ ] **Step 2: fail → Step 3: implement → Step 4: green + full suite.**
-- [ ] **Step 5: Mutation:** swap the awaiting-physics owner mapping to "operator" → test 1 FAILS (the whole point is naming the RIGHT owner — the operator chasing themselves for the physicist's number is the UX failure the spec calls out). Revert.
-- [ ] **Step 6: Commit** `feat(api): the dashboard — blocked-on-whom, ready-next, needs-signing, all from the record`
+- [x] **Step 2: fail → Step 3: implement → Step 4: green + full suite.**
+- [x] **Step 5: Mutation:** swap the awaiting-physics owner mapping to "operator" → test 1 FAILS (the whole point is naming the RIGHT owner — the operator chasing themselves for the physicist's number is the UX failure the spec calls out). Revert.
+- [x] **Step 6: Commit** `feat(api): the dashboard — blocked-on-whom, ready-next, needs-signing, all from the record`
 
 ---
 
@@ -898,7 +898,7 @@ Endpoint (`ProjectsListEndpoints.MapProjectsListEndpoints`): for each project al
 - Modify: `src/Smx.Backend/Api/ProjectEndpoints.cs` (candidates + verdicts) and `src/Smx.Backend/Api/DecisionEndpoints.cs` (decision)
 - Test: extend the matching test classes
 
-- [ ] **Step 1: Failing tests** — three trivially-shaped reads, each `Results.Json(doc, Json.Options)` or 404, mirroring `GET /dosing`:
+- [x] **Step 1: Failing tests** — three trivially-shaped reads, each `Results.Json(doc, Json.Options)` or 404, mirroring `GET /dosing`:
 
 ```csharp
     // GET /projects/{id}/candidates  → CandidatesDoc | 404
@@ -911,7 +911,7 @@ Endpoint (`ProjectsListEndpoints.MapProjectsListEndpoints`): for each project al
     // "proposed" from "signed" without guessing (Law 9 on the wire).
 ```
 
-- [ ] **Step 2: fail → Step 3: implement → Step 4: green + full suite → Step 5: commit**
+- [x] **Step 2: fail → Step 3: implement → Step 4: green + full suite → Step 5: commit**
 
 ```bash
 git commit -m "feat(api): candidates, verdicts and decision reads — thin, cited, and proposal/signature distinct on the wire"
@@ -928,7 +928,7 @@ git commit -m "feat(api): candidates, verdicts and decision reads — thin, cite
 
 §7: "deterministically assembled from the verdict/candidate docs (like the xlsx export), exportable"; the return inbox is the existing operator-entry endpoints. These are what the operator hands the R.E. — a wrong or incomplete package silently narrows the offline review, so the tests pin COVERAGE, not just shape.
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
 
 ```csharp
     // GET /projects/{id}/regulatory/elements-to-check →
@@ -946,13 +946,40 @@ git commit -m "feat(api): candidates, verdicts and decision reads — thin, cite
     //   dimension's honest empty state — never silently dropped.
 ```
 
-- [ ] **Step 2: fail → Step 3: implement** (pure projections; JSON now, xlsx later if the operator asks — record that as a deferred follow-on) **→ Step 4: green + full suite.**
-- [ ] **Step 5: Mutation:** drop Tier-C filtering → elements-to-check pin still passes (Tier-C cells aren't live) BUT add + verify the complementary assert: no Tier-C cas appears (the R.E.'s time is the budget; auditing dead candidates spends it). Then drop the citations pass-through → the compliance-package pin FAILS. Revert; report.
-- [ ] **Step 6: Commit** `feat(api): the offline round-trip artifacts — full coverage, verbatim citations, deterministic`
+- [x] **Step 2: fail → Step 3: implement** (pure projections; JSON now, xlsx later if the operator asks — record that as a deferred follow-on) **→ Step 4: green + full suite.**
+- [x] **Step 5: Mutation:** drop Tier-C filtering → elements-to-check pin still passes (Tier-C cells aren't live) BUT add + verify the complementary assert: no Tier-C cas appears (the R.E.'s time is the budget; auditing dead candidates spends it). Then drop the citations pass-through → the compliance-package pin FAILS. Revert; report.
+- [x] **Step 6: Commit** `feat(api): the offline round-trip artifacts — full coverage, verbatim citations, deterministic`
 
 ---
 
 ## Task 15: Revise-with-reason for Decision
+
+> **REVIEW-MANDATED SCOPE ADDITION (from the Tasks 6+7 code review — the cross-task stale-decision cascade):**
+> `ReviseDosingAsync`'s persist closure (StageDispatcher.cs, the Cost reset at ~:562) resets Cost to
+> `pending` but NOT Decision. So a Dosing revision on a project parked `awaiting-VP` re-prices Cost, the
+> fresh CostDoc redelivers, `TryDecideAsync`'s guard sees `awaiting-VP` and ABSORBS it — the DecisionDoc
+> keeps stale rows/proposals over the revised dosing/cost, and the VP endpoint (which validates
+> confirmations only against the live DosingDoc's ratio signatures) would let a signature land on stale
+> ppm/price rows if the re-picked ratio survives the revision. The false pass, one layer up. Task 15 must
+> ALSO:
+> - **(a)** In `ReviseDosingAsync`'s persist closure, alongside the Cost reset:
+>   `Decision: awaiting-VP | needs-review | failed → pending` (error cleared) — the fresh CostDoc then IS
+>   the re-trigger; `done` is EXCLUDED (closed = history). TDD: a Dosing revision on an awaiting-VP
+>   project ends with Decision re-run over the NEW dosing (fresh proposal), not the stale one.
+> - **(b)** `ReviseDosingAsync` (and `ReviseDecisionAsync`) REFUSE outright on a closed project (VP gate
+>   approved): needs-review with the closed-project message — today nothing stops a Dosing revision from
+>   re-pricing a closed project under its signed decision.
+> - **(c)** Mutation-test both: drop the Decision reset → the stale-proposal test FAILS; drop the closed
+>   refusal → the closed-project test FAILS.
+> - **(d) (from the Tasks 8-10 review)** `POST …/decision/determination` gains a stage-status guard:
+>   **422 unless `Stages[Decision].Status == "awaiting-VP"`** ("a signature answers a park"). This closes
+>   BOTH review findings at once: (i) with Task 15(a) live, a Dosing revision resets Decision to `pending`
+>   while the stale DecisionDoc is still on file — without the guard the VP can sign stale proposals and
+>   the in-flight re-pick then OVERWRITES the stamped doc under an approved gate (close finds zero
+>   confirmed codes, procurement releases over an empty conclusion); (ii) a post-close determination
+>   (status `done`) — approve or REJECT — is refused, killing the "revocation that revokes nothing"
+>   incoherence (gate flipped locked while Procurement stays Released). TDD both refusals; mutation-test
+>   the guard (drop it → both tests FAIL).
 
 **Files:**
 - Modify: `src/Smx.Orchestrator/Dispatch/StageDispatcher.cs` (`OnRevisionAsync` gets a `Stages.Decision` arm → `ReviseDecisionAsync`)
@@ -960,7 +987,7 @@ git commit -m "feat(api): candidates, verdicts and decision reads — thin, cite
 
 Law 4: the operator never hand-edits the pick — they tell the agent why, the agent re-picks, the reason becomes a Learned Conclusion. The Plan-4 holistic bug (a revision leaving a downstream stage stale) has a direct analog here: **a Decision revision must void an un-actioned VP gate and re-park at awaiting-VP** — but it must never touch an ALREADY-CLOSED project (confirmed + closed = history; revising history is a new project decision, refuse it).
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
 
 ```csharp
     // 1. ARevision_RerunsThePick_WithTheReasonInThePrompt (fake Decision arm captures the RevisionDoc).
@@ -974,9 +1001,9 @@ Law 4: the operator never hand-edits the pick — they tell the agent why, the a
     //    then cover words the VP never read.)
 ```
 
-- [ ] **Step 2: fail → Step 3: implement** `ReviseDecisionAsync` (mirror `ReviseDosingAsync`'s shape: re-assemble, re-run with revision, upsert, reset stage; plus the closed-project refusal FIRST) **→ Step 4: green + full suite.**
-- [ ] **Step 5: Mutation:** remove the closed-project refusal → test 4 FAILS. Revert.
-- [ ] **Step 6: Commit** `feat(dispatch): revise Decision with a reason — and a signed close is history, not an editable draft`
+- [x] **Step 2: fail → Step 3: implement** `ReviseDecisionAsync` (mirror `ReviseDosingAsync`'s shape: re-assemble, re-run with revision, upsert, reset stage; plus the closed-project refusal FIRST) **→ Step 4: green + full suite.**
+- [x] **Step 5: Mutation:** remove the closed-project refusal → test 4 FAILS. Revert.
+- [x] **Step 6: Commit** `feat(dispatch): revise Decision with a reason — and a signature answers a park, never a draft, never history` (the (d)-inclusive message; the sketch's message predated the scope additions)
 
 ---
 
@@ -987,7 +1014,7 @@ Law 4: the operator never hand-edits the pick — they tell the agent why, the a
 
 Extend the Plan-4 E2E pattern (`DosingCostEndToEndTests` — shared stores, real HTTP + real dispatcher, `Delivered<T>` pumping): pick up where it ends (a priced CostDoc) and drive to close.
 
-- [ ] **Step 1: The test** (one fact, `TheWholeJourney_ToASignedClosedOrderedProject`):
+- [x] **Step 1: The test** (one fact, `TheWholeJourney_ToASignedClosedOrderedProject`):
 
 ```csharp
     // Seed exactly as DosingCostEndToEndTests (2-substance compliant set), drive through dosing+cost
@@ -1010,9 +1037,9 @@ Extend the Plan-4 E2E pattern (`DosingCostEndToEndTests` — shared stores, real
     //   Assert.All(markerLibraryDocs, m => Assert.Equal(MarkerStatus.Approved, m.Status)); // library holds only signed
 ```
 
-- [ ] **Step 2: run → drive it green** (seed/pump fixes only — NEVER weaken an assert; if a pump doesn't advance, read the dispatcher and fix the seed).
-- [ ] **Step 3: Mutation:** confirm one — skip the VP POST (go straight to pumping a hand-built approved vp gate WITHOUT confirmations) → the ConfirmedCode tripwire must FAIL (proves close doesn't manufacture confirmations). Revert.
-- [ ] **Step 4: Full suite + commit** `test(e2e): the whole journey — signed by the VP, closed into the library, ordered behind the MSDS`
+- [x] **Step 2: run → drive it green** (seed/pump fixes only — NEVER weaken an assert; if a pump doesn't advance, read the dispatcher and fix the seed).
+- [x] **Step 3: Mutation:** confirm one — skip the VP POST (go straight to pumping a hand-built approved vp gate WITHOUT confirmations) → the ConfirmedCode tripwire must FAIL (proves close doesn't manufacture confirmations). Revert.
+- [x] **Step 4: Full suite + commit** `test(e2e): the whole journey — signed by the VP, closed into the library, ordered behind the MSDS`
 
 ---
 
@@ -1024,7 +1051,7 @@ Extend the Plan-4 E2E pattern (`DosingCostEndToEndTests` — shared stores, real
 
 Same contract as `ScoreDosing`: invariants only, each breach a **false pass** (non-zero exit), self-contained from the fetched docs, and a 404 scores nothing (the harness still doesn't sign gates).
 
-- [ ] **Step 1: Failing unit facts:**
+- [x] **Step 1: Failing unit facts:**
 
 ```csharp
     // ScoreDecision(DecisionDoc decision, DosingDoc dosing, EvalReport report):
@@ -1035,15 +1062,15 @@ Same contract as `ScoreDosing`: invariants only, each breach a **false pass** (n
     //    false-pass (a signature over an uncleared row is the harm case, verbatim).
 ```
 
-- [ ] **Step 2: fail → Step 3: implement + wire the optional fetch in Program.cs (after the dosing block, same try/catch transport guard) → Step 4: green; `dotnet build tools/Smx.Eval/Smx.Eval.csproj` clean.**
-- [ ] **Step 5: Mutation:** drop invariant 2's check → fact 2 FAILS. Revert.
-- [ ] **Step 6: Commit** `feat(eval): decision invariants — a signed nonexistent code is a false pass, and the exit code says so`
+- [x] **Step 2: fail → Step 3: implement + wire the optional fetch in Program.cs (after the dosing block, same try/catch transport guard) → Step 4: green; `dotnet build tools/Smx.Eval/Smx.Eval.csproj` clean.**
+- [x] **Step 5: Mutation:** drop invariant 2's check → fact 2 FAILS. Revert.
+- [x] **Step 6: Commit** `feat(eval): decision invariants — a signed nonexistent code is a false pass, and the exit code says so`
 
 ---
 
 ## Task 18: Final verification + docs
 
-- [ ] **Step 1:** Full matrix:
+- [x] **Step 1:** Full matrix:
 
 ```bash
 dotnet build src/Smx.Backend.sln     # 0 warnings
@@ -1053,8 +1080,8 @@ az bicep build --file infra/main.bicep --stdout > /dev/null            # unchang
 az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
 ```
 
-- [ ] **Step 2:** Update `CLAUDE.md`'s agent-backend bullet (the journey now ends at a signed close; name the new endpoints) and this plan's **Deviations** section (the as-shipped record).
-- [ ] **Step 3:** Commit `docs: plan 5 as-shipped`.
+- [x] **Step 2:** Update `CLAUDE.md`'s agent-backend bullet (the journey now ends at a signed close; name the new endpoints) and this plan's **Deviations** section (the as-shipped record).
+- [x] **Step 3:** Commit `docs: plan 5 as-shipped`.
 
 ---
 
@@ -1086,6 +1113,13 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
 
 *(Fill this in as you go — the as-shipped record is worth more than the plan being right.)*
 
+> **As shipped:** all 18 tasks landed on `feat/chemistry-backend-plan-5`, one commit per task (Tasks 1+2
+> joint as anticipated; Task 11 early, out of order), every mutation a real kill, plus three review
+> follow-up commits (the Tasks-3-5 window-uniqueness fix, the Tasks-12-14 dashboard/exports truth fix,
+> and the Task-15 F1/F3/F4 signature-vs-revision interlock) — final suite 808 backend + 161 Functions,
+> zero build warnings, zero infra diff vs main. The itemized record below is the authoritative delta
+> from the plan text.
+
 - **Tasks 1 + 2 landed as ONE commit** (the boundary the Task 1 Step 3 note anticipated): the compiler forced
   it — `StageInputsJsonAsync`'s Decision arm calls `IRecordStore.GetDecisionAsync` (Task 2's store surface),
   and the ChatDispatchTests seed extension constructs a `DecisionDoc` — so no Task-1-only tree compiles.
@@ -1108,3 +1142,282 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
   not an anonymous object, because `Json.Options`' `WhenWritingNull` would drop a null anonymous PROPERTY,
   and "no gate yet" must be a value the frontend can read; dictionary entries are exempt. The dashboard
   (Task 12) was NOT built with it.
+- **Task 4: `DecisionAgent.RunAsync` derives the projectId from `dosing.ProjectId`** (the plan's sketch left
+  the source open — `ConstraintsDoc` first param vs. the DosingDoc). The DosingDoc is already a required
+  data param carrying the finalized codes, so its `ProjectId` keys the doc (`RecordIds.Decision`,
+  `DecisionDoc.ProjectId`) and no `ConstraintsDoc` param was added.
+- **Task 4: Validate's invariant 1 is a bijection**, not just "exactly one pick per assembled component": a
+  pick naming a component NOT on the matrix is also refused under invariant 1 (it would otherwise crash
+  invariant 4's `First()` — or, worse, ride invariant 2 if dosing ever carried a code for an unassembled
+  component). Its fact pins THIS guard's message ("not on the decision matrix") specifically, because
+  invariant 2's error also happens to name the component and could mask a dropped check.
+- **Task 4: the valid-pick fixture actively smuggles a confirmation** — the scripted model reply carries
+  `confirmedCode`/`confirmedBy`/`confirmedReason` at both the pick and top level; the output contract has no
+  such fields, so the test proves the model's output CANNOT touch `ConfirmedCode`, not merely that this
+  particular reply didn't.
+- **Task 5: the fake's Decision default is pinned in `FakeAgentRunsSmokeTests`** (the file that pins the
+  other fake defaults), not `AgentRunsTests` — the latter's pattern (asserting what the REAL AgentRuns hands
+  the agent) exists only for Discovery's sensitive terms, and Decision has no equivalent secret to pin.
+- **Task 5's `TotalCalls` mutation KILLED at Task 5**, not deferred: the new smoke fact asserts
+  `TotalCalls == 1` after one Decision call, so dropping `DecisionCalls` from the sum fails it
+  (`Fake_DefaultDecision_MirrorsTheAssemblyProposesTheFirstCode_AndCountsTheCall`). The plan's intended
+  dispatch-level kill (CostDispatchTests' `TotalCalls == 0` pin catching a decision call inside Cost
+  dispatch) only becomes live with Task 6 — re-run the mutation there as Step 4 already instructs.
+- **Review of Tasks 3-5 added a Dosing window-uniqueness invariant** (source-fix for the assembler's
+  `ToDictionary` crash path: `DecisionAssembler.Assemble`'s window lookup throws on a duplicate
+  `(component, cas)` window, and DosingAgent used to validate-and-persist such an output) **and removed the
+  silent `GroupBy(...).First()` collapse** in `DosingAgent.RunAsync`'s code builder — a dedup that would
+  have shipped one of two conflicting ppms while the record showed both. Duplicates are now refused at the
+  boundary with a retryable error naming the component and CAS; Task 6 additionally calls `Assemble` inside
+  the stage try/catch as defense-in-depth for any pre-invariant persisted DosingDoc.
+- **Task 6 AMENDMENT (review-mandated, applied):** the plan's `TryDecideAsync` sketch called
+  `DecisionAssembler.Assemble` BEFORE the try/catch. It now runs INSIDE: the stage is set `running` first,
+  then `try { Assemble … RunDecisionAsync … }`. A pre-invariant persisted DosingDoc with a duplicate
+  `(component, cas)` window makes `Assemble`'s `ToDictionary` throw `ArgumentException`; outside the try
+  that escapes into the change-feed processor as a poison redelivery loop (stage stuck `pending`, no visible
+  error) — inside it, the stage lands `failed` with the error surfaced (§11's "nothing dies silently").
+  Pinned by `DecisionDispatchTests.APreInvariantDuplicateWindow_FailsTheStage_WithNoAgentCall_AndNoPoisonLoop`
+  (stage `failed`, error carries the ArgumentException's "same key" text, `DecisionCalls == 0`, and a second
+  delivery is a no-op because the status is no longer `pending`). Mutation-verified: hoisting `Assemble`
+  back above the try made that test fail with the escaped `ArgumentException` — exactly the poison loop.
+- **Task 6: the plan's mutation (a) kill was mis-predicted and the tests were strengthened to make it real.**
+  Under the doc-existence-guard mutation, `Redelivery_IsIdempotent` PASSES (the happy-path first run writes a
+  DecisionDoc, so both guard semantics absorb the redelivery — they only diverge when no doc was persisted).
+  The kill is carried instead by (i) a fifth test the plan did not name,
+  `Decision_GuardsOnStageStatus_NotWhetherADecisionDocExists` (stage `awaiting-VP`, no doc on file — the
+  mirror of `Cost_GuardsOnStageStatus_NotWhetherACostDocExists`), and (ii) redelivery-is-a-no-op asserts
+  appended to the needs-review and amendment tests (a failed run persists no doc, so a doc-existence guard
+  re-runs the agent there). All three FAILED under the mutation; reverted by hand.
+- **Task 6: `Decision_RequiresItsInputs` is a 3-case theory** (missing dosing / cost / constraints — the
+  plan named only "dosing or cost", but `TryDecideAsync` also resolves constraints for the component list).
+  Note these guard pins pass vacuously BEFORE the case exists (no case → nothing happens → stage stays
+  `pending`); their teeth are the post-implementation mutations above.
+- **Task 7 touched only `VpGate.cs` + `VpGateTests.cs`** — `GateTypes.Vp` already shipped with Task 11 (see
+  above), so the plan's `GateDoc.cs` modification was already done and was not re-applied.
+  `NotArmable_WithoutTheRegulatorySignature` covers BOTH the locked gate and the absent (null) gate —
+  neither is a signature, and the two must block identically.
+- **Task 8 REVIEW ADDITION (hardening): `VpGate.Armable` gained a zero-components blocker** —
+  `"decision covers no components"`. Zero components is unreachable today via upstream guarantees
+  (DecisionAssembler emits one ComponentDecision per constraints component), but Armable is a STANDALONE
+  predicate AND the signing endpoint's confirm loop iterates `decision.Components`, so an armable
+  zero-component decision would let an approval vacuously "confirm" nothing. Pinned by
+  `VpGateTests.NotArmable_WhenTheDecisionCoversNoComponents`; mutation-verified (blocker dropped → that
+  test FAILED; reverted by hand).
+- **Task 8 REVIEW ADDITION (consistency): the determination endpoint re-checks the REGULATORY gate's
+  coverage** the way `TryDoseAsync` does (StageDispatcher ~:207-228): after `VpGate.Armable` passes, it
+  also verifies `RegulatoryGate.Armable(candidates, verdicts).Ok` — the gate record carries no binding to
+  the verdicts it was signed over, so a live unreviewed non-pass verdict that appeared after the regulatory
+  approval blocks the VP determination (422, blockers surfaced verbatim). `GET /gate/vp` runs the same
+  re-check so the read never reports `armable` for a gate the POST would refuse. Pinned by
+  `PostDetermination_RefusesWhenTheRegulatorySignatureNoLongerCoversTheAnalysis_422`; mutation-verified
+  (re-check dropped → that test FAILED; reverted by hand). Absent candidates 422 identically ("no
+  candidates on file") — coverage cannot be re-checked against nothing.
+- **Task 8, two small deltas from the sketch:** (i) a null DosingDoc on the approve path 422s with
+  "dosing has not run — there are no finalized codes to confirm" instead of the sketch's `dosing!` deref (a
+  500 is not an answer an operator can act on); (ii) an unlisted theory
+  (`PostDetermination_ThatIsNeitherApprovedNorRejected_422`) pins the determination-literal guard the
+  skeleton carries, per the standing rule that every guard gets a test.
+- **Task 9 REVIEW ADDITION (docs-only): the Assemble-inside-try comment's narrative was corrected.** The
+  original claimed an escaped exception becomes "a poison redelivery loop … redelivered forever"; in fact
+  the ChangeFeedWorker CATCHES dispatch exceptions, logs, and CHECKPOINTS the batch anyway, so an escaped
+  exception is **checkpoint-and-lose** — the stage sits silently stuck `pending` with nothing left on the
+  feed to redeliver it. The amendment's value is the visible `failed` stamp with the error surfaced, not
+  loop prevention. (The DecisionDispatchTests comment still tells the older story; the code comment is the
+  corrected one.)
+- **Crashed-`running` posture, recorded as accepted:** every stage runner (Intake, Discovery, Regulatory,
+  Dosing, Cost, Decision) stamps `running` BEFORE its try block, so a process crash between that write and
+  any terminal write (`done`/`failed`/`needs-review`/`awaiting-*`) leaves the stage `running` forever —
+  the redelivered trigger no-ops on the status guard, and nothing else ever rewrites it. Shared by all six
+  runners; accepted for the single-operator estate (the operator sees a stage stuck `running` and can
+  re-trigger by re-upserting the input record). A stale-`running` reaper (age-based reset to `pending`) is
+  a deferred follow-on.
+- **Task 9: `MarkerLibraryDoc` gained `LinkedProjects`** (mirroring MsdsRegistryDoc's field) — the plan's
+  "pin via a projects-list on the doc": reuse increments only when the closing project is not already
+  listed, so a redelivered gate cannot double-count and the source history shows every project that
+  confirmed the code. `KnowledgeKinds` gained `Decision = "decision"` for the close conclusion (the plan's
+  "reuse the existing constant family" — none of the four existing kinds describes a close).
+  `Composition.Ppm` is the ANCHOR ppm (the largest marker's — the ratio's "1.00"), which together with the
+  scale-invariant ratio reconstructs every marker's ppm; no other single number does.
+- **Task 9 mutation (a) was a REAL kill, not accepted-idempotent:** dropping the `awaiting-VP` latch fails
+  `Redelivery_DoesNotDoubleWrite` via its strengthened assert — `Assert.Single(index.Pushed)` — because an
+  unlatched redelivery re-runs the conclusion write (re-embed + re-push + re-stamped CreatedAt). The
+  marker-library writes themselves DID survive the mutation exactly as the plan predicted (content-keyed id
+  + projects-list pin), so the latch's observable value is the conclusion path. Mutation (b)
+  (ordinal/project-scoped key instead of content key) failed `AReusedCode_IncrementsReuseCount_OncePerProject`
+  — a key not derived from content never maps two projects' identical codes to one doc. Both reverted by hand.
+- **Task 9: test 3 seeds the reused code by closing a FIRST project through the pipeline** (p1's close
+  mints the library entry, p2's close is the reuse) rather than hand-seeding a doc with a precomputed
+  content key — the key stays production-owned and the test cannot drift from the real derivation.
+- **Task 12: a fourth fact beyond the plan's three** —
+  `Dashboard_NeedsReviewAndFailed_BlockOnTheOperator_WithTheStageError` pins the needs-review/failed →
+  "operator" + StageState.Error-as-detail mapping on its own (the plan folded it into the comment block
+  but named no test for it; an error nobody surfaces is a stall nobody notices). `needsSigning` lists only
+  UNAPPROVED gates (a signed gate needs nothing), the regulatory entry mirroring GET /gate/regulatory's
+  completeness-first logic and the vp entry using `VpGate.Armable` exactly as the plan specifies. The
+  first stage (intake) counts as ready-to-continue when pending — it has no upstream to wait on.
+  Owner-mapping mutation ran as written: awaiting-physics → "operator" FAILED `Dashboard_NamesTheBlocker`
+  (string assert, "physics" ≠ "operator"); reverted by hand.
+- **Task 13 REVIEW-MANDATED FIX (rode this commit): the `GET /gate/vp` candidates-null asymmetry.** With
+  candidates absent the read computed `uncovered = []` and could report `armable: true` where the POST
+  422s "no candidates on file". The read now emits that same blocker verbatim when candidates are null
+  (armable false), pinned by `GetGateVp_WithNoCandidatesOnFile_IsNotArmable_AndNamesTheBlocker` — which
+  FAILED before the two-line fix (TDD'd, not retrofitted).
+- **Task 13: the explicit `confirmedCode: null` needed a domain attribute, not endpoint code** —
+  `Json.Options` is globally `WhenWritingNull`, so an unconfirmed decision would DROP the key entirely.
+  `ComponentDecision.ConfirmedCode` now carries `[property: JsonIgnore(Condition = JsonIgnoreCondition.Never)]`
+  with a comment explaining the Law-9 legibility rationale; ConfirmedBy/ConfirmedReason stay droppable
+  (the plan pinned only confirmedCode as the wire's proposed-vs-signed discriminator).
+- **Task 13 side-effect, no code change:** the new `GET /projects/{id}/decision` incidentally makes the
+  202 Location header the order endpoint returns (`Results.Accepted($"/projects/{projectId}/decision", …)`)
+  point at a real route for the first time.
+- **Task 14: `compliance-package` 404s when ZERO verdicts exist** (the plan left the empty case open; an
+  EMPTY package handed to the R.E. is the degenerate narrowed review — zero entries posing as a completed
+  screening). A null ConstraintsDoc folds `markets: []` per item rather than failing — the components
+  themselves still ride from the candidate rows. Shapes are JSON-only; **xlsx export stays a deferred
+  follow-on until the operator asks** (also recorded in Open questions). Both mutations ran as written:
+  Tier-C filter dropped → the coverage pin still PASSED and the complementary
+  `Assert.DoesNotContain("cas-pb", …)` FAILED; citations pass-through emptied → the verbatim-citations pin
+  FAILED (`Assert.Single` on the ElementGate citations). Both reverted by hand.
+- **Tasks 12-14 review (four findings, one commit): the dashboard and the exports tell the operator the
+  truth the endpoints enforce.** (1) The dashboard's vp armability mirrored `VpGate.Armable` alone while
+  the POST (and Task 13's `GET /gate/vp`) additionally refuse on absent candidates / regulatory-coverage
+  blockers — the vp card could advertise a gate the POST 422s. It now runs the same coverage re-check
+  (candidates+verdicts fetched once for both gate entries); `Dashboard_NamesTheBlocker`'s fixture was
+  STRENGTHENED to seed the live analysis its `armable: true` now genuinely means, and
+  `Dashboard_VpEntry_IsNotArmable_WhenCandidatesAreAbsent` pins the blocker verbatim
+  (mutation: coverage mirror dropped → that pin FAILED on `Assert.False`; reverted by hand).
+  (2) `compliance-package` scopes to LIVE cells (`MatrixAssembler.Cells`) so a revise's orphan verdicts
+  cannot resurface in the R.E.'s package and the two offline artifacts always agree about scope; the
+  honest no-candidates behavior is a 404 even when orphan verdicts exist (all orphans ⇒ no analysis),
+  and the count pin now counts live verdicts. (3) `elements-to-check` names market gaps: a live component
+  with no constraints entry emits `warnings: ["markets unknown for component '<id>' — …"]` instead of
+  silently folding an empty market list that looks complete; `warnings: []` when constraints cover
+  everything. (4) An unmapped future `awaiting-*` status falls back to blocked-on-"operator" instead of
+  vanishing from the dashboard (`var s when s.StartsWith("awaiting-")` before the null arm) — a park that
+  drops off the blocked list is a stall nobody notices. All four TDD'd: six new/strengthened facts
+  observed failing before the fixes.
+- **Task 15: "lands needs-review" implemented as `RevisionStatus.Failed` + the closed-project message.**
+  `RevisionStatus` has three values (pending/applied/failed), the executor's single refusal mechanism is
+  `FailAsync`, and this task's file list touches neither `RevisionDoc.cs` nor the status vocabulary — a
+  fourth status for one refusal would ripple the wire contract for no audit gain. The Error field carries
+  the closed-project message verbatim; both closed tests pin it.
+- **Task 15 touched three files beyond the plan's list, each forced by the task itself:**
+  (i) `RevisionEffects.cs` (+ its tests) — Decision joins `IsRevisable` (the POST /revise and chat
+  apply_revision front doors route on nothing else), answers `false` to `BreaksRegulatoryGate` (the pick
+  is strictly downstream of the regulatory signature), and maps to `KnowledgeKinds.Decision` in
+  `ConclusionKind` (without which `WriteConclusionAsync` THROWS for a decision revision) — the same
+  front-door move Plan-4's Task 8 made for Dosing. The `IsRevisable` theory was renamed
+  `…DiscoveryRegulatoryDosingAndDecisionOnly` to match.
+  (ii) `VpGate.cs` gained **`ParkBlocker`** (+ a VpGateTests pin): ONE domain helper answering
+  "may a determination be posted at this stage status", consumed by all three surfaces — the POST's 422,
+  `GET /gate/vp`, and the dashboard's vp card — so the reads can never drift from the guard they mirror.
+  (iii) `DecisionEndpoints.cs` + `ProjectsListEndpoints.cs` — the (d) guard and its two read mirrors.
+- **Task 15(d) guard placement:** first of the RECORD-STATE checks — after the two request-shape 422s
+  (determination literal, reason), before `VpGate.Armable` and the coverage re-check, before the
+  rejected/approve split (it covers BOTH verbs), and before any write. The park is the precondition the
+  armability checks refine: in the mid-re-pick state (`pending` + stale DecisionDoc) `VpGate.Armable`
+  PASSES, so ordering the park guard later would not save it — it must exist, not merely come first.
+- **Task 15(d) mutation nuance:** with the guard dropped, the two READ tests kept passing (the read and
+  the dashboard mirror `ParkBlocker` independently) — the kill was carried entirely by the two POST
+  refusal theories (4 cases: pending/done × approve/reject, all FAILED under the mutation). That is why
+  (d) demanded the endpoint tests and not just read parity.
+- **Task 15: all six dispatcher-level tests live in `DecisionRevisionTests.cs`** — tests 1-4 plus the
+  (a) stale-decision cascade and the (b) dosing-closed refusal — with BOTH optional stores wired
+  (knowledge + catalog) through one dispatcher, the Plan-4 holistic lesson made structural. The cascade
+  test reads every expected ratio OFF the records (`Codes.Single().RatioSignature`) because RatioSignature
+  is derived from the markers, never stored — a hard-coded string drifts from the rendering.
+- **Task 15 mutations, all four real kills, all reverted by hand:** (1) Decision reset dropped from
+  `ReviseDosingAsync`'s persist closure → `ADosingRevision_OnAnAwaitingVpProject_EndsWithDecisionRePickedOverTheNewDosing`
+  FAILED (stage stuck `awaiting-VP`, the fresh CostDoc absorbed, stale proposal standing); (2a) closed
+  refusal dropped from `ReviseDecisionAsync` → `ARevision_AfterClose_IsRefused` FAILED (revision `applied`
+  over the signed decision); (2b) closed refusal dropped from `ReviseDosingAsync` →
+  `ADosingRevision_AfterClose_IsRefused_NothingReRun_NothingRePriced` FAILED (a closed project re-dosed);
+  (3) the (d) stage guard dropped from the endpoint → all four POST refusal cases FAILED (200 OK where a
+  422 must be).
+- **Task 15 review follow-up (F1 MAJOR + F3 + F4, one commit): the signature and the revision cannot
+  cross.** The revise run is minutes wide (two LLM calls, an embed, a push) and the stage advertises
+  `awaiting-VP` throughout — the (d) park guard cannot see a determination completing inside that window.
+  Three layers landed: (1) `CloseProjectAsync` refuses a zero-confirmation close — an unconfirmed
+  component under a signed gate means a revision's persist replaced the stamped doc; it parks Decision
+  `needs-review` naming the components instead of releasing procurement over nothing; (2) BOTH revise
+  persist closures re-check the world immediately before writing (`ThrowIfClosedAsync` again, plus — on
+  the Decision path — a stage-status-unchanged check against the status captured at entry); a raced
+  revision lands honest `failed`, persisting nothing, the stamped doc surviving; (3) `POST
+  …/decision/determination` 422s while a Pending Dosing/Decision RevisionDoc exists
+  (`VpGate.PendingRevisionBlocker` — durable from POST /revise's 202 until applied/failed, covering the
+  whole window including feed lag), mirrored in `GET /gate/vp` and the dashboard's vp card exactly as
+  ParkBlocker is. F3: `CloseProjectAsync` re-reads the vp gate (point read) instead of trusting the fed
+  snapshot — an approve revoked before the feed delivered closes nothing; the close-test fixtures now
+  persist-then-deliver the gate (`DeliverSignedGateAsync`), the production sequence F3 makes load-bearing.
+  F4: the "only discovery and regulatory" 422 message named four stages — fixed in BOTH sites carrying it
+  (`RevisionEndpoints.cs` AND `ChatTools.cs`'s apply_revision refusal; the tests pin only "cannot be
+  revised", so neither broke).
+- **Follow-up mutations, all real kills, all reverted by hand:** (A) layer-1 park dropped →
+  `AClose_OverAnUnconfirmedDecision_ParksLoud_AndNeverReleases` FAILED (`done` + Released over zero
+  confirmations); (B) Decision-path persist re-checks dropped → BOTH
+  `ARevision_RacedByTheSignature_FailsAndTheStampedDocSurvives` and
+  `ARevision_WhoseStageMovedMidRun_FailsWithoutPersisting` FAILED (revision `applied`, the stamp
+  clobbered); (B2) Dosing-path closure re-check dropped →
+  `ADosingRevision_RacedByTheSignature_FailsAndResetsNothing` FAILED; (C) layer-3 POST guard dropped →
+  both `PostDetermination_WhileARevisionIsPending…` cases FAILED (200 where 422 must be — the read
+  mirrors survived the mutation, which is why the POST tests carry the kill); (D) F3 re-read dropped →
+  `AnApproveRevokedBeforeTheFeedDelivered_DoesNotClose` FAILED (closed `done` off the stale snapshot).
+- **Residual windows, accepted and documented (review follow-up):** (i) the determination POST's
+  unconditional `UpsertDecisionAsync` can still clobber a revise persist landing in its millisecond
+  window between the POST's read and write — the real fix is an ETag'd conditional upsert, deferred
+  together with the existing `SetStageAsync` read-modify-write ETag debt; (ii) `POST /revise` 202s on a
+  closed project — the refusal is asynchronous by design (record-as-bus: the executor refuses and the
+  revision lands `failed` with the closed-project message); a front-door 422 is cheap future hardening;
+  (iii) `OnRevisionAsync` acts on the fed snapshot's `Status` rather than re-reading the RevisionDoc —
+  the same latest-version-feed mode-dependence the chat handler documents (and closes with a point read);
+  pre-existing, unchanged by this task.
+- **Task 16: the skipped-POST mutation kills at the stage-`done` assert, not the ConfirmedCode tripwire.**
+  A hand-built approved vp gate, PERSISTED (F3's point-read only sees the store) and pumped without the
+  determination POST, is caught by the F1-layer-1 zero-confirmation park: the close runs, refuses to
+  manufacture confirmations, and parks Decision `needs-review` — so the E2E fails three asserts EARLIER
+  (`done` vs `needs-review`) than the plan predicted, at the stronger guard shipped after the plan was
+  written. The ConfirmedCode tripwire stays in the test unchanged (it still pins the green path); the
+  mutation's real kill is the park. Reverted by hand.
+- **Task 16: the TDD red was a refusing decision fake, not an unscripted one** — the plan-4 harness's
+  `FakeAgentRuns.Decision` default already fits this flow (one component, one code), so "run before
+  scripting the decision fake" had nothing to leave unscripted. The red was produced by temporarily
+  scripting the fake to `NeedsReview("not yet scripted")`: the E2E failed for real at the awaiting-VP
+  assert (stage landed `needs-review`), proving the test observes the decision run; the line was then
+  removed and the default drives the green path.
+- **Task 17: the DosingDoc fetch was HOISTED, not re-fetched** — `ScoreDecision(decision, dosing, report)`
+  needs the codes, so Program.cs's dosing variable moved above its try block and the decision block reuses
+  it; a DecisionDoc-with-no-DosingDoc state (impossible in pipeline order, possible under a transport
+  failure on the dosing GET) prints "decision check SKIPPED" rather than scoring against nothing — the
+  same "unchecked must never look like checked clean" rule as the dosing block.
+- **Task 18: the Functions suite is 161, not the plan's 158** — three tests arrived with `8191064`
+  (`fix(sds): sweep survives per-candidate/per-entry exceptions`, a pre-plan commit riding this branch),
+  not with this plan; 0 failures, unregressed. The backend suite landed at 808 vs the plan's "~760+"
+  estimate (the review follow-ups added tests the estimate never counted). Both Bicep twins compile with
+  only the pre-existing BCP037 type-definition warning, identical on main; `git diff main -- infra/` is
+  empty.
+
+### Final-review follow-ups (deferred)
+
+Three findings from the final holistic review of the branch, verified against the code and deliberately NOT
+fixed here — each is a real asymmetry, none is a false pass on its own. Recorded so they are not rediscovered
+from scratch:
+
+- **(a) Reject-after-approve leaves `Confirmed*` stamped under a locked gate.** `POST
+  /decision/determination` with `rejected` writes the locked GateDoc with the VP's reason
+  (`DecisionEndpoints.cs:77-86`) but never touches `DecisionDoc.Components`. Approve-then-reject therefore
+  leaves `ConfirmedCode`/`ConfirmedBy`/`ConfirmedReason` on file reading "VP R&D" under a gate that says no.
+  The close cannot fire on it (`CloseProjectAsync` re-reads the gate and returns on a non-`approved` status),
+  so procurement is safe — but the record shows a confirmation the VP withdrew. The reject path should clear
+  `Confirmed*` the same way the approve path sets them.
+- **(b) Orphan verdicts ride into dosing/decision but are excluded from the compliance-package export.**
+  `TryDoseAsync` builds its input from `CompliantSet.Of(verdicts)` over ALL verdicts
+  (`StageDispatcher.cs:388`), while `compliance-package` filters to the live matrix cells
+  (`ExportEndpoints.cs:86-88`). After a Discovery revision drops a candidate, its leftover `Recommended`
+  verdict is invisible to the R.E.'s package yet still feeds a dosing code. The artifact and the pipeline
+  disagree about scope; one of the two rules should win explicitly.
+- **(c) The two regulatory exports disagree about the empty case.** `elements-to-check` returns 200 with
+  `items: []` when every candidate is Tier C, where `compliance-package` 404s its equivalent empty state
+  (`ExportEndpoints.cs:89-91`, reasoning that zero entries posing as a screening is the degenerate narrowed
+  review). Both 404 a missing CandidatesDoc; only one 404s an empty result. The same reasoning applies to
+  both artifacts — an empty elements-to-check handed offline looks like "nothing to check" rather than
+  "nothing survived".

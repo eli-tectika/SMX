@@ -118,7 +118,7 @@ public class RecordDocsTests
     }
 
     [Fact]
-    public void ProjectCreate_SeedsAllSixStages_IntakeThroughCost()
+    public void ProjectCreate_SeedsAllSevenStages_IntakeThroughDecision()
     {
         var p = ProjectDoc.Create("p1", "Acme", "P", System.Text.Json.JsonDocument.Parse("{}").RootElement);
         Assert.True(p.Stages.ContainsKey(Stages.Intake));
@@ -127,13 +127,16 @@ public class RecordDocsTests
         Assert.True(p.Stages.ContainsKey(Stages.Matrix));
         Assert.True(p.Stages.ContainsKey(Stages.Dosing));
         Assert.True(p.Stages.ContainsKey(Stages.Cost));
+        Assert.True(p.Stages.ContainsKey(Stages.Decision));
         Assert.False(p.Stages.ContainsKey("screening"));
-        Assert.Equal(6, p.Stages.Count);
-        // Dosing and Cost start `pending` like every other stage — inert until the approved regulatory gate
-        // (Plan 4, Task 12) triggers Dosing. `pending` is not "run me now": nothing scans stages for pending,
-        // the dispatcher only reacts to specific upstream docs, and no case produces a DosingDoc/CostDoc yet.
+        Assert.Equal(7, p.Stages.Count);
+        // Dosing, Cost and Decision start `pending` like every other stage — inert until an upstream doc
+        // triggers them. `pending` is not "run me now": nothing scans stages for pending, the dispatcher only
+        // reacts to specific upstream docs (the approved regulatory gate triggers Dosing, the CostDoc will
+        // trigger Decision — Plan 5, Task 6).
         Assert.Equal("pending", p.Stages[Stages.Dosing].Status);
         Assert.Equal("pending", p.Stages[Stages.Cost].Status);
+        Assert.Equal("pending", p.Stages[Stages.Decision].Status);
     }
 
     [Fact]
@@ -389,6 +392,36 @@ public class RecordDocsTests
         Assert.Null(unquoted.BestQuote);
         Assert.Equal("price is free text on the only listing; nothing parseable on file", unquoted.PriceNote);
         Assert.Equal(["single-source", "not-off-the-shelf"], unquoted.Risks);
+    }
+
+    [Fact]
+    public void DecisionDoc_RoundTrips_WithProposalAndConfirmationApart()
+    {
+        // The agent's pick and the VP's confirmation are DIFFERENT FIELDS. If a rename or a serializer
+        // change ever folds one into the other, a proposal becomes readable as a signature — the agent
+        // signing the gate. This pin is the cheapest place to catch that.
+        var doc = new DecisionDoc
+        {
+            Id = RecordIds.Decision("p1"), ProjectId = "p1", GeneratedAt = "t",
+            Components =
+            [
+                new ComponentDecision("bottle",
+                    Rows:
+                    [
+                        new DecisionRow("cas-zr", "Zr", "recommended", 450.0,
+                            Cleared: new ClearedCriteria(Regulatory: true, Dosing: true, Cost: true),
+                            Traceability: new TraceRefs(
+                                Verdict: "p1|verdict|cas-zr|bottle", Window: "p1|dosing", Audit: "p1|cost")),
+                    ],
+                    ProposedCode: new ProposedCode("Zr:Y = 1.00:0.44", ["cas-zr", "cas-y"], "covers both criteria at lowest cost"),
+                    ConfirmedCode: null, ConfirmedBy: null, ConfirmedReason: null),
+            ],
+        };
+        var back = JsonSerializer.Deserialize<DecisionDoc>(JsonSerializer.Serialize(doc, Json.Options), Json.Options)!;
+        Assert.Equal("recommended", back.Components[0].Rows[0].Determination);
+        Assert.NotNull(back.Components[0].ProposedCode);
+        Assert.Null(back.Components[0].ConfirmedCode);       // a round-trip must not manufacture a confirmation
+        Assert.Equal("unreleased", back.Procurement.Status); // default: nothing is ordered by default
     }
 
     [Fact]

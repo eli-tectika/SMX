@@ -14,12 +14,17 @@ public static class RevisionEffects
     /// Dosing IS revisable (Law 4): the operator changes a ppm by telling the agent WHY, which re-runs the
     /// stage and earns a Learned Conclusion — the same mechanism as a tiering or a verdict change.
     ///
+    /// Decision IS revisable (Plan 5, Task 15): the pick is the agent's PROPOSAL, and the operator changes
+    /// it the same way — never by hand, always with a reason the knowledge layer keeps. The executor
+    /// (StageDispatcher.ReviseDecisionAsync) refuses outright once the project is CLOSED (VP gate
+    /// approved): the signature is history, and revising history is a new project decision.
+    ///
     /// Intake is deliberately excluded even though it DOES have an agent: its output is the derived
     /// regulatory scope that every downstream stage was screened against, so re-running it invalidates
     /// the whole project rather than one stage's output. That is a bigger blast radius than
     /// revise-with-reason is meant to have; no journey step asks for it.
     public static bool IsRevisable(string stage) =>
-        stage is Stages.Discovery or Stages.Regulatory or Stages.Dosing;
+        stage is Stages.Discovery or Stages.Regulatory or Stages.Dosing or Stages.Decision;
 
     /// A gate is an operator's signature over a SPECIFIC analysis. Re-running an agent at or upstream of
     /// the Regulatory gate replaces that analysis, so the signature is void and has to be re-taken.
@@ -33,7 +38,9 @@ public static class RevisionEffects
     /// answer here, so it must never be the one an unrecognized string falls into. Call IsRevisable
     /// first — which every caller must do anyway. Dosing is DOWNSTREAM of the gate: it consumes the
     /// compliant set the operator signed over, it cannot change it, so re-running it must NOT void that
-    /// signature — it answers `false` here. (Cost is not revisable, so it hits the throw above.)
+    /// signature — it answers `false` here. Decision is downstream further still (the pick reads the
+    /// signed analysis) and answers `false` for the same reason. (Cost is not revisable, so it hits the
+    /// throw above.)
     public static bool BreaksRegulatoryGate(string stage)
     {
         if (!IsRevisable(stage))
@@ -51,6 +58,7 @@ public static class RevisionEffects
         Stages.Discovery => KnowledgeKinds.Material,
         Stages.Regulatory => KnowledgeKinds.RegulatoryJudgment,
         Stages.Dosing => KnowledgeKinds.Dosing,
+        Stages.Decision => KnowledgeKinds.Decision,
         _ => throw new ArgumentOutOfRangeException(nameof(stage), stage,
             "no conclusion kind for this stage — it is not revisable"),
     };

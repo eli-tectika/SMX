@@ -26,7 +26,7 @@ namespace Smx.Orchestrator.Tests;
 /// </para>
 ///
 /// <para>
-/// Dosing and Cost are the two representatives (both id != projectId, so a <c>doc.Id</c>-as-PK swap is
+/// Dosing, Cost and Decision are the representatives (all id != projectId, so a <c>doc.Id</c>-as-PK swap is
 /// detectable). They exercise the shared <c>Upsert(doc, doc.ProjectId, …)</c> write helper and the shared
 /// <c>ReadAsync(id, projectId, …)</c> read helper that every record doc goes through.
 /// </para>
@@ -126,6 +126,13 @@ public sealed class CosmosRecordStorePartitionKeyTests
         GeneratedAt = "2026-07-15T00:00:00Z",
     };
 
+    private static DecisionDoc Decision() => new()
+    {
+        Id = RecordIds.Decision("p1"), // "p1|decision"
+        ProjectId = "p1",              // "p1" — the PK
+        GeneratedAt = "2026-07-15T00:00:00Z",
+    };
+
     // ---- Dosing ----------------------------------------------------------------------------------
 
     [Fact]
@@ -163,6 +170,26 @@ public sealed class CosmosRecordStorePartitionKeyTests
         await s.Value.UpsertCostAsync(Cost());
 
         Assert.Null(await s.Value.GetCostAsync("p1"));   // the container is empty: 404 -> null
+        AssertReadAddressesTheUpsertedDocument(s.Records);
+    }
+
+    // ---- Decision — the doc the VP signs over; a mis-keyed upsert here is a decision nobody can read back --
+
+    [Fact]
+    public async Task Decision_upsert_passes_the_partition_key_cosmos_will_extract()
+    {
+        var s = new Store();
+        await s.Value.UpsertDecisionAsync(Decision());
+        AssertUpsertKeyIsWhatCosmosWillExtract(s.Records);
+    }
+
+    [Fact]
+    public async Task Decision_point_read_addresses_the_document_the_upsert_wrote()
+    {
+        var s = new Store();
+        await s.Value.UpsertDecisionAsync(Decision());
+
+        Assert.Null(await s.Value.GetDecisionAsync("p1"));   // the container is empty: 404 -> null
         AssertReadAddressesTheUpsertedDocument(s.Records);
     }
 }

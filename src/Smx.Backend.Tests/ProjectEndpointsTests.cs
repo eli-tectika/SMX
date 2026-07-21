@@ -200,6 +200,51 @@ public class ProjectEndpointsTests : IClassFixture<WebApplicationFactory<Program
         Assert.Contains("bottle", await resp.Content.ReadAsStringAsync());
     }
 
+    // ---- the per-stage reads (Task 13): thin projections, mirroring GET /dosing ------------------------
+
+    [Fact]
+    public async Task GetCandidates_404UntilSeeded_ThenReturnsDoc()
+    {
+        var post = await _client.PostAsJsonAsync("/projects", ValidBody);
+        var id = (await post.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("projectId").GetString()!;
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/projects/{id}/candidates")).StatusCode);
+
+        await _store.UpsertCandidatesAsync(new CandidatesDoc
+        {
+            Id = RecordIds.Candidates(id), ProjectId = id,
+            Substances = [new CandidateSubstance("bottle", "Zr", "zirconium dioxide", "1314-23-4",
+                null, null, false, "A", "strong XRF line", [])],
+        });
+        var resp = await _client.GetAsync($"/projects/{id}/candidates");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var doc = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("1314-23-4", doc.GetProperty("substances")[0].GetProperty("cas").GetString());
+    }
+
+    [Fact]
+    public async Task GetVerdicts_EmptyArrayNever404_ThenReturnsTheArray()
+    {
+        // A partition query, never a 404 — an empty analysis is a state, not an error (mirror
+        // GetVerdictsAsync). Even for a project id nothing was ever written under.
+        var empty = await _client.GetAsync("/projects/proj-no-verdicts/verdicts");
+        Assert.Equal(HttpStatusCode.OK, empty.StatusCode);
+        var arr = await empty.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Array, arr.ValueKind);
+        Assert.Equal(0, arr.GetArrayLength());
+
+        await _store.UpsertVerdictAsync(new VerdictDoc
+        {
+            Id = RecordIds.Verdict("proj-with-verdicts", "1314-23-4", "bottle"), ProjectId = "proj-with-verdicts",
+            Cas = "1314-23-4", ComponentId = "bottle", Element = "Zr", Form = "zirconium dioxide",
+            Dimensions = [new("ElementGate", VerdictStatus.Pass, [new Citation("regulatory", "reach-annex", "2026-07-01")], 0.9, "ok")],
+        });
+        var resp = await _client.GetAsync("/projects/proj-with-verdicts/verdicts");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var verdicts = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, verdicts.GetArrayLength());
+        Assert.Equal("1314-23-4", verdicts[0].GetProperty("cas").GetString());
+    }
+
     [Fact]
     public async Task Healthz_Returns200()
     {

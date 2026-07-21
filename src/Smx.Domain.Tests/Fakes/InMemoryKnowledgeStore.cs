@@ -24,6 +24,12 @@ public sealed class InMemoryKnowledgeStore : Smx.Domain.IKnowledgeStore
     private readonly ConcurrentDictionary<string, MsdsRegistryDoc> _msds = new();
     private readonly ConcurrentDictionary<string, SubstancePropertyDoc> _substances = new();
 
+    /// Opt-in failure injection: while set, every UpsertMarkerAsync throws it — in production this is a
+    /// remote Cosmos write and CAN die mid-call. A test sets this to prove a caller SURVIVES the store
+    /// dying (stamps a visible failure instead of letting the exception escape to the checkpoint-and-lose
+    /// change feed), then clears it to prove the re-run converges. Null (the default) never throws.
+    public Exception? ThrowOnUpsertMarker { get; set; }
+
     private static T Copy<T>(T doc) =>
         JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(doc, Json.Options), Json.Options)!;
 
@@ -58,7 +64,11 @@ public sealed class InMemoryKnowledgeStore : Smx.Domain.IKnowledgeStore
                      && Dimension(material, m.ValidatedFor.Material)
                      && Dimension(objective, m.ValidatedFor.Objective))
             .Select(Copy).ToList());
-    public Task UpsertMarkerAsync(MarkerLibraryDoc doc, CancellationToken ct = default) { _markers[doc.Id] = Copy(doc); return Task.CompletedTask; }
+    public Task UpsertMarkerAsync(MarkerLibraryDoc doc, CancellationToken ct = default)
+    {
+        if (ThrowOnUpsertMarker is { } e) throw e;
+        _markers[doc.Id] = Copy(doc); return Task.CompletedTask;
+    }
 
     public Task<MsdsRegistryDoc?> GetMsdsAsync(string cas, CancellationToken ct = default) =>
         Task.FromResult(_msds.TryGetValue(KnowledgeIds.Msds(cas), out var d) ? Copy(d) : null);

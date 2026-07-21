@@ -39,7 +39,14 @@ public sealed class StageDispatcher(
             case RevisionDoc r: await OnRevisionAsync(r, ct); break;
             case ChatMessageDoc m: await OnChatMessageAsync(m, ct); break;
             case DosingDoc d: await OnDosingAsync(d, ct); break;
+            case CostDoc c: await TryDecideAsync(c.ProjectId, ct); break;
             case MatrixDoc: break; // terminal
+            // Terminal too, and spelled out rather than left to fall out of the switch. The DecisionDoc is
+            // the Decision stage's OUTPUT: the runner that wrote it already parked the stage at
+            // `awaiting-VP` in the same breath, so its delivery has nothing left to do. The CLOSE hangs off
+            // the VP GateDoc (OnGateAsync → CloseProjectAsync) — a SIGNATURE, never the analysis it covers.
+            // Dispatching anything here would act on the decision ahead of the signature authorizing it.
+            case DecisionDoc: break;
         }
     }
 
@@ -176,7 +183,9 @@ public sealed class StageDispatcher(
 
     // Trusts the gate record: does NOT re-check arming/completeness here. The false-pass-safety
     // invariant is that POST /regulatory/approve (armable + IsComplete) is the ONLY writer of an
-    // approved regulatory GateDoc. Do not add another writer without those two checks.
+    // approved regulatory GateDoc — and POST /decision/determination (VpGate.Armable + the regulatory
+    // coverage re-check + real-code confirmations) the ONLY writer of an approved VP one. Do not add
+    // another writer without those checks.
     private async Task OnGateAsync(GateDoc g, CancellationToken ct)
     {
         if (g is { GateType: GateTypes.Regulatory, Status: "approved" })
@@ -191,6 +200,156 @@ public sealed class StageDispatcher(
             // would dose an UNSIGNED gate — the hard regulatory gate bypassed by the stage right after it.
             await TryDoseAsync(g.ProjectId, ct);
         }
+        else if (g is { GateType: GateTypes.Vp, Status: "approved" })
+            await CloseProjectAsync(g.ProjectId, ct);
+    }
+
+    /// The VP signature closes the project (spec §4: the VP gate "releases procurement + writes to Marker
+    /// Library + Learned Conclusions"). The approved VP GateDoc landing on the change feed IS the close
+    /// dispatch — writing the record is the trigger, same as every other stage.
+    private async Task CloseProjectAsync(string projectId, CancellationToken ct)
+    {
+        var project = await store.GetProjectAsync(projectId, ct);
+        // The idempotency latch: only the awaiting-VP → done transition closes. Once `done`, redeliveries
+        // no-op here entirely — the knowledge writes are idempotent by deterministic id regardless, but the
+        // latch is what keeps them from re-RUNNING at all (re-stamping CreatedAt, re-embedding and
+        // re-pushing the conclusion on every at-least-once delivery).
+        if (project is null || project.Stages[Stages.Decision].Status is not "awaiting-VP") return;
+
+        // The whole post-latch body in ONE try (every stage runner's posture): this is the single
+        // highest-stakes transition, the only multi-step dispatch path talking to remote surfaces beyond
+        // the record store (marker-library writes, the conclusion's embed + search push), plus two
+        // contract `First()`s. An exception that escaped here would hit ChangeFeedWorker — which logs and
+        // CHECKPOINTS ANYWAY — so the failure mode is checkpoint-and-lose: the project sits `awaiting-VP`
+        // forever under a signed gate, the dashboard blaming a VP who already signed. Stamp `failed`
+        // instead (§11: nothing dies silently). The zero-confirmation park below is a deliberate RETURN,
+        // never an exception — it keeps its own needs-review stamp. Every write inside is idempotent
+        // (content-keyed ids, the LinkedProjects pin, the deterministic conclusion id), so once the
+        // operator clears the failure a re-signed determination converges.
+        try
+        {
+            // F3: trust the RECORD, not the fed snapshot (the OnChatMessageAsync lesson). The feed's element
+            // is a snapshot of the gate at some change: an approval revoked a moment later delivers the
+            // approved version while the store already holds `locked`. Closing off the fed element would
+            // release procurement under a gate that is no longer signed — re-read, and a by-now-unsigned
+            // gate closes nothing (the reject's own delivery is a no-op in OnGateAsync).
+            var gate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
+            if (gate?.Status != "approved") return;
+
+            var decision = await store.GetDecisionAsync(projectId, ct);
+            var dosing = await store.GetDosingAsync(projectId, ct);
+            var constraints = await store.GetConstraintsAsync(projectId, ct);
+            if (decision is null || dosing is null || constraints is null) return; // nothing signed over nothing
+
+            // The raced-close refusal (Task 15 review F1, layer 1). The determination endpoint stamps EVERY
+            // component before the gate is written, so an unconfirmed component here means the DecisionDoc on
+            // file is NOT the one the VP signed — a revision's persist replaced it in the window between the
+            // stamp and this delivery. Filtering to an empty confirmed list and carrying on would release
+            // procurement over NOTHING (an empty conclusion under a real signature). Park LOUD instead;
+            // the re-pick re-parks at awaiting-VP and the VP signs what they can actually read.
+            var unconfirmed = decision.Components
+                .Where(c => c.ConfirmedCode is null).Select(c => c.ComponentId).ToList();
+            if (unconfirmed.Count > 0)
+            {
+                await SetStageAsync(projectId, Stages.Decision, s =>
+                {
+                    s.Status = "needs-review";
+                    s.Error = "the gate is signed but the decision on file carries no confirmation for: " +
+                              string.Join(", ", unconfirmed) +
+                              " — a revision may have raced the signature; re-sign after the re-pick";
+                }, ct);
+                return;
+            }
+
+            // The confirmed codes, resolved back to the DosingDoc records they name. The endpoint 422'd any
+            // confirmation that names no real code, so First() is a contract here, not a hope.
+            var confirmed = decision.Components
+                .Where(c => c.ConfirmedCode is not null)
+                .Select(c => (Component: c, Code: dosing.Codes.First(
+                    k => k.ComponentId == c.ComponentId && k.RatioSignature == c.ConfirmedCode)))
+                .ToList();
+
+            // Knowledge-null degrade, mirroring the catalog-null Cost path: the writes are skipped, the project
+            // still closes. DEFERRED like the others: production DI must pass the real IKnowledgeStore.
+            if (knowledge is not null)
+            {
+                var now = DateTimeOffset.UtcNow.ToString("O");
+                foreach (var (component, code) in confirmed)
+                {
+                    var spec = constraints.Components.First(c => c.Id == component.ComponentId);
+                    var id = KnowledgeIds.Marker(MarkerContentKey(code));
+                    var existing = await knowledge.GetMarkerAsync(id, ct);
+                    if (existing is null)
+                        await knowledge.UpsertMarkerAsync(new MarkerLibraryDoc
+                        {
+                            Id = id,
+                            // Ppm is the ANCHOR — the largest marker's ppm, the ratio's "1.00". Together with
+                            // the scale-invariant ratio it reconstructs every marker's ppm; storing any other
+                            // single number would not.
+                            Composition = new([.. code.Markers.Select(m => m.Cas)],
+                                code.Markers.Max(m => m.Ppm), code.RatioSignature),
+                            ValidatedFor = new(spec.Application, spec.Material, spec.Objective),
+                            SourceProject = projectId,
+                            LinkedProjects = [projectId],
+                            CreatedAt = now,
+                        }, ct);
+                    else if (!existing.LinkedProjects.Contains(projectId))
+                    {
+                        // A reuse: another project confirmed the same code. Counted ONCE per project — the
+                        // projects-list is the pin, so a redelivered gate cannot double-count (see
+                        // MarkerLibraryDoc.LinkedProjects). SourceProject is provenance and never rewritten.
+                        existing.ReuseCount++;
+                        existing.LinkedProjects.Add(projectId);
+                        await knowledge.UpsertMarkerAsync(existing, ct);
+                    }
+                }
+
+                var ratios = string.Join("; ", confirmed.Select(c => $"{c.Component.ComponentId}: {c.Component.ConfirmedCode}"));
+                await conclusions.WriteAsync(new LearnedConclusionDoc
+                {
+                    // Deterministic in the project's close — an at-least-once redelivery upserts one doc.
+                    Id = KnowledgeIds.LearnedConclusion(KnowledgeKinds.Decision, $"{projectId}|close"),
+                    Kind = KnowledgeKinds.Decision,
+                    Scope = new(null, null, null, null, null, null), // project-wide: the codes span components
+                    Finding = $"Project closed under VP approval; confirmed final codes — {ratios}.",
+                    // 1.0: this records an operator-signed determination, not an inference.
+                    Confidence = 1.0,
+                    Provenance = new([projectId], [$"VP determination on project {projectId} — confirmed codes: {ratios}"]),
+                    CreatedAt = now,
+                }, ct);
+            }
+
+            decision.Procurement.Status = ProcurementStatus.Released;
+            await store.UpsertDecisionAsync(decision, ct);
+            // LAST, deliberately: the stage flip is the latch above, so a crash before this line redelivers
+            // into a re-run whose writes all converge (deterministic ids, the projects-list pin).
+            await SetStageAsync(projectId, Stages.Decision, s => { s.Status = "done"; s.Error = null; }, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            await SetStageAsync(projectId, Stages.Decision, s => { s.Status = "failed"; s.Error = e.Message; }, ct);
+        }
+    }
+
+    /// A library code's identity is its CONTENT — the ratio signature plus every (cas, ppm) pair — so the
+    /// same code confirmed by two projects maps to ONE doc (that is what makes reuse countable), and a
+    /// redelivered gate upserts rather than appends. Pairs are ordered by CAS because input order is not
+    /// identity, and every field is LENGTH-PREFIXED rather than delimiter-joined (the Plan-3c /
+    /// ChatTools.ContentKey lesson: a delimiter that can occur inside a field lets two different codes
+    /// encode to the same bytes). SHA-256, never string.GetHashCode — .NET randomises string hashes per
+    /// process, and this id must be the same one across every restart forever.
+    private static string MarkerContentKey(MarkerCode code)
+    {
+        var tuple = new System.Text.StringBuilder();
+        void Append(string field) => tuple.Append(field.Length).Append(':').Append(field);
+        Append(code.RatioSignature);
+        foreach (var m in code.Markers.OrderBy(m => m.Cas, StringComparer.Ordinal))
+        {
+            Append(m.Cas);
+            Append(m.Ppm.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+        }
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(tuple.ToString()))).ToLowerInvariant()[..16];
     }
 
     /// The shared Dosing resolver, called from TWO places — OnGateAsync (the signature triggers the stage) and
@@ -312,6 +471,56 @@ public sealed class StageDispatcher(
         }
     }
 
+    /// Cost finished — the journey's last mile. The decision matrix is DETERMINISTIC assembly over the four
+    /// upstream records (DecisionAssembler); only the final-code PICK is an agent, and its output is a
+    /// PROPOSAL. The stage therefore parks at `awaiting-VP`, never `done`: only the VP gate's signature
+    /// (Task 9) completes it — a Decision that went `done` off the agent's own pick would be the agent
+    /// signing the hard gate (Law 9).
+    private async Task TryDecideAsync(string projectId, CancellationToken ct)
+    {
+        var project = await store.GetProjectAsync(projectId, ct);
+        // Guard on the STAGE STATUS, not on "does a DecisionDoc exist" — the OnDosingAsync lesson. The two
+        // diverge exactly when it matters: a failed/needs-review run persists NO doc, and a doc-existence
+        // guard would re-run the pick on every redelivery of the same CostDoc.
+        if (project is null || project.Stages[Stages.Decision].Status is not "pending") return;
+        var verdicts = await store.GetVerdictsAsync(projectId, ct);
+        var dosing = await store.GetDosingAsync(projectId, ct);
+        var cost = await store.GetCostAsync(projectId, ct);
+        var constraints = await store.GetConstraintsAsync(projectId, ct);
+        if (dosing is null || cost is null || constraints is null) return; // inputs first; the feed will redeliver
+
+        await SetStageAsync(projectId, Stages.Decision, s => { s.Status = "running"; s.Attempts++; }, ct);
+        try
+        {
+            // INSIDE the try, deliberately (the Tasks-3-5 review amendment): a pre-invariant persisted
+            // DosingDoc with a duplicate (component, cas) window makes Assemble's ToDictionary throw
+            // ArgumentException. Outside the try that throw escapes into the ChangeFeedWorker — which
+            // CATCHES dispatch exceptions, logs, and CHECKPOINTS the batch anyway. So the failure mode is
+            // checkpoint-and-lose: the stage sits silently stuck at `pending` (nothing left on the feed to
+            // redeliver it), not an endless redelivery loop. The amendment's value is the visible `failed`
+            // stamp with the error surfaced — §11's "nothing dies silently" — not loop prevention.
+            var assembled = DecisionAssembler.Assemble(
+                verdicts, dosing, cost, [.. constraints.Components.Select(c => c.Id)]);
+
+            var result = await agents.RunDecisionAsync(assembled, dosing, null, ct);
+            if (!result.Succeeded)
+            {
+                await SetStageAsync(projectId, Stages.Decision,
+                    s => { s.Status = "needs-review"; s.Error = result.Error; }, ct);
+                return;
+            }
+            result.Output!.Id = RecordIds.Decision(projectId);
+            result.Output.ProjectId = projectId;
+            await store.UpsertDecisionAsync(result.Output, ct);
+            // awaiting-VP, NOT done: the stage completes only when the VP gate is signed (Task 9 flips it).
+            await SetStageAsync(projectId, Stages.Decision, s => { s.Status = "awaiting-VP"; s.Error = null; }, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            await SetStageAsync(projectId, Stages.Decision, s => { s.Status = "failed"; s.Error = e.Message; }, ct);
+        }
+    }
+
     /// The single place both the first run (this task) and the revision (Task 14) resolve Dosing's inputs, so
     /// the two paths cannot drift. It computes every floor from the physicist's measured background/device, and
     /// every loading from the cross-project knowledge layer, and returns the GAPS rather than throwing on the
@@ -377,12 +586,22 @@ public sealed class StageDispatcher(
         {
             // ORDER IS THE WHOLE POINT OF THIS METHOD. Every FALLIBLE step runs before anything is MUTATED.
             //
+            // 0. The closed-project refusal, hoisted OVER the switch: ONE guard, all four arms. An approved
+            //    VP gate is the close, and everything behind it is history — the signed DecisionDoc's
+            //    TraceRefs cite the upstream records BY ID, so ANY arm's re-run would replace a cited record
+            //    in place; a Discovery/Regulatory re-run would additionally clear the R.E. determination and
+            //    void the approved regulatory gate — a CLOSED project reappearing on the dashboard, blocked
+            //    on an R.E. who already ruled. `what` keeps each arm's message; the persist closures still
+            //    re-check (the mid-run race is theirs to catch).
+            await ThrowIfClosedAsync(r.ProjectId, r.Stage == Stages.Decision ? "decision" : "project", ct);
+
             // 1. Re-run the stage's agent. The new output stays in memory — nothing is persisted yet.
             var revised = r.Stage switch
             {
                 Stages.Discovery => await ReviseDiscoveryAsync(constraints, r, ct),
                 Stages.Regulatory => await ReviseRegulatoryAsync(constraints, r, ct),
                 Stages.Dosing => await ReviseDosingAsync(constraints, r, ct),
+                Stages.Decision => await ReviseDecisionAsync(constraints, r, ct),
                 _ => throw new InvalidOperationException($"stage '{r.Stage}' is not revisable"),
             };
 
@@ -478,6 +697,10 @@ public sealed class StageDispatcher(
         // regulatory false pass — but "Dosing runs only behind the signed gate" is the invariant the
         // first-run path enforces, and the revision path must not be the one hole in it. Throw so the
         // revision fails cleanly with the analysis untouched (the ordered-mutation contract of this method).
+        //
+        // (The closed-project refusal (Task 15(b)) ran before even that — hoisted into OnRevisionAsync,
+        // one guard over all four arms. Once the VP gate is approved the project is history: nothing may
+        // be re-dosed, and nothing re-priced, under a signed decision.)
         var verdicts = await store.GetVerdictsAsync(c.ProjectId, ct);
         var gate = await store.GetGateAsync(c.ProjectId, GateTypes.Regulatory, ct);
         if (gate?.Status != "approved")
@@ -505,6 +728,14 @@ public sealed class StageDispatcher(
             JsonSerializer.Serialize(dosing, Json.Options),
             async token =>
             {
+                // Re-check the close IMMEDIATELY before mutating (Task 15 review F1, layer 2 — the same
+                // re-check ReviseDecisionAsync's closure runs, for the same race): the entry check passed
+                // minutes ago, and a determination in flight then may have signed since. Without this, the
+                // resets below plus the upsert would re-run the whole Cost→Decision cascade UNDERNEATH a
+                // just-signed gate, regenerating the records the signature covers. Throw: the revision
+                // lands honest `failed`, nothing reset, nothing persisted.
+                await ThrowIfClosedAsync(c.ProjectId, "project", token);
+
                 // A Dosing revision may change the codes' substance set, so a Cost audit computed over the
                 // OLD set is now stale — the same "never leave an artifact that is wrong but looks current"
                 // rule TryAssembleAsync applies to the Matrix. Reset Cost to `pending` so the persisted
@@ -512,8 +743,94 @@ public sealed class StageDispatcher(
                 // travel this path, so the "a review note does not re-price" guard is preserved.
                 await SetStageAsync(c.ProjectId, Stages.Cost,
                     s => { if (s.Status is "done" or "failed") { s.Status = "pending"; s.Error = null; } }, token);
+                // ...and Decision with it (Task 15(a)): the DecisionDoc's rows and proposal were assembled
+                // over the OLD dosing/cost, so a project parked `awaiting-VP` would otherwise keep a STALE
+                // proposal at the VP's door — TryDecideAsync's status guard would ABSORB the fresh CostDoc.
+                // Reset to `pending` (park error cleared) so the re-priced CostDoc IS the re-trigger and the
+                // pick re-runs over the NEW dosing. `done` is deliberately EXCLUDED: done means the VP
+                // signed and the project closed — history, which the refusal above keeps this path off
+                // anyway (defense in depth).
+                await SetStageAsync(c.ProjectId, Stages.Decision,
+                    s => { if (s.Status is "awaiting-VP" or "needs-review" or "failed") { s.Status = "pending"; s.Error = null; } }, token);
                 await store.UpsertDosingAsync(dosing, token);
             });
+    }
+
+    /// Revise-with-reason for the PICK (Task 15). Mirrors ReviseDosingAsync's shape: re-assemble from the
+    /// LIVE records through the same deterministic fold the first run used (DecisionAssembler — the revise
+    /// path cannot relax what the first run enforced), re-run the pick WITH the directive, and re-park at
+    /// `awaiting-VP`. An unsigned/locked vp gate is left exactly as it stands: locked is already the safe
+    /// state a void would produce, and nothing on this path may move a gate toward `approved` (Law 9).
+    private async Task<RevisedStage> ReviseDecisionAsync(ConstraintsDoc c, RevisionDoc r, CancellationToken ct)
+    {
+        // The closed-project refusal (Task 15(b)) already ran — hoisted into OnRevisionAsync, before the
+        // agent, before the conclusion, before anything that could look like progress. Decision `done`
+        // means the VP SIGNED: a revision that rewrote the DecisionDoc now would put words under a
+        // signature the VP never read.
+
+        // Captured NOW so the persist closure can prove the stage did not move while the agent ran —
+        // see the re-check below.
+        var statusAtStart = (await store.GetProjectAsync(c.ProjectId, ct))
+            ?.Stages.GetValueOrDefault(Stages.Decision)?.Status;
+
+        var verdicts = await store.GetVerdictsAsync(c.ProjectId, ct);
+        var dosing = await store.GetDosingAsync(c.ProjectId, ct)
+            ?? throw new InvalidOperationException("no dosing on file — there are no finalized codes to re-pick over");
+        var cost = await store.GetCostAsync(c.ProjectId, ct)
+            ?? throw new InvalidOperationException("no cost audit on file — Decision has not run for this project");
+
+        // Assemble may throw (the pre-invariant duplicate-window ArgumentException TryDecideAsync guards);
+        // here the OnRevisionAsync catch turns that into an honestly-failed revision, analysis untouched.
+        var assembled = DecisionAssembler.Assemble(
+            verdicts, dosing, cost, [.. c.Components.Select(k => k.Id)]);
+
+        var result = await agents.RunDecisionAsync(assembled, dosing, r, ct);
+        if (!result.Succeeded)
+            throw new InvalidOperationException($"the decision agent could not apply the revision: {result.Error}");
+
+        var decision = result.Output!;
+        decision.Id = RecordIds.Decision(c.ProjectId);
+        decision.ProjectId = c.ProjectId;
+        return new RevisedStage(
+            JsonSerializer.Serialize(decision, Json.Options),
+            async token =>
+            {
+                // Re-check the world IMMEDIATELY before writing (Task 15 review F1, layer 2). The run
+                // between the entry checks and this line is minutes wide (two LLM calls, an embed, a
+                // push), and the stage advertised `awaiting-VP` throughout — so a determination STARTED
+                // before this revision landed can have completed mid-run (layer 3's pending-revision 422
+                // blocks one started after). If the VP signed in that window, persisting would put an
+                // unconfirmed doc OVER the stamped one — under an approved gate whose close then finds
+                // zero confirmations. Throw instead: the revision lands honest `failed`, nothing written,
+                // the signature survives.
+                await ThrowIfClosedAsync(c.ProjectId, "decision", token);
+                var now = (await store.GetProjectAsync(c.ProjectId, token))
+                    ?.Stages.GetValueOrDefault(Stages.Decision)?.Status;
+                if (now != statusAtStart)
+                    throw new InvalidOperationException(
+                        $"the decision stage moved from '{statusAtStart ?? "absent"}' to '{now ?? "absent"}' " +
+                        "while the revision was re-running — refusing to persist over a record that changed " +
+                        "mid-flight; re-issue the revision");
+
+                // Doc FIRST, park SECOND — the park is the "a proposal awaits your signature" signal, and
+                // POST /decision/determination signs whatever DecisionDoc is on file at `awaiting-VP`. The
+                // reverse order opens a window where the stage advertises the park while the STALE proposal
+                // is still the one on file.
+                await store.UpsertDecisionAsync(decision, token);
+                await SetStageAsync(c.ProjectId, Stages.Decision,
+                    s => { s.Status = "awaiting-VP"; s.Error = null; }, token);
+            });
+    }
+
+    /// Task 15(b): an approved VP gate IS the project's close, and everything behind it is history — the
+    /// Marker Library entry, the close conclusion, the released procurement all cite the SIGNED decision.
+    /// Any revision that would regenerate an analytical record on a closed project is refused outright,
+    /// before the agent runs and before anything is re-priced; revising history is a new project decision.
+    private async Task ThrowIfClosedAsync(string projectId, string what, CancellationToken ct)
+    {
+        if ((await store.GetGateAsync(projectId, GateTypes.Vp, ct))?.Status == "approved")
+            throw new InvalidOperationException(
+                $"the project is closed — the VP signature is history; revising a closed {what} requires a new project");
     }
 
     /// A gate is an operator's signature over a SPECIFIC analysis, and the revision just replaced that
@@ -682,6 +999,7 @@ public sealed class StageDispatcher(
         Stages.Matrix => JsonSerializer.Serialize(await store.GetMatrixAsync(projectId, ct), Json.Options),
         Stages.Dosing => JsonSerializer.Serialize(await store.GetDosingAsync(projectId, ct), Json.Options),
         Stages.Cost => JsonSerializer.Serialize(await store.GetCostAsync(projectId, ct), Json.Options),
+        Stages.Decision => JsonSerializer.Serialize(await store.GetDecisionAsync(projectId, ct), Json.Options),
         _ => "{}",
     };
 

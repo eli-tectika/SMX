@@ -187,7 +187,11 @@ The first application code now lives under `src/` (this is no longer a pure-infr
   reasoning layer: self-managed **Microsoft Agent Framework** agents on **Claude Opus 4.7** (Foundry,
   Anthropic-native endpoint) with RAG tools over the three AI Search indexes + the deterministic `ref-*`
   Cosmos lookups, **record-as-bus** in the Cosmos `record` container (change-feed dispatch), and Excel-style
-  compatibility-matrix output. Design + plan:
+  compatibility-matrix output. The journey now ends at a **signed close**: Decision parks at the VP hard
+  gate (`POST /projects/{id}/decision/determination`), whose approval writes the Marker Library + a
+  Learned Conclusion and releases procurement behind MSDS-before-order (`POST /projects/{id}/orders/{cas}`);
+  read surfaces: `GET /projects`, `/dashboard`, `/candidates`, `/verdicts`, `/decision`, plus the two
+  regulatory round-trip exports (`elements-to-check`, `compliance-package`). Design + plan:
   [`docs/superpowers/specs/2026-07-08-agent-backend-design.md`](docs/superpowers/specs/2026-07-08-agent-backend-design.md),
   [`docs/superpowers/plans/2026-07-08-agent-backend.md`](docs/superpowers/plans/2026-07-08-agent-backend.md).
   - Build: `dotnet build src/Smx.Backend.sln` · Test: `dotnet test src/Smx.Backend.sln`

@@ -84,6 +84,28 @@ public class DosingAgentTests
         Assert.Null(DosingAgent.Validate(WellFormed(), Floors(), Compliant()));
     }
 
+    // ---- a substance gets exactly ONE window per component --------------------------------------------
+
+    [Fact]
+    public void TwoWindowsForTheSameSubstanceInOneComponent_AreRejected()
+    {
+        // Both windows are individually well-formed (above the 8.5 floor, inside their bounds, legal kind) —
+        // only the duplication is at fault. Two windows for one (component, cas) carry two recommended ppms
+        // for one marker, and every consumer would have to pick one silently: DecisionAssembler's window
+        // lookup throws on the duplicate, and the code builder used to collapse it with GroupBy/First — the
+        // discarded ppm could be the one the operator read. A conflict is the model's to resolve, refused
+        // here with a retryable error, never the system's to collapse.
+        var output = new DosingOutput
+        {
+            Windows = [Window("cas-zr", "Zr", 20, 100), Window("cas-zr", "Zr", 40, 100)],
+        };
+        var error = DosingAgent.Validate(output, Floors(), Compliant());
+        Assert.NotNull(error);
+        Assert.Contains("cas-zr", error);
+        Assert.Contains("bottle", error);
+        Assert.Contains("exactly ONE window", error);
+    }
+
     // ---- invariant 1: a window outside the compliant set has no computed floor ----------------------
 
     [Fact]

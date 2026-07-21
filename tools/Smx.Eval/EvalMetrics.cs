@@ -77,4 +77,51 @@ public static class EvalMetrics
             }
         }
     }
+
+    /// The Plan-5 DECISION invariants, same contract as <see cref="ScoreDosing"/>: invariants only, each
+    /// breach a FALSE PASS (non-zero exit), self-contained from the fetched docs. These audit the SIGNED
+    /// state — a ConfirmedCode that names no real code, an order outside the signature, a signature over an
+    /// uncleared row — because after the close nothing downstream re-checks any of them.
+    public static void ScoreDecision(DecisionDoc decision, DosingDoc dosing, EvalReport report)
+    {
+        foreach (var c in decision.Components)
+        {
+            if (c.ConfirmedCode is null) continue; // unsigned components make no claims to audit
+
+            // 2. The signed code must EXIST among the DosingDoc's finalized codes for that component —
+            //    a signed nonexistent code is a signature nothing can trace, dose, or order.
+            if (!dosing.Codes.Any(k => k.ComponentId == c.ComponentId && k.RatioSignature == c.ConfirmedCode))
+            {
+                report.FalsePassCount++;
+                report.Failures.Add($"decision: signed code '{c.ConfirmedCode}' does not exist in " +
+                                    $"'{c.ComponentId}' — a signature over a nonexistent code");
+            }
+
+            // 4. A ConfirmedCode present while a row is not regulatory-cleared is a signature over an
+            //    uncleared row — the harm case, verbatim.
+            foreach (var r in c.Rows.Where(r => !r.Cleared.Regulatory))
+            {
+                report.FalsePassCount++;
+                report.Failures.Add($"decision: '{c.ComponentId}' is signed while {r.Cas} shows an " +
+                                    "uncleared regulatory criterion — a signature over an uncleared row");
+            }
+        }
+
+        // 3. Released procurement: every ordered CAS must be a marker of a CONFIRMED code — you cannot
+        //    have bought what the VP did not sign.
+        if (decision.Procurement.Status == ProcurementStatus.Released)
+        {
+            var signed = decision.Components
+                .Where(c => c.ConfirmedCode is not null)
+                .SelectMany(c => dosing.Codes.Where(
+                    k => k.ComponentId == c.ComponentId && k.RatioSignature == c.ConfirmedCode))
+                .SelectMany(k => k.Markers).Select(m => m.Cas).ToHashSet(StringComparer.Ordinal);
+            foreach (var cas in decision.Procurement.OrderedCas.Where(cas => !signed.Contains(cas)))
+            {
+                report.FalsePassCount++;
+                report.Failures.Add($"decision: ordered '{cas}' is not a marker in any VP-confirmed code " +
+                                    "— an order outside the signature");
+            }
+        }
+    }
 }
