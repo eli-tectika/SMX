@@ -127,6 +127,49 @@ public static class ProjectEndpoints
             }, Json.Options);
         });
 
+        // The operator's signature that the dossier is right. There is NO agent tool for this and there
+        // never will be: creating a project is safe to delegate because it runs nothing, but starting
+        // the analysis is the human asserting that what the agent wrote is correct (design §2.3).
+        //
+        // Writing `pending` is the dispatch — the change feed picks the doc up and StageDispatcher runs
+        // intake. That is why this endpoint, and not create_project, is the trigger.
+        app.MapPost("/projects/{projectId}/start",
+            async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
+        {
+            if (await store.GetProjectAsync(projectId, ct) is not { } project) return Results.NotFound();
+
+            var intake = project.Stages[Stages.Intake];
+            // Idempotent, and not merely tolerant: everything in this system is at-least-once, and a
+            // double-press must never re-dispatch a stage that has already run.
+            if (intake.Status != StageStatus.AwaitingConfirmation)
+                return Results.Accepted($"/projects/{projectId}", new { projectId, status = intake.Status });
+
+            var payload = JsonSerializer.Deserialize<StartPreconditions>(project.Payload.GetRawText(), Json.Options);
+            if (payload?.Components is not { Count: > 0 })
+                return Results.UnprocessableEntity(new
+                {
+                    error = "this project has no components. Every stage downstream runs per component — " +
+                            "ask the agent to propose the component breakdown before starting.",
+                });
+            if (payload.Components.FirstOrDefault(c => c.Markets is not { Count: > 0 }) is { } noMarkets)
+                return Results.UnprocessableEntity(new
+                {
+                    error = $"component '{noMarkets.Id}' has no target markets, which would leave it with an " +
+                            "EMPTY regulatory screen. Ask the agent to record its markets before starting.",
+                });
+
+            intake.Status = StageStatus.Pending;
+            await store.UpsertProjectAsync(project, ct);
+            return Results.Accepted($"/projects/{projectId}", new { projectId, status = StageStatus.Pending });
+        });
+
         app.MapGet("/healthz", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
     }
+}
+
+/// Just the slice of the payload /start checks. A dedicated shape rather than reusing the orchestrator's
+/// IntakePayload, which is internal to that assembly and carries the physicist's data this must not read.
+internal sealed class StartPreconditions
+{
+    public List<ComponentSpec> Components { get; set; } = [];
 }

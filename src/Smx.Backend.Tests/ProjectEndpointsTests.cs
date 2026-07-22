@@ -119,13 +119,16 @@ public class ProjectEndpointsTests : IClassFixture<WebApplicationFactory<Program
     }
 
     [Fact]
-    public async Task Post_WithNeitherPoolsNorCandidates_Returns400()
+    public async Task Post_WithNeitherPoolsNorCandidates_Returns202_BecauseThePreconditionIsDropped()
     {
+        // Was a 400 before design §2.4: the pool-or-candidates precondition is DROPPED, not relocated.
+        // A project created through the interview reaches here with a confirmed component set and no
+        // measured background at all — that is the normal case, not an error.
         var req = new CreateProjectRequest("Acme", "MUFE",
             Components: [new("bottle", "PET", "packaging", ["EU"], "brand")],
             ElementPools: [], Candidates: null, ClientRestrictedList: null);
         var resp = await _client.PostAsJsonAsync("/projects", req);
-        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, resp.StatusCode);
     }
 
     [Fact]
@@ -155,5 +158,32 @@ public class ProjectEndpointsTests : IClassFixture<WebApplicationFactory<Program
     public async Task Healthz_Returns200()
     {
         Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync("/healthz")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Post_Projects_StillStartsImmediately_ForAFullPayload()
+    {
+        // THE regression guard for design §2.4. tools/Smx.Eval creates fully-specified projects here
+        // and expects the pipeline to run. If creation ever universally landed in
+        // awaiting-confirmation, the eval harness would keep passing while evaluating NOTHING.
+        var req = new CreateProjectRequest("Acme", "MUFE",
+            [new ComponentSpec("bottle", "PET", "food contact", ["EU"], "brand")],
+            [new ElementPool("bottle", "Zr", "Ka", "V")],
+            null, null);
+
+        var res = await _client.PostAsJsonAsync("/projects", req);
+        var projectId = (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("projectId").GetString()!;
+
+        Assert.Equal(StageStatus.Pending, (await _store.GetProjectAsync(projectId))!.Stages[Stages.Intake].Status);
+    }
+
+    [Fact]
+    public async Task Post_Projects_AcceptsAProjectWithNoElementPools()
+    {
+        // The pool-or-candidates precondition is DROPPED, not relocated (design §2.4).
+        var req = new CreateProjectRequest("Acme", "MUFE",
+            [new ComponentSpec("bottle", "PET", "food contact", ["EU"], "brand")],
+            [], null, null);
+        Assert.Null(req.Validate());
     }
 }

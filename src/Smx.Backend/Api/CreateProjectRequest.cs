@@ -20,9 +20,13 @@ public sealed record CreateProjectRequest(
         if (string.IsNullOrWhiteSpace(Client) || string.IsNullOrWhiteSpace(Product)) return "client and product are required";
         if (Components is not { Count: > 0 }) return "at least one component is required";
         if (Components.Select(c => c.Id).Distinct().Count() != Components.Count) return "component ids must be unique";
+        // The pool-or-candidates precondition is GONE, and is deliberately not moved to POST /start
+        // either. A project created through the interview reaches start with a confirmed component set
+        // and no measured background at all — that is the normal case, not an error. The physicist's
+        // XRF run lands days later (Law 6) and the stage that needs it PARKS, exactly as Dosing already
+        // parks on an absent measured background. See design §2.4.
         var hasPools = ElementPools is { Count: > 0 };
         var hasCandidates = Candidates is { Count: > 0 };
-        if (!hasPools && !hasCandidates) return "provide element pools (production) or explicit candidates (known-candidate mode)";
         var componentIds = Components.Select(c => c.Id).ToHashSet();
         if (hasPools && ElementPools.Any(p => !componentIds.Contains(p.Component)))
             return "every element pool must reference a declared component";
