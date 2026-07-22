@@ -29,6 +29,14 @@ public sealed class LocalBronzeDocumentStore(string root) : IDocumentContentStor
         return Task.FromResult<DocumentBytes?>(new DocumentBytes(stream, info.Length));
     }
 
+    /// Resolved through the same containment check as the reads: "does /etc/passwd exist" is itself a
+    /// fact about the host, and an out-of-root path gets the same answer as an absent one.
+    public Task<bool> ExistsAsync(string blobPath, CancellationToken ct = default)
+    {
+        var full = Resolve(blobPath);
+        return Task.FromResult(full is not null && File.Exists(full));
+    }
+
     public async Task<byte[]?> ReadAsync(string blobPath, CancellationToken ct = default)
     {
         var full = Resolve(blobPath);

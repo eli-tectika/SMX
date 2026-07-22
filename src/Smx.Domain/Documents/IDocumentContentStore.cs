@@ -19,4 +19,9 @@ public interface IDocumentContentStore
 
     /// Whole-blob read, for the small `meta.json` sidecars.
     Task<byte[]?> ReadAsync(string blobPath, CancellationToken ct = default);
+
+    /// Is the blob there? Separate from ReadAsync because the drift check on the detail endpoint asks
+    /// exactly this and nothing more — answering it by downloading a 20 MB PDF and discarding it is
+    /// egress and a large-object allocation spent on a boolean.
+    Task<bool> ExistsAsync(string blobPath, CancellationToken ct = default);
 }

@@ -103,6 +103,22 @@ public class DocumentEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         }
     }
 
+    // The drift check asks storage a yes/no question, and must ask it as one. Reading the blob to
+    // answer it pulls the whole document — 20 MB of egress and a large-object allocation per detail
+    // view of a big PDF — and then discards every byte.
+    [Fact]
+    public async Task Detail_DriftCheckAsksWhetherTheBlobExists_WithoutReadingIt()
+    {
+        GivenASheet(); GivenItsBlob();
+        var id = DocumentId.Encode(DocumentId.Sds, SheetId);
+
+        var json = await _client.GetFromJsonAsync<JsonElement>($"/documents/{id}");
+
+        Assert.True(json.GetProperty("summary").GetProperty("available").GetBoolean());
+        Assert.Contains(SheetBlob, _bronze.PathsRead);      // it did consult storage...
+        Assert.Equal(0, _bronze.ContentReads);              // ...without fetching a byte of the document
+    }
+
     // Spec §8: a gap row is 200-with-a-reason, not 404. It is a known absence, not a lookup failure.
     [Fact]
     public async Task Detail_OfAGapRow_Is200WithAStatedReason()

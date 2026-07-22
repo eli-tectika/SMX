@@ -29,6 +29,12 @@ public sealed class BronzeDocumentStore(DataLakeFileSystemClient filesystem) : I
         catch (RequestFailedException e) when (e.Status == 404) { return null; }
     }
 
+    /// A metadata-only round trip (GetProperties under the hood), not a download. The SDK folds a 404
+    /// into `false` itself and lets a 403 or a transport failure throw, which is the same split the
+    /// read methods make deliberately above.
+    public async Task<bool> ExistsAsync(string blobPath, CancellationToken ct = default)
+        => await filesystem.GetFileClient(blobPath).ExistsAsync(ct);
+
     public async Task<byte[]?> ReadAsync(string blobPath, CancellationToken ct = default)
     {
         var file = filesystem.GetFileClient(blobPath);

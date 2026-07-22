@@ -29,8 +29,10 @@ public static class DocumentEndpoints
             if (detail is null) return Results.NotFound();
 
             // Drift check: the registry says this document exists. If storage disagrees, say so
-            // here rather than letting the viewer discover it as a blank pane.
-            if (detail.BlobPath is not null && await store.ReadAsync(detail.BlobPath, ct) is null)
+            // here rather than letting the viewer discover it as a blank pane. ExistsAsync, not
+            // ReadAsync — the question is a boolean and downloading the document to answer it would
+            // cost the document's full size on every detail view.
+            if (detail.BlobPath is not null && !await store.ExistsAsync(detail.BlobPath, ct))
                 detail = detail with
                 {
                     Summary = detail.Summary with { Available = false, State = DocumentStates.Missing },

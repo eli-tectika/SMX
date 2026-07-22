@@ -52,6 +52,16 @@ public class LocalBronzeDocumentStoreTests : IDisposable
         Assert.Null(await store.OpenAsync("nope/missing.pdf"));
     }
 
+    [Fact]
+    public async Task ExistsAnswersWithoutOpeningTheFile()
+    {
+        Write("sds/7761-88-8/sigma/2024-03-11.pdf", "%PDF-1.4 hello");
+        var store = new LocalBronzeDocumentStore(_root);
+
+        Assert.True(await store.ExistsAsync("sds/7761-88-8/sigma/2024-03-11.pdf"));
+        Assert.False(await store.ExistsAsync("sds/7761-88-8/sigma/1999-01-01.pdf"));
+    }
+
     // Defence in depth. DocumentId already refuses traversal, but this store takes a raw string and
     // must not be the one component that trusts it — the root is a containment boundary, and a
     // future caller may not be DocumentId.
@@ -65,5 +75,8 @@ public class LocalBronzeDocumentStoreTests : IDisposable
         var store = new LocalBronzeDocumentStore(_root);
         Assert.Null(await store.ReadAsync(path));
         Assert.Null(await store.OpenAsync(path));
+        // Existence is an answer too: a caller that learns "/etc/passwd is there" has been told
+        // something about the host that the containment boundary exists to withhold.
+        Assert.False(await store.ExistsAsync(path));
     }
 }
