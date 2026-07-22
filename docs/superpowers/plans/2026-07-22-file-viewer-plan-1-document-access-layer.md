@@ -792,8 +792,12 @@ Create `src/Smx.Domain/Documents/SdsDocumentProvider.cs`:
 namespace Smx.Domain.Documents;
 
 /// The safety-data-sheet half of the catalog: `sds-registry` (sheets that exist) unioned with the
-/// non-fetched rows of `sds-master-list` (substances the system knows it needs a sheet for and does
-/// not have).
+/// rows of `sds-master-list` that no sheet actually covers — substances the system knows it needs a
+/// sheet for and does not have.
+///
+/// "Covered" is judged by real linkage (masterListId, falling back to CAS), NOT by the master row's
+/// own `Status` field. A row marked `fetched` whose registry sheet was since deleted or unlinked is
+/// drift, and trusting the label would hide the very gap this listing exists to expose.
 ///
 /// Emitting the gaps is deliberate (design D9). A missing MSDS is exactly what blocks an order, so a
 /// library that listed only files would let absence read as coverage.
@@ -920,9 +924,9 @@ Expected: **Passed! — Failed: 0**, 8 tests.
 git add src/Smx.Domain/Documents/SdsDocumentProvider.cs src/Smx.Backend.Tests/DocumentCatalogTests.cs
 git commit -m "feat(documents): safety sheets, and the substances that have none
 
-The library unions sds-registry with the non-fetched rows of sds-master-list.
-A missing MSDS is precisely what blocks an order, so listing only files that
-exist would let absence read as coverage.
+The library unions sds-registry with the sds-master-list rows that no sheet
+actually covers. A missing MSDS is precisely what blocks a procurement order,
+so listing only files that exist would let absence read as coverage.
 
 Suppression of a gap row checks masterListId first and CAS second, because
 older registry rows predate masterListId and would otherwise appear both as a
