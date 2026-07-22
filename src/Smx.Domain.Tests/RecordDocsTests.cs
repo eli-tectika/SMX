@@ -436,4 +436,44 @@ public class RecordDocsTests
         // provenance is an unauditable number on a purchase order.
         Assert.Equal(doc.Basis, back.Basis);
     }
+
+    [Fact]
+    public void IntakeBriefDoc_RoundTrips_WithItsTypeDiscriminatorOnTheWire()
+    {
+        var brief = new IntakeBriefDoc
+        {
+            Id = RecordIds.IntakeBrief("proj-1"), ProjectId = "proj-1", SessionId = "isx-aaaa1111",
+            Summary = "Acme make a 500 ml PET bottle.",
+            CreatedAt = "2026-07-21T10:00:00.0000000Z",
+        };
+        var json = JsonSerializer.Serialize(brief, Json.Options);
+        // The change feed routes on this string and nothing else (RecordDocRouter).
+        Assert.Contains("\"type\":\"intake-brief\"", json);
+        Assert.Equal("proj-1", JsonSerializer.Deserialize<IntakeBriefDoc>(json, Json.Options)!.ProjectId);
+    }
+
+    [Fact]
+    public void IntakeSessionDoc_RoundTrips_AndCarriesATtl()
+    {
+        var session = new IntakeSessionDoc
+        {
+            Id = "isx-aaaa1111", SessionId = "isx-aaaa1111",
+            Status = IntakeSessionStatus.Interviewing, CreatedAt = "2026-07-21T10:00:00.0000000Z",
+        };
+        var json = JsonSerializer.Serialize(session, Json.Options);
+        var back = JsonSerializer.Deserialize<IntakeSessionDoc>(json, Json.Options)!;
+        Assert.Equal("interviewing", back.Status);
+        // Abandoned drafts must expire on their own — nobody will ever clean these up by hand.
+        Assert.Contains("\"ttl\":", json);
+        Assert.True(back.Ttl > 0);
+    }
+
+    [Fact]
+    public void IntakeSessionId_IsIdSafe()
+    {
+        // Cosmos rejects an id containing '/', '\', '?' or '#' with a 400 that no in-memory test store
+        // can produce — so a "friendlier" scheme would pass every test here and break every session
+        // in Azure.
+        Assert.Matches("^[A-Za-z0-9_-]+$", RecordIds.NewIntakeSessionId());
+    }
 }

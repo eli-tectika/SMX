@@ -13,6 +13,7 @@ public static class RecordTypes
     public const string Revision = "revision";
     public const string ChatMessage = "chat-message";
     public const string ChatReply = "chat-reply";
+    public const string IntakeBrief = "intake-brief";
 }
 
 public static class Stages
@@ -64,4 +65,13 @@ public static class RecordIds
     /// second one to the transcript.
     public static string ChatReply(string projectId, string stage, string key) =>
         $"{projectId}|chat-reply|{stage}|{key}";
+
+    /// One brief per project — it is written once, by create_project, and never revised. A singular id
+    /// makes the change feed's at-least-once redelivery an idempotent upsert rather than a second doc.
+    public static string IntakeBrief(string projectId) => $"{projectId}|intake-brief";
+
+    /// The session id doubles as the Cosmos item id AND the partition key, so it must be id-safe
+    /// ([A-Za-z0-9_-]+): Cosmos rejects '/', '\', '?' and '#' with a 400 no in-memory store produces.
+    /// `N` format = hex only, so this is safe by construction rather than by convention.
+    public static string NewIntakeSessionId() => $"isx-{Guid.NewGuid():N}"[..16];
 }
