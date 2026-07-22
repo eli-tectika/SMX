@@ -116,6 +116,7 @@ app.MapProjectsListEndpoints();
 app.MapRevisionEndpoints();
 app.MapChatEndpoints();
 app.MapKnowledgeEndpoints();
+app.MapDocumentEndpoints();
 app.MapDosingEndpoints();
 app.MapCostEndpoints();
 app.MapIntakeSessionEndpoints();
