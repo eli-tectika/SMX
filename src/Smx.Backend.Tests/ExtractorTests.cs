@@ -156,4 +156,62 @@ public class ExtractorTests
         wb.SaveAs(ms);
         return new MemoryStream(ms.ToArray());
     }
+
+    private static TextExtraction AllExtractors() => new(
+        [new PlainTextExtractor(), new PdfExtractor(), new DocxExtractor(), new XlsxExtractor()]);
+
+    [Fact]
+    public async Task Extraction_ReportsUnsupported_ForAFormatWithNoExtractor_AndNamesIt()
+    {
+        // The agent is shown this. "unsupported" alone tells the operator nothing; naming the type is
+        // what turns a dead file into a question worth asking.
+        var result = await AllExtractors().ExtractAsync("line-photo.jpg", "image/jpeg", Utf8("...."), default);
+
+        Assert.Equal(AttachmentStatus.Unsupported, result.Status);
+        Assert.Contains(".jpg", result.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Extraction_PicksByExtension_NotByTheBrowsersContentType()
+    {
+        // Browsers routinely send application/octet-stream for ordinary files. An implementation that
+        // trusted the content type would refuse most real uploads.
+        var result = await AllExtractors().ExtractAsync("notes.md", "application/octet-stream",
+            Utf8("# heading"), default);
+
+        Assert.Equal(AttachmentStatus.Extracted, result.Status);
+        Assert.Contains("heading", result.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Extraction_TurnsAThrowingExtractorIntoAFailedStatus()
+    {
+        // An extractor that throws must not fail the upload: the operator's file is already stored, and
+        // losing the whole request would lose the attachment they just added.
+        var result = await new TextExtraction([new ThrowingExtractor()])
+            .ExtractAsync("x.boom", "application/octet-stream", Utf8("x"), default);
+
+        Assert.Equal(AttachmentStatus.Failed, result.Status);
+        Assert.Contains("detonated", result.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Extraction_ReportsUnsupported_ForAFileWithNoExtensionAtAll_AndNamesTheFile()
+    {
+        // "README" has no extension for CanHandle to match against. This must come back a recorded
+        // `unsupported` naming the file itself (there is no extension to name), not an exception and
+        // not a silent match against whichever extractor happens to be first in the list.
+        var result = await AllExtractors().ExtractAsync("README", "application/octet-stream",
+            Utf8("some text"), default);
+
+        Assert.Equal(AttachmentStatus.Unsupported, result.Status);
+        Assert.Contains("README", result.Error!, StringComparison.Ordinal);
+    }
+
+    private sealed class ThrowingExtractor : ITextExtractor
+    {
+        public bool CanHandle(string contentType, string extension) => extension == ".boom";
+        public Task<ExtractionResult> ExtractAsync(Stream input, CancellationToken ct) =>
+            throw new InvalidOperationException("detonated");
+    }
 }
