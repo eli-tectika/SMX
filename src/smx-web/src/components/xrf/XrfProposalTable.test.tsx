@@ -67,6 +67,38 @@ describe('the XRF proposals table', () => {
     ]);
   });
 
+  it('refuses to store a number it cannot read, instead of dropping it silently', async () => {
+    // The failure this prevents: "12,5" is a comma-decimal habit, and it does not parse. The cell
+    // emits null — but the input still SHOWS 12,5, so without a problem on the row the operator
+    // watches themselves enter a measurement, confirm arms, and the record gets no background for
+    // that element at all. Nothing downstream would ever say so.
+    const onChange = vi.fn();
+    show([row({ backgroundLevel: null })], vi.fn(), onChange);
+
+    await userEvent.type(within(rowFor('Ba')).getByLabelText(/background level/i), '12,5');
+
+    const emitted = onChange.mock.calls.at(-1)![0] as XrfProposal[];
+    expect(emitted[0].backgroundLevel).toBeNull();
+    expect(emitted[0].problems).not.toHaveLength(0);
+  });
+
+  it('clears that problem once the number becomes readable', async () => {
+    // Otherwise the operator fixes the cell and the button stays dead with no way to revive it.
+    const onChange = vi.fn();
+    show([row({ backgroundLevel: null, problems: [] })], vi.fn(), onChange);
+
+    const cell = within(rowFor('Ba')).getByLabelText(/background level/i);
+    await userEvent.type(cell, '12,');
+    expect((onChange.mock.calls.at(-1)![0] as XrfProposal[])[0].problems).not.toHaveLength(0);
+
+    onChange.mockClear();
+    await userEvent.clear(cell);
+    await userEvent.type(cell, '12.5');
+    const emitted = onChange.mock.calls.at(-1)![0] as XrfProposal[];
+    expect(emitted[0].backgroundLevel).toBe(12.5);
+    expect(emitted[0].problems).toHaveLength(0);
+  });
+
   it('confirms with exactly the rows on screen', async () => {
     const onConfirm = vi.fn();
     const rows = [row(), row({ element: 'Sr', rowNumber: 3 })];

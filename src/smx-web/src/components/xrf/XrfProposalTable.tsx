@@ -24,6 +24,13 @@ const inPool = (status: string) => status === 'V' || status === 'L';
 const STATUS_CHIP: Record<string, string> = { V: 'v', L: 'l', X: 'x' };
 
 /**
+ * Marks a problem this GRID raised about an unreadable number, as opposed to one the parser raised
+ * about the file. Only grid-raised problems are cleared on the next keystroke — a parser problem is
+ * the server's finding and is not this component's to withdraw.
+ */
+const UNREADABLE = '\u2328 ';
+
+/**
  * A numeric cell that never fabricates a number.
  *
  * It keeps the operator's RAW TEXT locally and emits `null` for anything that is not a finite
@@ -41,7 +48,8 @@ function NumberCell({
   value: number | null | undefined;
   label: string;
   unit?: string | null;
-  onChange: (v: number | null) => void;
+  /** `bad` is true when the operator typed something non-empty that will not parse. */
+  onChange: (v: number | null, bad: boolean) => void;
 }) {
   const [text, setText] = useState(value == null ? '' : String(value));
 
@@ -67,7 +75,9 @@ function NumberCell({
           const next = e.target.value;
           setText(next);
           const n = Number(next);
-          onChange(next.trim() === '' || !Number.isFinite(n) ? null : n);
+          const blank = next.trim() === '';
+          const parsed = blank || !Number.isFinite(n) ? null : n;
+          onChange(parsed, !blank && parsed === null);
         }}
       />
       {unit && <span className="tiny muted">{unit}</span>}
@@ -97,6 +107,31 @@ export function XrfProposalTable({
 
   const patch = (index: number, change: Partial<XrfProposal>) =>
     onChange(proposals.map((p, i) => (i === index ? { ...p, ...change } : p)));
+
+  /**
+   * A numeric cell whose text the operator can see but the record cannot hold.
+   *
+   * `NumberCell` emits null for text it cannot parse — "12,5" under a comma-decimal habit, say. Left
+   * at that, the input still SHOWS 12,5, the row carries no problem, confirm arms, and the record
+   * gets no background for that element at all. The operator would have watched themselves enter a
+   * measurement that was never stored, and nothing downstream would ever say so.
+   *
+   * So an unparseable cell becomes a row problem, which is what `blocked` and the row-problem line
+   * already read. The sentinel prefix is how the previous one is found and replaced on the next
+   * keystroke — problems from the parser are left alone.
+   */
+  const patchNumber = (index: number, change: Partial<XrfProposal>, label: string, bad: boolean) =>
+    onChange(proposals.map((p, i) => {
+      if (i !== index) return p;
+      const kept = p.problems.filter((x) => !x.startsWith(`${UNREADABLE}${label}`));
+      return {
+        ...p,
+        ...change,
+        problems: bad
+          ? [...kept, `${UNREADABLE}${label} is not a number this can store.`]
+          : kept,
+      };
+    }));
 
   const drop = (index: number) => onChange(proposals.filter((_, i) => i !== index));
 
@@ -192,7 +227,8 @@ export function XrfProposalTable({
                     value={p.backgroundLevel}
                     unit={p.backgroundUnit}
                     label={`background level for ${p.element}`}
-                    onChange={(v) => patch(i, { backgroundLevel: v })}
+                    onChange={(v, bad) =>
+                      patchNumber(i, { backgroundLevel: v }, 'background level', bad)}
                   />
                 </td>
                 <td>
@@ -208,7 +244,7 @@ export function XrfProposalTable({
                     value={p.deviceLod}
                     unit={p.deviceLodUnit}
                     label={`device LOD for ${p.element}`}
-                    onChange={(v) => patch(i, { deviceLod: v })}
+                    onChange={(v, bad) => patchNumber(i, { deviceLod: v }, 'device LOD', bad)}
                   />
                 </td>
                 <td>
