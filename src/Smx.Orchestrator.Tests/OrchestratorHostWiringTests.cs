@@ -54,6 +54,15 @@ public class OrchestratorHostWiringTests
     }
 
     [Fact]
+    public void Host_Resolves_TheInterviewSessionStore()
+    {
+        // dotnet build proves nothing about DI: a missing registration is a runtime failure at the
+        // first resolve, and for this host that means in production, mid-interview.
+        using var sp = Build(Config());
+        Assert.NotNull(sp.GetRequiredService<IIntakeSessionStore>());
+    }
+
+    [Fact]
     public void Host_ResolvesTheWholeDispatchGraph()
     {
         using var sp = Build(Config());

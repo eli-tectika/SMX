@@ -47,6 +47,10 @@ public sealed record BackendOptions(
     // so it is only meaningful on the model paths that expose it.
     string WebSearchProvider)
 {
+    /// The pre-project interview scratchpad's container. Separate from RecordContainer on purpose —
+    /// see IntakeSessionDoc's class comment.
+    public string IntakeSessionContainer { get; init; } = "intake-sessions";
+
     public string AnthropicBaseUrl => $"{FoundryEndpoint.TrimEnd('/')}/anthropic/v1";
 
     /// True when Discovery should use the model's built-in hosted web search rather than the legacy proxy.
@@ -96,5 +100,6 @@ public sealed record BackendOptions(
         WebSearchEnabled: !bool.TryParse(c["WEB_SEARCH_ENABLED"], out var we) || we,
         WebSearchMaxPerStage: int.TryParse(c["WEB_SEARCH_MAX_PER_STAGE"], out var wm) ? wm : 8,
         // Default to the built-in hosted tool; set WEB_SEARCH_PROVIDER=proxy to re-enable the anonymizing egress.
-        WebSearchProvider: c["WEB_SEARCH_PROVIDER"] ?? "hosted");
+        WebSearchProvider: c["WEB_SEARCH_PROVIDER"] ?? "hosted")
+    { IntakeSessionContainer = c["INTAKE_SESSION_CONTAINER"] ?? "intake-sessions" };
 }

@@ -13,6 +13,7 @@ using Smx.Domain.Tools;
 using Smx.Infrastructure;
 using Smx.Infrastructure.Search;
 using Smx.Orchestrator.Agents;
+using Smx.Orchestrator.Api;
 using Smx.Orchestrator.Dispatch;
 using Smx.Orchestrator.Knowledge;
 
@@ -21,7 +22,7 @@ using Smx.Orchestrator.Knowledge;
 // it is — a client over the index called `opts.LearnedConclusionsIndex`.
 using LcSearchIndex = Smx.Infrastructure.Search.LearnedConclusionsIndex;
 
-var builder = Host.CreateApplicationBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
 OrchestratorHost.ConfigureServices(builder.Services, builder.Configuration);
 
 if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] is { Length: > 0 } aiConn)
@@ -34,7 +35,13 @@ if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] is { Length: 
         .WithMetrics(m => m.AddAzureMonitorMetricExporter(o => o.ConnectionString = aiConn));
 }
 
-await builder.Build().RunAsync();
+var app = builder.Build();
+// INTERNAL ingress only (infra/modules/compute.bicep). This surface is reachable from the backend
+// inside the Container Apps environment and from nowhere else — the Search Proxy remains the system's
+// only public egress, and this is not egress at all.
+app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
+app.MapInterviewEndpoints();
+await app.RunAsync();
 
 /// The agent host's container, in one callable place so a test can actually BUILD it. `dotnet build` proves
 /// nothing about DI: a missing registration is a runtime failure at the first resolve, and this host resolves
@@ -67,6 +74,8 @@ public static class OrchestratorHost
         }));
         services.AddSingleton<IRecordStore>(sp => new CosmosRecordStore(
             sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.RecordContainer)));
+        services.AddSingleton<IIntakeSessionStore>(sp => new CosmosIntakeSessionStore(
+            sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.IntakeSessionContainer)));
         services.AddSingleton<ICompatibilityLookup>(sp => new CosmosCompatibilityLookup(
             sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.CompatibilityContainer)));
         services.AddSingleton<ICatalogLookup>(sp => new CosmosCatalogLookup(
