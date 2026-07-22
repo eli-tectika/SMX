@@ -253,3 +253,106 @@ public class RegDocumentProviderTests
         Assert.Null(await Provider.GetAsync(id, CancellationToken.None));
     }
 }
+
+public class DocumentCatalogTests
+{
+    private readonly InMemorySdsDocumentSource _sds = new();
+    private readonly InMemoryRegDocumentSource _reg = new();
+    private readonly InMemoryDocumentContentStore _bronze = new();
+
+    private DocumentCatalog Catalog => new(new SdsDocumentProvider(_sds), new RegDocumentProvider(_reg, _bronze));
+
+    private void Given()
+    {
+        _sds.Sheets.Add(new SdsSheetRow("7761-88-8|sigma|2024-03-11", "7761-88-8", "sigma", "Silver nitrate",
+            "2024-03-11", "EU", "en", "https://x.test/a.pdf", "sds/7761-88-8/sigma/2024-03-11.pdf", true,
+            "2026-07-16T00:00:00Z", null, null));
+        _sds.Master.Add(new SdsMasterRow("Nd_oxide", "Nd", "oxide", "1313-97-9", "failed", "2026-07-18T00:00:00Z", 3));
+        _reg.Sources.Add(new RegSourceRow("echa-svhc", "REACH SVHC", "ECHA",
+            // "substance list", not "candidate list" — the latter's "ca-ND-idate" would collide with
+            // the "Nd" search-term test case below and falsely match two rows instead of one.
+            [new RegDocTitleRow("candidate-list", "https://echa.europa.eu/cl", "SVHC substance list")]));
+        _reg.Docs.Add(new RegDocRow("candidate-list", "echa-svhc", "9f", "2025-11-20", "run", "20260701T031400Z"));
+    }
+
+    [Fact]
+    public async Task ListsBothHalves()
+    {
+        Given();
+        var rows = await Catalog.ListAsync(new DocumentFilter());
+        Assert.Equal(3, rows.Count);   // 1 sheet + 1 gap + 1 regulation
+    }
+
+    [Theory]
+    [InlineData(DocumentKinds.Sds, 2)]    // the sheet and the gap
+    [InlineData(DocumentKinds.Reg, 1)]
+    [InlineData(DocumentKinds.Seed, 0)]
+    [InlineData(DocumentKinds.All, 3)]
+    public async Task FiltersByKind(string kind, int expected)
+    {
+        Given();
+        var rows = await Catalog.ListAsync(new DocumentFilter(Kind: kind));
+        Assert.Equal(expected, rows.Count);
+    }
+
+    [Theory]
+    [InlineData(DocumentStates.Available, 2)]
+    [InlineData(DocumentStates.Missing, 1)]
+    [InlineData(DocumentStates.All, 3)]
+    public async Task FiltersByState(string state, int expected)
+    {
+        Given();
+        var rows = await Catalog.ListAsync(new DocumentFilter(State: state));
+        Assert.Equal(expected, rows.Count);
+    }
+
+    [Theory]
+    [InlineData("silver", 1)]
+    [InlineData("7761", 1)]
+    [InlineData("svhc", 1)]
+    [InlineData("Nd", 1)]
+    [InlineData("nothing-matches-this", 0)]
+    public async Task FiltersBySearchAcrossTitleAndSubtitle(string q, int expected)
+    {
+        Given();
+        var rows = await Catalog.ListAsync(new DocumentFilter(Q: q));
+        Assert.Equal(expected, rows.Count);
+    }
+
+    [Fact]
+    public async Task RoutesGetToTheOwningProvider()
+    {
+        Given();
+        _bronze.Put("regulatory/echa-svhc/candidate-list/20260701T031400Z/meta.json",
+            """
+            {"contentType":"text/html","sha256":"9f","sourceUrl":"https://echa.europa.eu/cl",
+             "fetchTs":"20260701T031400Z","syncRunId":"run","httpStatus":200}
+            """);
+
+        Assert.NotNull(await Catalog.GetAsync(DocumentId.Encode(DocumentId.Sds, "7761-88-8|sigma|2024-03-11")));
+        Assert.NotNull(await Catalog.GetAsync(DocumentId.Encode(DocumentId.SdsGap, "Nd_oxide")));
+        Assert.NotNull(await Catalog.GetAsync(DocumentId.Encode(DocumentId.Reg, "echa-svhc/candidate-list")));
+    }
+
+    // Spec §3 invariant 2: a malformed id must not reach storage at all. Asserting 'null' alone
+    // would not distinguish "rejected" from "resolved and missed".
+    [Fact]
+    public async Task AMalformedIdNeverTouchesStorage()
+    {
+        Given();
+        Assert.Null(await Catalog.GetAsync("sds_!!!!"));
+        Assert.Null(await Catalog.GetAsync("../../etc/passwd"));
+        Assert.Null(await Catalog.GetAsync(DocumentId.EncodePayload("reg/../../x")));
+        Assert.Empty(_bronze.PathsRead);
+    }
+
+    // Ordering must be stable, or the library reshuffles on every poll.
+    [Fact]
+    public async Task OrdersDeterministically()
+    {
+        Given();
+        var first = await Catalog.ListAsync(new DocumentFilter());
+        var second = await Catalog.ListAsync(new DocumentFilter());
+        Assert.Equal(first.Select(r => r.Id), second.Select(r => r.Id));
+    }
+}
