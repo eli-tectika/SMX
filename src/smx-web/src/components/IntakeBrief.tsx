@@ -50,7 +50,14 @@ function DossierRow({ entry }: { entry: DossierEntry }) {
           {entry.answer}
           {entry.confidence ? ` · confidence ${entry.confidence}` : ''}
           <span className="tiny muted" style={{ marginLeft: 8 }}>
-            {mark.label} · {SAID_BY[entry.provenance] ?? entry.provenance}
+            {mark.label} ·{' '}
+            {/* Its own element, so a test can assert on WHO SAID IT rather than on the row's whole
+                text. Without the hook the only available assertion is "the two rows read
+                differently", which the state label alone already satisfies — so the provenance could
+                vanish with the suite still green. It was verified to do exactly that. */}
+            <span data-said-by={entry.provenance}>
+              {SAID_BY[entry.provenance] ?? entry.provenance}
+            </span>
           </span>
         </div>
       </div>
