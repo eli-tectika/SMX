@@ -834,3 +834,31 @@
   display: grid;
   gap: var(--s3);
 }
+
+/* ---- the file viewer ----------------------------------------------------------- */
+
+/* The document surface. Fixed height rather than auto so the provenance rail and the
+   content pane stay aligned regardless of what the document happens to contain. */
+.doc-frame {
+  width: 100%;
+  height: 70vh;
+  border: 0.5px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface-0);
+}
+
+.doc-text {
+  width: 100%;
+  height: 70vh;
+  overflow: auto;
+  margin: 0;
+  padding: var(--s3);
+  border: 0.5px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface-0);
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
