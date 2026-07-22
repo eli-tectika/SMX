@@ -252,6 +252,33 @@ public class RegDocumentProviderTests
         var id = DocumentId.Encode(DocumentId.Reg, "nope/nothing");
         Assert.Null(await Provider.GetAsync(id, CancellationToken.None));
     }
+
+    // A `reg`-kinded id whose sourceId is NOT curated is a hand-edited id: the row it names is real
+    // (it exists in reg-state, e.g. because it was seed-imported), but a synced-layout path built from
+    // it — regulatory/{sourceId}/{docId}/{fetchTs}/ — was never written, because that sourceId never
+    // went through the synced ingest path. Refuse rather than construct a path that cannot exist.
+    [Fact]
+    public async Task RefusesARegKindedIdWhoseSourceIdIsNotCurated()
+    {
+        _source.Docs.Add(new RegDocRow("clp-annex-vi", "eu", "abc123", "2024-08-14", "seed-run", "2026-07-05"));
+        var id = DocumentId.Encode(DocumentId.Reg, "eu/clp-annex-vi");
+
+        Assert.Null(await Provider.GetAsync(id, CancellationToken.None));
+        Assert.Empty(_bronze.PathsRead);
+    }
+
+    // The mirror case: a `seed`-kinded id whose sourceId IS curated. The row is real, but the seed
+    // layout — seed/{region}/{docId}/, no fetchTs segment — was never written for a curated source;
+    // that source is synced. Same refusal, same reason: never guess a path into existence.
+    [Fact]
+    public async Task RefusesASeedKindedIdWhoseSourceIdIsCurated()
+    {
+        GivenSyncedSource();
+        var id = DocumentId.Encode(DocumentId.Seed, "echa-svhc/candidate-list");
+
+        Assert.Null(await Provider.GetAsync(id, CancellationToken.None));
+        Assert.Empty(_bronze.PathsRead);
+    }
 }
 
 public class DocumentCatalogTests
