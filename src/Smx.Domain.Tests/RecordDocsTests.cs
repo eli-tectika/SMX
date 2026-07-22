@@ -476,4 +476,23 @@ public class RecordDocsTests
         // in Azure.
         Assert.Matches("^[A-Za-z0-9_-]+$", RecordIds.NewIntakeSessionId());
     }
+
+    [Fact]
+    public void IntakeSessionDoc_ProposedComponents_RoundTrips_ThoughComponentSpecHasNoParameterlessCtor()
+    {
+        // ComponentSpec is a positional record with no parameterless constructor — worth pinning that
+        // System.Text.Json still round-trips a populated list of them via constructor matching, since a
+        // silent switch to member-init binding would otherwise leave every field null/default on read.
+        var session = new IntakeSessionDoc
+        {
+            Id = "isx-aaaa1111", SessionId = "isx-aaaa1111", CreatedAt = "2026-07-21T10:00:00.0000000Z",
+            ProposedComponents = [new ComponentSpec("bottle", "PET", "packaging", ["EU", "US"], "brand", 250.0)],
+        };
+        var json = JsonSerializer.Serialize(session, Json.Options);
+        var back = JsonSerializer.Deserialize<IntakeSessionDoc>(json, Json.Options)!;
+        Assert.Single(back.ProposedComponents);
+        Assert.Equal("PET", back.ProposedComponents[0].Material);
+        Assert.Equal(250.0, back.ProposedComponents[0].BatchMassKg);
+        Assert.Equal(["EU", "US"], back.ProposedComponents[0].Markets);
+    }
 }
