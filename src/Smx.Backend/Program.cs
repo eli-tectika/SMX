@@ -138,6 +138,7 @@ app.MapDosingEndpoints();
 app.MapCostEndpoints();
 app.MapIntakeSessionEndpoints();
 app.MapAttachmentEndpoints();
+app.MapIntakeBriefEndpoints();
 app.Run();
 
 public partial class Program { } // WebApplicationFactory hook
