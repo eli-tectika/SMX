@@ -56,7 +56,7 @@ the domain-logic tests already sit there. `Smx.Domain.Tests` is the *fakes* proj
 > csproj comment records why: a `ProjectReference` to a test project would double-discover that
 > project's own tests. **Every new fake must be added to `src/Smx.Backend.Tests/Smx.Backend.Tests.csproj`
 > by hand**, or the tests that consume it will not compile. The three fakes from Task 3 were linked in
-> `a9c0f8e`; remember this if you add more.
+> `84202e1`; remember this if you add more.
 
 **Build/test commands used throughout:**
 
