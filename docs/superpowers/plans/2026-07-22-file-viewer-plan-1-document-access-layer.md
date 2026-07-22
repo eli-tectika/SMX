@@ -51,6 +51,13 @@ Microsoft.Azure.Cosmos, Azure.Search.Documents, Azure.Storage.Files.DataLake 12.
 **Tests live in `Smx.Backend.Tests`** even for `Smx.Domain` types, matching how `MatrixXlsxWriterTests` and
 the domain-logic tests already sit there. `Smx.Domain.Tests` is the *fakes* project consumed by both.
 
+> **`Smx.Backend.Tests` does NOT project-reference `Smx.Domain.Tests`.** It links each fake individually
+> with `<Compile Include="../Smx.Domain.Tests/Fakes/X.cs" Link="Fakes/X.cs" />`, deliberately — the
+> csproj comment records why: a `ProjectReference` to a test project would double-discover that
+> project's own tests. **Every new fake must be added to `src/Smx.Backend.Tests/Smx.Backend.Tests.csproj`
+> by hand**, or the tests that consume it will not compile. The three fakes from Task 3 were linked in
+> `a9c0f8e`; remember this if you add more.
+
 **Build/test commands used throughout:**
 
 ```bash
