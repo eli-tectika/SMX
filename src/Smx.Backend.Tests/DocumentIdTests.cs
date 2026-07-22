@@ -22,10 +22,16 @@ public class DocumentIdTests
 
     // base64url only: '+' and '/' would be re-encoded by a URL layer and '=' padding is legal but
     // must survive. This is the same constraint DedupKey.ForChunk documents for AI Search keys.
+    //
+    // The payload is chosen so its OWN raw base64 genuinely contains both '+' and '/': o3 (the last
+    // char of a 4-char group) is exactly `thirdByte & 0x3F`, so a block ending in '~' (0x7E, & 0x3F
+    // = 0x3E) yields '+' and a block ending in '?' (0x3F) yields '/'. Standard base64("AB~CD?") is
+    // "QUJ+Q0Q/" — a payload without this property would pass even if the .Replace calls were
+    // deleted, which is exactly what the previous version of this test did.
     [Fact]
     public void EncodedFormIsUrlSafe()
     {
-        var id = DocumentId.Encode("sds", "7440-22-4|sigma-aldrich|2024-03-11");
+        var id = DocumentId.Encode("sds", "AB~CD?");
         Assert.DoesNotContain('+', id);
         Assert.DoesNotContain('/', id);
         Assert.StartsWith("sds_", id);
@@ -39,6 +45,11 @@ public class DocumentIdTests
     [InlineData("nope_YWJj")]                 // unknown kind
     [InlineData("sds_!!!!")]                  // not base64
     [InlineData("sds_" + "Li4vLi4vc2VjcmV0")] // decodes to "../../secret"
+    [InlineData("sds_QQQQQ")]                 // length%4==1 after unpadding: Pad()'s default branch
+    // 0xFF is not a valid UTF-8 start byte. Encoding.UTF8.GetString's default fallback is
+    // REPLACEMENT, not exception, so it would silently decode to "�a/b" and hand that mangled
+    // value out as a Cosmos partition key rather than rejecting it. Decoding must be strict.
+    [InlineData("reg__2EvYg==")]
     public void RejectsMalformed(string id)
     {
         Assert.False(DocumentId.TryDecode(id, out _, out _));
@@ -51,9 +62,11 @@ public class DocumentIdTests
     [InlineData("reg", "echa/../../bronze")]
     [InlineData("reg", "echa/doc id")]
     [InlineData("reg", "echa/doc\nid")]
+    [InlineData("reg", "echa/doc\u00A0id")]   // NBSP — whitespace, but not char.IsControl
+    [InlineData("reg", "echa/doc\u3000id")]   // ideographic space — same gap
     public void RejectsDangerousPayloads(string kind, string payload)
     {
-        var id = kind + "_" + DocumentId.EncodePayloadForTest(payload);
+        var id = kind + "_" + DocumentId.EncodePayload(payload);
         Assert.False(DocumentId.TryDecode(id, out _, out _));
     }
 
@@ -73,6 +86,19 @@ public class DocumentIdTests
         Assert.Equal(payload, decoded);
     }
 
+    /// The carve-out is for a plain ASCII space specifically, not for whitespace in general.
+    /// DedupKey.Norm collapses whitespace RUNS to a single U+0020, so a legitimately-derived sds
+    /// payload never contains anything but that — NBSP and other Unicode whitespace are refused
+    /// inside sds segments exactly like every other kind.
+    [Theory]
+    [InlineData("7440-22-4|alfa\u00A0aesar|2024-01-01")]
+    [InlineData("7440-22-4|alfa\u3000aesar|2024-01-01")]
+    public void RejectsExoticWhitespaceEvenInSds(string payload)
+    {
+        var id = DocumentId.Sds + "_" + DocumentId.EncodePayload(payload);
+        Assert.False(DocumentId.TryDecode(id, out _, out _));
+    }
+
     // Segment counts are fixed per kind: a 'reg' payload is exactly sourceId/docId. Extra segments
     // would let a caller append path components onto the constructed blob path.
     [Theory]
@@ -83,7 +109,7 @@ public class DocumentIdTests
     [InlineData("sds", "a|b|c|d")]
     public void RejectsWrongSegmentCount(string kind, string payload)
     {
-        var id = kind + "_" + DocumentId.EncodePayloadForTest(payload);
+        var id = kind + "_" + DocumentId.EncodePayload(payload);
         Assert.False(DocumentId.TryDecode(id, out _, out _));
     }
 
@@ -95,8 +121,40 @@ public class DocumentIdTests
     [InlineData("sdsgap_", "Nd_oxide", "Nd")]
     public void PartitionKeyIsTheFirstSegment(string prefix, string payload, string expected)
     {
-        var id = prefix + DocumentId.EncodePayloadForTest(payload);
+        var id = prefix + DocumentId.EncodePayload(payload);
         Assert.True(DocumentId.TryDecode(id, out var kind, out var decoded));
         Assert.Equal(expected, DocumentId.PartitionKeyOf(kind, decoded));
+    }
+
+    [Fact]
+    public void SegmentsOfReturnsSegmentsInOrder()
+    {
+        Assert.Equal(
+            new[] { "echa-svhc", "candidate-list" },
+            DocumentId.SegmentsOf(DocumentId.Reg, "echa-svhc/candidate-list"));
+    }
+
+    // TryDecode's first-'_' split is only safe because no kind string itself contains '_'. If a
+    // future kind (e.g. a hypothetical "sub_kind") violated that, the split would misparse
+    // silently rather than fail loudly — this pins the invariant the parser depends on.
+    [Fact]
+    public void NoKindContainsTheKindPayloadSeparator()
+    {
+        Assert.All(DocumentId.Kinds, kind => Assert.DoesNotContain('_', kind));
+    }
+
+    // PartitionKeyOf/SegmentsOf are called by the catalog providers (Tasks 4-5) with a kind that
+    // TryDecode already validated — but should they ever be handed one that wasn't, the failure
+    // must look like Encode's, not like an unhandled Dictionary lookup.
+    [Fact]
+    public void PartitionKeyOfRejectsUnknownKind()
+    {
+        Assert.Throws<ArgumentException>(() => DocumentId.PartitionKeyOf("bogus", "x"));
+    }
+
+    [Fact]
+    public void SegmentsOfRejectsUnknownKind()
+    {
+        Assert.Throws<ArgumentException>(() => DocumentId.SegmentsOf("bogus", "x"));
     }
 }

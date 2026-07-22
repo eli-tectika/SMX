@@ -18,14 +18,20 @@ public static class DocumentId
     public const string Seed = "seed";
     public const string SdsGap = "sdsgap";
 
+    /// Every kind there is. Exposed so tests can assert invariants across the whole set — e.g. that
+    /// no kind contains '_', the character TryDecode splits the id on — without hand-duplicating
+    /// the list.
+    public static IReadOnlyCollection<string> Kinds => Shapes.Keys;
+
     // kind -> (separator, exact segment count, spaces allowed). Fixed counts matter: an extra
     // segment on a `reg` payload becomes an extra component of the constructed blob path.
     //
-    // Spaces are allowed only for `sds`: its segments are DedupKey.ForRegistry values, and
-    // DedupKey.Norm lowercases and COLLAPSES whitespace rather than stripping it, so a supplier
-    // name like "Alfa Aesar" legitimately puts a single space in the payload. The other three
-    // kinds' segments are slugs (sourceId, docId, region, element, form-slug) that are never
-    // supposed to contain one — a space there is a malformed or hostile id, not a real one.
+    // Spaces are allowed only for `sds`, and only a plain ASCII one: its segments are
+    // DedupKey.ForRegistry values, and DedupKey.Norm collapses whitespace RUNS to a single U+0020
+    // rather than stripping it, so a supplier name like "Alfa Aesar" legitimately puts exactly that
+    // character in the payload — never NBSP, never anything else Unicode calls whitespace. The
+    // other three kinds' segments are slugs (sourceId, docId, region, element, form-slug) that are
+    // never supposed to contain whitespace of any kind — a space there is a malformed or hostile id.
     private static readonly Dictionary<string, (char Sep, int Segments, bool SpacesAllowed)> Shapes = new()
     {
         [Sds] = ('|', 3, true),       // cas | supplier | revisionDate
@@ -34,15 +40,21 @@ public static class DocumentId
         [SdsGap] = ('_', 2, false),   // element _ form-slug  (DedupKey.ForMasterList)
     };
 
+    // Decodes with exception fallback rather than Encoding.UTF8's default REPLACEMENT fallback:
+    // invalid UTF-8 must fail TryDecode, not silently become U+FFFD in a value that is about to be
+    // used as a Cosmos partition key.
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
     public static string Encode(string kind, string payload)
     {
-        if (!Shapes.ContainsKey(kind)) throw new ArgumentException($"unknown document kind '{kind}'", nameof(kind));
-        return kind + "_" + EncodePayloadForTest(payload);
+        RequireShape(kind);
+        return kind + "_" + EncodePayload(payload);
     }
 
-    /// base64url of a raw payload. Public only so tests can build deliberately-invalid ids;
-    /// production callers use Encode, which validates the kind.
-    public static string EncodePayloadForTest(string payload) =>
+    /// The class's only base64url primitive. `Encode` calls it after validating the kind; it is
+    /// exposed without that validation so tests can also construct ids with kind/shape
+    /// combinations `Encode` would refuse.
+    public static string EncodePayload(string payload) =>
         Convert.ToBase64String(Encoding.UTF8.GetBytes(payload)).Replace('+', '-').Replace('/', '_');
 
     public static bool TryDecode(string? id, out string kind, out string payload)
@@ -60,7 +72,7 @@ public static class DocumentId
         try
         {
             var b64 = id[(split + 1)..].Replace('-', '+').Replace('_', '/');
-            decoded = Encoding.UTF8.GetString(Convert.FromBase64String(Pad(b64)));
+            decoded = StrictUtf8.GetString(Convert.FromBase64String(Pad(b64)));
         }
         catch (FormatException) { return false; }
         catch (DecoderFallbackException) { return false; }
@@ -71,8 +83,9 @@ public static class DocumentId
         if (decoded.Contains("..", StringComparison.Ordinal)) return false;
         if (decoded.Contains('\\')) return false;
         if (decoded.Any(char.IsControl)) return false;
-        // A space is legitimate ONLY inside a pipe-separated (sds) segment — see Shapes above.
-        if (!shape.SpacesAllowed && decoded.Contains(' ')) return false;
+        // Any Unicode whitespace is refused; a plain ASCII space is legitimate only inside a
+        // pipe-separated (sds) segment — see Shapes above.
+        if (decoded.Any(c => char.IsWhiteSpace(c) && (!shape.SpacesAllowed || c != ' '))) return false;
 
         var segments = decoded.Split(shape.Sep);
         if (segments.Length != shape.Segments) return false;
@@ -87,11 +100,16 @@ public static class DocumentId
     /// The Cosmos partition key for a decoded payload: always its first segment.
     /// sds -> cas, reg/seed -> sourceId/region, sdsgap -> element.
     public static string PartitionKeyOf(string kind, string payload) =>
-        payload.Split(Shapes[kind].Sep)[0];
+        payload.Split(RequireShape(kind).Sep)[0];
 
     /// The payload's segments, in order. Callers know their own kind's shape.
     public static string[] SegmentsOf(string kind, string payload) =>
-        payload.Split(Shapes[kind].Sep);
+        payload.Split(RequireShape(kind).Sep);
+
+    private static (char Sep, int Segments, bool SpacesAllowed) RequireShape(string kind) =>
+        Shapes.TryGetValue(kind, out var shape)
+            ? shape
+            : throw new ArgumentException($"unknown document kind '{kind}'", nameof(kind));
 
     private static string Pad(string b64) => (b64.Length % 4) switch
     {
