@@ -480,24 +480,42 @@ public class DocumentCatalogTests
     }
 
     // Spec §3 invariant 2: a malformed id must not reach storage at all. Asserting 'null' alone
-    // would not distinguish "rejected" from "resolved and missed".
+    // would not distinguish "rejected" from "resolved and missed". Three genuinely distinct failure
+    // modes, not one repeated: not base64 at all; no kind prefix (no '_') to even look up; and a
+    // WELL-FORMED "reg_" id whose decoded payload trips the dedicated ".." check specifically — the
+    // previous third case (a bare base64 blob with no kind prefix) was really case 2 again, since
+    // base64url's own '_' characters just make it fail the unknown-kind lookup the same way.
     [Fact]
     public async Task AMalformedIdNeverTouchesStorage()
     {
         Given();
         Assert.Null(await Catalog.GetAsync("sds_!!!!"));
         Assert.Null(await Catalog.GetAsync("../../etc/passwd"));
-        Assert.Null(await Catalog.GetAsync(DocumentId.EncodePayload("reg/../../x")));
+        Assert.Null(await Catalog.GetAsync("reg_" + DocumentId.EncodePayload("echa-svhc/../../secret")));
         Assert.Empty(_bronze.PathsRead);
     }
 
-    // Ordering must be stable, or the library reshuffles on every poll.
+    // The policy (DocumentCatalog's OrderBy chain) is: missing rows first within a kind, then
+    // alphabetically by title. Calling ListAsync twice and comparing the two results — the previous
+    // version of this test — passes even with the entire OrderBy chain deleted, as long as the fakes
+    // themselves iterate in a fixed order; it never actually exercises the policy. This inserts rows
+    // in an order that agrees with NEITHER "missing first" nor "alphabetical" and asserts the exact
+    // resulting sequence, so a deleted or reordered sort clause fails it.
     [Fact]
-    public async Task OrdersDeterministically()
+    public async Task OrdersMissingRowsFirstThenAlphabeticallyWithinKind()
     {
-        Given();
-        var first = await Catalog.ListAsync(new DocumentFilter());
-        var second = await Catalog.ListAsync(new DocumentFilter());
-        Assert.Equal(first.Select(r => r.Id), second.Select(r => r.Id));
+        _sds.Sheets.Add(new SdsSheetRow("7440-21-3|acme|2024-01-01", "7440-21-3", "acme", "Silver nitrate",
+            "2024-01-01", "EU", "en", "https://x.test/s.pdf", "sds/silver.pdf", true,
+            "2026-07-16T00:00:00Z", null, null));
+        _sds.Sheets.Add(new SdsSheetRow("7664-93-9|acme|2024-01-01", "7664-93-9", "acme", "Aardvark acid",
+            "2024-01-01", "EU", "en", "https://x.test/a.pdf", "sds/aardvark.pdf", true,
+            "2026-07-16T00:00:00Z", null, null));
+        _sds.Master.Add(new SdsMasterRow("Nd_oxide", "Nd", "oxide", "1313-97-9", "failed", "2026-07-18T00:00:00Z", 3));
+
+        var rows = await Catalog.ListAsync(new DocumentFilter());
+
+        Assert.Equal(
+            ["Nd oxide — no safety sheet", "Aardvark acid", "Silver nitrate"],
+            rows.Select(r => r.Title));
     }
 }
