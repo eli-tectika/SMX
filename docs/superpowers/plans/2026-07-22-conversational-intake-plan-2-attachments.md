@@ -435,8 +435,10 @@ In `src/Smx.Backend/Smx.Backend.csproj`, beside the existing `ClosedXML` referen
     <!-- Same version as Smx.Functions, which already uses PdfPig for the SDS text layer. -->
     <PackageReference Include="PdfPig" Version="0.1.15" />
     <!-- .docx. ClosedXML already pulls this in transitively; referenced EXPLICITLY because relying on a
-         transitive dependency means a ClosedXML upgrade can silently remove it. -->
-    <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.0" />
+         transitive dependency means a ClosedXML upgrade can silently remove it.
+         3.1.1 is what ClosedXML 0.104.2 actually resolves. Do not write a literal double dash in an
+         XML comment when documenting the command that proves it: it is illegal XML and MSB4025s. -->
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.1" />
 ```
 
 Verify the `DocumentFormat.OpenXml` version ClosedXML 0.104.2 actually resolves, and match it:
