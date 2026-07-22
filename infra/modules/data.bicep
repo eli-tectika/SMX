@@ -235,6 +235,23 @@ resource recordLeases 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/contai
   }
 }
 
+// The pre-project interview scratchpad. A SEPARATE container from `record` on purpose: the record
+// container's change feed is the dispatch bus, and a session document sitting in it would be a doc the
+// router must be taught to ignore. See the IntakeSessionDoc class comment.
+resource intakeSessions 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  parent: cosmosDb
+  name: 'intake-sessions'
+  properties: {
+    resource: {
+      id: 'intake-sessions'
+      partitionKey: { paths: [ '/sessionId' ], kind: 'Hash' }
+      // Abandoned drafts expire on their own. -1 = TTL enabled, per-item value governs (30 days,
+      // set on IntakeSessionDoc.Ttl). Nobody will ever delete these by hand.
+      defaultTtl: -1
+    }
+  }
+}
+
 output storageId string = storage.id
 output storageName string = storage.name
 output cosmosId string = cosmos.id
@@ -250,4 +267,5 @@ output refBibliographyContainer string = refCosmosContainers[1].name
 output refSuppliersContainer string = refCosmosContainers[2].name
 output refCatalogContainer string = refCosmosContainers[3].name
 output recordContainer string = record.name
+output intakeSessionsContainer string = intakeSessions.name
 output cosmosDocumentEndpoint string = cosmos.properties.documentEndpoint

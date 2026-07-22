@@ -139,6 +139,22 @@ var orchestratorEnv = concat(sharedEnv, [
   { name: 'WEB_SEARCH_MAX_PER_STAGE', value: string(webSearchMaxPerStage) }
 ])
 
+// The backend needs the orchestrator's internal base URL to proxy interview turns
+// (POST /internal/intake-sessions/{sessionId}/messages). Referencing
+// containerApps[2].properties.configuration.ingress.fqdn from here would be a circular reference —
+// all three apps are the SAME resource, created by one `for` loop over `apps` below. Worse: even
+// `cae.properties.defaultDomain` (a runtime property, not just a same-resource self-reference) can't be
+// folded into the `apps` array itself — Bicep must fully evaluate that array at the start to drive the
+// for-loop (BCP178), and a resource's runtime property isn't available that early. So the FQDN is instead
+// spliced onto the backend's env from OUTSIDE `apps`, inside the containerApps resource body below (each
+// iteration's resource body CAN reference other resources' runtime properties — only the loop's source
+// array can't). The app-name half mirrors the loop's own convention
+// ('ca-${namePrefix}-${env}-${app.name}-${regionShort}') and the domain half is `cae.properties.defaultDomain`,
+// the same '<app>.<defaultDomain>' apex form gateway.bicep documents and targets for the frontend/backend FQDNs.
+var orchestratorAppName = 'ca-${namePrefix}-${env}-orchestrator-${regionShort}'
+var orchestratorBaseUrl = 'https://${orchestratorAppName}.${cae.properties.defaultDomain}'
+var orchestratorBaseUrlEnv = { name: 'ORCHESTRATOR_BASE_URL', value: orchestratorBaseUrl }
+
 var registries = empty(acrLoginServer) ? [] : [
   {
     server: acrLoginServer
@@ -164,6 +180,9 @@ var apps = [
     targetPort: empty(backendImage) ? 80 : 8080 // aspnet:8.0 default port
     minReplicas: 0
     // PATH_BASE makes the API serve under /api (App Gateway forwards /api/* unstripped).
+    // NOTE: ORCHESTRATOR_BASE_URL is deliberately NOT listed here — it depends on cae.properties.defaultDomain
+    // (a runtime property), which can't be folded into this array (see the comment above orchestratorBaseUrlEnv).
+    // It's appended to the backend's env from outside `apps`, in the containerApps resource body below.
     env: concat(sharedEnv, [
       { name: 'PATH_BASE', value: '/api' }
       { name: 'ENTRA_TENANT_ID', value: entraTenantId }
@@ -181,8 +200,12 @@ var apps = [
   {
     name: 'orchestrator'
     image: empty(orchestratorImage) ? placeholderImage : orchestratorImage
-    hasIngress: empty(orchestratorImage) // placeholder needs ingress to be healthy; real worker has none
-    targetPort: 80
+    // The real worker now also serves the interview SSE surface, so it needs ingress even when a real
+    // image is deployed. INTERNAL only: on an internal Container Apps environment `external: true`
+    // means "limited to the VNet", not "public" — see the comment on the ingress block below. The
+    // Search Proxy remains the system's only public egress.
+    hasIngress: true
+    targetPort: empty(orchestratorImage) ? 80 : 8080 // aspnet:8.0 default port
     minReplicas: empty(orchestratorImage) ? 0 : 1 // change-feed processor must be running to dispatch
     env: orchestratorEnv
     probes: []
@@ -226,7 +249,9 @@ resource containerApps 'Microsoft.App/containerApps@2024-03-01' = [for app in ap
             cpu: json('0.5')
             memory: '1Gi'
           }
-          env: app.env
+          // ORCHESTRATOR_BASE_URL is spliced in here (not in `apps` above) because it's built from
+          // cae.properties.defaultDomain — see the comment on orchestratorBaseUrlEnv.
+          env: app.name == 'backend' ? concat(app.env, [orchestratorBaseUrlEnv]) : app.env
           probes: app.probes
         }
       ]
