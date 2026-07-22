@@ -72,6 +72,27 @@ if (builder.Configuration["COSMOS_ACCOUNT_ENDPOINT"] is { Length: > 0 })
     builder.Services.AddSingleton<ISdsCorpusReader>(sp =>
         new CosmosSdsCorpusReader(
             sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.SdsRegistryContainer)));
+
+    builder.Services.AddSingleton<IIntakeSessionStore>(sp => new CosmosIntakeSessionStore(
+        sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.IntakeSessionContainer)));
+}
+
+if (builder.Configuration["ORCHESTRATOR_BASE_URL"] is { Length: > 0 } orchestratorUrl)
+{
+    builder.Services.AddHttpClient(IntakeSessionEndpoints.OrchestratorClient, c =>
+    {
+        c.BaseAddress = new Uri(orchestratorUrl);
+        // An interview turn is a model call with tool round-trips. The default 100 s is a plausible
+        // real duration here, not a pathological one.
+        c.Timeout = TimeSpan.FromMinutes(5);
+    });
+}
+else
+{
+    // Tests set no ORCHESTRATOR_BASE_URL and never exercise the proxy. Registering the factory anyway
+    // keeps DI resolvable so the ROUTE still builds — an unregistered IHttpClientFactory would break
+    // endpoint construction for the whole app (see trap 1).
+    builder.Services.AddHttpClient();
 }
 if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] is { Length: > 0 })
     builder.Services.AddOpenTelemetry().UseAzureMonitor();
@@ -97,6 +118,7 @@ app.MapChatEndpoints();
 app.MapKnowledgeEndpoints();
 app.MapDosingEndpoints();
 app.MapCostEndpoints();
+app.MapIntakeSessionEndpoints();
 app.Run();
 
 public partial class Program { } // WebApplicationFactory hook
