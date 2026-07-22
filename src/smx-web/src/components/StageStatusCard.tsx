@@ -12,10 +12,15 @@ const TOKEN: Record<StageStatus, string> = {
 /**
  * The record's own vocabulary, in the operator's words.
  *
- * The spec's "awaiting [X]" park states have no backend representation, and we do not
- * invent one: rendering `pending` as "awaiting physics XRF" would fabricate a claim
- * about an offline human being. `pending` means the agent has not started — not that a
- * physicist is standing at a machine.
+ * Of the spec's "awaiting [X]" park states, only `awaiting-confirmation` is real — the interview
+ * agent created the project and nothing will run until the operator presses Start Processing.
+ * The rest are still unrepresented and we do not invent them: rendering `pending` as "awaiting
+ * physics XRF" would fabricate a claim about an offline human being. `pending` means the agent has
+ * not started — not that a physicist is standing at a machine.
+ *
+ * (`StageStatus.AwaitingRe = "awaiting-RE"` is declared in ProjectDoc.cs but nothing writes it, so
+ * it is deliberately absent from the union below. Add it here when something sets it — until then
+ * a value in this map would be a label for a state the record never reaches.)
  *
  * `needs-review` is the one status that genuinely means "the agent stopped and wants a
  * human", so that is the only one described as parked.
