@@ -1,5 +1,37 @@
 # Conversational Intake — Plan 2: Attachments and Extraction
 
+> **STATUS: COMPLETE (2026-07-22).** All 9 tasks executed subagent-driven. `src/Smx.Backend.sln`
+> **812 tests green** (765 baseline, +47), `src/Smx.Functions.sln` unchanged at 177, both solutions and
+> both Bicep variants build with **zero warnings**, working tree clean. All seven named safety properties
+> in Task 9 Step 3 pass, including the two carried over from Plan 1 — `read_attachment` widened the
+> agent's reach by exactly one tool and no more.
+>
+> **Corrections this plan needed, found during execution:**
+> - **`SafeFilename` had a bug.** `"normal name (1).pdf"` produced `normal_name_1_.pdf` — an underscore
+>   glued to the extension dot, which neither the collapse pass nor the trim removed. Fixed with a
+>   `Replace("_.", ".")` step. The plan's own test case caught it, which is why the plan told the
+>   implementer to trace the theory cases by hand rather than assume.
+> - **`DocumentFormat.OpenXml` resolves to 3.1.1, not 3.1.0**, and the XML comment this plan suggested for
+>   that `PackageReference` contained a literal `--`, which is illegal inside an XML comment and fails
+>   project load with MSB4025. Both corrected in place.
+> - **The plan's "13 tests" arithmetic for Task 1 was wrong** — it is 12.
+> - **The BOM test does not pin what its comment claimed.** `StreamReader` strips a leading BOM whenever
+>   it matches the encoding it was *given*, independently of `detectEncodingFromByteOrderMarks`; the
+>   implementer verified this by flipping the flag and watching the test still pass. The code comment now
+>   says what actually makes it work, and what the flag really does.
+> - **Task 7 had a file the plan did not list.** `Smx.Backend.Tests/InterviewEndpointsTests.cs` hosts a
+>   second, independent DI graph for the orchestrator's interview endpoint (the net10 TestHost workaround
+>   from Plan 1), so adding a mandatory `[FromServices] IAttachmentBlobStore` broke it exactly as trap 2
+>   predicts. Registering the fake there fixed it.
+>
+> **One pre-existing bug fixed along the way:** `dev-local-setup.sh`/`.ps1` already computed the bronze
+> account name but wrote it only into `src/Smx.Functions/local.settings.json`, never into
+> `.dev-local/backend.env` — so a local upload would have failed on an unregistered `IAttachmentBlobStore`.
+> Both twins updated.
+>
+> **Verified discriminating, not just passing:** the PDF and `.docx` line-structure guards were checked by
+> temporarily reverting to `page.Text` and `body.InnerText` — both tests fail, then were restored.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The operator drops a file into the interview and the agent can actually read it — or is told, by name and type, that it cannot, and asks. Extraction is code, before any agent sees the bytes.
