@@ -1,5 +1,41 @@
 # Conversational Intake — Plan 3: The Frontend
 
+> **STATUS: COMPLETE (2026-07-22).** All 7 tasks executed subagent-driven. `src/Smx.Backend.sln`
+> **816 tests** (812 baseline, +4), `src/Smx.Functions.sln` unchanged at 177, `src/smx-web`
+> **136 tests / 15 files** (98 baseline, +38 — the plan projected 125). Both solutions build with
+> **zero warnings**, `npm run build` clean, working tree clean. All four named properties in Task 7
+> Step 3 pass, and `MockBadge` came off `routes/stages/Intake.tsx` and **nowhere else** — the five
+> other mocked stage screens keep theirs.
+>
+> **Corrections this plan needed, found during execution:**
+> - **Two holes in this plan's own gate mirror**, both in the permissive direction — the button would
+>   have armed on a project the server refuses. `IntakeGate.Check` also rejects duplicate component ids
+>   and an `agent-proposed` dossier entry carrying no confidence; `createBlocker` as written here
+>   checked neither. Both added, with a test each. Task 3's "read the server gate line by line against
+>   the mirror" step is what found them — keep that step in any future mirror.
+> - **Two of this plan's test assertions were blind**, and both were verified blind by deleting the
+>   feature and watching the test stay green:
+>   - Task 4's `getByText(/still open|summary|component/i)` was matched by the Create button's own
+>     static hint copy, so it passed with the blocker text removed. Replaced with the verbatim string
+>     `createBlocker` returns.
+>   - Task 5's `getByText(/agent/i)` was matched by the screen's mandatory "tell the agent why"
+>     sentence, so provenance could vanish entirely. Even the obvious repair — "the two rows must read
+>     differently" — was satisfied by the state label alone. Provenance now renders in its own
+>     `data-said-by` element that the test targets; three mutations (delete it, collapse both phrases
+>     to one, drop the confidence) each fail.
+>   **The lesson for the next plan: a loose regex over the whole document is not an assertion.** Any
+>   screen carrying explanatory copy will contain the words its own tests search for.
+> - **`Interview.tsx` must not let a session re-read delete a turn already on screen.** The plan's
+>   literal "re-read and replace" would wipe the operator's message and the just-streamed reply if the
+>   read lagged the write. The refresh now takes the record for everything the tools wrote but keeps
+>   local turns when the record has fewer.
+> - **Polling stops on `awaiting-confirmation`** (`anyRunning` counts only `running`/`pending`), so
+>   nothing would ever re-read after Start Processing. `useProject` now returns a `refresh` function
+>   and `ProjectLayout` passes it down as `onRefresh`.
+> - `chip--warn` does not exist in the stylesheet; `AttachmentChip` uses `chip--neutral` plus an inline
+>   `--text-warning`, the same move `StageStatusCard` already makes. The verdict chip families
+>   (`v/l/x/n`) were deliberately not reused — they *mean* a verdict about a substance.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** "New project" opens a conversation instead of a form. The operator talks, drops files, and watches the reply stream in; when the agent creates the project they open it, read what was written, and press **Start Processing**. This is the plan that makes Plans 1 and 2 visible.
