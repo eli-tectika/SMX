@@ -51,6 +51,15 @@ public sealed record BackendOptions(
     /// see IntakeSessionDoc's class comment.
     public string IntakeSessionContainer { get; init; } = "intake-sessions";
 
+    /// The ADLS Gen2 account holding the `bronze` filesystem — the SDS PDFs and regulatory source
+    /// documents. Empty in local dev, where BronzeLocalPath takes over.
+    public string BronzeAccountName { get; init; } = "";
+
+    public string BronzeFilesystem { get; init; } = "bronze";
+
+    /// Local directory standing in for bronze. Set only in dev; when set it wins over the account.
+    public string BronzeLocalPath { get; init; } = "";
+
     public string AnthropicBaseUrl => $"{FoundryEndpoint.TrimEnd('/')}/anthropic/v1";
 
     /// True when Discovery should use the model's built-in hosted web search rather than the legacy proxy.
@@ -104,5 +113,10 @@ public sealed record BackendOptions(
         WebSearchMaxPerStage: int.TryParse(c["WEB_SEARCH_MAX_PER_STAGE"], out var wm) ? wm : 8,
         // Default to the built-in hosted tool; set WEB_SEARCH_PROVIDER=proxy to re-enable the anonymizing egress.
         WebSearchProvider: c["WEB_SEARCH_PROVIDER"] ?? "hosted")
-    { IntakeSessionContainer = c["INTAKE_SESSION_CONTAINER"] ?? "intake-sessions" };
+    {
+        IntakeSessionContainer = c["INTAKE_SESSION_CONTAINER"] ?? "intake-sessions",
+        BronzeAccountName = c["BRONZE_ACCOUNT_NAME"] ?? "",
+        BronzeFilesystem = c["BRONZE_FILESYSTEM"] ?? "bronze",
+        BronzeLocalPath = c["BRONZE_LOCAL_PATH"] ?? "",
+    };
 }

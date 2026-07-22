@@ -35,6 +35,9 @@ public class BackendOptionsTests
         Assert.Equal("anthropic", o.ModelProvider);                     // default — SOW target
         Assert.Equal("gpt-5-mini", o.OpenAiDeployment);                 // default stand-in deployment
         Assert.Equal("https://aif-smx-dev.services.ai.azure.com", o.ResolvedOpenAiEndpoint); // falls back to Foundry endpoint
+        Assert.Equal("bronze", o.BronzeFilesystem);                     // default
+        Assert.Equal("", o.BronzeAccountName);                          // unset until bicep provides it
+        Assert.Equal("", o.BronzeLocalPath);                            // local dev only
     }
 
     [Fact]
