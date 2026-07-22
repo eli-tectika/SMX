@@ -7,7 +7,8 @@ export type Knowledge<T> =
   | { kind: 'error'; message: string };
 
 /**
- * Read one of the three cross-project knowledge surfaces (spec §6).
+ * Read a server-filtered list surface: the three cross-project knowledge screens (spec §6) and
+ * the document library.
  *
  * The `search` term is passed to the API, not applied here: `KnowledgeEndpoints.cs` takes a
  * `?search=` parameter and filters server-side against Cosmos. Filtering a page of results
@@ -47,7 +48,9 @@ export function useKnowledge<T>(
       cancelled = true;
       clearTimeout(t);
     };
-    // `fetcher` is a module-level function reference, stable across renders.
+    // `fetcher` must be stable across renders — a module-level function, or a useCallback whose
+    // deps are the rest of the filter (Documents.tsx passes one keyed on `kind`, so changing the
+    // facet re-reads). An inline lambda here would re-run this effect on every render.
   }, [fetcher, search]);
 
   return state;
