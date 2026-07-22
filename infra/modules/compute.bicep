@@ -111,8 +111,8 @@ var sharedEnv = [
   // choice an explicit estate fact so an env without Claude quota (deployClaude=false) can run on gpt-5-mini.
   { name: 'MODEL_PROVIDER', value: modelProvider }
   // The estate's regulatory index is named regulatory-corpus (created by the reg-sync pipeline).
-  // BackendOptions' code default says 'regulatory-index' — written before the estate existed — and a
-  // wrong name here is a 404 that fails intake/regulatory outright (deliberately: a silenced regulatory
+  // BackendOptions now defaults to the same name; this stays explicit per the Functions-app convention.
+  // A wrong name here is a 404 that fails intake/regulatory outright (deliberately: a silenced regulatory
   // 404 would read as "no restrictions found", the exact false pass this system exists to prevent).
   { name: 'REGULATORY_SEARCH_INDEX', value: 'regulatory-corpus' }
   // Both sides of the learned-conclusions loop (query embedding + document push) resolve the model from

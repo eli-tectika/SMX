@@ -321,10 +321,12 @@ renders exactly as before (guarding D8).
 - **The provenance rail is only as honest as `meta.json`.** For seeded documents, `BronzeMeta.ContentType` is
   hardcoded `text/plain` and `HttpStatus` is `0` (`SeedImporter.cs:111-112`) — accurate, but the rail should
   not imply an HTTP fetch that never happened. Seed documents label their origin as an import.
-- **`BackendOptions.RegulatoryIndex` defaults to `regulatory-index` while the writer and both bicep variants
-  use `regulatory-corpus`** (`BackendOptions.cs:87` vs `RegOptions.cs:28`, `compute.bicep:117`). It does not
-  affect this feature — regulatory text comes from `reg-silver`, not the index — but it is a live trap for
-  local dev and should be fixed separately.
+- ~~`BackendOptions.RegulatoryIndex` defaults to `regulatory-index` while the writer and both bicep variants
+  use `regulatory-corpus`.~~ **Fixed on this branch** (commit following this design): the default is now
+  `regulatory-corpus`, matching `RegOptions.SearchIndex`. It never bit Azure, because both bicep twins set
+  the env var explicitly — it bit local dev, silently, by pointing at an index nothing creates. Unrelated to
+  the viewer (regulatory text comes from `reg-silver`, not the index) and fixed only because it was adjacent
+  and cheap.
 
 ---
 

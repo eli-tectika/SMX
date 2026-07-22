@@ -84,7 +84,10 @@ public sealed record BackendOptions(
         SearchEndpoint: c["SEARCH_ENDPOINT"] ?? "",
         SdsIndex: c["SDS_SEARCH_INDEX"] ?? "sds-index",
         ReferenceIndex: c["REFERENCE_SEARCH_INDEX"] ?? "smx-reference",
-        RegulatoryIndex: c["REGULATORY_SEARCH_INDEX"] ?? "regulatory-index",
+        // regulatory-corpus is the name the reg-sync pipeline actually creates (RegOptions.SearchIndex).
+        // The old 'regulatory-index' default predated the estate and only ever worked because both bicep
+        // twins set the env var explicitly — leaving local dev pointed at an index that does not exist.
+        RegulatoryIndex: c["REGULATORY_SEARCH_INDEX"] ?? "regulatory-corpus",
         LearnedConclusionsIndex: c["LEARNED_CONCLUSIONS_SEARCH_INDEX"] ?? "learned-conclusions",
         UamiClientId: c["UAMI_CLIENT_ID"],
         FoundryApiKey: c["FOUNDRY_API_KEY"],

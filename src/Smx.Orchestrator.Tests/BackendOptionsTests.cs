@@ -22,7 +22,10 @@ public class BackendOptionsTests
         Assert.Equal("record", o.RecordContainer);                      // default
         Assert.Equal("sds-index", o.SdsIndex);                          // default
         Assert.Equal("smx-reference", o.ReferenceIndex);                // default
-        Assert.Equal("regulatory-index", o.RegulatoryIndex);            // default; overridden when team schema lands
+        // Must match RegOptions.SearchIndex — the reg-sync pipeline creates 'regulatory-corpus' and nothing
+        // creates 'regulatory-index'. A default that names a non-existent index 404s only in local dev,
+        // where no bicep is there to override it.
+        Assert.Equal("regulatory-corpus", o.RegulatoryIndex);
         Assert.Equal("ref-compatibility", o.CompatibilityContainer);    // default
         // Must match the container name deployed by BOTH infra data.bicep twins, or the point-read 404s and
         // Dosing parks forever on a loading the operator already entered.
