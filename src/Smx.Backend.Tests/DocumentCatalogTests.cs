@@ -202,6 +202,15 @@ public class RegDocumentProviderTests
     [InlineData("application/json", "raw.json")]
     [InlineData("application/xml", "raw.xml")]
     [InlineData("application/octet-stream", "raw.bin")]
+    // application/xhtml+xml contains BOTH "html" and "xml" as substrings ("x-html"-"+xml") — the
+    // csv → json → xml → html → pdf branch order (mirroring BronzeIngestor.ExtensionFor exactly)
+    // is what makes this resolve to "xml", matching what the ingestor actually wrote. Four curated
+    // EUR-Lex sources (reach-annex-xvii, clp-annex-vi, eu-pops, eu-rohs) send this Accept header —
+    // enabled:false today, so a wrong branch order here is a latent 404 waiting for one of them to
+    // be turned on.
+    [InlineData("application/xhtml+xml", "raw.xml")]
+    // A real Content-Type header, not the bare MIME type — the ".Contains" matching must survive it.
+    [InlineData("text/html; charset=utf-8", "raw.html")]
     public async Task DerivesTheExtensionFromTheStoredContentType(string contentType, string expectedFile)
     {
         GivenSyncedSource();
@@ -218,7 +227,34 @@ public class RegDocumentProviderTests
         Assert.EndsWith(expectedFile, detail!.BlobPath);
     }
 
-    // Spec §3 invariant 6: a missing sidecar yields "not recorded", never an invented value.
+    // The terminal fallback matters, not just the branch order: BronzeIngestor falls back to the
+    // fetched URL's own extension when the content type is generic, and a source served as
+    // application/octet-stream with a plainly-.csv URL is common and reachable today — building
+    // "raw.bin" for it is a path the writer never wrote.
+    [Fact]
+    public async Task FallsBackToTheCuratedDocUrlsExtensionWhenTheContentTypeIsGeneric()
+    {
+        _source.Sources.Add(new RegSourceRow("oehha", "Prop 65", "OEHHA",
+            [new RegDocTitleRow("list", "https://oehha.ca.gov/media/downloads/list.csv", "Prop 65 list")]));
+        _source.Docs.Add(new RegDocRow("list", "oehha", "sha", "2025-01-01", "run", "20260701T000000Z"));
+        _bronze.Put("regulatory/oehha/list/20260701T000000Z/meta.json",
+            """
+            {"sourceId":"oehha","docId":"list","sourceUrl":"https://oehha.ca.gov/media/downloads/list.csv",
+             "officialDate":"2025-01-01","fetchTs":"20260701T000000Z","sha256":"sha",
+             "contentType":"application/octet-stream","httpStatus":200,"syncRunId":"run"}
+            """);
+        var id = DocumentId.Encode(DocumentId.Reg, "oehha/list");
+
+        var detail = await Provider.GetAsync(id, CancellationToken.None);
+
+        Assert.Equal("regulatory/oehha/list/20260701T000000Z/raw.csv", detail!.BlobPath);
+    }
+
+    // Spec §3 invariant 6: a missing sidecar yields "not recorded", never an invented value. This is
+    // the exact list of what publishing looks like with no meta.json — not merely "no empty
+    // strings" (Assert.NotEqual("", ...)), which "application/octet-stream" (an internal guess used
+    // only to pick a file extension) passes right through. That gap is what let BLOCKING 3 ship: the
+    // guess was being published as the "Content type" row and as Summary.ContentType.
     [Fact]
     public async Task StatesNotRecordedWhenTheSidecarIsAbsent()
     {
@@ -228,8 +264,17 @@ public class RegDocumentProviderTests
         var detail = await Provider.GetAsync(id, CancellationToken.None);
 
         Assert.NotNull(detail);
-        Assert.Contains(detail!.Provenance, p => p.Label == "SHA-256" && p.Value == "not recorded");
-        Assert.All(detail.Provenance, p => Assert.NotEqual("", p.Value));
+        Assert.Null(detail!.Summary.ContentType);
+        Assert.Contains(detail.Provenance, p => p.Label == "Source URL" && p.Value == "not recorded");
+        Assert.Contains(detail.Provenance, p => p.Label == "SHA-256" && p.Value == "not recorded");
+        Assert.Contains(detail.Provenance, p => p.Label == "Content type" && p.Value == "not recorded");
+        Assert.Contains(detail.Provenance, p => p.Label == "HTTP status" && p.Value == "not recorded");
+        // These four come from the reg-state row itself, not the sidecar — real recorded facts, not
+        // guesses, so they are NOT "not recorded" even with meta.json absent.
+        Assert.Contains(detail.Provenance, p => p.Label == "Authority" && p.Value == "ECHA");
+        Assert.Contains(detail.Provenance, p => p.Label == "Official date" && p.Value == "2025-11-20");
+        Assert.Contains(detail.Provenance, p => p.Label == "Fetched" && p.Value == "20260701T031400Z");
+        Assert.Contains(detail.Provenance, p => p.Label == "Sync run" && p.Value == "sync-2026-07-01-a3f");
     }
 
     [Fact]
@@ -275,6 +320,28 @@ public class RegDocumentProviderTests
     {
         GivenSyncedSource();
         var id = DocumentId.Encode(DocumentId.Seed, "echa-svhc/candidate-list");
+
+        Assert.Null(await Provider.GetAsync(id, CancellationToken.None));
+        Assert.Empty(_bronze.PathsRead);
+    }
+
+    // LastFetchTs is a reg-state field, not something DocumentId ever validates, and it becomes a
+    // folder segment for a `reg` doc. Not reachable through the public API today — DocumentId already
+    // gates the incoming id, and this value never left the state store — but the class's own header
+    // comment names DocumentId as THE boundary, and this is the one place that builds a path from a
+    // value DocumentId had no chance to see. It must be refused on its own, same as any other
+    // traversal attempt, rather than trusted because it came from Cosmos instead of the wire.
+    [Theory]
+    [InlineData("../../../sds/some-other-doc")]
+    [InlineData("20260701T031400Z/../../secret")]
+    [InlineData("nested/path")]
+    public async Task RefusesALastFetchTsThatContainsAPathSeparatorOrTraversal(string poisonedFetchTs)
+    {
+        _source.Sources.Add(new RegSourceRow("echa-svhc", "REACH SVHC", "ECHA",
+            [new RegDocTitleRow("candidate-list", "https://echa.europa.eu/candidate-list", "SVHC candidate list")]));
+        _source.Docs.Add(new RegDocRow("candidate-list", "echa-svhc", "9f2c1ae4", "2025-11-20",
+            "sync-2026-07-01-a3f", poisonedFetchTs));
+        var id = DocumentId.Encode(DocumentId.Reg, "echa-svhc/candidate-list");
 
         Assert.Null(await Provider.GetAsync(id, CancellationToken.None));
         Assert.Empty(_bronze.PathsRead);
