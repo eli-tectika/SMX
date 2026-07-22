@@ -19,6 +19,10 @@ import type {
   ReviseRequest,
   RevisionDoc,
   SessionAttachment,
+  XrfConfirmed,
+  XrfParseResult,
+  XrfProposal,
+  XrfState,
 } from './types';
 import { createSseParser, type SseEvent } from './sse';
 
@@ -105,6 +109,61 @@ export async function getMatrix(projectId: string): Promise<MatrixDoc | NotFound
 export function matrixXlsxUrl(projectId: string): string {
   return `${BASE}/projects/${encodeURIComponent(projectId)}/matrix?format=xlsx`;
 }
+
+/* ---------------------------------------------------------------------------
+   The physicist's XRF background result (spec §4.2) — Smx.Backend/Api/XrfEndpoints.cs.
+
+   Two endpoints, one of which writes. `parse` is pure — it reads a file and hands back
+   proposals, touching nothing. `confirm` is the single writer; keeping them separate is what
+   makes the operator's confirmation a real act rather than a consequence of choosing a file.
+   --------------------------------------------------------------------------- */
+
+/**
+ * Parse a physicist's result file into proposals. Writes NOTHING — the operator confirms separately,
+ * which is what makes the confirmation an act rather than a consequence of choosing a file.
+ */
+export async function parseXrf(projectId: string, file: File): Promise<XrfParseResult> {
+  const form = new FormData();
+  // The field name MUST be "file" — it binds to the handler's `IFormFile file` parameter.
+  form.append('file', file, file.name);
+
+  const res = await authorizedFetch(`${BASE}/projects/${encodeURIComponent(projectId)}/xrf/parse`, {
+    method: 'POST',
+    // NO Content-Type header: the browser has to set it itself so it can append the multipart
+    // boundary. Setting it by hand produces a body the server cannot parse.
+    body: form,
+  });
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as XrfParseResult;
+}
+
+/** The single writer. A 422 carries the operator-readable reason the confirmation was refused. */
+export async function confirmXrf(
+  projectId: string,
+  proposals: XrfProposal[],
+): Promise<XrfConfirmed> {
+  const res = await authorizedFetch(`${BASE}/projects/${encodeURIComponent(projectId)}/xrf/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ proposals }),
+  });
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as XrfConfirmed;
+}
+
+/**
+ * What is already confirmed. A 404 means intake has not written constraints yet — a normal state for
+ * a project the operator opened straight after creating it, not a failure.
+ */
+export async function getXrfState(projectId: string): Promise<XrfState | NotFound> {
+  const res = await authorizedFetch(`${BASE}/projects/${encodeURIComponent(projectId)}/xrf`);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as XrfState;
+}
+
+/** The template lives on the API, not in the bundle, so it cannot drift from the parser. */
+export const xrfTemplateUrl = `${BASE}/xrf-template.csv`;
 
 /* ---------------------------------------------------------------------------
    The pre-project interview — "New project" as a conversation, not a form.
