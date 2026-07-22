@@ -862,3 +862,9 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.prov-rail { width: 220px; flex-shrink: 0; border-left: 0.5px solid var(--border); padding: var(--s3); }
+.prov-field { margin-bottom: var(--s3); }
+.prov-label { font-size: var(--t-micro); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 2px; }
+.prov-value { font-size: var(--t-small); word-break: break-all; line-height: 1.4; }
+.prov-hash { font-family: var(--font-mono); color: var(--text-secondary); }
