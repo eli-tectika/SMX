@@ -131,6 +131,31 @@ public class XrfEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public async Task Confirm_AcceptsARowThatOmitsTheProblemsArrayEntirely()
+    {
+        // `problems` is IReadOnlyList<string> on a positional record, so STJ binds an OMITTED field to
+        // null rather than to an empty list — and XrfConfirmation.Build reads p.Problems.Count, which
+        // NREs into a 500. Every other test here sends `problems: []` explicitly, so nothing else
+        // covers the shape a hand-written client actually produces. This pins the normalisation at the
+        // door; delete it and this test 500s.
+        var store = await StoreWithProject();
+        using var app = NewApp(store);
+
+        var res = await app.CreateClient().PostAsJsonAsync("/projects/proj-1/xrf/confirm", new
+        {
+            proposals = new[] { new
+            {
+                rowNumber = 2, component = "bottle", element = "Ba", line = "Ka", status = "V",
+                backgroundLevel = 12.5, backgroundUnit = "ppm",
+                deviceModel = "Niton XL5", deviceLod = 3.0, deviceLodUnit = "ppm",
+            } },
+        });
+
+        Assert.Equal(HttpStatusCode.Accepted, res.StatusCode);
+        Assert.Equal("Ba", Assert.Single((await store.GetConstraintsAsync("proj-1"))!.ElementPools).Element);
+    }
+
+    [Fact]
     public async Task Confirm_IsA404_WhenTheProjectHasNoConstraintsYet()
     {
         // Constraints are written by the intake agent. No constraints means intake has not run, and
