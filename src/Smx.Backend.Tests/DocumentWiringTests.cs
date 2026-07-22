@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Smx.Domain.Documents;
@@ -80,5 +81,39 @@ public class DocumentWiringTests
             () => host.Services.GetRequiredService<IDocumentTextReader>());
 
         Assert.Contains("SEARCH_ENDPOINT", ex.Message);
+    }
+
+    // Spec §8: "Bronze unconfigured — 503 with a plain message, surfaced by the viewer rather than
+    // swallowed." The message above is only worth writing if it reaches the operator, and a factory
+    // that throws during [FromServices] resolution surfaces as a bare 500 naming nothing.
+    //
+    // The list endpoint is the one that proves it without touching Cosmos: DocumentCatalog's own
+    // factory resolves IDocumentContentStore for RegDocumentProvider, so resolution fails before any
+    // query is issued.
+    [Fact]
+    public async Task BronzeUnconfiguredIs503WithTheReason()
+    {
+        using var host = HostWith();
+        using var client = host.CreateClient();
+
+        var res = await client.GetAsync("/documents");
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, res.StatusCode);
+        Assert.Contains("BRONZE_ACCOUNT_NAME", await res.Content.ReadAsStringAsync());
+    }
+
+    // The other half of the same fault: with no COSMOS_ACCOUNT_ENDPOINT the whole production block is
+    // skipped, so IDocumentCatalog is not registered at all and the operator got
+    // "No service for type ... IDocumentCatalog", which names nothing they can act on.
+    [Fact]
+    public async Task ADeploymentWithoutTheDocumentServicesIs503NotACrash()
+    {
+        using var host = new WebApplicationFactory<Program>();
+        using var client = host.CreateClient();
+
+        var res = await client.GetAsync("/documents");
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, res.StatusCode);
+        Assert.Contains("not configured", await res.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
     }
 }

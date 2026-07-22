@@ -71,6 +71,33 @@ public class DocumentEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         Assert.Equal(1, q.GetArrayLength());
     }
 
+    // An unrecognised filter value must not read as "no documents". This whole feature exists so
+    // absence never passes for coverage, and a typo'd ?kind= answering 200 [] is that same failure
+    // in miniature — the operator sees an empty library and concludes there is nothing there.
+    [Theory]
+    [InlineData("/documents?kind=bogus")]
+    [InlineData("/documents?kind=sdsgap")]      // an ID kind, deliberately NOT a facet
+    [InlineData("/documents?state=pending")]    // a master-list status, not a catalog state
+    public async Task List_400sOnAFilterValueItDoesNotKnow(string url)
+    {
+        GivenASheet(); GivenAGap();
+        var res = await _client.GetAsync(url);
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task List_AcceptsEveryFilterValueItDocuments()
+    {
+        GivenASheet(); GivenAGap();
+        foreach (var url in new[]
+                 {
+                     "/documents", "/documents?kind=all", "/documents?kind=sds", "/documents?kind=reg",
+                     "/documents?kind=seed", "/documents?state=all", "/documents?state=available",
+                     "/documents?state=missing", "/documents?state=superseded", "/documents?kind=&state=",
+                 })
+            Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync(url)).StatusCode);
+    }
+
     [Fact]
     public async Task Detail_ReturnsProvenance()
     {
@@ -236,11 +263,17 @@ public class DocumentEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         Assert.Equal(0, json.GetArrayLength());
     }
 
-    // The headers are set by a filter that runs before the result writes anything, so they must also
-    // be on a 206 — a PDF viewer asking for byte ranges is the ORDINARY case here, not the exotic one,
-    // and a partial response that arrives unsandboxed would be the whole protection missed.
+    // This endpoint does NOT serve byte ranges, and says so: a Range header is answered with the whole
+    // document, 200. It used to pass enableRangeProcessing:true, which is a no-op on the only stream
+    // production ever hands it — FileStreamHttpResult derives length from stream.CanSeek, and the ADLS
+    // read stream cannot seek — so the old 206 assertion passed only because this fake's MemoryStream
+    // can. A browser that asks for a range and receives the whole body renders it fine; a test that
+    // claims a capability production does not have is the actual hazard.
+    //
+    // What must survive either way are the safety headers, because they are set by a filter that runs
+    // before the result writes anything.
     [Fact]
-    public async Task Content_RangeRequestStillCarriesTheSafetyHeaders()
+    public async Task Content_ARangeRequestGetsTheWholeDocument_StillWithTheSafetyHeaders()
     {
         GivenASheet(); GivenItsBlob();
         var id = DocumentId.Encode(DocumentId.Sds, SheetId);
@@ -249,8 +282,8 @@ public class DocumentEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 3);
         var res = await _client.SendAsync(req);
 
-        Assert.Equal(HttpStatusCode.PartialContent, res.StatusCode);
-        Assert.Equal("%PDF", await res.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.Equal("%PDF-1.4 hello", await res.Content.ReadAsStringAsync());
         Assert.Equal("nosniff", res.Headers.GetValues("X-Content-Type-Options").Single());
         Assert.Contains("sandbox", res.Headers.GetValues("Content-Security-Policy").Single());
         Assert.Equal("inline", res.Content.Headers.ContentDisposition!.DispositionType);
