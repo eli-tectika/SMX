@@ -1,5 +1,39 @@
 # Conversational Intake — Plan 4: XRF Entry on Background
 
+> **STATUS: COMPLETE (2026-07-22).** All 9 tasks executed subagent-driven. `src/Smx.Backend.sln`
+> **861 tests** (816 baseline, +45), `src/Smx.Functions.sln` unchanged at 177, `src/smx-web`
+> **155 tests / 17 files** (136 baseline, +19). Both solutions build with **zero warnings**,
+> `npm run build` clean, working tree clean. All six named properties in Task 9 Step 3 pass, and
+> `MockBadge` is still on `Background.tsx` and every other mocked stage screen.
+>
+> **Corrections this plan needed, found during execution:**
+> - **The manual grid could lose a number the operator could see.** `NumberCell` emits `null` for text
+>   it cannot parse — `"12,5"` under a comma-decimal habit — but the input still *showed* `12,5`, the
+>   row carried no problem, confirm armed, and the record got no background for that element at all.
+>   The operator would have watched themselves enter a measurement that was never stored. An
+>   unreadable cell is now a row problem, which is what blocks confirm; verified by deleting it and
+>   watching both new tests fail. **This is the failure mode the whole plan exists to prevent, and the
+>   plan introduced it** — a reminder that "emit null rather than fabricate a 0" is only half a rule.
+> - **Two bugs in this plan's own test code:**
+>   - A bare collection expression cannot be an element of a `{ }` collection initializer —
+>     `new List<List<string>> { [.. Columns] }` fails `CS1003: '=' expected`, because the grammar
+>     reserves `{ [expr] … }` for indexer initializers. Written as `List<List<string>> x = [[.. Columns]];`.
+>   - `beforeEach` reset `parseXrf`/`confirmXrf` but not `getXrfState`, and vitest does not clear a
+>     mock's call log between tests (no `clearMocks` in `vite.config.ts`), so `toHaveBeenCalledTimes(2)`
+>     saw 9. No implementation could have passed it.
+> - **`XrfProposal.Problems` binds to `null`, not `[]`, when the field is omitted** — it is
+>   `IReadOnlyList<string>` on a positional record, and `XrfConfirmation.Build` reads `.Count`. Every
+>   test in Task 4 sent `problems: []` explicitly, so nothing covered the shape a hand-written client
+>   actually sends. Normalised at the confirm door, with a test that 500s without it.
+> - **`Background.tsx`'s `data-provenance="mock"` was resolved by splitting the screen, not by
+>   weakening the attribute.** The real XRF zone was lifted *out* of the mock `<section>`, so the hatch
+>   and the print warning now cover exactly the fabricated half. The `MockBadge` moved down to label
+>   the verdict matrix it was always about.
+> - **`ParkSlot` was removed from this screen only.** Its text asserted "no endpoint reports a park
+>   state", which Task 5 made false. Replaced with the real `stages.discovery` status and its `error`
+>   verbatim. `StageStatusCard` was deliberately not reused: it renders `error` only for `failed`,
+>   which would hide the park reason — the one thing the operator needs.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Give the physicist's measured XRF result a way back into the system now that the creation form is gone — a deterministic parser over a defined column shape, a row-by-row confirmation surface, a manual grid for anything unparseable, and a Discovery stage that *parks* waiting for it instead of failing.
