@@ -10,11 +10,11 @@ namespace Smx.Infrastructure.Search;
 ///
 /// Constructed per stage run (not a singleton) because SensitiveTerms and the budget counter are per project.
 ///
-/// DEPRECATED (2026-07-15): superseded by the model's built-in hosted web search (WEB_SEARCH_PROVIDER=hosted,
-/// see ToolBox.HostedWebSearch). Kept intact and revivable — set WEB_SEARCH_PROVIDER=proxy to route Discovery's
-/// search_web through this anonymizing egress again. The anonymity controls above only matter on this path.
-[Obsolete("Legacy anonymizing Search Proxy egress; superseded by the hosted web-search tool " +
-          "(WEB_SEARCH_PROVIDER=hosted). Kept for revival via WEB_SEARCH_PROVIDER=proxy.", error: false)]
+/// NOT the default path since 2026-07-15: Discovery ships on the model's built-in hosted web search
+/// (WEB_SEARCH_PROVIDER=hosted, see ToolBox.HostedWebSearch). This is a FULLY SUPPORTED second mode, kept
+/// deliberately for the security posture it buys — set WEB_SEARCH_PROVIDER=proxy to route Discovery's
+/// search_web back through this anonymizing egress. It is NOT deprecated and is NOT scheduled for removal:
+/// the three controls above are the whole reason it exists, and they apply on this path only.
 public sealed class WebSearchTool(
     ISearchProxyClient proxy,
     SensitiveTerms terms,

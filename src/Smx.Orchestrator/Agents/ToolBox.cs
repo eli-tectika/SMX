@@ -37,9 +37,10 @@ public sealed class ToolBox(
     /// still rests on a code-observed fact, not on the model's self-reported citation source.
     private static AITool HostedWebSearch() => new HostedWebSearchTool();
 
-    /// The legacy anonymizing egress (WEB_SEARCH_PROVIDER=proxy). Kept for revival; closes over the project's
-    /// SensitiveTerms and stamps "web:<host>" on every hit itself, which is what makes RAIL 1 deterministic on
-    /// this path without any downstream re-stamping.
+    /// The anonymizing proxy egress (WEB_SEARCH_PROVIDER=proxy) — the supported alternative to the hosted tool,
+    /// kept for the security posture it buys (k-anonymity cover queries + a project-blind contract). Closes over
+    /// the project's SensitiveTerms and stamps "web:<host>" on every hit itself, which is what makes RAIL 1
+    /// deterministic on this path with no downstream re-stamping.
     private AITool ProxyWebSearch(SensitiveTerms terms)
     {
         var web = webSearchFactory(terms);

@@ -1,4 +1,3 @@
-#pragma warning disable CS0618 // exercises the deprecated proxy path (WebSearchTool) on purpose — kept revivable
 using Microsoft.Extensions.Logging.Abstractions;
 using Smx.Domain.Tools;
 using Smx.Infrastructure.Search;

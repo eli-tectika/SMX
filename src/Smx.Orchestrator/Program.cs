@@ -123,11 +123,10 @@ public static class OrchestratorHost
 
         // SearchProxyClient takes (HttpClient, TokenCredential, endpoint, audience, ILogger). The two strings
         // mean a typed-client registration cannot construct it, so name the client and build it explicitly.
-        // These types are [Obsolete] (the proxy path is deprecated in favour of the hosted tool); the
-        // registration is a deliberate, kept-for-revival use, so the CS0618 warning is suppressed here. Both
-        // singletons are lazy — in the default hosted mode ToolBox never invokes the factory, so neither the
-        // proxy client nor WebSearchTool is ever actually constructed.
-#pragma warning disable CS0618 // legacy proxy path, revivable via WEB_SEARCH_PROVIDER=proxy
+        // Registered unconditionally so that switching to the anonymizing egress is a pure config flip
+        // (WEB_SEARCH_PROVIDER=proxy) with no code change and no redeploy. Both singletons are lazy: in the
+        // default hosted mode ToolBox never invokes the factory, so neither the proxy client nor WebSearchTool
+        // is ever actually constructed.
         services.AddHttpClient(nameof(SearchProxyClient));
         services.AddSingleton<ISearchProxyClient>(sp => new SearchProxyClient(
             sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(SearchProxyClient)),
@@ -142,7 +141,6 @@ public static class OrchestratorHost
             webEnabled,
             opts.WebSearchMaxPerStage,
             sp.GetRequiredService<ILogger<WebSearchTool>>()));
-#pragma warning restore CS0618
         // ToolBox takes the hosted-vs-proxy web-search flag as a bool, which DI cannot auto-resolve, so it is
         // constructed explicitly. opts.UseHostedWebSearch selects the built-in tool (default) vs the legacy proxy.
         services.AddSingleton(sp => new ToolBox(

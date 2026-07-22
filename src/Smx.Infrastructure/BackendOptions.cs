@@ -39,10 +39,12 @@ public sealed record BackendOptions(
     string SearchProxyAudience,
     bool WebSearchEnabled,
     int WebSearchMaxPerStage,
-    // Discovery's web-search backend. "hosted" (default) = the model's built-in, provider-executed web
-    // search (Microsoft.Extensions.AI HostedWebSearchTool over the Responses API); "proxy" = the legacy
-    // anonymizing Search Proxy egress, kept for revival (see WebSearchTool / SearchProxyClient). The hosted
-    // tool is a Responses-API capability, so it is only meaningful on the model paths that expose it.
+    // Discovery's web-search backend — two supported modes, switchable by config alone. "hosted" (default) =
+    // the model's built-in, provider-executed web search (Microsoft.Extensions.AI HostedWebSearchTool over the
+    // Responses API). "proxy" = the anonymizing Search Proxy egress (see WebSearchTool / SearchProxyClient):
+    // slower and narrower, but it is the mode that buys k-anonymity cover queries and a project-blind
+    // contract — switch to it when those guarantees are wanted. The hosted tool is a Responses-API capability,
+    // so it is only meaningful on the model paths that expose it.
     string WebSearchProvider)
 {
     public string AnthropicBaseUrl => $"{FoundryEndpoint.TrimEnd('/')}/anthropic/v1";
