@@ -125,7 +125,7 @@ public class DocumentIdTests
     [Theory]
     [InlineData("reg", "../etc/passwd")]
     [InlineData("reg", "echa/../../bronze")]
-    [InlineData("reg", "echa/doc\u0000id")]
+    [InlineData("reg", "echa/doc id")]   // a space is a slug violation for reg/seed/sdsgap
     [InlineData("reg", "echa/doc\nid")]
     public void RejectsDangerousPayloads(string kind, string payload)
     {
@@ -213,12 +213,17 @@ public static class DocumentId
 
     // kind -> (separator, exact segment count). Fixed counts matter: an extra segment on a `reg`
     // payload becomes an extra component of the constructed blob path.
-    private static readonly Dictionary<string, (char Sep, int Segments)> Shapes = new()
+    // SpacesAllowed is per-kind and load-bearing in BOTH directions. An `sds` payload carries a
+    // supplier name, and DedupKey.Norm collapses whitespace rather than stripping it — "alfa aesar"
+    // is a real registry id, so rejecting spaces would make every multi-word supplier's sheet
+    // unopenable. The other three carry slugs (DedupKey.Slug emits [a-z0-9-] only, sourceIds look
+    // like `echa-svhc`, regions like `eu`), where a space is never legitimate.
+    private static readonly Dictionary<string, (char Sep, int Segments, bool SpacesAllowed)> Shapes = new()
     {
-        [Sds] = ('|', 3),      // cas | supplier | revisionDate
-        [Reg] = ('/', 2),      // sourceId / docId
-        [Seed] = ('/', 2),     // region / docId
-        [SdsGap] = ('_', 2),   // element _ form-slug  (DedupKey.ForMasterList)
+        [Sds] = ('|', 3, true),      // cas | supplier | revisionDate
+        [Reg] = ('/', 2, false),     // sourceId / docId
+        [Seed] = ('/', 2, false),    // region / docId
+        [SdsGap] = ('_', 2, false),  // element _ form-slug  (DedupKey.ForMasterList)
     };
 
     public static string Encode(string kind, string payload)
@@ -258,6 +263,7 @@ public static class DocumentId
         if (decoded.Contains("..", StringComparison.Ordinal)) return false;
         if (decoded.Contains('\\')) return false;
         if (decoded.Any(char.IsControl)) return false;
+        if (!shape.SpacesAllowed && decoded.Contains(' ')) return false;
 
         var segments = decoded.Split(shape.Sep);
         if (segments.Length != shape.Segments) return false;
