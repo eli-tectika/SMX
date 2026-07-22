@@ -988,7 +988,8 @@ public class RegDocumentProviderTests
     {
         _source.Docs.Add(new RegDocRow("clp-annex-vi", "eu", "abc123", "2024-08-14", "seed-run", "2026-07-05"));
         _bronze.Put("seed/eu/clp-annex-vi/meta.json",
-            """{"sourceId":"eu","docId":"clp-annex-vi","sourceUrl":"https://eur-lex.europa.eu/clp",
+            """
+            {"sourceId":"eu","docId":"clp-annex-vi","sourceUrl":"https://eur-lex.europa.eu/clp",
                 "officialDate":"2024-08-14","fetchTs":"2026-07-05","sha256":"abc123",
                 "contentType":"text/plain","httpStatus":0,"syncRunId":"seed-run"}""");
         var id = DocumentId.Encode(DocumentId.Seed, "eu/clp-annex-vi");
@@ -1189,7 +1190,10 @@ public sealed class RegDocumentProvider(IRegDocumentSource source, IDocumentCont
             new("Origin", kind == DocumentId.Reg ? "monthly sync" : "seed import"),
             new(kind == DocumentId.Reg ? "Fetched" : "Imported", meta?.FetchTs is { Length: > 0 } ? meta.FetchTs : doc.LastFetchTs),
             new("Sync run", meta?.SyncRunId is { Length: > 0 } ? meta.SyncRunId : doc.SyncRunId),
-            new("SHA-256", meta?.Sha256 is { Length: > 0 } ? meta.Sha256 : (doc.Sha256 is { Length: > 0 } ? doc.Sha256 : "not recorded"), ProvenanceKinds.Hash),
+            // Sidecar-only, deliberately. Falling back to reg-state's sha256 would mean the rail
+            // could never say "not recorded" — reg-state always has one — so a missing sidecar
+            // would silently look like recorded provenance.
+            new("SHA-256", meta?.Sha256 is { Length: > 0 } ? meta.Sha256 : "not recorded", ProvenanceKinds.Hash),
             new("Content type", contentType),
         };
         if (kind == DocumentId.Reg)
@@ -1282,7 +1286,9 @@ public class DocumentCatalogTests
             "2026-07-16T00:00:00Z", null, null));
         _sds.Master.Add(new SdsMasterRow("Nd_oxide", "Nd", "oxide", "1313-97-9", "failed", "2026-07-18T00:00:00Z", 3));
         _reg.Sources.Add(new RegSourceRow("echa-svhc", "REACH SVHC", "ECHA",
-            [new RegDocTitleRow("candidate-list", "https://echa.europa.eu/cl", "SVHC candidate list")]));
+            // NOT "candidate list" — "ca(nd)idate" contains the substring the [InlineData("Nd", 1)]
+            // search case looks for, so that title makes the Neodymium gap-row test match two rows.
+            [new RegDocTitleRow("candidate-list", "https://echa.europa.eu/cl", "SVHC substance list")]));
         _reg.Docs.Add(new RegDocRow("candidate-list", "echa-svhc", "9f", "2025-11-20", "run", "20260701T031400Z"));
     }
 
@@ -1335,7 +1341,8 @@ public class DocumentCatalogTests
     {
         Given();
         _bronze.Put("regulatory/echa-svhc/candidate-list/20260701T031400Z/meta.json",
-            """{"contentType":"text/html","sha256":"9f","sourceUrl":"https://echa.europa.eu/cl",
+            """
+            {"contentType":"text/html","sha256":"9f","sourceUrl":"https://echa.europa.eu/cl",
                 "fetchTs":"20260701T031400Z","syncRunId":"run","httpStatus":200}""");
 
         Assert.NotNull(await Catalog.GetAsync(DocumentId.Encode(DocumentId.Sds, "7761-88-8|sigma|2024-03-11")));
