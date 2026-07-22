@@ -73,6 +73,22 @@ public class ChatDispatchTests
         store.Documents.OfType<ChatReplyDoc>().SingleOrDefault(r => r.MessageId == m.Id);
 
     [Fact]
+    public async Task Dispatcher_DoesNotRunIntake_ForAnAwaitingConfirmationProject()
+    {
+        // THE safety property of the whole feature: an agent-created project must not start the pipeline.
+        var (d, store, agents) = Sut();
+        var project = ProjectDoc.Create(P, "Acme", "MUFE",
+            JsonDocument.Parse("{}").RootElement, intakeStatus: StageStatus.AwaitingConfirmation);
+        await store.UpsertProjectAsync(project);
+
+        await d.OnRecordChangedAsync(project, default);
+
+        Assert.Equal(0, agents.IntakeCalls);
+        Assert.Equal(StageStatus.AwaitingConfirmation,
+            (await store.GetProjectAsync(P))!.Stages[Stages.Intake].Status);
+    }
+
+    [Fact]
     public async Task ChatMessage_WritesAReply_AndMarksTheMessageAnswered()
     {
         var (d, store, agents) = Sut();

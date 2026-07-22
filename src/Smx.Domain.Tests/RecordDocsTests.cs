@@ -14,6 +14,26 @@ public class RecordDocsTests
     }
 
     [Fact]
+    public void ProjectDoc_Create_DefaultsIntakeToPending_SoExistingCallersStillStart()
+    {
+        // tools/Smx.Eval and every backend test create fully-specified projects through POST /projects
+        // and expect the pipeline to RUN. If creation universally landed in awaiting-confirmation the
+        // eval harness would keep passing while evaluating nothing. Default = today's behaviour.
+        var doc = ProjectDoc.Create("proj-1", "Acme", "MUFE", JsonDocument.Parse("{}").RootElement);
+        Assert.Equal("pending", doc.Stages[Stages.Intake].Status);
+    }
+
+    [Fact]
+    public void ProjectDoc_Create_CanStartAwaitingConfirmation_ForTheInterviewAgent()
+    {
+        var doc = ProjectDoc.Create("proj-1", "Acme", "MUFE", JsonDocument.Parse("{}").RootElement,
+            intakeStatus: StageStatus.AwaitingConfirmation);
+        Assert.Equal("awaiting-confirmation", doc.Stages[Stages.Intake].Status);
+        // Only intake is held back — every other stage keeps its normal starting state.
+        Assert.Equal("pending", doc.Stages[Stages.Discovery].Status);
+    }
+
+    [Fact]
     public void ProjectDoc_SerializesCamelCase_WithTypeDiscriminator()
     {
         var doc = ProjectDoc.Create("p1", "Acme", "Shampoo bottle", JsonDocument.Parse("{}").RootElement);

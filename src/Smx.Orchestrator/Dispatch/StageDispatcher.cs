@@ -57,7 +57,7 @@ public sealed class StageDispatcher(
 
     private async Task MaybeRunIntakeAsync(ProjectDoc p, CancellationToken ct)
     {
-        if (p.Stages[Stages.Intake].Status != "pending") return;
+        if (p.Stages[Stages.Intake].Status != StageStatus.Pending) return;
         if (await store.GetConstraintsAsync(p.ProjectId, ct) is not null) return;
         await SetStageAsync(p.ProjectId, Stages.Intake, s => { s.Status = "running"; s.Attempts++; }, ct);
         try
