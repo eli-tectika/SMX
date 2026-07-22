@@ -1,11 +1,14 @@
 using System.Text.Json.Serialization;
 using Azure.Identity;
 using Azure.Monitor.OpenTelemetry.AspNetCore;
+using Azure.Search.Documents;
+using Azure.Storage.Files.DataLake;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Azure.Cosmos;
 using Smx.Backend.Api;
 using Smx.Domain;
+using Smx.Domain.Documents;
 using Smx.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -75,6 +78,65 @@ if (builder.Configuration["COSMOS_ACCOUNT_ENDPOINT"] is { Length: > 0 })
 
     builder.Services.AddSingleton<IIntakeSessionStore>(sp => new CosmosIntakeSessionStore(
         sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.IntakeSessionContainer)));
+
+    // ── Document access layer (the file viewer's read side) ─────────────────────────────────────
+    // Everything below is read-only by construction: none of these types has a write method.
+    //
+    // sds-master-list, reg-registry, reg-state and reg-silver are literals rather than options
+    // because they name the regsync Functions app's estate, not this app's configuration surface —
+    // the same four names functions.bicep hardcodes. SDS_REGISTRY_CONTAINER is an option only
+    // because the MSDS Registry surface already made it one.
+    builder.Services.AddSingleton<IDocumentContentStore>(_ =>
+    {
+        // BRONZE_LOCAL_PATH stands a directory in for the filesystem in local dev, and wins when both
+        // are set. Neither set is a misconfiguration that must name itself: an empty account name
+        // resolves to "https://.dfs.core.windows.net" and would otherwise surface as an opaque DNS
+        // failure on the operator's first click.
+        if (opts.BronzeLocalPath is { Length: > 0 }) return new LocalBronzeDocumentStore(opts.BronzeLocalPath);
+        if (opts.BronzeAccountName is not { Length: > 0 })
+            throw new InvalidOperationException(
+                "BRONZE_ACCOUNT_NAME is not set (BRONZE_LOCAL_PATH is the local-dev alternative) — " +
+                "the document viewer has no bronze filesystem to read.");
+        // The workload UAMI already holds Storage Blob Data Contributor at account scope
+        // (infra/modules/data.bicep). The missing half was this code, not the permission.
+        return new BronzeDocumentStore(
+            new DataLakeServiceClient(new Uri($"https://{opts.BronzeAccountName}.dfs.core.windows.net"), credential)
+                .GetFileSystemClient(opts.BronzeFilesystem));
+    });
+
+    builder.Services.AddSingleton<ISdsDocumentSource>(sp =>
+    {
+        var cosmos = sp.GetRequiredService<CosmosClient>();
+        return new CosmosSdsDocumentSource(
+            cosmos.GetContainer(opts.CosmosDatabase, opts.SdsRegistryContainer),
+            cosmos.GetContainer(opts.CosmosDatabase, "sds-master-list"));
+    });
+
+    builder.Services.AddSingleton<IRegDocumentSource>(sp =>
+    {
+        var cosmos = sp.GetRequiredService<CosmosClient>();
+        return new CosmosRegDocumentSource(
+            cosmos.GetContainer(opts.CosmosDatabase, "reg-registry"),
+            cosmos.GetContainer(opts.CosmosDatabase, "reg-state"));
+    });
+
+    builder.Services.AddSingleton<IDocumentCatalog>(sp => new DocumentCatalog(
+        new SdsDocumentProvider(sp.GetRequiredService<ISdsDocumentSource>()),
+        new RegDocumentProvider(sp.GetRequiredService<IRegDocumentSource>(),
+                                sp.GetRequiredService<IDocumentContentStore>())));
+
+    builder.Services.AddSingleton<IDocumentTextReader>(sp =>
+    {
+        // SDS chunks live in the AI Search index, not in Cosmos, so an unset SEARCH_ENDPOINT would
+        // reach `new Uri("")` and throw "the URI is empty" from somewhere that names nothing.
+        if (opts.SearchEndpoint is not { Length: > 0 })
+            throw new InvalidOperationException(
+                "SEARCH_ENDPOINT is not set — the document viewer reads SDS chunk text from the sds-index.");
+        return new CompositeDocumentTextReader(
+            new CosmosRegSilverTextReader(
+                sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, "reg-silver")),
+            new SdsIndexTextReader(new SearchClient(new Uri(opts.SearchEndpoint), opts.SdsIndex, credential)));
+    });
 }
 
 if (builder.Configuration["ORCHESTRATOR_BASE_URL"] is { Length: > 0 } orchestratorUrl)

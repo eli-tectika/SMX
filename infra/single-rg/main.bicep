@@ -215,6 +215,10 @@ module compute 'modules/compute.bicep' = {
     foundryEndpoint: ai.outputs.foundryEndpoint
     cosmosEndpoint: data.outputs.cosmosDocumentEndpoint
     searchEndpoint: 'https://${ai.outputs.searchName}.search.windows.net'
+    // Threaded from data rather than restated here, so a rename on either side cannot leave the
+    // backend reading a filesystem that no longer exists.
+    bronzeAccountName: data.outputs.storageName
+    bronzeFilesystem: data.outputs.bronzeFilesystem
     keyVaultUri: security.outputs.keyVaultUri
     appInsightsConnectionString: observability.outputs.appInsightsConnectionString
     // The orchestrator reaches the proxy over its private endpoint; nothing here consumes compute's

@@ -70,6 +70,10 @@ FOUNDRY_ENDPOINT=${FOUNDRY_EP}
 COSMOS_DATABASE=smx
 RECORD_CONTAINER=record
 COMPATIBILITY_CONTAINER=ref-compatibility
+# The document viewer streams bytes out of bronze. Same account the Functions app writes to,
+# read-only from the backend — set BRONZE_LOCAL_PATH instead to stand a local directory in.
+BRONZE_ACCOUNT_NAME=${BRONZE}
+BRONZE_FILESYSTEM=bronze
 ENVFILE
 
 cat > "${REPO_ROOT}/src/Smx.Functions/local.settings.json" <<JSON

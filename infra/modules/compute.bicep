@@ -41,6 +41,12 @@ param foundryEndpoint string = ''
 @description('Cosmos account document endpoint.')
 param cosmosEndpoint string = ''
 
+@description('Storage account holding the bronze filesystem (SDS PDFs + regulatory source documents).')
+param bronzeAccountName string = ''
+
+@description('ADLS filesystem name within that account.')
+param bronzeFilesystem string = 'bronze'
+
 @description('AI Search endpoint.')
 param searchEndpoint string = ''
 
@@ -126,6 +132,12 @@ var sharedEnv = [
   // The SDS subsystem's corpus registry, read-only here: GET /msds-registry composes sheet
   // facts from it and overlays the review signature from msds-registry (design §6.3).
   { name: 'SDS_REGISTRY_CONTAINER', value: 'sds-registry' }
+  // Where the document viewer reads bytes from: the bronze filesystem holds the SDS PDFs and the
+  // regulatory source documents. The workload UAMI has held Storage Blob Data Contributor at account
+  // scope since data.bicep landed, so this adds no RBAC — it only says where to look. Read-only from
+  // this side; the regsync Functions app is the only writer.
+  { name: 'BRONZE_ACCOUNT_NAME', value: bronzeAccountName }
+  { name: 'BRONZE_FILESYSTEM', value: bronzeFilesystem }
   { name: 'SUBSTANCE_PROPERTIES_CONTAINER', value: 'substance-properties' }
   { name: 'LEARNED_CONCLUSIONS_SEARCH_INDEX', value: 'learned-conclusions' }
 ]
