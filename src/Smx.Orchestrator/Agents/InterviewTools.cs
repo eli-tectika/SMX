@@ -21,7 +21,8 @@ namespace Smx.Orchestrator.Agents;
 ///     chemistry into the record at the earliest and least-reviewed point in a project.
 ///   * nothing that starts the analysis, signs a gate, or records a determination. An agent acts only
 ///     through its tools. create_project deliberately does NOT start anything (design §2.3).
-public sealed class InterviewTools(IIntakeSessionStore sessions, IRecordStore records, string sessionId)
+public sealed class InterviewTools(
+    IIntakeSessionStore sessions, IRecordStore records, IAttachmentBlobStore blobs, string sessionId)
 {
     public List<string> Trail { get; } = [];
 
@@ -57,6 +58,12 @@ public sealed class InterviewTools(IIntakeSessionStore sessions, IRecordStore re
             "`components` is a JSON array: " +
             "[{\"id\":\"bottle\",\"material\":\"PET\",\"application\":\"food contact\"," +
             "\"objective\":\"brand\",\"markets\":[\"EU\",\"US\"]}]."),
+
+        AIFunctionFactory.Create(ReadAttachmentAsync, "read_attachment",
+            "Read the text of a file the operator attached to this interview. `fileId` is the id shown " +
+            "beside the filename in the ATTACHMENTS section of your context — never invent one. " +
+            "Long documents are paged: `page` defaults to 1 and the reply tells you how many there are. " +
+            "Read a file BEFORE asking the operator about what might be in it."),
 
         AIFunctionFactory.Create(CreateProjectAsync, "create_project",
             "Create the project from everything gathered so far, and write the summary, the dossier, the " +
@@ -149,6 +156,45 @@ public sealed class InterviewTools(IIntakeSessionStore sessions, IRecordStore re
 
         return await MutateAsync(s => s.ProposedComponents = parsed, "propose_components",
             $"recorded {parsed.Count} component(s).", ct);
+    }
+
+    /// `page` defaults to 1 because AIFunctionFactory emits a parameter WITHOUT a default as `required`
+    /// in the JSON schema regardless of the description — the binder would then reject every ordinary
+    /// one-argument call before this body ran. Same trap as `confidence` on record_finding.
+    public async Task<string> ReadAttachmentAsync(string fileId, int page = 1, CancellationToken ct = default)
+    {
+        if (await sessions.GetAsync(sessionId, ct) is not { } session)
+            return "this interview session no longer exists. Tell the operator; do not retry.";
+
+        // Resolved THROUGH the session's own attachment list, never by building a path out of fileId.
+        // fileId arrives from a language model; interpolating it into a blob path would let a
+        // hallucinated or crafted value reach another interview's upload — or anything else in the
+        // `bronze` container, which also holds the SDS corpus. The path used below is the one this
+        // session recorded at upload.
+        if (session.Attachments.FirstOrDefault(a =>
+                string.Equals(a.FileId, fileId, StringComparison.Ordinal)) is not { } attachment)
+            return session.Attachments.Count == 0
+                ? "there are no attachments on this interview."
+                : $"'{fileId}' is not an attachment on this interview. The ones there are: " +
+                  $"{string.Join(", ", session.Attachments.Select(a => $"{a.FileId} ({a.Filename})"))}.";
+
+        if (attachment.Status != AttachmentStatus.Extracted || attachment.TextBlobPath is not { } textPath)
+            return $"'{attachment.Filename}' could not be read ({attachment.Error ?? attachment.Status}). " +
+                   "Ask the operator what it contains — their answer is a real answer, and you should " +
+                   "record it with record_finding noting which file it describes.";
+
+        if (await blobs.GetTextAsync(textPath, ct) is not { } text)
+            return $"'{attachment.Filename}' was extracted but its text is missing from storage. " +
+                   "Tell the operator, and ask them what it contains.";
+
+        var pages = Math.Max(1, (int)Math.Ceiling((double)text.Length / AttachmentLimits.PageChars));
+        var index = Math.Clamp(page, 1, pages);
+        var start = (index - 1) * AttachmentLimits.PageChars;
+        var slice = text.Substring(start, Math.Min(AttachmentLimits.PageChars, text.Length - start));
+
+        Trail.Add($"read_attachment({attachment.FileId}, page {index})");
+        return $"{attachment.Filename} — page {index} of {pages}\n\n{slice}" +
+               (index < pages ? $"\n\n[continues — call read_attachment(\"{fileId}\", {index + 1}) for more]" : "");
     }
 
     public async Task<string> CreateProjectAsync(CancellationToken ct = default)

@@ -28,12 +28,13 @@ namespace Smx.Backend.Tests;
 /// A minimal, self-built WebApplication + TestServer, NOT Smx.Backend's own Program: the surface under
 /// test is Smx.Orchestrator.Api.InterviewEndpoints, which has nothing to do with the backend's routes, auth,
 /// or Cosmos wiring. Building it inline keeps the DI graph to exactly what InterviewEndpoints needs
-/// (IIntakeSessionStore, IRecordStore, IAgentRuns) — the same three fakes FakeAgentRunsSmokeTests and
-/// DosingCostEndToEndTests already use.
+/// (IIntakeSessionStore, IRecordStore, IAttachmentBlobStore, IAgentRuns) — the same fakes
+/// FakeAgentRunsSmokeTests and DosingCostEndToEndTests already use.
 public class InterviewEndpointsTests : IAsyncLifetime
 {
     private readonly InMemoryIntakeSessionStore _sessions = new();
     private readonly InMemoryRecordStore _records = new();
+    private readonly InMemoryAttachmentBlobStore _blobs = new();
     private readonly FakeAgentRuns _runs = new();
     private IHost _host = null!;
     private HttpClient _client = null!;
@@ -49,6 +50,7 @@ public class InterviewEndpointsTests : IAsyncLifetime
                     services.AddRouting();
                     services.AddSingleton<IIntakeSessionStore>(_sessions);
                     services.AddSingleton<IRecordStore>(_records);
+                    services.AddSingleton<IAttachmentBlobStore>(_blobs);
                     services.AddSingleton<IAgentRuns>(_runs);
                 });
                 webBuilder.Configure(app =>

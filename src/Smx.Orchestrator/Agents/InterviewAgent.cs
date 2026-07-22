@@ -101,12 +101,7 @@ public static class InterviewAgent
     /// Unreadable attachments are named WITH their status, so the agent asks about them. An attachment
     /// the system cannot read is a visible fact, never silence — the same discipline as an open
     /// question. Its answer then arrives from the operator, with provenance.
-    ///
-    /// NOTE: `read_attachment` does not exist yet — it arrives in Plan 2 together with the upload
-    /// endpoint and the text extractors. Until then `Attachments` is ALWAYS empty (nothing can populate
-    /// it), so this branch is unreachable rather than wrong, and Plan 2 needs exactly this wording.
-    /// Do not "fix" it by deleting the branch.
-    private static string RenderAttachments(IntakeSessionDoc s) =>
+    internal static string RenderAttachments(IntakeSessionDoc s) =>
         s.Attachments.Count == 0
             ? "(none)"
             : string.Join("\n", s.Attachments.Select(a =>
