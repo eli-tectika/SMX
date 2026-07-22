@@ -28,6 +28,10 @@ public sealed class SdsDocumentProvider(ISdsDocumentSource source)
         var coveredMasterIds = sheets.Where(s => s.MasterListId is { Length: > 0 })
                                      .Select(s => s.MasterListId!)
                                      .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // Deliberately includes superseded sheets: a substance whose only sheet is superseded is
+        // covered, not a gap — the sheet still opens, and State names it superseded. Narrowing this
+        // to non-superseded sheets only would look like a tightening but would re-emit a gap for a
+        // substance that already has something openable, just outdated.
         var coveredCas = sheets.Select(s => s.Cas).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         rows.AddRange(master
@@ -79,27 +83,69 @@ public sealed class SdsDocumentProvider(ISdsDocumentSource source)
         return null;
     }
 
-    private static DocumentSummary ToSummary(SdsSheetRow s) => new(
-        Id: DocumentId.Encode(DocumentId.Sds, s.Id),
-        Kind: DocumentKinds.Sds,
-        Title: string.IsNullOrWhiteSpace(s.ProductName) ? s.Cas : s.ProductName,
-        Subtitle: $"CAS {s.Cas} · {s.Supplier} · rev {s.RevisionDate} · {s.Region} / {s.Language}",
-        Available: true,
-        State: s.SupersededBy is { Length: > 0 } ? DocumentStates.Superseded : DocumentStates.Available,
-        ContentType: SheetContentType,
-        OfficialDate: s.RevisionDate,
-        IngestedUtc: s.IngestedUtc);
+    // DocumentId.Encode validates only the KIND, never the payload — a registry id with an empty
+    // segment (Sds/Triggers/OperatorUpload.cs validates only Cas and PdfBase64, so a blank
+    // RevisionDate reaches here as "cas|supplier|") still encodes into something that looks like a
+    // normal id and then fails TryDecode the moment anyone opens it. CanEncode catches that HERE, at
+    // list time (BLOCKING 2), so the row is visibly broken instead of silently un-openable — a bare
+    // 404 naming no cause is the inverse of spec §8. GetAsync never reaches the "unresolvable" branch
+    // itself: a malformed id already fails DocumentId.TryDecode before dispatch, so this row can only
+    // ever be seen through ListAsync, which is exactly where it needs to be visible.
+    private static DocumentSummary ToSummary(SdsSheetRow s)
+    {
+        var id = DocumentId.Encode(DocumentId.Sds, s.Id);
+        if (!DocumentId.CanEncode(DocumentId.Sds, s.Id))
+            return new DocumentSummary(
+                Id: id,
+                Kind: DocumentKinds.Sds,
+                Title: string.IsNullOrWhiteSpace(s.ProductName) ? s.Cas : s.ProductName,
+                Subtitle: $"CAS {s.Cas} · {UnavailableReasons.UnresolvableId}: malformed registry id \"{s.Id}\"",
+                Available: false,
+                State: DocumentStates.Missing,
+                ContentType: null,
+                OfficialDate: s.RevisionDate,
+                IngestedUtc: s.IngestedUtc);
 
-    private static DocumentSummary ToGapSummary(SdsMasterRow m, string explanation) => new(
-        Id: DocumentId.Encode(DocumentId.SdsGap, m.Id),
-        Kind: DocumentKinds.Sds,          // facet: a missing sheet is still a sheet
-        Title: $"{m.Element} {m.Form} — no safety sheet",
-        Subtitle: $"CAS {m.Cas} · {explanation}",
-        Available: false,
-        State: DocumentStates.Missing,
-        ContentType: null,
-        OfficialDate: null,
-        IngestedUtc: null);
+        return new DocumentSummary(
+            Id: id,
+            Kind: DocumentKinds.Sds,
+            Title: string.IsNullOrWhiteSpace(s.ProductName) ? s.Cas : s.ProductName,
+            Subtitle: $"CAS {s.Cas} · {s.Supplier} · rev {s.RevisionDate} · {s.Region} / {s.Language}",
+            Available: true,
+            State: s.SupersededBy is { Length: > 0 } ? DocumentStates.Superseded : DocumentStates.Available,
+            ContentType: SheetContentType,
+            OfficialDate: s.RevisionDate,
+            IngestedUtc: s.IngestedUtc);
+    }
+
+    // Same exposure on the gap side: SdsMasterRow.Id is `{element}_{form}` (DedupKey.ForMasterList),
+    // and a blank Form produces the same empty-segment shape.
+    private static DocumentSummary ToGapSummary(SdsMasterRow m, string explanation)
+    {
+        var id = DocumentId.Encode(DocumentId.SdsGap, m.Id);
+        if (!DocumentId.CanEncode(DocumentId.SdsGap, m.Id))
+            return new DocumentSummary(
+                Id: id,
+                Kind: DocumentKinds.Sds,
+                Title: $"{m.Element} {m.Form} — no safety sheet",
+                Subtitle: $"CAS {m.Cas} · {UnavailableReasons.UnresolvableId}: malformed master-list id \"{m.Id}\"",
+                Available: false,
+                State: DocumentStates.Missing,
+                ContentType: null,
+                OfficialDate: null,
+                IngestedUtc: null);
+
+        return new DocumentSummary(
+            Id: id,
+            Kind: DocumentKinds.Sds,          // facet: a missing sheet is still a sheet
+            Title: $"{m.Element} {m.Form} — no safety sheet",
+            Subtitle: $"CAS {m.Cas} · {explanation}",
+            Available: false,
+            State: DocumentStates.Missing,
+            ContentType: null,
+            OfficialDate: null,
+            IngestedUtc: null);
+    }
 
     private static IReadOnlyList<ProvenanceField> Provenance(SdsSheetRow s) =>
     [

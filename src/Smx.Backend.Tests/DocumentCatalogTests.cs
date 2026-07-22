@@ -72,9 +72,11 @@ public class SdsDocumentProviderTests
     public async Task MarksSupersededSheets()
     {
         _source.Sheets.Add(Sheet("7761-88-8", "sigma", "2023-01-01", superseded: "7761-88-8|sigma|2024-03-11"));
-        var rows = await Provider.ListAsync();
-        Assert.Equal(DocumentStates.Superseded, rows[0].State);
-        Assert.True(rows[0].Available);      // superseded still opens — it is history, not absence
+        var row = Assert.Single(await Provider.ListAsync());   // Single, not rows[0] — a second fixture
+                                                                 // row added later must not silently
+                                                                 // move this assertion onto the wrong row
+        Assert.Equal(DocumentStates.Superseded, row.State);
+        Assert.True(row.Available);      // superseded still opens — it is history, not absence
     }
 
     [Fact]
@@ -111,6 +113,55 @@ public class SdsDocumentProviderTests
     {
         var id = DocumentId.Encode(DocumentId.Sds, "0000-00-0|nobody|1999-01-01");
         Assert.Null(await Provider.GetAsync(id, CancellationToken.None));
+    }
+
+    // Sds/Triggers/OperatorUpload.cs validates only Cas and PdfBase64 — a blank RevisionDate reaches
+    // here as a registry id with an empty trailing segment ("cas|supplier|"). DocumentId.Encode
+    // doesn't validate the payload shape, so this used to look exactly like a healthy row in the
+    // list and then 404 with no explanation on click. It must be visibly broken from the list itself.
+    [Fact]
+    public async Task MarksASheetWithAnUnresolvableIdAsUnavailableRatherThanHidingIt()
+    {
+        _source.Sheets.Add(Sheet("7440-22-4", "sigma", ""));   // blank RevisionDate -> "7440-22-4|sigma|"
+
+        var row = Assert.Single(await Provider.ListAsync());
+
+        Assert.False(row.Available);
+        Assert.Equal(DocumentStates.Missing, row.State);
+        Assert.Contains(UnavailableReasons.UnresolvableId, row.Subtitle);
+        Assert.Contains("7440-22-4|sigma|", row.Subtitle);          // names the malformed id, not just that it's broken
+        Assert.False(DocumentId.TryDecode(row.Id, out _, out _));   // honest: this id will never resolve
+    }
+
+    // The gap side has the same exposure: SdsMasterRow.Id is `{element}_{form}` (DedupKey.ForMasterList)
+    // and a blank Form produces the same empty-segment shape.
+    [Fact]
+    public async Task MarksAGapRowWithAnUnresolvableIdAsUnavailableRatherThanHidingIt()
+    {
+        _source.Master.Add(new SdsMasterRow("Nd_", "Nd", "", "1313-97-9", "pending", null, 0));
+
+        var row = Assert.Single(await Provider.ListAsync());
+
+        Assert.False(row.Available);
+        Assert.Equal(DocumentStates.Missing, row.State);
+        Assert.Contains(UnavailableReasons.UnresolvableId, row.Subtitle);
+        Assert.False(DocumentId.TryDecode(row.Id, out _, out _));
+    }
+
+    // The real invariant BLOCKING 2 exists to guarantee: nothing the catalog lists can look healthy
+    // and then silently fail to open. Every row either decodes (so GetAsync can find it) or is
+    // honest, right there in the list, that it can't.
+    [Fact]
+    public async Task EveryListedRowEitherResolvesOrIsMarkedUnavailable()
+    {
+        _source.Sheets.Add(Sheet("7761-88-8", "sigma", "2024-03-11"));   // healthy
+        _source.Sheets.Add(Sheet("7440-22-4", "alfa", ""));              // malformed: blank revision
+        _source.Master.Add(Master("Nd", "oxide", "1313-97-9", "failed", attempts: 2));
+
+        var rows = await Provider.ListAsync();
+
+        Assert.Equal(3, rows.Count);
+        Assert.All(rows, r => Assert.True(DocumentId.TryDecode(r.Id, out _, out _) || !r.Available));
     }
 }
 

@@ -20,6 +20,14 @@ public static class UnavailableReasons
 {
     public const string NeverFetched = "never-fetched";   // gap row: no sheet was ever obtained
     public const string BlobMissing = "blob-missing";     // registry says yes, storage says no — real drift
+
+    /// The registry's own compound key doesn't round-trip through DocumentId (an empty segment, most
+    /// commonly — e.g. an operator upload with a blank field). Corrupt data, not absent data: the row
+    /// is real, but no id can ever be minted for it that TryDecode would accept, so it cannot be
+    /// resolved by primary key. Surfaced at list time (SdsDocumentProvider), not via GetAsync — a
+    /// malformed id must never touch storage regardless of who produced it (spec §3 invariant 2), so
+    /// there is no way to look this row back up through the id alone.
+    public const string UnresolvableId = "unresolvable-id";
 }
 
 /// One catalog row. `Kind` is the FACET (sds/reg/seed) — note a gap row reports `sds`, because it is a

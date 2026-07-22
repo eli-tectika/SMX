@@ -24,6 +24,12 @@ public sealed record RegSourceRow(
 
 public sealed record RegDocTitleRow(string DocId, string Url, string? Title);
 
+/// A second read port over `sds-registry`, alongside the existing `ISdsCorpusReader` — deliberately,
+/// not by oversight. `ISdsCorpusReader.QuerySheetsAsync` filters to current (indexed, non-superseded)
+/// sheets, because its one consumer (Discovery's RAG lookup) must never cite a stale or unindexed
+/// sheet. A file-viewer catalog has the opposite requirement: it must show a superseded sheet (as
+/// history, with `State: Superseded`) and a not-yet-indexed one (an upload the operator just made),
+/// so it needs every row, unfiltered — a narrower port cannot serve a wider consumer.
 public interface ISdsDocumentSource
 {
     Task<IReadOnlyList<SdsSheetRow>> ListSheetsAsync(CancellationToken ct = default);

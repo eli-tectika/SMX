@@ -157,4 +157,19 @@ public class DocumentIdTests
     {
         Assert.Throws<ArgumentException>(() => DocumentId.SegmentsOf("bogus", "x"));
     }
+
+    // Encode validates only the KIND, never the payload shape — it will happily mint an id for a
+    // payload TryDecode later rejects (empty segment, wrong count, traversal). CanEncode is what a
+    // provider calls BEFORE publishing a row, so it can know in advance whether the id it is about
+    // to hand out will ever resolve, rather than finding out on the next click.
+    [Theory]
+    [InlineData("sds", "7440-22-4|sigma|2024-03-11", true)]
+    [InlineData("sds", "7440-22-4|sigma|", false)]         // empty trailing segment
+    [InlineData("reg", "echa-svhc/candidate-list", true)]
+    [InlineData("reg", "echa-svhc/../../secret", false)]   // traversal
+    [InlineData("bogus", "x", false)]                      // unknown kind
+    public void CanEncodeIsAnEncodeThenTryDecodeRoundTrip(string kind, string payload, bool expected)
+    {
+        Assert.Equal(expected, DocumentId.CanEncode(kind, payload));
+    }
 }

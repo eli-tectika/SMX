@@ -51,6 +51,14 @@ public static class DocumentId
         return kind + "_" + EncodePayload(payload);
     }
 
+    /// Encode validates only the KIND — never the payload's shape — so it will happily mint an id for
+    /// a payload TryDecode later rejects (an empty segment, the wrong segment count, a traversal
+    /// sequence). A caller about to PUBLISH an id — a catalog row, not a decode of one already handed
+    /// out — needs to know that BEFORE handing it out, not on the next click; this is the
+    /// encode-then-decode round trip that answers that question.
+    public static bool CanEncode(string kind, string payload) =>
+        Shapes.ContainsKey(kind) && TryDecode(Encode(kind, payload), out _, out _);
+
     /// The class's only base64url primitive. `Encode` calls it after validating the kind; it is
     /// exposed without that validation so tests can also construct ids with kind/shape
     /// combinations `Encode` would refuse.
