@@ -115,8 +115,8 @@ public class MafStreamingPathTests(ITestOutputHelper output)
             .AsBuilder().UseFunctionInvocation().Build();
 
         var agent = new ChatClientAgent(chatClient,
-            instructions: "You are a helpful assistant.", name: "spike", tools: []);
-        var session = await agent.CreateSessionAsync(default);
+            instructions: "You are a helpful assistant.", name: "streaming-path", tools: []);
+        var session = await agent.CreateSessionAsync(cancellationToken: default);
 
         var sw = Stopwatch.StartNew();
         var arrivals = new List<long>();
