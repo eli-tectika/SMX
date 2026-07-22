@@ -1,9 +1,9 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
+import { Interview } from './routes/Interview';
 import { LearnedConclusions } from './routes/LearnedConclusions';
 import { MarkerLibrary } from './routes/MarkerLibrary';
 import { MsdsRegistry } from './routes/MsdsRegistry';
-import { NewProject } from './routes/NewProject';
 import { Projects } from './routes/Projects';
 import { ProjectLayout } from './routes/ProjectLayout';
 
@@ -13,7 +13,8 @@ export function App() {
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<Projects />} />
-          <Route path="new" element={<NewProject />} />
+          <Route path="new" element={<Interview />} />
+          <Route path="new/:sessionId" element={<Interview />} />
           <Route path="p/:projectId" element={<ProjectLayout />} />
           <Route path="p/:projectId/:stage" element={<ProjectLayout />} />
           <Route path="marker-library" element={<MarkerLibrary />} />

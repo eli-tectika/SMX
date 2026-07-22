@@ -17,7 +17,7 @@ by them:
 
 | Screen | Route | Endpoint |
 | --- | --- | --- |
-| Intake form | `/new` | `POST /projects` |
+| Intake interview | `/new`, `/new/:sessionId` | `POST/GET /intake-sessions`, `…/messages` (SSE), `…/attachments`, `GET /intake-questions` |
 | Project / stage spine | `/p/:id/intake` | `GET /projects/{id}` (polled while a stage runs) |
 | Compatibility matrix | `/p/:id/matrix` | `GET /projects/{id}/matrix` (+ `?format=xlsx`) |
 
