@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createProject } from '../api/client';
-import type { ComponentSpec, ElementPool } from '../api/types';
+import type { ComponentSpec } from '../api/types';
 
 const blankComponent = (): ComponentSpec => ({
   id: '',
@@ -9,13 +9,7 @@ const blankComponent = (): ComponentSpec => ({
   application: '',
   markets: [],
   objective: '',
-});
-// "Kα" matches the backend test data; the operator adjusts the line if the physicist read another.
-const blankPool = (component: string): ElementPool => ({
-  component,
-  element: '',
-  line: 'Kα',
-  status: 'V',
+  physicalState: '',
 });
 
 /**
@@ -23,27 +17,16 @@ const blankPool = (component: string): ElementPool => ({
  * gets feedback before a round trip. It is a convenience, not the contract — the
  * server's 400 body is still surfaced verbatim, because the server is the authority
  * on what a valid project is.
+ *
+ * Need-only: the operator submits the need; the pool agent proposes the candidate pool. So there is no
+ * element-pool rule here any more — only the need (client, product, components) is required.
  */
-function validate(
-  client: string,
-  product: string,
-  components: ComponentSpec[],
-  pools: ElementPool[],
-): string | null {
+function validate(client: string, product: string, components: ComponentSpec[]): string | null {
   if (!client.trim() || !product.trim()) return 'client and product are required';
   if (components.length === 0) return 'at least one component is required';
   if (components.some((c) => !c.id.trim())) return 'every component needs an id';
   if (new Set(components.map((c) => c.id)).size !== components.length)
     return 'component ids must be unique';
-  // Production mode: the physicist's element pools are what the project screens against.
-  if (pools.length === 0) return 'at least one element pool is required';
-  const ids = new Set(components.map((c) => c.id));
-  if (pools.some((p) => !p.component || !ids.has(p.component)))
-    return 'every element pool must reference a declared component';
-  if (pools.some((p) => !p.element.trim())) return 'every element pool needs an element';
-  // The anti-rubber-stamping rule: a conditional (L) reading must carry its signal-character note.
-  if (pools.some((p) => p.status === 'L' && !p.signalNote?.trim()))
-    return 'each conditional (L) element pool entry must carry a signal-character note';
   return null;
 }
 
@@ -53,18 +36,15 @@ export function NewProject() {
   const [product, setProduct] = useState('');
   const [restricted, setRestricted] = useState('');
   const [components, setComponents] = useState<ComponentSpec[]>([blankComponent()]);
-  const [pools, setPools] = useState<ElementPool[]>([blankPool('')]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const patchComponent = (i: number, patch: Partial<ComponentSpec>) =>
     setComponents((cs) => cs.map((c, j) => (i === j ? { ...c, ...patch } : c)));
-  const patchPool = (i: number, patch: Partial<ElementPool>) =>
-    setPools((ps) => ps.map((p, j) => (i === j ? { ...p, ...patch } : p)));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const invalid = validate(client, product, components, pools);
+    const invalid = validate(client, product, components);
     if (invalid) {
       setError(invalid);
       return;
@@ -76,10 +56,6 @@ export function NewProject() {
         client: client.trim(),
         product: product.trim(),
         components,
-        // Drop the signal note on V rows — it is meaningful only for a conditional reading.
-        elementPools: pools.map((p) =>
-          p.status === 'L' ? p : { component: p.component, element: p.element, line: p.line, status: p.status },
-        ),
         clientRestrictedList: restricted
           .split(',')
           .map((s) => s.trim())
@@ -136,6 +112,7 @@ export function NewProject() {
             <th>Application</th>
             <th style={{ width: 150 }}>Markets (comma-sep)</th>
             <th>Objective</th>
+            <th style={{ width: 130 }}>Physical state</th>
             <th style={{ width: 34 }} />
           </tr>
         </thead>
@@ -195,6 +172,19 @@ export function NewProject() {
                 />
               </td>
               <td>
+                <select
+                  value={c.physicalState ?? ''}
+                  onChange={(e) => patchComponent(i, { physicalState: e.target.value })}
+                  aria-label={`Component ${i + 1} physical state`}
+                >
+                  <option value="">choose…</option>
+                  <option value="liquid">liquid</option>
+                  <option value="solid">solid</option>
+                  <option value="oil-soluble">oil-soluble</option>
+                  <option value="coating">coating</option>
+                </select>
+              </td>
+              <td>
                 <RemoveButton
                   disabled={components.length === 1}
                   onClick={() => setComponents((cs) => cs.filter((_, j) => j !== i))}
@@ -206,100 +196,14 @@ export function NewProject() {
         </tbody>
       </table>
 
-      <SectionHeader
-        title="Element pools"
-        hint="The physicist's measured XRF background, per component. V = present · L = conditional (needs a signal note)."
-        onAdd={() => setPools((ps) => [...ps, blankPool(components[0]?.id ?? '')])}
-      />
-      <table className="mx" style={{ marginBottom: 18 }}>
-        <thead>
-          <tr>
-            <th style={{ width: 130 }}>Component</th>
-            <th style={{ width: 90 }}>Element</th>
-            <th style={{ width: 80 }}>Line</th>
-            <th style={{ width: 96 }}>Status</th>
-            <th>Signal note</th>
-            <th style={{ width: 34 }} />
-          </tr>
-        </thead>
-        <tbody>
-          {pools.map((p, i) => (
-            <tr key={i}>
-              <td>
-                <select
-                  value={p.component}
-                  onChange={(e) => patchPool(i, { component: e.target.value })}
-                  aria-label={`Pool ${i + 1} component`}
-                >
-                  <option value="" disabled>
-                    choose…
-                  </option>
-                  {components
-                    .filter((c) => c.id.trim())
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.id}
-                      </option>
-                    ))}
-                </select>
-              </td>
-              <td>
-                <input
-                  type="text"
-                  value={p.element}
-                  placeholder="Zr"
-                  onChange={(e) => patchPool(i, { element: e.target.value })}
-                  aria-label={`Pool ${i + 1} element`}
-                />
-              </td>
-              <td>
-                <input
-                  type="text"
-                  value={p.line}
-                  placeholder="Kα"
-                  onChange={(e) => patchPool(i, { line: e.target.value })}
-                  aria-label={`Pool ${i + 1} line`}
-                />
-              </td>
-              <td>
-                <div className="seg" role="group" aria-label={`Pool ${i + 1} status`}>
-                  {(['V', 'L'] as const).map((st) => (
-                    <button
-                      key={st}
-                      type="button"
-                      className="seg__btn"
-                      onClick={() => patchPool(i, { status: st })}
-                      aria-pressed={p.status === st}
-                    >
-                      {st}
-                    </button>
-                  ))}
-                </div>
-              </td>
-              <td>
-                {p.status === 'L' ? (
-                  <input
-                    type="text"
-                    value={p.signalNote ?? ''}
-                    placeholder="e.g. trace, near LOD — why it's conditional"
-                    onChange={(e) => patchPool(i, { signalNote: e.target.value })}
-                    aria-label={`Pool ${i + 1} signal note`}
-                  />
-                ) : (
-                  <span className="tiny muted">— (only for conditional readings)</span>
-                )}
-              </td>
-              <td>
-                <RemoveButton
-                  disabled={pools.length === 1}
-                  onClick={() => setPools((ps) => ps.filter((_, j) => j !== i))}
-                  label={`Remove element pool ${i + 1}`}
-                />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="banner" role="note" style={{ marginBottom: 18 }}>
+        <i className="ti ti-sparkles" aria-hidden="true" />
+        <div className="tiny muted">
+          You enter the need — the marker pool is proposed for you. On create, an agent suggests candidate
+          marker chemistries (element + form) per component from the need and web/reference search; screening
+          and dosing follow from there.
+        </div>
+      </div>
 
       <label style={{ display: 'block', marginBottom: 18 }}>
         <div className="tiny muted" style={{ marginBottom: 3 }}>

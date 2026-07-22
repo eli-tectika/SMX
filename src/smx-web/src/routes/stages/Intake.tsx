@@ -122,7 +122,7 @@ export function Intake({ project }: { project: ProjectSummary }) {
               </tbody>
             </table>
 
-            {payload.elementPools.length > 0 && (
+            {payload.elementPools && payload.elementPools.length > 0 && (
               <>
                 <SectionHeader eyebrow="Element pools" hint="the physicist's XRF background" />
                 <table className="mx" style={{ marginBottom: 14 }}>

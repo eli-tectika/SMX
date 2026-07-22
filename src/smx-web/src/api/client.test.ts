@@ -39,9 +39,15 @@ const request: CreateProjectRequest = {
   client: 'LVMH',
   product: 'MUFE clear bottle',
   components: [
-    { id: 'bottle', material: 'PET', application: 'leave-on', markets: ['EU'], objective: 'brand' },
+    {
+      id: 'bottle',
+      material: 'PET',
+      application: 'leave-on',
+      markets: ['EU'],
+      objective: 'brand',
+      physicalState: 'solid',
+    },
   ],
-  elementPools: [{ component: 'bottle', element: 'Zr', line: 'Kα', status: 'V' }],
 };
 
 describe('createProject', () => {

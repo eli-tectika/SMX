@@ -33,6 +33,7 @@ public sealed class StageDispatcher(
         {
             case ProjectDoc p: await OnProjectAsync(p, ct); break;
             case ConstraintsDoc c: await OnConstraintsAsync(c, ct); break;
+            case PoolDoc pl: await OnPoolAsync(pl, ct); break;
             case CandidatesDoc cd: await OnCandidatesAsync(cd, ct); break;
             case VerdictDoc v: await OnVerdictAsync(v, ct); break;
             case GateDoc g: await OnGateAsync(g, ct); break;
@@ -87,6 +88,17 @@ public sealed class StageDispatcher(
     private async Task OnConstraintsAsync(ConstraintsDoc c, CancellationToken ct)
     {
         if (await store.GetCandidatesAsync(c.ProjectId, ct) is not null) return; // idempotency
+
+        // NEED-ONLY: no operator-supplied element pool AND no provided candidates ⇒ the pool agent proposes
+        // the candidate pool first, from the need alone. When EITHER is present the existing Discovery/bypass
+        // path below runs unchanged (an operator/eval pool is the pre-agent world; provided candidates are the
+        // known-candidate bypass). The pool's own write then re-enters at OnPoolAsync → Discovery.
+        if (c.ProvidedCandidates.Count == 0 && c.ElementPools.Count == 0)
+        {
+            await RunPoolProposalAsync(c, ct);
+            return;
+        }
+
         await SetStageAsync(c.ProjectId, Stages.Discovery, s => { s.Status = "running"; s.Attempts++; }, ct);
         try
         {
@@ -139,6 +151,73 @@ public sealed class StageDispatcher(
             await SetStageAsync(c.ProjectId, Stages.Discovery, s => { s.Status = "failed"; s.Error = e.Message; }, ct);
         }
     }
+
+    /// The need-driven pool proposal (the `pool` stage). Guarded on the PoolDoc's existence so an at-least-once
+    /// redelivery of the ConstraintsDoc does not re-run the agent. On success the PoolDoc write re-enters the
+    /// feed at OnPoolAsync, which is what advances to Discovery.
+    private async Task RunPoolProposalAsync(ConstraintsDoc c, CancellationToken ct)
+    {
+        if (await store.GetPoolAsync(c.ProjectId, ct) is not null) return; // idempotency
+        await SetStageAsync(c.ProjectId, Stages.Pool, s => { s.Status = "running"; s.Attempts++; }, ct);
+        try
+        {
+            var result = await agents.RunPoolAsync(await LoadProjectAsync(c.ProjectId, ct), c, null, ct);
+            if (result.Succeeded)
+            {
+                await store.UpsertPoolAsync(result.Output!, ct);
+                await SetStageAsync(c.ProjectId, Stages.Pool, s => { s.Status = "done"; s.Error = null; }, ct);
+            }
+            else
+                await SetStageAsync(c.ProjectId, Stages.Pool, s => { s.Status = "needs-review"; s.Error = result.Error; }, ct);
+        }
+        catch (Exception e)
+        {
+            await SetStageAsync(c.ProjectId, Stages.Pool, s => { s.Status = "failed"; s.Error = e.Message; }, ct);
+        }
+    }
+
+    /// The proposed pool landed. Background is the XRF filter — DEFERRED — so it is a PASS-THROUGH here: mark it
+    /// done and hand the pool to Discovery. Discovery reads its element pool from ConstraintsDoc.ElementPools,
+    /// so the pool's suggestions are mapped onto an IN-MEMORY copy of the constraints (never persisted — the
+    /// stored ConstraintsDoc stays the frozen operator input). That is what lets DiscoveryAgent and its rails
+    /// stay untouched: from Discovery's point of view an agent-proposed pool and an operator-entered one are
+    /// the same shape. When XRF is built, its filter goes HERE, before Discovery.
+    private async Task OnPoolAsync(PoolDoc pool, CancellationToken ct)
+    {
+        if (await store.GetCandidatesAsync(pool.ProjectId, ct) is not null) return; // idempotency
+        if (await store.GetConstraintsAsync(pool.ProjectId, ct) is not { } constraints) return;
+
+        await SetStageAsync(pool.ProjectId, Stages.Background, s => { s.Status = "done"; s.Error = null; }, ct);
+        await SetStageAsync(pool.ProjectId, Stages.Discovery, s => { s.Status = "running"; s.Attempts++; }, ct);
+        try
+        {
+            var project = await LoadProjectAsync(pool.ProjectId, ct); // sensitive terms for the web tool
+            constraints.ElementPools = PoolElementPools(pool);        // IN-MEMORY only — do not persist
+            var result = await agents.RunDiscoveryAsync(project, constraints, null, ct);
+            if (result.Succeeded)
+            {
+                await store.UpsertCandidatesAsync(result.Output!, ct);
+                await SetStageAsync(pool.ProjectId, Stages.Discovery, s => { s.Status = "done"; s.Error = null; }, ct);
+            }
+            else
+                await SetStageAsync(pool.ProjectId, Stages.Discovery, s => { s.Status = "needs-review"; s.Error = result.Error; }, ct);
+        }
+        catch (Exception e)
+        {
+            await SetStageAsync(pool.ProjectId, Stages.Discovery, s => { s.Status = "failed"; s.Error = e.Message; }, ct);
+        }
+    }
+
+    /// The pool → element-pool mapping Discovery consumes. Discovery needs only (component, element); the
+    /// form-class hint stays in the PoolDoc (provenance + future Background use) and is deliberately NOT
+    /// threaded into Discovery's own form selection for now. Line defaults to "Kα", status "V" (provisional —
+    /// XRF deferred, so nothing is conditional yet). DISTINCT on (component, element): the pool may propose
+    /// several forms of one element, but the element pool is a set of elements.
+    private static List<ElementPool> PoolElementPools(PoolDoc pool) =>
+        [.. pool.Suggestions
+            .Select(s => (s.Component, s.Element))
+            .Distinct()
+            .Select(k => new ElementPool(k.Component, k.Element, "Kα", "V"))];
 
     private async Task OnCandidatesAsync(CandidatesDoc cd, CancellationToken ct)
     {
@@ -647,6 +726,13 @@ public sealed class StageDispatcher(
 
     private async Task<RevisedStage> ReviseDiscoveryAsync(ConstraintsDoc c, RevisionDoc r, CancellationToken ct)
     {
+        // Need-only project: the pool Discovery tiers against lives in the PoolDoc, not the frozen
+        // ConstraintsDoc. Hydrate the in-memory constraints from it (the same map OnPoolAsync uses) so the
+        // revision re-runs against the same pool the first run did, rather than an empty one that would fail
+        // Validate on the first candidate.
+        if (c.ElementPools.Count == 0 && await store.GetPoolAsync(r.ProjectId, ct) is { } pool)
+            c.ElementPools = PoolElementPools(pool);
+
         var result = await agents.RunDiscoveryAsync(await LoadProjectAsync(r.ProjectId, ct), c, r, ct);
         if (!result.Succeeded)
             throw new InvalidOperationException($"the discovery agent could not apply the revision: {result.Error}");

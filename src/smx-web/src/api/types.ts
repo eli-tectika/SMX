@@ -59,6 +59,12 @@ export interface ComponentSpec {
    * so the create form does not collect it.
    */
   batchMassKg?: number;
+  /**
+   * The substrate's physical state — "liquid" | "solid" | "oil-soluble" | "coating" (free text).
+   * Drives the pool agent's form-class choice (oil-soluble → organocomplex; solid polymer →
+   * oxide/salt; coating → dispersible compound). Collected in the intake form.
+   */
+  physicalState?: string;
 }
 
 /** SubstanceSpec — src/Smx.Domain/Records/ConstraintsDoc.cs (still used by MatrixDoc.rows). */
@@ -196,7 +202,8 @@ export interface XrfDevice {
  */
 export interface ProjectPayload {
   components: ComponentSpec[];
-  elementPools: ElementPool[];
+  /** Optional: a need-only project carries no operator element pool — the pool agent proposes one instead. */
+  elementPools?: ElementPool[];
   providedCandidates: unknown[];
   clientRestrictedList: string[];
   measuredBackground: MeasuredBackground[];
@@ -238,16 +245,15 @@ export interface ProjectListItem {
 /**
  * CreateProjectRequest — src/Smx.Backend/Api/CreateProjectRequest.cs.
  *
- * Production mode: at least one `elementPools` entry (the physicist's XRF background). The
- * backend also accepts a known-candidate mode (`candidates`) plus optional `measuredBackground`
- * and `device` (XRF LODs), but those are eval / awaiting-physics seams and the operator form
- * does not send them — see the plan's deferred section.
+ * Need-only: the operator submits the need (components incl. each substrate's `physicalState`) and the pool
+ * agent proposes the candidate pool. The backend still accepts an explicit `elementPools` (physicist XRF
+ * background) and a known-candidate mode (`candidates`) plus `measuredBackground` / `device`, but those are
+ * eval / awaiting-physics seams and the operator form does not send them — see the pool subsystem design.
  */
 export interface CreateProjectRequest {
   client: string;
   product: string;
   components: ComponentSpec[];
-  elementPools: ElementPool[];
   clientRestrictedList?: string[];
 }
 

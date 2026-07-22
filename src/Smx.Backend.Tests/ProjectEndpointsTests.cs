@@ -119,13 +119,15 @@ public class ProjectEndpointsTests : IClassFixture<WebApplicationFactory<Program
     }
 
     [Fact]
-    public async Task Post_WithNeitherPoolsNorCandidates_Returns400()
+    public async Task Post_NeedOnly_NoPoolsNoCandidates_Returns202()
     {
+        // Need-only is now valid: with neither an element pool nor provided candidates, the pool agent proposes
+        // the candidate pool from the need. (Empty COMPONENTS is still a 400 — see PostProjects_Rejects_… above.)
         var req = new CreateProjectRequest("Acme", "MUFE",
-            Components: [new("bottle", "PET", "packaging", ["EU"], "brand")],
-            ElementPools: [], Candidates: null, ClientRestrictedList: null);
+            Components: [new("bottle", "PET", "packaging", ["EU"], "brand", PhysicalState: "solid")],
+            ElementPools: null, Candidates: null, ClientRestrictedList: null);
         var resp = await _client.PostAsJsonAsync("/projects", req);
-        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, resp.StatusCode);
     }
 
     [Fact]
@@ -219,6 +221,24 @@ public class ProjectEndpointsTests : IClassFixture<WebApplicationFactory<Program
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         var doc = await resp.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("1314-23-4", doc.GetProperty("substances")[0].GetProperty("cas").GetString());
+    }
+
+    [Fact]
+    public async Task GetPool_404UntilSeeded_ThenReturnsDoc()
+    {
+        var post = await _client.PostAsJsonAsync("/projects", ValidBody);
+        var id = (await post.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("projectId").GetString()!;
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/projects/{id}/pool")).StatusCode);
+
+        await _store.UpsertPoolAsync(new PoolDoc
+        {
+            Id = RecordIds.Pool(id), ProjectId = id,
+            Suggestions = [new PoolSuggestion("bottle", "Zr", "compound", "an oxide suits a solid polymer", [])],
+        });
+        var resp = await _client.GetAsync($"/projects/{id}/pool");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var doc = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Zr", doc.GetProperty("suggestions")[0].GetProperty("element").GetString());
     }
 
     [Fact]

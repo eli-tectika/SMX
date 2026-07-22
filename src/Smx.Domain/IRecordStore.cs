@@ -21,6 +21,7 @@ public interface IRecordStore
     Task<DecisionDoc?> GetDecisionAsync(string projectId, CancellationToken ct = default);
     Task<IReadOnlyList<VerdictDoc>> GetVerdictsAsync(string projectId, CancellationToken ct = default);
     Task<CandidatesDoc?> GetCandidatesAsync(string projectId, CancellationToken ct = default);
+    Task<PoolDoc?> GetPoolAsync(string projectId, CancellationToken ct = default);
     Task<GateDoc?> GetGateAsync(string projectId, string gateType, CancellationToken ct = default);
     Task<VerdictDoc?> GetVerdictAsync(string projectId, string cas, string componentId, CancellationToken ct = default);
     Task<IReadOnlyList<RevisionDoc>> GetRevisionsAsync(string projectId, CancellationToken ct = default);
@@ -39,6 +40,7 @@ public interface IRecordStore
     Task UpsertCostAsync(CostDoc doc, CancellationToken ct = default);
     Task UpsertDecisionAsync(DecisionDoc doc, CancellationToken ct = default);
     Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default);
+    Task UpsertPoolAsync(PoolDoc doc, CancellationToken ct = default);
     Task UpsertGateAsync(GateDoc doc, CancellationToken ct = default);
     Task UpsertRevisionAsync(RevisionDoc doc, CancellationToken ct = default);
     Task UpsertChatMessageAsync(ChatMessageDoc doc, CancellationToken ct = default);
