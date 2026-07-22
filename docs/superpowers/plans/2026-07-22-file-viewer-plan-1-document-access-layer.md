@@ -65,6 +65,16 @@ dotnet test  src/Smx.Backend.sln --filter "FullyQualifiedName~DocumentIdTests"
 
 **Why first:** every other task depends on it, and it is the security boundary (spec §3 invariants 1–2).
 
+> **Implemented and hardened.** Code review found three real gaps in the reference implementation
+> below, all verified by execution and all fixed in `c7a6689`. Later tasks depend on the fixed shape:
+> decoding uses a **strict** UTF-8 encoder (`new UTF8Encoding(false, true)`) because the default one
+> uses replacement fallback and silently turned invalid bytes into a `U+FFFD` partition key; the
+> whitespace guard is `char.IsWhiteSpace` rather than `== ' '` because NBSP, U+2028/29 and U+3000 all
+> slipped through a slug payload; and the base64url primitive is called `EncodePayload`, not
+> `EncodePayloadForTest`, because production `Encode` calls it. `PartitionKeyOf`/`SegmentsOf` now
+> throw `ArgumentException` on an unknown kind instead of `KeyNotFoundException`. Read
+> `src/Smx.Domain/Documents/DocumentId.cs` for the authoritative version.
+
 **Files:**
 - Create: `src/Smx.Domain/Documents/DocumentId.cs`
 - Test: `src/Smx.Backend.Tests/DocumentIdTests.cs`
@@ -129,7 +139,7 @@ public class DocumentIdTests
     [InlineData("reg", "echa/doc\nid")]
     public void RejectsDangerousPayloads(string kind, string payload)
     {
-        var id = kind + "_" + DocumentId.EncodePayloadForTest(payload);
+        var id = kind + "_" + DocumentId.EncodePayload(payload);
         Assert.False(DocumentId.TryDecode(id, out _, out _));
     }
 
@@ -159,7 +169,7 @@ public class DocumentIdTests
     [InlineData("sds", "a|b|c|d")]
     public void RejectsWrongSegmentCount(string kind, string payload)
     {
-        var id = kind + "_" + DocumentId.EncodePayloadForTest(payload);
+        var id = kind + "_" + DocumentId.EncodePayload(payload);
         Assert.False(DocumentId.TryDecode(id, out _, out _));
     }
 
@@ -171,7 +181,7 @@ public class DocumentIdTests
     [InlineData("sdsgap_", "Nd_oxide", "Nd")]
     public void PartitionKeyIsTheFirstSegment(string prefix, string payload, string expected)
     {
-        var id = prefix + DocumentId.EncodePayloadForTest(payload);
+        var id = prefix + DocumentId.EncodePayload(payload);
         Assert.True(DocumentId.TryDecode(id, out var kind, out var decoded));
         Assert.Equal(expected, DocumentId.PartitionKeyOf(kind, decoded));
     }
@@ -229,12 +239,12 @@ public static class DocumentId
     public static string Encode(string kind, string payload)
     {
         if (!Shapes.ContainsKey(kind)) throw new ArgumentException($"unknown document kind '{kind}'", nameof(kind));
-        return kind + "_" + EncodePayloadForTest(payload);
+        return kind + "_" + EncodePayload(payload);
     }
 
     /// base64url of a raw payload. Public only so tests can build deliberately-invalid ids;
     /// production callers use Encode, which validates the kind.
-    public static string EncodePayloadForTest(string payload) =>
+    public static string EncodePayload(string payload) =>
         Convert.ToBase64String(Encoding.UTF8.GetBytes(payload)).Replace('+', '-').Replace('/', '_');
 
     public static bool TryDecode(string? id, out string kind, out string payload)
@@ -1330,7 +1340,7 @@ public class DocumentCatalogTests
         Given();
         Assert.Null(await Catalog.GetAsync("sds_!!!!"));
         Assert.Null(await Catalog.GetAsync("../../etc/passwd"));
-        Assert.Null(await Catalog.GetAsync(DocumentId.EncodePayloadForTest("reg/../../x")));
+        Assert.Null(await Catalog.GetAsync(DocumentId.EncodePayload("reg/../../x")));
         Assert.Empty(_bronze.PathsRead);
     }
 
