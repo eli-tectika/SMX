@@ -136,44 +136,46 @@ You must remove the `Skip` to run it. Read the printed arrival times.
 
 - [x] **Step 4: Record the answer in the plan file**
 
-> **SPIKE RESULT (2026-07-22, partial — static verification only).**
-> **Method name:** `AIAgent.RunStreamingAsync` — confirmed present in
-> `Microsoft.Agents.AI` 1.13.0, with `ChatClientAgent.RunCoreStreamingAsync` as the concrete
-> implementation.
-> **Update type:** `Microsoft.Agents.AI.AgentResponseUpdate`; the enumerable is
-> `IAsyncEnumerable<AgentResponseUpdate>` (both symbols read out of the shipped assembly, along with
-> `ToAgentResponseUpdates` / `AsChatResponseUpdate` bridging from
-> `Microsoft.Extensions.AI.ChatResponseUpdate`). The names Task 7 was written against are correct
-> as written.
-> **Live run:** NOT performed. The Azure CLI refresh token had expired
-> (`AADSTS700082`) and re-authenticating needs an interactive `az login`, so no call was made against
-> the dev Foundry Anthropic-native endpoint. **Whether that path delivers genuinely incremental
-> updates is still unverified**, and this note must not be read as though it were.
+> **SPIKE RESULT (2026-07-22): streaming WORKS. Task 7 is implemented as designed.**
+> **Method:** `AIAgent.RunStreamingAsync(string, AgentSession, AgentRunOptions?, CancellationToken)`
+> → `IAsyncEnumerable<Microsoft.Agents.AI.AgentResponseUpdate>`; read the text off `update.Text`.
+> **Observed:** 10 updates over 338 ms, arriving ~40 ms apart — exactly the pacing the transport
+> emitted — joining to precisely the full reply.
 
-**Why the plan proceeds as designed anyway, and why the fallback needs no code.** The two branches
-below turn out to be the *same code* — which is what makes the unverified half safe to defer rather
-than a gamble:
+**How it was run, and the one thing that remains unproven.** The Azure CLI refresh token had expired
+(`AADSTS700082`) and re-authenticating needs an interactive `az login`, so this ran against a **fake
+HTTP transport instead of a live endpoint**: the real `AnthropicFoundryClient` with its `HttpClient`
+property replaced, speaking the real Anthropic Messages SSE protocol with real delays, through the real
+`AsIChatClient` → `UseFunctionInvocation` → `ChatClientAgent` stack. Only the socket is fake.
 
-- `RunStreamingAsync` exists on `AIAgent` unconditionally. It is the delegating `IChatClient`
-  underneath, not the agent, that decides whether the HTTP call is actually streamed.
-- If the Foundry Anthropic-native path does not stream, `RunStreamingAsync` yields **one**
-  `AgentResponseUpdate` carrying the whole reply. `MafAgent.SendStreamingAsync` then yields one
-  chunk; `InterviewEndpoints` writes one `event: chunk` and then `event: done`. That is the
-  fallback's observable behaviour, reached with no branch, no second implementation, and no change
-  to the frontend contract.
-- So the only thing riding on the live answer is **feel** — token-by-token typing versus one arrival.
-  Nothing structural. Task 7's `Assert.True(chunks.Count > 1, …)` runs against `FakeChatClient`, so
-  it pins *our* adapter's behaviour, not Foundry's, and stays valid either way.
+For the SDK question that is *stronger* than a live run — deterministic, reproducible, and it pins the
+behaviour permanently. But it cannot see past the socket, and one thing lives there: **whether the
+Foundry gateway itself buffers the upstream SSE before relaying it.** If it does, the operator sees one
+lump. That is the graceful degradation, not a break — `RunStreamingAsync` would simply yield one update,
+`SendStreamingAsync` one chunk, and `InterviewEndpoints` one `event: chunk` before `event: done`, with
+no branch, no second implementation and no change to the frontend contract. **Confirm at the first live
+deploy**, alongside the `/anthropic/v1` double-version check.
 
-**Outstanding, and owed before Plan 3's frontend is judged:** run the live check at the first deploy
-that has a working credential (Task 13 leaves `ORCHESTRATOR_BASE_URL` wired, so a real interview turn
-against dev is the natural place). If the reply arrives in one lump, that is a *product* finding to
-put to the operator — not a defect to fix in this plan.
+**Two traps this spike sprang, both of which cost a false negative.** Either will do it again:
 
-- [x] **Step 5: Delete the spike and commit the answer**
+1. The Anthropic SDK **does** pass `HttpCompletionOption.ResponseHeadersRead` — proven, because a
+   pipe-backed body was consumed lazily. The string `ResponseHeadersRead` appears **nowhere** in the
+   DLL (enum values are integers in IL), so this cannot be answered by grepping, and its absence
+   is not evidence.
+2. A custom `HttpContent` in a fake handler **buffers into a `MemoryStream` by default**: the base
+   `CreateContentReadStreamAsync` runs `SerializeToStreamAsync` to completion. Unless it is overridden
+   with a real pipe, the fake reports "no streaming" regardless of what the SDK does. The first two
+   runs of this spike did exactly that and read as a definitive negative.
 
-The spike file was never committed — the live run it exists for could not be performed, so it was
-written, read, and dropped rather than left behind as a skipped test that looks like coverage.
+- [x] **Step 5: ~~Delete the spike~~ — KEPT, as a real test**
+
+**Deviation from the plan, made deliberately.** Task 0 called the spike throwaway *because it needed a
+live endpoint*, which makes it unrunnable in CI. That premise no longer holds: the fake-transport version
+runs offline in under a second and is deterministic. It is now
+`src/Smx.Orchestrator.Tests/MafStreamingPathTests.cs`, on exactly the reasoning `FoundryChatClientFactoryTests`
+already states for itself — the failure being guarded against lives in SDK *binding*, so only exercising
+the real binding catches it. A MAF or Anthropic-SDK upgrade that silently stops streaming would otherwise
+show up as "the chat feels slow now", months later, with no test pointing at the cause.
 
 ```bash
 git add docs/superpowers/plans/2026-07-21-conversational-intake-plan-1-session-and-agent.md
