@@ -18,8 +18,19 @@ export const VERDICT_DIMENSIONS = [
 ] as const;
 export type VerdictDimension = (typeof VERDICT_DIMENSIONS)[number];
 
-/** StageState.Status — src/Smx.Domain/Records/ProjectDoc.cs */
-export type StageStatus = 'pending' | 'running' | 'failed' | 'needs-review' | 'done';
+/** StageState.Status — src/Smx.Domain/Records/ProjectDoc.cs (StageStatus). */
+export type StageStatus =
+  | 'pending'
+  | 'running'
+  | 'failed'
+  | 'needs-review'
+  | 'done'
+  /**
+   * Intake only. The interview agent created this project and wrote its dossier, but NO agent has run
+   * and none will until the operator presses Start Processing. It is the line between "the agent
+   * created something" and "the analysis is running".
+   */
+  | 'awaiting-confirmation';
 
 /** Stage keys the backend actually tracks — src/Smx.Domain/Records/RecordIds.cs (Stages.All). */
 export const BACKED_STAGES = ['intake', 'discovery', 'regulatory', 'matrix'] as const;
@@ -332,4 +343,82 @@ export interface MsdsEntry {
   reviewStatus: string;
   reviewedAt?: string | null;
   linkedProjects: string[];
+}
+
+/* ---------------------------------------------------------------------------
+   The pre-project interview — "New project" as a conversation rather than a form.
+
+   Mirrors src/Smx.Domain/Intake/DossierEntry.cs, src/Smx.Domain/Intake/IntakeQuestions.cs and
+   src/Smx.Domain/Records/IntakeDocs.cs.
+   --------------------------------------------------------------------------- */
+
+/** DossierState — src/Smx.Domain/Intake/DossierEntry.cs. There is deliberately no "never asked". */
+export type DossierState = 'answered' | 'agent-proposed' | 'unknown' | 'not-applicable';
+
+/** DossierEntry — src/Smx.Domain/Intake/DossierEntry.cs */
+export interface DossierEntry {
+  questionId: string;
+  state: DossierState;
+  answer: string;
+  provenance: string;
+  confidence?: string;
+  recordedAt: string;
+}
+
+/** IntakeQuestion — src/Smx.Domain/Intake/IntakeQuestions.cs, served by GET /intake-questions. */
+export interface IntakeQuestion {
+  id: string;
+  prompt: string;
+  why: string;
+}
+
+/** AttachmentStatus — src/Smx.Domain/Records/IntakeDocs.cs */
+export type AttachmentStatus = 'extracted' | 'unsupported' | 'failed';
+
+/** SessionAttachment — src/Smx.Domain/Records/IntakeDocs.cs */
+export interface SessionAttachment {
+  fileId: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  blobPath: string;
+  textBlobPath?: string;
+  status: AttachmentStatus;
+  error?: string;
+}
+
+/** InterviewTurn — src/Smx.Domain/Records/IntakeDocs.cs */
+export interface InterviewTurn {
+  role: 'operator' | 'agent';
+  text: string;
+  toolCalls: string[];
+  createdAt: string;
+}
+
+/** IntakeSessionDoc — src/Smx.Domain/Records/IntakeDocs.cs */
+export interface IntakeSession {
+  sessionId: string;
+  status: 'interviewing' | 'created' | 'abandoned';
+  client: string;
+  product: string;
+  summary: string;
+  turns: InterviewTurn[];
+  attachments: SessionAttachment[];
+  dossier: DossierEntry[];
+  proposedComponents: ComponentSpec[];
+  createdProjectId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** IntakeBriefDoc — src/Smx.Domain/Records/IntakeDocs.cs */
+export interface IntakeBrief {
+  projectId: string;
+  sessionId: string;
+  summary: string;
+  dossier: DossierEntry[];
+  components: ComponentSpec[];
+  attachments: SessionAttachment[];
+  transcript: InterviewTurn[];
+  createdAt: string;
 }

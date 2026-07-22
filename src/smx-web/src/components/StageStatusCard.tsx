@@ -6,6 +6,7 @@ const TOKEN: Record<StageStatus, string> = {
   done: 'success',
   failed: 'danger',
   'needs-review': 'warning',
+  'awaiting-confirmation': 'muted',
 };
 
 /**
@@ -25,6 +26,7 @@ const MEANING: Record<StageStatus, string> = {
   done: 'Complete.',
   failed: 'Halted.',
   'needs-review': 'Parked — the agent stopped and wants a human.',
+  'awaiting-confirmation': 'Created — awaiting Start Processing.',
 };
 
 export function StageStatusCard({ name, state }: { name: string; state: StageState | undefined }) {
