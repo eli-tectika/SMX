@@ -34,6 +34,12 @@
          copied: one fixture, one place to update, and no new binary in the tree. -->
     <Content Include="../Smx.Functions.Tests/Resources/real-sds-nd2o3.pdf"
              Link="Resources/real-sds-nd2o3.pdf" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Smx.Domain.Documents.SdsRegistryKey is a hand-copy of DedupKey.Norm/ForRegistry, because
+         DedupKey lives in the OTHER solution (Smx.Functions.sln) and cannot be referenced from here.
+         A copy that drifts silently empties the SDS text view, so the original is COMPILED INTO this
+         test assembly and SdsRegistryKeyTests asserts the two agree. Source only — no project
+         reference, no Functions dependency in the product code. -->
+    <Compile Include="../Smx.Functions/Sds/Domain/DedupKey.cs" Link="Mirrored/DedupKey.cs" />
   </ItemGroup>
 
   <ItemGroup>

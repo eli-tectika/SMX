@@ -136,7 +136,10 @@ if (builder.Configuration["COSMOS_ACCOUNT_ENDPOINT"] is { Length: > 0 })
         return new CompositeDocumentTextReader(
             new CosmosRegSilverTextReader(
                 sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, "reg-silver")),
-            new SdsIndexTextReader(new SearchClient(new Uri(opts.SearchEndpoint), opts.SdsIndex, credential)));
+            // ClientOptions() is not optional: the SDK's default serializer is PascalCase and
+            // case-sensitive, and would bind every field of a camelCase index row to null in silence.
+            new SdsIndexTextReader(new SearchClient(
+                new Uri(opts.SearchEndpoint), opts.SdsIndex, credential, SdsIndexTextReader.ClientOptions())));
     });
 }
 

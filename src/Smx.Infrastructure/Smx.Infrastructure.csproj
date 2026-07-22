@@ -33,6 +33,12 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>Smx.Orchestrator.Tests</_Parameter1>
     </AssemblyAttribute>
+    <!-- SdsIndexTextReaderTests round-trips the real SdsIndexTextReader.Row through the real
+         serializer. A test-local copy of that record would prove nothing about the type the
+         production client actually binds to. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Smx.Backend.Tests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>
