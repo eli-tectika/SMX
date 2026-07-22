@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Smx.Orchestrator.Agents;
+using Smx.Orchestrator.Tests.Fakes;
 
 namespace Smx.Orchestrator.Tests;
 
@@ -50,5 +51,43 @@ public class MafAgentTests
     {
         var messages = new[] { new ChatMessage(ChatRole.Assistant, "{ \"substances\": [] }") };
         Assert.Empty(MafAgent.WebCitationUrls(messages));
+    }
+
+    // The interview's entire feel rests on chunks actually arriving incrementally rather than as one lump
+    // relabeled as "streaming" — see MafStreamingPathTests for the live-wire proof; this pins the adapter.
+    [Fact]
+    public async Task SendStreamingAsync_YieldsChunks_AndTheConcatenationIsTheWholeReply()
+    {
+        var client = new FakeChatClient(streamingChunks: ["Hel", "lo, ", "operator."]);
+        var agent = new MafAgent(client, "interview", "instructions", []);
+        var thread = await agent.StartThreadAsync(default);
+
+        var chunks = new List<string>();
+        await foreach (var chunk in thread.SendStreamingAsync("hi", default))
+            chunks.Add(chunk);
+
+        // Both halves matter: the caller streams the chunks to the browser AND persists the join.
+        Assert.True(chunks.Count > 1, "no incremental chunks — the operator watches a spinner");
+        Assert.Equal("Hello, operator.", string.Concat(chunks));
+    }
+
+    // The interface default exists so no stage agent must change. It is correct-but-unhelpful
+    // rather than unimplemented: a caller written against this interface works on every agent.
+    private sealed class SendAsyncOnlyThread : ISmxAgentThread
+    {
+        public Task<string> SendAsync(string message, CancellationToken ct) => Task.FromResult("whole reply, no streaming");
+    }
+
+    [Fact]
+    public async Task SendStreamingAsync_DefaultsToOneChunk_ForAThreadThatOnlyImplementsSendAsync()
+    {
+        ISmxAgentThread thread = new SendAsyncOnlyThread();
+
+        var chunks = new List<string>();
+        await foreach (var chunk in thread.SendStreamingAsync("hi", default))
+            chunks.Add(chunk);
+
+        Assert.Single(chunks);
+        Assert.Equal("whole reply, no streaming", chunks[0]);
     }
 }

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 
@@ -57,6 +58,23 @@ public sealed class MafAgent : ISmxAgent
             var response = await agent.RunAsync(message, session, cancellationToken: ct).ConfigureAwait(false);
             _lastTurnWebCitations = WebCitationUrls(response.Messages);
             return response.Text;
+        }
+
+        /// Overrides the interface default with real incremental delivery. Uses the MAF streaming API
+        /// confirmed by the Task-0 spike (see MafStreamingPathTests) — if this stops compiling after a
+        /// MAF upgrade, re-run that test rather than guessing the new name.
+        public async IAsyncEnumerable<string> SendStreamingAsync(
+            string message, [EnumeratorCancellation] CancellationToken ct)
+        {
+            await foreach (var update in agent.RunStreamingAsync(message, session, cancellationToken: ct)
+                               .WithCancellation(ct).ConfigureAwait(false))
+            {
+                var text = update.Text;
+                if (!string.IsNullOrEmpty(text)) yield return text;
+            }
+            // Web citations are not collected here: no streaming agent has a hosted web tool, and
+            // silently returning an empty set would be a lie if one ever did. If a streaming agent
+            // gains one, collect from the updates and set _lastTurnWebCitations, as SendAsync does.
         }
     }
 }
