@@ -1,0 +1,40 @@
+namespace Smx.Domain.Documents;
+
+/// A row of `sds-registry` (PK /cas) — a sheet that exists. Mirrors RegistryPointer, minus the
+/// index-doc-id list the viewer has no use for.
+public sealed record SdsSheetRow(
+    string Id, string Cas, string Supplier, string ProductName, string RevisionDate,
+    string Region, string Language, string SourceUrl, string BlobPath, bool Indexed,
+    string IngestedUtc, string? SupersededBy, string? MasterListId);
+
+/// A row of `sds-master-list` (PK /element) — a substance the system knows it needs a sheet for.
+/// Status is pending | fetched | failed | awaiting_operator (SdsStatus in the Functions app).
+public sealed record SdsMasterRow(
+    string Id, string Element, string Form, string Cas, string Status,
+    string? LastAttemptUtc, int AttemptCount);
+
+/// A row of `reg-state` (PK /sourceId, id = docId) — per-document change-detection state.
+public sealed record RegDocRow(
+    string DocId, string SourceId, string Sha256, string OfficialDate, string SyncRunId, string LastFetchTs);
+
+/// A curated source from `reg-registry`. Membership here is what distinguishes a synced document
+/// (`regulatory/` prefix) from a seed-imported one (`seed/` prefix).
+public sealed record RegSourceRow(
+    string SourceId, string Regulation, string Authority, IReadOnlyList<RegDocTitleRow> Documents);
+
+public sealed record RegDocTitleRow(string DocId, string Url, string? Title);
+
+public interface ISdsDocumentSource
+{
+    Task<IReadOnlyList<SdsSheetRow>> ListSheetsAsync(CancellationToken ct = default);
+    Task<SdsSheetRow?> GetSheetAsync(string registryId, string cas, CancellationToken ct = default);
+    Task<IReadOnlyList<SdsMasterRow>> ListMasterAsync(CancellationToken ct = default);
+    Task<SdsMasterRow?> GetMasterAsync(string masterId, string element, CancellationToken ct = default);
+}
+
+public interface IRegDocumentSource
+{
+    Task<IReadOnlyList<RegSourceRow>> ListSourcesAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<RegDocRow>> ListDocsAsync(CancellationToken ct = default);
+    Task<RegDocRow?> GetDocAsync(string docId, string sourceId, CancellationToken ct = default);
+}
