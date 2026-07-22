@@ -75,6 +75,8 @@ FOUNDRY_ENDPOINT=$foundryEp
 COSMOS_DATABASE=smx
 RECORD_CONTAINER=record
 COMPATIBILITY_CONTAINER=ref-compatibility
+BRONZE_ACCOUNT_NAME=$bronze
+BRONZE_FILESYSTEM=bronze
 "@
 
 $functionsCfg = [ordered]@{

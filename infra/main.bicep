@@ -289,6 +289,7 @@ module compute 'modules/compute.bicep' = {
     searchEndpoint: 'https://${ai.outputs.searchName}.search.windows.net'
     keyVaultUri: security.outputs.keyVaultUri
     appInsightsConnectionString: hub.outputs.appInsightsConnectionString
+    bronzeAccountName: data.outputs.storageName
     // The orchestrator reaches the proxy over its private endpoint; nothing here consumes compute's
     // outputs, so this dependency on functions does not close a cycle.
     searchProxyEndpoint: 'https://${functions.outputs.searchProxyDefaultHostName}'

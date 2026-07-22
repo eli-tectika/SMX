@@ -26,6 +26,9 @@ param acrLoginServer string = ''
 @description('Frontend SPA image (empty = placeholder).')
 param frontendImage string = ''
 
+@description('Storage account holding the bronze filesystem — interview attachments are written there.')
+param bronzeAccountName string = ''
+
 @description('Backend API image (empty = placeholder).')
 param backendImage string = ''
 
@@ -128,6 +131,12 @@ var sharedEnv = [
   { name: 'SDS_REGISTRY_CONTAINER', value: 'sds-registry' }
   { name: 'SUBSTANCE_PROPERTIES_CONTAINER', value: 'substance-properties' }
   { name: 'LEARNED_CONCLUSIONS_SEARCH_INDEX', value: 'learned-conclusions' }
+  // Interview attachments: the backend writes the bytes + extracted text here at upload, and the
+  // orchestrator reads that text back for the read_attachment tool. Same `bronze` filesystem the SDS
+  // corpus already uses; the shared workload identity already holds Storage Blob Data Contributor on
+  // the account (data.bicep), so only the location needs saying.
+  { name: 'BRONZE_ACCOUNT_NAME', value: bronzeAccountName }
+  { name: 'BRONZE_FILESYSTEM', value: 'bronze' }
 ]
 
 // Only the orchestrator hosts the Discovery agent's search_web tool, so only it is told where the proxy is:
