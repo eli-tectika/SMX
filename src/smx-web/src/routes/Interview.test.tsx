@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Interview } from './Interview';
+import { createBlocker } from '../domain/intakeGate';
 import type { IntakeSession } from '../api/types';
 
 vi.mock('../api/client', () => ({
@@ -83,7 +84,13 @@ describe('the interview screen', () => {
     renderAt();
     const create = await screen.findByRole('button', { name: /create the project/i });
     expect(create).toBeDisabled();
-    expect(screen.getByText(/still open|summary|component/i)).toBeInTheDocument();
+    // The REASON, verbatim from the mirror rather than a loose regex. A pattern like
+    // /summary|component/i is matched by the button's own static hint copy, so it would keep passing
+    // with the blocker text deleted — a disabled button whose reason is invisible is exactly the
+    // surprise this is meant to prevent.
+    const reason = createBlocker(session(), QUESTIONS);
+    expect(reason).not.toBeNull();
+    expect(screen.getByText(reason as string)).toBeInTheDocument();
   });
 
   it('streams the reply as it arrives, and keeps what the operator said', async () => {
