@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DocumentContent } from './DocumentContent';
 
@@ -161,6 +161,26 @@ describe('DocumentContent — what may be rendered, and how', () => {
     render(<DocumentContent content={big} title="x" downloadHref="/dl" />);
     expect(await screen.findByText(/25 MB/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /download/i })).toBeInTheDocument();
+  });
+
+  /**
+   * The href alone would 401 in any deployed environment: MSAL bearer tokens do not ride on a
+   * plain anchor navigation — the same constraint that forced the bytes to be fetched and
+   * rendered from memory in the first place. The handler serves them from memory instead.
+   */
+  it('hands a download click to the caller rather than letting the browser navigate', async () => {
+    const onDownload = vi.fn((e: { preventDefault: () => void }) => e.preventDefault());
+    render(
+      <DocumentContent
+        content={bytes('', 'application/octet-stream')}
+        title="x"
+        downloadHref="/api/documents/x/content?download=1"
+        onDownload={onDownload}
+      />,
+    );
+    const link = await screen.findByRole('link', { name: /download/i });
+    expect(fireEvent.click(link)).toBe(false); // false = preventDefault was called
+    expect(onDownload).toHaveBeenCalledTimes(1);
   });
 
   it('states the reason when there are no bytes at all', async () => {

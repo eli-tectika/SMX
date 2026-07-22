@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import type { DocumentBytes } from '../api/types';
 import { EmptyState } from './ui/Primitives';
 
@@ -33,11 +33,18 @@ export function DocumentContent({
   content,
   title,
   downloadHref,
+  onDownload,
   unavailableDetail,
 }: {
   content: DocumentBytes | null;
   title: string;
   downloadHref?: string;
+  /**
+   * Serves the download from bytes already in memory. Without it the anchor is followed, and a
+   * plain navigation carries no MSAL bearer token — so the href alone 401s in any deployed
+   * environment. It stays on the element regardless, so the link is still copyable.
+   */
+  onDownload?: (e: MouseEvent) => void;
   unavailableDetail?: string | null;
 }) {
   const mode = modeFor(content);
@@ -69,6 +76,12 @@ export function DocumentContent({
     };
   }, [mode, content]);
 
+  const downloadLink: ReactNode = downloadHref ? (
+    <a href={downloadHref} onClick={onDownload}>
+      Download the original
+    </a>
+  ) : undefined;
+
   if (mode === 'none') {
     return (
       <EmptyState
@@ -85,7 +98,7 @@ export function DocumentContent({
         icon="ti-file-alert"
         title="Too large to display"
         body="This file is over 25 MB and is not rendered inline."
-        actions={downloadHref ? <a href={downloadHref}>Download the original</a> : undefined}
+        actions={downloadLink}
       />
     );
   }
@@ -96,7 +109,7 @@ export function DocumentContent({
         icon="ti-file-off"
         title="This format cannot be displayed"
         body={`Stored as ${content!.contentType}.`}
-        actions={downloadHref ? <a href={downloadHref}>Download the original</a> : undefined}
+        actions={downloadLink}
       />
     );
   }
