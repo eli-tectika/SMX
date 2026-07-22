@@ -83,13 +83,14 @@ if (builder.Configuration["COSMOS_ACCOUNT_ENDPOINT"] is { Length: > 0 })
     // Everything below is read-only by construction: none of these types has a write method.
     //
     // sds-master-list, reg-registry, reg-state and reg-silver are literals rather than options
-    // because they name the regsync Functions app's estate, not this app's configuration surface —
-    // the same four names functions.bicep hardcodes. SDS_REGISTRY_CONTAINER is an option only
-    // because the MSDS Registry surface already made it one.
+    // because they name the regsync Functions app's estate, not this app's configuration surface;
+    // functions.bicep pins the same four names as literals on the writing side. SDS_REGISTRY_CONTAINER
+    // is an option here only because the MSDS Registry surface already made it one. If a later change
+    // makes these configurable, add them to BackendOptions alongside it — all five or none.
     builder.Services.AddSingleton<IDocumentContentStore>(_ =>
     {
         // BRONZE_LOCAL_PATH stands a directory in for the filesystem in local dev, and wins when both
-        // are set. Neither set is a misconfiguration that must name itself: an empty account name
+        // are set. Neither set is a misconfiguration that has to name itself: an empty account name
         // resolves to "https://.dfs.core.windows.net" and would otherwise surface as an opaque DNS
         // failure on the operator's first click.
         if (opts.BronzeLocalPath is { Length: > 0 }) return new LocalBronzeDocumentStore(opts.BronzeLocalPath);
