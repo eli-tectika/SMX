@@ -74,4 +74,8 @@ public static class RecordIds
     /// ([A-Za-z0-9_-]+): Cosmos rejects '/', '\', '?' and '#' with a 400 no in-memory store produces.
     /// `N` format = hex only, so this is safe by construction rather than by convention.
     public static string NewIntakeSessionId() => $"isx-{Guid.NewGuid():N}"[..16];
+
+    /// Id-safe by construction, like NewIntakeSessionId: it becomes a BLOB PATH SEGMENT, and `N` format
+    /// is hex only, so no separator can appear in it however it is concatenated.
+    public static string NewAttachmentId() => $"att-{Guid.NewGuid():N}"[..16];
 }
