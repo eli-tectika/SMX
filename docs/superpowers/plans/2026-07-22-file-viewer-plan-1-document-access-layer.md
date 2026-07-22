@@ -1998,6 +1998,7 @@ Create `src/Smx.Backend.Tests/DocumentEndpointsTests.cs`:
 
 ```csharp
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -2031,10 +2032,16 @@ public class DocumentEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     }
 
     private const string SheetId = "7761-88-8|sigma|2024-03-11";
+    private const string SheetBlob = "sds/7761-88-8/sigma/2024-03-11.pdf";
 
-    private void GivenASheet() => _sds.Sheets.Add(new SdsSheetRow(
-        SheetId, "7761-88-8", "sigma", "Silver nitrate", "2024-03-11", "EU", "en",
-        "https://x.test/a.pdf", "sds/7761-88-8/sigma/2024-03-11.pdf", true, "2026-07-16T00:00:00Z", null, null));
+    private void GivenASheet(string title = "Silver nitrate") => _sds.Sheets.Add(new SdsSheetRow(
+        SheetId, "7761-88-8", "sigma", title, "2024-03-11", "EU", "en",
+        "https://x.test/a.pdf", SheetBlob, true, "2026-07-16T00:00:00Z", null, null));
+
+    /// The sheet's bytes. Separate from GivenASheet because a registry row WITHOUT its blob is a real
+    /// state — that is the drift Task 10 Step 4 teaches the detail endpoint to name, and from then on
+    /// any test that wants an AVAILABLE sheet has to store the bytes too.
+    private void GivenItsBlob(string content = "%PDF-1.4 hello") => _bronze.Put(SheetBlob, content);
 
     private void GivenAGap() => _sds.Master.Add(new SdsMasterRow(
         "Nd_oxide", "Nd", "oxide", "1313-97-9", "failed", "2026-07-18T00:00:00Z", 3));
@@ -2067,7 +2074,7 @@ public class DocumentEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task Detail_ReturnsProvenance()
     {
-        GivenASheet();
+        GivenASheet(); GivenItsBlob();     // available means the bytes are really there — see Task 10 Step 4
         var id = DocumentId.Encode(DocumentId.Sds, SheetId);
         var json = await _client.GetFromJsonAsync<JsonElement>($"/documents/{id}");
         Assert.True(json.GetProperty("summary").GetProperty("available").GetBoolean());
@@ -2218,8 +2225,7 @@ show a missing MSDS as an actionable row instead of an error."
     [Fact]
     public async Task Content_StreamsTheStoredBytesWithSafetyHeaders()
     {
-        GivenASheet();
-        _bronze.Put("sds/7761-88-8/sigma/2024-03-11.pdf", "%PDF-1.4 hello");
+        GivenASheet(); GivenItsBlob();
         var id = DocumentId.Encode(DocumentId.Sds, SheetId);
 
         var res = await _client.GetAsync($"/documents/{id}/content");
@@ -2237,12 +2243,13 @@ show a missing MSDS as an actionable row instead of an error."
     [Fact]
     public async Task Content_DownloadFlagSwitchesToAttachment()
     {
-        GivenASheet();
-        _bronze.Put("sds/7761-88-8/sigma/2024-03-11.pdf", "%PDF");
+        GivenASheet(); GivenItsBlob("%PDF");
         var id = DocumentId.Encode(DocumentId.Sds, SheetId);
 
         var res = await _client.GetAsync($"/documents/{id}/content?download=1");
 
+        // 200, not 400: `download=1` is what a link writes, and a bool? parameter would refuse it.
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         Assert.Equal("attachment", res.Content.Headers.ContentDisposition!.DispositionType);
         Assert.False(string.IsNullOrEmpty(res.Content.Headers.ContentDisposition.FileNameStar
                                           ?? res.Content.Headers.ContentDisposition.FileName));
@@ -2313,10 +2320,45 @@ show a missing MSDS as an actionable row instead of an error."
     }
 ```
 
-Also add this using to the top of the file if not already present:
+Two more worth adding, because both answer a question the plan cannot answer by reading: that the
+security headers survive a **206** (a PDF viewer asking for byte ranges is the ordinary case here,
+not the exotic one), and that a title which sanitises to nothing — `"../.."`, or a Windows device
+name — still yields a usable download name.
 
 ```csharp
-using System.Net.Http.Json;
+    [Fact]
+    public async Task Content_RangeRequestStillCarriesTheSafetyHeaders()
+    {
+        GivenASheet(); GivenItsBlob();
+        var id = DocumentId.Encode(DocumentId.Sds, SheetId);
+
+        var req = new HttpRequestMessage(HttpMethod.Get, $"/documents/{id}/content");
+        req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 3);
+        var res = await _client.SendAsync(req);
+
+        Assert.Equal(HttpStatusCode.PartialContent, res.StatusCode);
+        Assert.Equal("%PDF", await res.Content.ReadAsStringAsync());
+        Assert.Equal("nosniff", res.Headers.GetValues("X-Content-Type-Options").Single());
+        Assert.Contains("sandbox", res.Headers.GetValues("Content-Security-Policy").Single());
+        Assert.Equal("inline", res.Content.Headers.ContentDisposition!.DispositionType);
+    }
+
+    [Fact]
+    public async Task Content_DownloadName_SurvivesATitleThatSanitisesToNothingUseful()
+    {
+        GivenASheet(title: "../.."); GivenItsBlob();
+        var id = DocumentId.Encode(DocumentId.Sds, SheetId);
+
+        var dots = (await _client.GetAsync($"/documents/{id}/content?download=1"))
+            .Content.Headers.ContentDisposition!;
+        Assert.Equal("document.pdf", dots.FileName!.Trim('"'));
+
+        _sds.Sheets.Clear();
+        GivenASheet(title: "CON");
+        var device = (await _client.GetAsync($"/documents/{id}/content?download=1"))
+            .Content.Headers.ContentDisposition!;
+        Assert.Equal("document-CON.pdf", device.FileName!.Trim('"'));
+    }
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -2327,12 +2369,15 @@ dotnet test src/Smx.Backend.sln --filter "FullyQualifiedName~DocumentEndpointsTe
 
 Expected: the seven new tests fail with **404** (routes missing).
 
-- [ ] **Step 3: Add `MaxInlineBytes` and the two routes**
+- [ ] **Step 3: Add the two routes**
 
 In `src/Smx.Backend/Api/DocumentEndpoints.cs`, add inside `MapDocumentEndpoints`, after the detail route:
 
 ```csharp
-        app.MapGet("/documents/{id}/content", async (string id, bool? download,
+        // `download` is bound as a string, not a bool?: minimal APIs parse a bool? with bool.TryParse,
+        // which rejects the "1" a download link naturally carries and answers 400 for it — a flag that
+        // refuses the form everyone writes is a trap, so accept the flag spellings explicitly.
+        app.MapGet("/documents/{id}/content", async (string id, string? download, HttpContext http,
             [FromServices] IDocumentCatalog catalog, [FromServices] IDocumentContentStore store,
             CancellationToken ct) =>
         {
@@ -2346,10 +2391,21 @@ In `src/Smx.Backend/Api/DocumentEndpoints.cs`, add inside `MapDocumentEndpoints`
             if (opened is null) return Results.NotFound();
 
             var contentType = detail.Summary.ContentType ?? "application/octet-stream";
-            var wantsDownload = download is true;
+            var wantsDownload = IsFlagSet(download);
+            var fileName = FileNameFor(detail);
+
+            // Results.Stream writes a Content-Disposition only when handed a download name, and only
+            // as `attachment`. The viewer's whole job is to show the document in place, so state
+            // `inline` rather than leaving the browser to infer it from the content type.
+            if (!wantsDownload)
+            {
+                var inline = new ContentDispositionHeaderValue("inline");   // Microsoft.Net.Http.Headers
+                inline.SetHttpFileName(fileName);
+                http.Response.Headers.ContentDisposition = inline.ToString();
+            }
 
             var response = Results.Stream(opened.Stream, contentType,
-                fileDownloadName: wantsDownload ? FileNameFor(detail) : null,
+                fileDownloadName: wantsDownload ? fileName : null,
                 enableRangeProcessing: true);
             return response;
         }).AddEndpointFilter(async (ctx, next) =>
@@ -2374,9 +2430,24 @@ In `src/Smx.Backend/Api/DocumentEndpoints.cs`, add inside `MapDocumentEndpoints`
         });
 ```
 
-And add this helper to the class:
+And add these helpers to the class:
 
 ```csharp
+    /// `?download`, `?download=1`, `?download=true` all mean the same thing; anything else — including
+    /// `0` and `false` — does not. An allow-list, so an unrecognised value never reads as "yes".
+    private static bool IsFlagSet(string? value) =>
+        value is "" or "1" || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+
+    // Windows opens CON/PRN/AUX/NUL/COM1-9/LPT1-9 as devices even with an extension appended, so a
+    // document titled "CON" would suggest a save name the operator's own OS refuses. The title comes
+    // from Cosmos rather than from the URL, so this is data hygiene, not an injection defence.
+    private static readonly HashSet<string> ReservedFileNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    };
+
     /// A download filename derived from the document, never from client input.
     private static string FileNameFor(DocumentDetail d)
     {
@@ -2391,8 +2462,11 @@ And add this helper to the class:
         };
         var stem = new string(d.Summary.Title.Select(ch => char.IsLetterOrDigit(ch) ? ch : '-').ToArray())
             .Trim('-');
+        // Every non-alphanumeric becomes '-', so a path separator, a dot run, or a quote cannot reach
+        // the header; what survives the trim can still be empty, or a device name.
         if (stem.Length == 0) stem = "document";
         if (stem.Length > 80) stem = stem[..80];
+        if (ReservedFileNames.Contains(stem)) stem = $"document-{stem}";
         return $"{stem}.{ext}";
     }
 ```
@@ -2432,7 +2506,7 @@ In `DocumentEndpoints.MapDocumentEndpoints`, replace the detail route body with:
 dotnet test src/Smx.Backend.sln --filter "FullyQualifiedName~DocumentEndpointsTests"
 ```
 
-Expected: **Passed! — Failed: 0**, 15 tests.
+Expected: **Passed! — Failed: 0**, 17 tests (15, plus the two above).
 
 - [ ] **Step 6: Run the whole suite**
 
