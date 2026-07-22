@@ -171,8 +171,15 @@ The first application code now lives under `src/` (this is no longer a pure-infr
   - `npm install && npm run dev` (`:5173`, proxies `/api` → the backend on `:5169`); `npm run build`; `npm test`.
   - Styling comes from the `:root` design tokens shared by the `project_files/mockups_*.html` files —
     treat those as the token source of truth and keep `src/styles/tokens.css` in step with them.
-  - Only three screens are backed by real endpoints (intake form, stage spine, compatibility matrix).
-    Every other journey stage and cross-project surface renders fixture data behind a **`MockBadge`**.
+  - **"New project" is a conversation, not a form** (`/new` → `Interview.tsx`; `NewProject.tsx` is
+    deleted). The interview agent interrogates the operator against an 18-question catalogue, accepts
+    dropped files, and calls its own `create_project` tool behind `IntakeGate.Check`. The project then
+    sits at intake status `awaiting-confirmation` until the operator presses **Start Processing** on
+    `/p/{id}/intake` — the agent may create, only the operator may start. See the four
+    `docs/superpowers/plans/2026-07-2*-conversational-intake-*` plans.
+  - Real endpoints now back: the interview, the intake brief, XRF entry on Background, the stage spine,
+    and the compatibility matrix. Every other journey stage and cross-project surface renders fixture
+    data behind a **`MockBadge`**.
     That badge is load-bearing, not decoration: a fabricated verdict must never be able to pass for an
     agent-produced one. Do not remove it from a screen until that screen reads from a real endpoint.
     For the same reason the gate controls and the agent composer are disabled — gates are
