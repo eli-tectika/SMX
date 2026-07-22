@@ -156,12 +156,10 @@ export function FileViewer({
           <h2>{detail.summary.title}</h2>
           <p className="muted">{detail.summary.subtitle}</p>
         </div>
-        <a
-          href={downloadHref}
-          onClick={download}
-          aria-disabled={downloadable ? undefined : 'true'}
-          className={downloadable ? undefined : 'is-disabled'}
-        >
+        {/* aria-disabled rather than a removed link: the control does not move around under
+            the operator while the bytes are still arriving. The CSS rule matching it is what
+            makes it unclickable. */}
+        <a href={downloadHref} onClick={download} aria-disabled={downloadable ? undefined : 'true'}>
           Download
         </a>
       </header>
