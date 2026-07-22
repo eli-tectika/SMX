@@ -60,6 +60,12 @@ public static class IntakeSessionEndpoints
             http.Response.Headers.ContentType = "text/event-stream";
             http.Response.Headers.CacheControl = "no-cache";
             await using var stream = await response.Content.ReadAsStreamAsync(ct);
+
+            // CopyToAsync is enough, and no hand-rolled read/write/flush loop is needed: it writes each
+            // read straight through (its buffer size is a MAX READ, not a fill-before-write threshold),
+            // and ASP.NET Core flushes response-body writes to the client. Verified, not assumed —
+            // Messages_ProxiesTheOrchestratorsEventsToTheClient_WithoutWaitingForTheTurnToEnd deadlocks
+            // if anything on this path buffers.
             await stream.CopyToAsync(http.Response.Body, ct);
         });
     }

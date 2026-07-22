@@ -68,6 +68,87 @@ public class IntakeSessionEndpointsTests : IClassFixture<WebApplicationFactory<P
     }
 
     [Fact]
+    public async Task Messages_ProxiesTheOrchestratorsEventsToTheClient_WithoutWaitingForTheTurnToEnd()
+    {
+        // The proxy's ONLY job is to relay without re-buffering, and nothing else in the suite would
+        // notice it starting to. Losing that turns the whole streaming path — proven end to end in
+        // MafStreamingPathTests, flushed per event by the orchestrator — into a one-lump arrival at the
+        // last hop, which no test that simply reads the finished body could see.
+        //
+        // The gate makes this decisive rather than a timing guess: the fake orchestrator refuses to send
+        // its LAST event until the client has already read the first one. If anything on the path
+        // buffers, this deadlocks and the test times out.
+        var firstEventSeen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sessions = new InMemoryIntakeSessionStore();
+        using var app = _factory.WithWebHostBuilder(b => b.ConfigureServices(s =>
+        {
+            s.AddSingleton<IIntakeSessionStore>(sessions);
+            s.AddHttpClient(Api.IntakeSessionEndpoints.OrchestratorClient)
+                .ConfigurePrimaryHttpMessageHandler(() => new FakeOrchestrator(firstEventSeen))
+                .ConfigureHttpClient(c => c.BaseAddress = new Uri("http://orchestrator.internal"));
+        }));
+
+        // ResponseHeadersRead on the CLIENT too: HttpClient's default buffers the whole body before
+        // returning, which would hide the very thing this test is checking.
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/intake-sessions/isx-abc/messages")
+        {
+            Content = JsonContent.Create(new { text = "hello" }),
+        };
+        using var res = await app.CreateClient().SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+
+        Assert.Equal("text/event-stream", res.Content.Headers.ContentType?.MediaType);
+        await using var body = await res.Content.ReadAsStreamAsync();
+        using var reader = new StreamReader(body);
+
+        var seen = new List<string>();
+        string? line;
+        while ((line = await reader.ReadLineAsync()) is not null)
+        {
+            if (line.StartsWith("event: ", StringComparison.Ordinal)) seen.Add(line["event: ".Length..]);
+            // Releases the fake orchestrator's final event. Reaching this at all proves the first event
+            // crossed the proxy while the upstream response was still open.
+            if (seen.Count > 0) firstEventSeen.TrySetResult();
+        }
+
+        Assert.Equal(["chunk", "done"], seen);
+    }
+
+    /// A stand-in for the orchestrator's SSE surface. Writes into a real pipe so the response body is
+    /// genuinely streamed — a plain custom HttpContent would buffer itself into a MemoryStream and fake
+    /// up a passing result no matter what the proxy did.
+    private sealed class FakeOrchestrator(TaskCompletionSource gate) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var pipe = new System.IO.Pipelines.Pipe();
+            _ = Task.Run(async () =>
+            {
+                var stream = pipe.Writer.AsStream();
+                async Task Write(string s)
+                {
+                    await stream.WriteAsync(System.Text.Encoding.UTF8.GetBytes(s), ct);
+                    await stream.FlushAsync(ct);
+                }
+                try
+                {
+                    await Write("event: chunk\ndata: {\"text\":\"Hel\"}\n\n");
+                    await gate.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+                    await Write("event: done\ndata: {\"createdProjectId\":null}\n\n");
+                    await pipe.Writer.CompleteAsync();
+                }
+                catch (Exception e) { await pipe.Writer.CompleteAsync(e); }
+            }, ct);
+
+            var res = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StreamContent(pipe.Reader.AsStream()),
+            };
+            res.Content.Headers.ContentType = new("text/event-stream");
+            return Task.FromResult(res);
+        }
+    }
+
+    [Fact]
     public async Task Healthz_StillRoutes_BesideTheIntakeSessionSurface()
     {
         // The regression test for trap 1: a missing [FromServices] on any store parameter above breaks
