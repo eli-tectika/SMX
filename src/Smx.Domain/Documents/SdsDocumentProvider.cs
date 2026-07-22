@@ -110,7 +110,7 @@ public sealed class SdsDocumentProvider(ISdsDocumentSource source)
             Id: id,
             Kind: DocumentKinds.Sds,
             Title: string.IsNullOrWhiteSpace(s.ProductName) ? s.Cas : s.ProductName,
-            Subtitle: $"CAS {s.Cas} · {s.Supplier} · rev {s.RevisionDate} · {s.Region} / {s.Language}",
+            Subtitle: $"CAS {s.Cas} · {s.Supplier} · rev {s.RevisionDate} · {RegionLanguage(s)}",
             Available: true,
             State: s.SupersededBy is { Length: > 0 } ? DocumentStates.Superseded : DocumentStates.Available,
             ContentType: SheetContentType,
@@ -154,11 +154,23 @@ public sealed class SdsDocumentProvider(ISdsDocumentSource source)
         new("Product name", string.IsNullOrWhiteSpace(s.ProductName) ? "not recorded" : s.ProductName),
         new("CAS", s.Cas),
         new("Revision date", s.RevisionDate),
-        new("Region / language", $"{s.Region} / {s.Language}"),
+        new("Region / language", RegionLanguage(s)),
         new("Ingested", s.IngestedUtc),
         new("Indexed", s.Indexed ? "yes" : "no"),
         new("Superseded by", s.SupersededBy is { Length: > 0 } ? s.SupersededBy : "—"),
     ];
+
+    /// RegistryPointer.Region and .Language are both nullable at the writer, so "EU / en" has three
+    /// other real shapes. Interpolating them directly rendered a bare " / " for a sheet that carried
+    /// neither — which reads as a value rather than as an absence, and spec §3 invariant 6 is that
+    /// what was not recorded says so. Each half is named independently: one known and one missing is
+    /// the common case, and flattening it would discard a fact the registry does hold.
+    private static string RegionLanguage(SdsSheetRow s)
+    {
+        var region = string.IsNullOrWhiteSpace(s.Region) ? "not recorded" : s.Region;
+        var language = string.IsNullOrWhiteSpace(s.Language) ? "not recorded" : s.Language;
+        return region == "not recorded" && language == "not recorded" ? "not recorded" : $"{region} / {language}";
+    }
 
     private static string Explain(SdsMasterRow m) => m.Status switch
     {

@@ -130,6 +130,44 @@ public class DocumentEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         }
     }
 
+    // Spec §3 invariant 6: what was not recorded says so. RegistryPointer.Region and .Language are
+    // both nullable at the writer, so an SDS whose sheet never carried them rendered a bare " / " —
+    // which reads as a value, not as an absence, on a traceability rail.
+    [Fact]
+    public async Task Detail_AnUnrecordedRegionOrLanguageSaysSo()
+    {
+        _sds.Sheets.Add(new SdsSheetRow(
+            SheetId, "7761-88-8", "sigma", "Silver nitrate", "2024-03-11", null!, null!,
+            "https://x.test/a.pdf", SheetBlob, true, "2026-07-16T00:00:00Z", null, null));
+        GivenItsBlob();
+        var id = DocumentId.Encode(DocumentId.Sds, SheetId);
+
+        var json = await _client.GetFromJsonAsync<JsonElement>($"/documents/{id}");
+
+        var line = json.GetProperty("provenance").EnumerateArray()
+            .Single(p => p.GetProperty("label").GetString() == "Region / language");
+        Assert.Equal("not recorded", line.GetProperty("value").GetString());
+        Assert.DoesNotContain(" / ", json.GetProperty("summary").GetProperty("subtitle").GetString()!);
+    }
+
+    // One half recorded and the other not is the more common shape, and the half that IS known must
+    // survive rather than being flattened into a single "not recorded".
+    [Fact]
+    public async Task Detail_AHalfRecordedRegionKeepsTheHalfItHas()
+    {
+        _sds.Sheets.Add(new SdsSheetRow(
+            SheetId, "7761-88-8", "sigma", "Silver nitrate", "2024-03-11", "EU", null!,
+            "https://x.test/a.pdf", SheetBlob, true, "2026-07-16T00:00:00Z", null, null));
+        GivenItsBlob();
+        var id = DocumentId.Encode(DocumentId.Sds, SheetId);
+
+        var json = await _client.GetFromJsonAsync<JsonElement>($"/documents/{id}");
+
+        var line = json.GetProperty("provenance").EnumerateArray()
+            .Single(p => p.GetProperty("label").GetString() == "Region / language");
+        Assert.Equal("EU / not recorded", line.GetProperty("value").GetString());
+    }
+
     // The drift check asks storage a yes/no question, and must ask it as one. Reading the blob to
     // answer it pulls the whole document — 20 MB of egress and a large-object allocation per detail
     // view of a big PDF — and then discards every byte.
