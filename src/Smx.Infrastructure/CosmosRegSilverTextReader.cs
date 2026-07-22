@@ -11,8 +11,17 @@ namespace Smx.Infrastructure;
 ///
 /// camelCase property names in the SELECT: these documents are written by the regsync Functions app
 /// with camelCase serialisation, and a PascalCase projection silently returns nulls.
+///
+/// **Only `live` chunks.** reg-silver keeps three generations per docId (CosmosRegStores.PromoteAsync):
+/// `staged` is fetched-but-not-yet-promoted, `live` is current, `superseded` is the previous revision
+/// kept for audit. Only `live` was ever pushed to the Gold AI Search index, so only `live` is what an
+/// agent could actually have retrieved. Without this filter a re-synced document renders all three
+/// generations interleaved by chunkIndex — text the agent never saw, presented on the one surface
+/// whose entire purpose is showing what it did see. That is worse than showing nothing.
 public sealed class CosmosRegSilverTextReader(Container regSilver) : IDocumentTextReader
 {
+    private const string LiveStatus = "live";
+
     private sealed record Row(int ChunkIndex, string Text, CitationRow? Citation);
     private sealed record CitationRow(string? EntryId, string? ArticleOrAnnex);
 
@@ -23,8 +32,9 @@ public sealed class CosmosRegSilverTextReader(Container regSilver) : IDocumentTe
         var docId = DocumentId.SegmentsOf(kind, payload)[1];
 
         var q = new QueryDefinition(
-                "SELECT c.chunkIndex, c.text, c.citation FROM c WHERE c.docId = @docId")
-            .WithParameter("@docId", docId);
+                "SELECT c.chunkIndex, c.text, c.citation FROM c WHERE c.docId = @docId AND c.status = @status")
+            .WithParameter("@docId", docId)
+            .WithParameter("@status", LiveStatus);
 
         var rows = new List<Row>();
         using var it = regSilver.GetItemQueryIterator<Row>(q,
