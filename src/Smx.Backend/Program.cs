@@ -139,6 +139,7 @@ app.MapCostEndpoints();
 app.MapIntakeSessionEndpoints();
 app.MapAttachmentEndpoints();
 app.MapIntakeBriefEndpoints();
+app.MapXrfEndpoints();
 app.Run();
 
 public partial class Program { } // WebApplicationFactory hook
