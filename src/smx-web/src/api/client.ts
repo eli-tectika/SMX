@@ -5,6 +5,12 @@ import type {
   CreateProjectResponse,
   Determination,
   DeterminationRequest,
+  DocumentBytes,
+  DocumentChunk,
+  DocumentDetail,
+  DocumentKind,
+  DocumentState,
+  DocumentSummary,
   LearnedConclusion,
   MarkerLibraryEntry,
   MatrixDoc,
@@ -65,8 +71,13 @@ async function failure(res: Response): Promise<ApiError> {
   const body = await res.text();
   let message = body || res.statusText;
   try {
-    const parsed = JSON.parse(body) as { error?: string };
+    const parsed = JSON.parse(body) as { error?: string; detail?: string; title?: string };
+    // ProblemDetails is the other shape the backend emits (Results.Problem — the document
+    // endpoints' 503). Without this the operator is shown the raw JSON of the very message
+    // that was written to explain the fault to them.
     if (parsed.error) message = parsed.error;
+    else if (parsed.detail) message = parsed.detail;
+    else if (parsed.title) message = parsed.title;
   } catch {
     /* not JSON — fall back to the raw body */
   }
@@ -264,4 +275,71 @@ export async function getRevisions(projectId: string): Promise<RevisionDoc[]> {
   const res = await authorizedFetch(`${p(projectId)}/revisions`);
   if (!res.ok) throw await failure(res);
   return (await res.json()) as RevisionDoc[];
+}
+
+/* ---------------------------------------------------------------------------
+   Documents — the file viewer (design 2026-07-22).
+
+   Bytes stream through the backend rather than a SAS URL: the storage account
+   denies public access behind private endpoints, so a SAS would be unreachable
+   from the browser AND would put a hole in private-by-default.
+   --------------------------------------------------------------------------- */
+
+/**
+ * The library listing.
+ *
+ * The filter values are unions rather than strings because the backend 400s an unrecognised
+ * one on purpose — a typo'd `kind` must not read as "no documents". Keeping the allowed set
+ * in the type moves that failure from a runtime error to a compile error.
+ */
+export async function getDocuments(filter: {
+  kind?: DocumentKind | 'all';
+  q?: string;
+  state?: DocumentState | 'all';
+}): Promise<DocumentSummary[]> {
+  const params = new URLSearchParams();
+  if (filter.kind) params.set('kind', filter.kind);
+  if (filter.q) params.set('q', filter.q);
+  if (filter.state) params.set('state', filter.state);
+  const qs = params.toString();
+  const res = await authorizedFetch(`${BASE}/documents${qs ? `?${qs}` : ''}`);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as DocumentSummary[];
+}
+
+export async function getDocument(id: string): Promise<DocumentDetail | NotFound> {
+  const res = await authorizedFetch(`${BASE}/documents/${encodeURIComponent(id)}`);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as DocumentDetail;
+}
+
+/**
+ * Fetch the raw bytes.
+ *
+ * This exists as a fetch rather than an <iframe src> because MSAL bearer tokens cannot ride
+ * on a frame's src attribute — the browser will not attach the header. Everything downstream
+ * (object URL for PDFs, srcdoc for HTML) follows from that constraint.
+ *
+ * null means "no bytes to show, and the detail endpoint says why": 409 for a document the
+ * system knows it never obtained, 404 for a registry row whose blob has vanished. A 503
+ * deliberately does NOT collapse into null — that one is a claim about the deployment, not
+ * about the document, and reporting an unconfigured library as a fileless document would
+ * tell the operator something false about the document itself.
+ */
+export async function getDocumentContent(id: string): Promise<DocumentBytes | null> {
+  const res = await authorizedFetch(`${BASE}/documents/${encodeURIComponent(id)}/content`);
+  if (res.status === 404 || res.status === 409) return null;
+  if (!res.ok) throw await failure(res);
+  return {
+    blob: await res.blob(),
+    contentType: res.headers.get('Content-Type')?.split(';')[0].trim() ?? 'application/octet-stream',
+  };
+}
+
+export async function getDocumentText(id: string): Promise<DocumentChunk[]> {
+  const res = await authorizedFetch(`${BASE}/documents/${encodeURIComponent(id)}/text`);
+  if (res.status === 404 || res.status === 409) return [];
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as DocumentChunk[];
 }

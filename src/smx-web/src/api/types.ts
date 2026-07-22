@@ -333,3 +333,53 @@ export interface MsdsEntry {
   reviewedAt?: string | null;
   linkedProjects: string[];
 }
+
+/* ---------------------------------------------------------------------------
+   Documents — the file viewer's contract (design 2026-07-22).
+
+   `kind` is the FACET: a safety sheet the system never obtained still reports
+   'sds', because it is a missing sheet and not a fourth category. Only the id
+   distinguishes it, and only because it resolves against a different container.
+   --------------------------------------------------------------------------- */
+
+export type DocumentKind = 'sds' | 'reg' | 'seed';
+export type DocumentState = 'available' | 'missing' | 'superseded';
+
+export interface DocumentSummary {
+  id: string;
+  kind: DocumentKind;
+  title: string;
+  subtitle: string;
+  available: boolean;
+  state: DocumentState;
+  contentType: string | null;
+  officialDate: string | null;
+  ingestedUtc: string | null;
+}
+
+export interface ProvenanceField {
+  label: string;
+  value: string;
+  kind: 'text' | 'url' | 'hash';
+}
+
+export interface DocumentDetail {
+  summary: DocumentSummary;
+  provenance: ProvenanceField[];
+  unavailableReason: string | null;
+  unavailableDetail: string | null;
+  supersededById: string | null;
+}
+
+/** A chunk exactly as indexed — never re-extracted or cleaned up on the way here. */
+export interface DocumentChunk {
+  ordinal: number;
+  text: string;
+  entryId: string | null;
+  section: string | null;
+}
+
+export interface DocumentBytes {
+  blob: Blob;
+  contentType: string;
+}
