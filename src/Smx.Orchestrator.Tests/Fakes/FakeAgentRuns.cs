@@ -17,6 +17,16 @@ public sealed class FakeAgentRuns : IAgentRuns
             DerivedScope = [new("reach-annex-xvii", "*", "r", new Citation("regulatory", "x", "t"))],
         }));
 
+    /// The default pool run proposes one suggestion for the default Intake component. Mirrors the real
+    /// RunPoolAsync signature (incl. the ProjectDoc that carries sensitive terms) so a dispatcher that stops
+    /// passing the project cannot slip past unnoticed.
+    public Func<ProjectDoc, ConstraintsDoc, RevisionDoc?, Task<AgentRunResult<PoolDoc>>> Pool { get; set; } =
+        (_, c, _) => Task.FromResult(AgentRunResult<PoolDoc>.Ok(new PoolDoc
+        {
+            Id = RecordIds.Pool(c.ProjectId), ProjectId = c.ProjectId,
+            Suggestions = [new("bottle", "Zr", "compound", "an oxide suits a solid polymer", [])],
+        }));
+
     /// Takes the ProjectDoc the real IAgentRuns takes — a fake that dropped it would let the dispatcher stop
     /// passing the project (and with it the sensitive terms) without a single test noticing.
     public Func<ProjectDoc, ConstraintsDoc, RevisionDoc?, Task<Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>>> Discovery { get; set; } =
@@ -82,17 +92,19 @@ public sealed class FakeAgentRuns : IAgentRuns
     public Func<ChatTools, string, string, string, Task<string>> Chat { get; set; } =
         (_, _, _, message) => Task.FromResult($"Echo: {message}");
 
-    public int IntakeCalls; public int DiscoveryCalls; public int RegulatoryCalls; public int ConclusionCalls;
+    public int IntakeCalls; public int PoolCalls; public int DiscoveryCalls; public int RegulatoryCalls; public int ConclusionCalls;
     public int ChatCalls; public int DosingCalls; public int DecisionCalls;
 
     /// Every agent invocation across all arms. Cost is DETERMINISTIC (§3.4) — no agent — so a Cost dispatch
     /// test asserts this is unchanged: if Cost ever needs a model, that is a design change to argue for in the
     /// open, not one that slips in behind a green suite.
-    public int TotalCalls => IntakeCalls + DiscoveryCalls + RegulatoryCalls + ConclusionCalls + ChatCalls + DosingCalls
+    public int TotalCalls => IntakeCalls + PoolCalls + DiscoveryCalls + RegulatoryCalls + ConclusionCalls + ChatCalls + DosingCalls
         + DecisionCalls;
 
     Task<Smx.Orchestrator.Agents.AgentRunResult<ConstraintsDoc>> IAgentRuns.RunIntakeAsync(ProjectDoc p, CancellationToken ct)
     { Interlocked.Increment(ref IntakeCalls); return Intake(p); }
+    Task<AgentRunResult<PoolDoc>> IAgentRuns.RunPoolAsync(ProjectDoc project, ConstraintsDoc c, RevisionDoc? revision, CancellationToken ct)
+    { Interlocked.Increment(ref PoolCalls); return Pool(project, c, revision); }
     Task<Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>> IAgentRuns.RunDiscoveryAsync(
         ProjectDoc project, ConstraintsDoc c, RevisionDoc? revision, CancellationToken ct)
     { Interlocked.Increment(ref DiscoveryCalls); return Discovery(project, c, revision); }

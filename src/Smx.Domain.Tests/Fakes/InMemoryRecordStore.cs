@@ -59,6 +59,8 @@ public sealed class InMemoryRecordStore : IRecordStore
             _docs.Values.OfType<VerdictDoc>().Where(v => v.ProjectId == projectId).Select(Copy).ToList());
     public Task<CandidatesDoc?> GetCandidatesAsync(string projectId, CancellationToken ct = default) =>
         Read<CandidatesDoc>(RecordIds.Candidates(projectId));
+    public Task<PoolDoc?> GetPoolAsync(string projectId, CancellationToken ct = default) =>
+        Read<PoolDoc>(RecordIds.Pool(projectId));
     public Task<GateDoc?> GetGateAsync(string projectId, string gateType, CancellationToken ct = default) =>
         Read<GateDoc>(RecordIds.Gate(projectId, gateType));
     public Task<VerdictDoc?> GetVerdictAsync(string projectId, string cas, string componentId, CancellationToken ct = default) =>
@@ -97,6 +99,7 @@ public sealed class InMemoryRecordStore : IRecordStore
     public Task UpsertCostAsync(CostDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertDecisionAsync(DecisionDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
+    public Task UpsertPoolAsync(PoolDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertGateAsync(GateDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertRevisionAsync(RevisionDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertChatMessageAsync(ChatMessageDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);

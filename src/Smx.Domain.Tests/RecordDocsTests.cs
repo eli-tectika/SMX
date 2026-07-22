@@ -38,10 +38,15 @@ public class RecordDocsTests
     ///     every project created before the change.
     /// Neither shows up as a compile error. This assertion is what shows up instead.
     [Fact]
-    public void ProjectDoc_Create_SeedsExactlyTheStagesInStagesAll()
+    public void ProjectDoc_Create_SeedsEveryChattableStagePlusTheHiddenOnes()
     {
         var doc = ProjectDoc.Create("p1", "Acme", "Shampoo bottle", JsonDocument.Parse("{}").RootElement);
-        Assert.Equal([.. Stages.All.Order()], [.. doc.Stages.Keys.Order()]);
+        // Every Stages.All (chattable) member must be seeded, or SetStageAsync throws KeyNotFoundException on a
+        // stage the product says exists. Pool and Background are seeded too — they are real backend stages the
+        // dispatcher writes, just deliberately absent from Stages.All (hidden, non-chattable). Assert the exact
+        // set so a forgotten seed still fails, in both directions.
+        string[] expected = [.. Stages.All, Stages.Pool, Stages.Background];
+        Assert.Equal([.. expected.Order()], [.. doc.Stages.Keys.Order()]);
     }
 
     [Theory]
@@ -118,10 +123,12 @@ public class RecordDocsTests
     }
 
     [Fact]
-    public void ProjectCreate_SeedsAllSevenStages_IntakeThroughDecision()
+    public void ProjectCreate_SeedsAllStages_IntakeThroughDecision()
     {
         var p = ProjectDoc.Create("p1", "Acme", "P", System.Text.Json.JsonDocument.Parse("{}").RootElement);
         Assert.True(p.Stages.ContainsKey(Stages.Intake));
+        Assert.True(p.Stages.ContainsKey(Stages.Pool));        // hidden, agent-proposed pool
+        Assert.True(p.Stages.ContainsKey(Stages.Background));  // hidden, XRF pass-through for now
         Assert.True(p.Stages.ContainsKey(Stages.Discovery));
         Assert.True(p.Stages.ContainsKey(Stages.Regulatory));
         Assert.True(p.Stages.ContainsKey(Stages.Matrix));
@@ -129,7 +136,7 @@ public class RecordDocsTests
         Assert.True(p.Stages.ContainsKey(Stages.Cost));
         Assert.True(p.Stages.ContainsKey(Stages.Decision));
         Assert.False(p.Stages.ContainsKey("screening"));
-        Assert.Equal(7, p.Stages.Count);
+        Assert.Equal(9, p.Stages.Count);
         // Dosing, Cost and Decision start `pending` like every other stage — inert until an upstream doc
         // triggers them. `pending` is not "run me now": nothing scans stages for pending, the dispatcher only
         // reacts to specific upstream docs (the approved regulatory gate triggers Dosing, the CostDoc will

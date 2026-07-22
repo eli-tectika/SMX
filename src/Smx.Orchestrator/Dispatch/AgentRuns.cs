@@ -10,6 +10,14 @@ public interface IAgentRuns
 {
     Task<AgentRunResult<ConstraintsDoc>> RunIntakeAsync(ProjectDoc project, CancellationToken ct);
 
+    /// The need-driven pool proposal (PoolAgent), run BEFORE Discovery from the need alone.
+    /// <param name="project">carries the sensitive terms the pool's web-search tool must refuse to send —
+    /// same contract as RunDiscoveryAsync.</param>
+    /// <param name="revision">null for an ordinary run; non-null re-proposes applying the operator's
+    /// revise-with-reason. Explicit, not an overload, for the usual reason.</param>
+    Task<AgentRunResult<PoolDoc>> RunPoolAsync(
+        ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, CancellationToken ct);
+
     /// <param name="project">carries Client / Product / ProjectId — the terms the web-search tool must
     /// refuse to send. Required, not optional: a Discovery run without them is a run that cannot protect the
     /// project, and that must be a compile error rather than a silent leak.</param>
@@ -65,6 +73,13 @@ public sealed class AgentRuns(IChatClient chatClient, ToolBox toolBox) : IAgentR
         IntakeAgent.RunAsync(
             new MafAgent(chatClient, IntakeAgent.AgentName, IntakeAgent.Instructions, toolBox.IntakeTools()),
             project, ct);
+
+    public Task<AgentRunResult<PoolDoc>> RunPoolAsync(
+        ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, CancellationToken ct) =>
+        PoolAgent.RunAsync(
+            new MafAgent(chatClient, PoolAgent.AgentName, PoolAgent.Instructions,
+                toolBox.PoolTools(TermsFor(project))),
+            constraints, revision, ct);
 
     public Task<AgentRunResult<CandidatesDoc>> RunDiscoveryAsync(
         ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, CancellationToken ct) =>

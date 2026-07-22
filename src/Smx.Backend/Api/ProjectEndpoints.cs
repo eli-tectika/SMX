@@ -145,6 +145,14 @@ public static class ProjectEndpoints
                 ? Results.Json(candidates, Json.Options)
                 : Results.NotFound());
 
+        // The need-driven pool (the agent-proposed candidate chemistries), or a 404 before the pool agent has
+        // run. Read-only, like /candidates — the pool is derived data the operator inspects, not edits.
+        app.MapGet("/projects/{projectId}/pool",
+            async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
+            await store.GetPoolAsync(projectId, ct) is { } pool
+                ? Results.Json(pool, Json.Options)
+                : Results.NotFound());
+
         // A partition query, never a 404: an empty analysis is a state, not an error (mirror GetVerdictsAsync).
         app.MapGet("/projects/{projectId}/verdicts",
             async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>

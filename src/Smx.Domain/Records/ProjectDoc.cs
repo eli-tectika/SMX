@@ -30,6 +30,10 @@ public sealed class ProjectDoc
         Stages = new()
         {
             [Records.Stages.Intake] = new StageState(),
+            // Pool (agent-proposed candidate pool) and Background (XRF filter, currently pass-through) sit
+            // between Intake and Discovery. Backend-only — the UI spine does not render them.
+            [Records.Stages.Pool] = new StageState(),
+            [Records.Stages.Background] = new StageState(),
             [Records.Stages.Discovery] = new StageState(),
             [Records.Stages.Regulatory] = new StageState(),
             [Records.Stages.Matrix] = new StageState(),
