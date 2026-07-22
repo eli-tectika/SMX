@@ -24,6 +24,11 @@ public static class RecordDocRouter
             // billed per turn. (ChangeFeedWorker skips a null.) The arm is spelled out rather than left to
             // `_` so the decision is visible to whoever adds the next chat doc type.
             RecordTypes.ChatReply => null,
+            // Explicit, not merely "falls through the default". The brief is per-project and belongs on
+            // the audit trail, so it lives in `record` — but it is not a stage output and must never
+            // dispatch. An explicit arm is a statement of intent that survives someone later making the
+            // default arm throw on unknown types.
+            RecordTypes.IntakeBrief => null,
             _ => null,
         } : null;
 }

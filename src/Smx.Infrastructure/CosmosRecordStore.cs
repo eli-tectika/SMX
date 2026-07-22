@@ -23,6 +23,8 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
         ReadAsync<GateDoc>(RecordIds.Gate(projectId, gateType), projectId, ct);
     public Task<VerdictDoc?> GetVerdictAsync(string projectId, string cas, string componentId, CancellationToken ct = default) =>
         ReadAsync<VerdictDoc>(RecordIds.Verdict(projectId, cas, componentId), projectId, ct);
+    public Task<IntakeBriefDoc?> GetIntakeBriefAsync(string projectId, CancellationToken ct = default) =>
+        ReadAsync<IntakeBriefDoc>(RecordIds.IntakeBrief(projectId), projectId, ct);
 
     /// The ONE query in this class with no PartitionKey in its request options: the projects list spans
     /// every partition. `MaxItemCount = max` + `Take(max)` keep the fan-out bounded page-side and
@@ -118,6 +120,7 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
     public Task UpsertRevisionAsync(RevisionDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertChatMessageAsync(ChatMessageDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertChatReplyAsync(ChatReplyDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
+    public Task UpsertIntakeBriefAsync(IntakeBriefDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
 
     private async Task<T?> ReadAsync<T>(string id, string pk, CancellationToken ct) where T : class
     {

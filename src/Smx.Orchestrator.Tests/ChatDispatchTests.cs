@@ -484,4 +484,20 @@ public class ChatDispatchTests
             CreatedAt = "2026-07-14T09:00:01.0000000+00:00",
         }, Smx.Domain.Json.Options)));
     }
+
+    [Fact]
+    public void Router_IgnoresAnIntakeBrief()
+    {
+        // The brief lives in `record` (it is per-project and must be on the audit trail) but it is NOT
+        // a stage output. If the router ever learned to route it, writing a brief would dispatch a
+        // stage — which is precisely the "creating a project starts the pipeline" behaviour this whole
+        // feature exists to remove.
+        var json = JsonSerializer.SerializeToElement(new IntakeBriefDoc
+        {
+            Id = RecordIds.IntakeBrief("proj-1"), ProjectId = "proj-1", SessionId = "isx-aaaa1111",
+            CreatedAt = "2026-07-21T10:00:00.0000000Z",
+        }, Json.Options);
+
+        Assert.Null(RecordDocRouter.Route(json));
+    }
 }

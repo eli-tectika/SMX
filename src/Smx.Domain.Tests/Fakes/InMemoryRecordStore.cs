@@ -58,6 +58,8 @@ public sealed class InMemoryRecordStore : IRecordStore
         Read<GateDoc>(RecordIds.Gate(projectId, gateType));
     public Task<VerdictDoc?> GetVerdictAsync(string projectId, string cas, string componentId, CancellationToken ct = default) =>
         Read<VerdictDoc>(RecordIds.Verdict(projectId, cas, componentId));
+    public Task<IntakeBriefDoc?> GetIntakeBriefAsync(string projectId, CancellationToken ct = default) =>
+        Read<IntakeBriefDoc>(RecordIds.IntakeBrief(projectId));
     public Task<IReadOnlyList<RevisionDoc>> GetRevisionsAsync(string projectId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<RevisionDoc>>(_docs.Values.OfType<RevisionDoc>()
             .Where(r => r.ProjectId == projectId)
@@ -95,4 +97,5 @@ public sealed class InMemoryRecordStore : IRecordStore
     public Task UpsertRevisionAsync(RevisionDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertChatMessageAsync(ChatMessageDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertChatReplyAsync(ChatReplyDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
+    public Task UpsertIntakeBriefAsync(IntakeBriefDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
 }
