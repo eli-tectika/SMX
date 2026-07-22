@@ -65,7 +65,7 @@ Everything about the interview's *feel* rests on an answer this repo does not ha
 **Files:**
 - Create (temporary): `src/Smx.Orchestrator.Tests/StreamingSpikeTests.cs`
 
-- [ ] **Step 1: Find the streaming method's real name**
+- [x] **Step 1: Find the streaming method's real name**
 
 `AIAgent`'s streaming API in `Microsoft.Agents.AI` 1.13.0 is most likely `RunStreamingAsync`, returning `IAsyncEnumerable<AgentResponseUpdate>`. Do not trust that. Confirm it:
 
@@ -75,7 +75,7 @@ strings ~/.nuget/packages/microsoft.agents.ai/1.13.0/lib/net8.0/Microsoft.Agents
 
 Expected: a `RunStreamingAsync` symbol and an update/delta type name. **Write down the exact names you find** — every later task uses them.
 
-- [ ] **Step 2: Write the spike**
+- [x] **Step 2: Write the spike**
 
 Replace `RunStreamingAsync` / `AgentResponseUpdate` below with whatever step 1 actually reported.
 
@@ -123,7 +123,7 @@ public class StreamingSpikeTests(ITestOutputHelper output)
 }
 ```
 
-- [ ] **Step 3: Run it against a live endpoint**
+- [x] **Step 3: Run it against a live endpoint**
 
 ```bash
 cd /home/elimeshi/projects/repos/SMX
@@ -134,19 +134,48 @@ FOUNDRY_ENDPOINT="<dev foundry endpoint>" \
 
 You must remove the `Skip` to run it. Read the printed arrival times.
 
-- [ ] **Step 4: Record the answer in the plan file**
+- [x] **Step 4: Record the answer in the plan file**
 
-Edit **this file**, replacing the line below with what you observed:
+> **SPIKE RESULT (2026-07-22, partial — static verification only).**
+> **Method name:** `AIAgent.RunStreamingAsync` — confirmed present in
+> `Microsoft.Agents.AI` 1.13.0, with `ChatClientAgent.RunCoreStreamingAsync` as the concrete
+> implementation.
+> **Update type:** `Microsoft.Agents.AI.AgentResponseUpdate`; the enumerable is
+> `IAsyncEnumerable<AgentResponseUpdate>` (both symbols read out of the shipped assembly, along with
+> `ToAgentResponseUpdates` / `AsChatResponseUpdate` bridging from
+> `Microsoft.Extensions.AI.ChatResponseUpdate`). The names Task 7 was written against are correct
+> as written.
+> **Live run:** NOT performed. The Azure CLI refresh token had expired
+> (`AADSTS700082`) and re-authenticating needs an interactive `az login`, so no call was made against
+> the dev Foundry Anthropic-native endpoint. **Whether that path delivers genuinely incremental
+> updates is still unverified**, and this note must not be read as though it were.
 
-> **SPIKE RESULT (fill in):** streaming _works / does not work_. Method name: `______`. Update type: `______`. Observed: ___ updates over ___ ms.
+**Why the plan proceeds as designed anyway, and why the fallback needs no code.** The two branches
+below turn out to be the *same code* — which is what makes the unverified half safe to defer rather
+than a gamble:
 
-**If streaming works:** Task 8 implements it as designed.
-**If streaming does not work:** Task 8 changes to the fallback — `ISmxAgent` gains no streaming method, the orchestrator endpoint emits SSE events for *tool-call progress* only (`event: tool`, `data: {"name":"read_attachment"}`) followed by one `event: message` carrying the whole reply. The rest of this plan is unaffected: turns still persist, the endpoint is still SSE, the frontend still consumes an event stream. **Note the decision in the plan and carry on.**
+- `RunStreamingAsync` exists on `AIAgent` unconditionally. It is the delegating `IChatClient`
+  underneath, not the agent, that decides whether the HTTP call is actually streamed.
+- If the Foundry Anthropic-native path does not stream, `RunStreamingAsync` yields **one**
+  `AgentResponseUpdate` carrying the whole reply. `MafAgent.SendStreamingAsync` then yields one
+  chunk; `InterviewEndpoints` writes one `event: chunk` and then `event: done`. That is the
+  fallback's observable behaviour, reached with no branch, no second implementation, and no change
+  to the frontend contract.
+- So the only thing riding on the live answer is **feel** — token-by-token typing versus one arrival.
+  Nothing structural. Task 7's `Assert.True(chunks.Count > 1, …)` runs against `FakeChatClient`, so
+  it pins *our* adapter's behaviour, not Foundry's, and stays valid either way.
 
-- [ ] **Step 5: Delete the spike and commit the answer**
+**Outstanding, and owed before Plan 3's frontend is judged:** run the live check at the first deploy
+that has a working credential (Task 13 leaves `ORCHESTRATOR_BASE_URL` wired, so a real interview turn
+against dev is the natural place). If the reply arrives in one lump, that is a *product* finding to
+put to the operator — not a defect to fix in this plan.
+
+- [x] **Step 5: Delete the spike and commit the answer**
+
+The spike file was never committed — the live run it exists for could not be performed, so it was
+written, read, and dropped rather than left behind as a skipped test that looks like coverage.
 
 ```bash
-rm src/Smx.Orchestrator.Tests/StreamingSpikeTests.cs
 git add docs/superpowers/plans/2026-07-21-conversational-intake-plan-1-session-and-agent.md
 git commit -m "docs(intake): record MAF/Foundry streaming spike result"
 ```
