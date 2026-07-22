@@ -7,6 +7,15 @@ namespace Smx.Infrastructure;
 ///
 /// The root containment check is deliberate duplication: DocumentId already refuses traversal, but
 /// this store accepts a raw string and must not be the single component that trusts its caller.
+///
+/// Containment is LEXICAL, and that boundary is worth stating rather than leaving to be discovered.
+/// `Path.GetFullPath` normalises `.`, `..` and relative prefixes without touching the filesystem, so
+/// it does not follow symlinks: a link planted inside the root and pointing outside it would satisfy
+/// the prefix check and then read elsewhere. Left unhandled deliberately — this store exists only for
+/// local dev (`BRONZE_LOCAL_PATH`), production reads ADLS through BronzeDocumentStore where the
+/// filesystem is remote and this class of trick does not apply, and planting the link already
+/// requires write access to the developer's own disk. If this ever becomes a production path, the
+/// fix is `FileSystemInfo.ResolveLinkTarget` plus re-validating the resolved path.
 public sealed class LocalBronzeDocumentStore(string root) : IDocumentContentStore
 {
     private readonly string _root = Path.GetFullPath(root);
