@@ -80,6 +80,34 @@ public sealed class StageDispatcher(
     private async Task OnConstraintsAsync(ConstraintsDoc c, CancellationToken ct)
     {
         if (await store.GetCandidatesAsync(c.ProjectId, ct) is not null) return; // idempotency
+
+        // PARK, rather than run an agent that cannot succeed.
+        //
+        // DiscoveryAgent.Validate requires every candidate's element to be in the element pool for its
+        // component. With no pools that rejects EVERY candidate, so a real model call burns to arrive at
+        // a message about pools — which is exactly what the operator is about to be asked for. And the
+        // message it arrives at ("candidate element 'Ba' is not in the element pool for component
+        // 'bottle'") names an internal invariant, not the thing the operator can do something about.
+        //
+        // Provided candidates are exempt: they bypass the Discovery agent entirely (below) and so never
+        // meet the pool check.
+        //
+        // Attempts is deliberately NOT incremented. The UI renders it as "retried Nx", and a park is not
+        // a try that failed — it is a try that has not happened.
+        if (c.ElementPools.Count == 0 && c.ProvidedCandidates.Count == 0)
+        {
+            await SetStageAsync(c.ProjectId, Stages.Discovery, s =>
+            {
+                s.Status = "needs-review";
+                s.Error = "waiting on the physicist's XRF measurement. Discovery screens candidate " +
+                          "elements against the measured background, and this project has none yet — " +
+                          "so there is nothing to screen against and every candidate would be " +
+                          "rejected. Enter the XRF result on the Background stage; Discovery starts " +
+                          "by itself as soon as it is confirmed.";
+            }, ct);
+            return;
+        }
+
         await SetStageAsync(c.ProjectId, Stages.Discovery, s => { s.Status = "running"; s.Attempts++; }, ct);
         try
         {
