@@ -63,13 +63,27 @@ public sealed class FakeAgentRuns : IAgentRuns
     public Func<ChatTools, string, string, string, Task<string>> Chat { get; set; } =
         (_, _, _, message) => Task.FromResult($"Echo: {message}");
 
+    /// Echoes the operator's message as a single chunk, so a dispatch test can prove the RIGHT message
+    /// reached the agent without a real streaming turn. Scripted as an ordinary sync function returning
+    /// the whole sequence up front — the fake never needs to yield mid-turn.
+    public Func<InterviewTools, IntakeSessionDoc, string, IAsyncEnumerable<string>> Interview { get; set; } =
+        (_, _, message) => AsAsyncEnumerable($"Echo: {message}");
+
+    private static async IAsyncEnumerable<string> AsAsyncEnumerable(params string[] chunks)
+    {
+        foreach (var chunk in chunks)
+            yield return chunk;
+        await Task.CompletedTask;
+    }
+
     public int IntakeCalls; public int DiscoveryCalls; public int RegulatoryCalls; public int ConclusionCalls;
-    public int ChatCalls; public int DosingCalls;
+    public int ChatCalls; public int DosingCalls; public int InterviewCalls;
 
     /// Every agent invocation across all arms. Cost is DETERMINISTIC (§3.4) — no agent — so a Cost dispatch
     /// test asserts this is unchanged: if Cost ever needs a model, that is a design change to argue for in the
     /// open, not one that slips in behind a green suite.
-    public int TotalCalls => IntakeCalls + DiscoveryCalls + RegulatoryCalls + ConclusionCalls + ChatCalls + DosingCalls;
+    public int TotalCalls =>
+        IntakeCalls + DiscoveryCalls + RegulatoryCalls + ConclusionCalls + ChatCalls + DosingCalls + InterviewCalls;
 
     Task<Smx.Orchestrator.Agents.AgentRunResult<ConstraintsDoc>> IAgentRuns.RunIntakeAsync(ProjectDoc p, CancellationToken ct)
     { Interlocked.Increment(ref IntakeCalls); return Intake(p); }
@@ -88,4 +102,8 @@ public sealed class FakeAgentRuns : IAgentRuns
     Task<string> IAgentRuns.RunChatAsync(ChatTools chatTools, string thread, string stageInputsJson,
         string message, CancellationToken ct)
     { Interlocked.Increment(ref ChatCalls); return Chat(chatTools, thread, stageInputsJson, message); }
+
+    IAsyncEnumerable<string> IAgentRuns.RunInterviewAsync(
+        InterviewTools tools, IntakeSessionDoc session, string message, CancellationToken ct)
+    { Interlocked.Increment(ref InterviewCalls); return Interview(tools, session, message); }
 }

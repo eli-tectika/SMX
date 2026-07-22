@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using Smx.Domain;
 using Smx.Domain.Records;
@@ -47,6 +48,12 @@ public interface IAgentRuns
     /// rather than merely tested for.
     Task<string> RunChatAsync(ChatTools chatTools, string thread, string stageInputsJson,
         string message, CancellationToken ct);
+
+    /// One interview turn, streamed. `tools` is already bound to this session (see InterviewTools'
+    /// class comment) and `session` is re-rendered into the prompt every call — the MAF session is
+    /// fresh every turn and cannot be rehydrated, so this rendering is the agent's entire memory.
+    IAsyncEnumerable<string> RunInterviewAsync(
+        InterviewTools tools, IntakeSessionDoc session, string message, CancellationToken ct);
 }
 
 public sealed class AgentRuns(IChatClient chatClient, ToolBox toolBox) : IAgentRuns
@@ -123,4 +130,17 @@ public sealed class AgentRuns(IChatClient chatClient, ToolBox toolBox) : IAgentR
     /// tool silently added to — or dropped from — it would otherwise be invisible until production.
     public static IList<AITool> ChatTurnTools(ToolBox toolBox, ChatTools chatTools) =>
         [.. toolBox.ReadToolsFor(chatTools.Stage), .. chatTools.Tools()];
+
+    /// The interview agent's tools are the WHOLE of what it can do, and there is no ToolBox half: it
+    /// has no stage, no corpus, and deliberately no search. See InterviewTools' class comment.
+    public async IAsyncEnumerable<string> RunInterviewAsync(
+        InterviewTools tools, IntakeSessionDoc session, string message,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        var agent = new MafAgent(chatClient, InterviewAgent.AgentName, InterviewAgent.Instructions, tools.Tools());
+        var thread = await agent.StartThreadAsync(ct).ConfigureAwait(false);
+        await foreach (var chunk in InterviewAgent.RunStreamingAsync(thread, session, message, ct)
+                           .WithCancellation(ct).ConfigureAwait(false))
+            yield return chunk;
+    }
 }
