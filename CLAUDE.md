@@ -171,12 +171,29 @@ The first application code now lives under `src/` (this is no longer a pure-infr
   - `npm install && npm run dev` (`:5173`, proxies `/api` → the backend on `:5169`); `npm run build`; `npm test`.
   - Styling comes from the `:root` design tokens shared by the `project_files/mockups_*.html` files —
     treat those as the token source of truth and keep `src/styles/tokens.css` in step with them.
-  - Only three screens are backed by real endpoints (intake form, stage spine, compatibility matrix).
-    Every other journey stage and cross-project surface renders fixture data behind a **`MockBadge`**.
-    That badge is load-bearing, not decoration: a fabricated verdict must never be able to pass for an
-    agent-produced one. Do not remove it from a screen until that screen reads from a real endpoint.
-    For the same reason the gate controls and the agent composer are disabled — gates are
-    operator-signed records and no endpoint exists to sign one.
+  - Most screens now read real endpoints: the projects list, the intake form, the stage spine, the
+    compatibility matrix, the Regulatory stage (including its citations panel), all three
+    cross-project surfaces (Marker Library, Learned Conclusions, MSDS Registry) and the document
+    library + reader (`/docs`, `/docs/:id`). What is still **fixture data behind a `MockBadge`**:
+    the Background, Discovery, Dosing, Cost and Decision stages, and the reuse-candidates half of
+    Intake. That badge is load-bearing, not decoration: a fabricated verdict must never be able to
+    pass for an agent-produced one. Do not remove it from a screen until that screen reads from a
+    real endpoint. For the same reason the gate controls and the agent composer are disabled —
+    gates are operator-signed records and no endpoint exists to sign one.
+  - **Citation chips do not link yet, deliberately.** `CitationChip` opens a document only when it
+    is handed a `documentId`, and `Citation` (`ConstraintsDoc.cs`) carries none — `reference` is a
+    free-text label the agent wrote. Deriving an id by parsing it would produce links that are
+    usually right, and a chip that opens the *wrong* regulation is worse than one that opens
+    nothing. The fix is a real `documentId` on the Citation record; until then the chips stay inert.
+  - **File viewer** (`/docs`, `/docs/:id`) — the document library and reader over the SDS PDFs and
+    regulatory source documents already in Bronze. Both read real endpoints; neither carries a
+    `MockBadge`. The library lists the **gaps** too (a substance whose sheet was never obtained) as
+    first-class, unlinked rows — a missing MSDS is what blocks an order, and a list of only the
+    files that exist would let absence read as coverage. Design + plans:
+    [`docs/superpowers/specs/2026-07-22-file-viewer-design.md`](docs/superpowers/specs/2026-07-22-file-viewer-design.md),
+    plans `2026-07-22-file-viewer-plan-1-document-access-layer.md` and `-plan-2-viewer-ui.md`.
+    HTML documents render in a fully sandboxed `srcdoc` frame and **never** a `blob:` URL — a
+    `blob:` URL inherits the app origin, which would make open-web regulatory HTML stored XSS.
   - The backend has **no CORS policy and needs none**: Vite's proxy (dev) and App Gateway's `apiPathRule`
     (Azure) both make `/api/*` same-origin.
   - Deploy: `infra/scripts/build-images.sh <env>` (builds all three images), then pass the tag through

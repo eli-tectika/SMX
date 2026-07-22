@@ -288,6 +288,20 @@ export function EvidencePanel({
                 to no source and cannot be relied on.
               </div>
             ) : (
+              /*
+                These chips are inert on purpose, and this is the real citations panel — not a
+                fixture. CitationChip links when it is given a documentId, and Citation does not
+                carry one: `reference` is a free-text label the agent itself wrote (see
+                DiscoveryAgent.Validate — "Citation is four free-form strings and nothing else in
+                the pipeline would ever notice"), not an identifier.
+
+                Deriving an id by parsing it would produce links that are usually right, and a chip
+                that opens the WRONG regulation is worse than one that opens nothing: the operator
+                has no way to tell which they got. The fix is a real documentId on the Citation
+                record, populated where the RAG tool already knows the docId it retrieved — that
+                touches ConstraintsDoc, the tools and every fixture, so it is its own change. See
+                plan 2026-07-22-file-viewer-plan-2-viewer-ui.md, task 9.
+              */
               <div>
                 {d.citations.map((c, i) => (
                   <CitationChip key={`${c.source}-${c.reference}-${i}`} {...c} />
