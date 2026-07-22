@@ -1,5 +1,29 @@
 # Conversational Intake — Plan 1: Session, Interview Agent, Creation Gate
 
+> **STATUS: COMPLETE (2026-07-22).** All 15 tasks executed subagent-driven. `src/Smx.Backend.sln`
+> **765 tests green** (from a 709 baseline, +56), `src/Smx.Functions.sln` 177 green, both solutions and
+> both Bicep variants build with **zero warnings**. The five named safety properties in Task 14 Step 3
+> all pass. Nothing an operator can see has changed yet — that is Plan 3.
+>
+> **Deviations from this plan as written, all deliberate and reviewed:**
+> - **Task 0's spike was kept, not deleted** (`src/Smx.Orchestrator.Tests/MafStreamingPathTests.cs`).
+>   Its reason for being throwaway — needing a live endpoint — stopped being true once it was driven over
+>   a fake transport. See the spike result above.
+> - **Task 10's endpoint tests live in `Smx.Backend.Tests`, not `Smx.Orchestrator.Tests`.** The net8
+>   `TestHost`'s `ResponseBodyPipeWriter` does not implement `PipeWriter.UnflushedBytes`, which the STJ in
+>   the only-installed net10 runtime requires — the same incompatibility CLAUDE.md already documents. This
+>   is production-irrelevant (real Kestrel is fine) but makes a net8 test host unusable.
+> - **Task 12 inverted a pre-existing test**, `Post_WithNeitherPoolsNorCandidates_Returns400` → `…Returns202_
+>   BecauseThePreconditionIsDropped`. Its entire premise was the rule Task 12 Step 3 deletes.
+> - **Two fixes this plan did not anticipate**, both invisible to the test suite and both deploy-only:
+>   the orchestrator's Dockerfile needed the `aspnet` base image (Sdk.Web adds a `Microsoft.AspNetCore.App`
+>   framework reference the plain `runtime` image lacks — the container would have crash-looped at startup,
+>   taking the change feed with it), and its ACA `targetPort` needed to follow the image (8080 for aspnet,
+>   80 for the placeholder) or ingress would point at a dead port.
+> - **One extra test added beyond the plan:** the SSE proxy had no coverage, and its only job is not to
+>   re-buffer the stream. `Messages_ProxiesTheOrchestratorsEventsToTheClient_WithoutWaitingForTheTurnToEnd`
+>   pins that, verified discriminating.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** "New project" opens a streaming chat with a dedicated interview agent that draws out the project picture, fills a versioned dossier, and — when a code-enforced gate passes — creates the project with the finished package written into it. Nothing runs until the operator presses Start.
