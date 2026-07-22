@@ -322,7 +322,10 @@ export interface LearnedConclusion {
   createdAt: string;
 }
 
-/** MsdsRegistryDoc — the governance layer that gates procurement. */
+/**
+ * MsdsRegistryRow — the governance layer that gates procurement, composed at read time over the
+ * SDS corpus (`KnowledgeEndpoints.cs`). Everything but `documentId` is the stored governance doc.
+ */
 export interface MsdsEntry {
   id: string;
   cas: string;
