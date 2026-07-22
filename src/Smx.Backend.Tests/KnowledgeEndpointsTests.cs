@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Smx.Domain;
+using Smx.Domain.Documents;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
 
@@ -162,5 +163,45 @@ public class KnowledgeEndpointsTests : IClassFixture<WebApplicationFactory<Progr
         Assert.Equal("Stanford Advanced Materials", doc.Supplier);
         Assert.Equal("2022-11-02", doc.Date);                     // the signature names the revision it signed
         Assert.NotNull(doc.ReviewedAt);
+    }
+
+    /// The registry screen gates procurement, so it must be able to OPEN the sheet it is signing.
+    /// The id is served, not derived by the caller: re-implementing DedupKey's normalisation in the
+    /// browser would put the same rule in a second language, where drift shows up as a silent 404.
+    [Fact]
+    public async Task GetMsds_CarriesTheDocumentIdOfTheSheetBehindEachRow()
+    {
+        _corpus.Sheets.Add(Sheet("7761-88-8", " Sigma-Aldrich ", "2024-03-11"));
+        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc      // governance-only: no sheet exists
+        {
+            Id = KnowledgeIds.Msds("999-99-9"), Cas = "999-99-9", Supplier = "Manual", Version = "1", Date = "d",
+        });
+
+        var rows = await _client.GetFromJsonAsync<JsonElement>("/msds-registry");
+        var byCas = rows.EnumerateArray().ToDictionary(r => r.GetProperty("cas").GetString()!);
+
+        var id = byCas["7761-88-8"].GetProperty("documentId").GetString()!;
+        Assert.True(DocumentId.TryDecode(id, out var kind, out var payload));
+        Assert.Equal(DocumentId.Sds, kind);
+        // The payload is the sds-registry id: DedupKey.ForRegistry, trimmed and lowercased.
+        Assert.Equal("7761-88-8|sigma-aldrich|2024-03-11", payload);
+
+        // Null is omitted by Json.Options. A row with no sheet behind it must not offer a link.
+        Assert.False(byCas["999-99-9"].TryGetProperty("documentId", out _));
+    }
+
+    /// A corpus row missing a supplier or a revision date makes a registry id with an empty
+    /// segment, which TryDecode refuses. Serving it anyway would put a 404 behind a link on the
+    /// screen that blocks orders; withholding it leaves the row visible and honest instead.
+    [Fact]
+    public async Task GetMsds_OmitsTheDocumentId_WhenTheSheetsIdWouldNotResolve()
+    {
+        _corpus.Sheets.Add(Sheet("500-00-0", "", "2026-01-01"));
+
+        var rows = await _client.GetFromJsonAsync<JsonElement>("/msds-registry");
+        var row = Assert.Single(rows.EnumerateArray().ToList());
+
+        Assert.Equal("500-00-0", row.GetProperty("cas").GetString());
+        Assert.False(row.TryGetProperty("documentId", out _));
     }
 }

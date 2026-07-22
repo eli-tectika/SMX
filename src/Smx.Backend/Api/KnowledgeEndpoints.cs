@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Smx.Domain;
+using Smx.Domain.Documents;
 using Smx.Domain.Records;
 
 namespace Smx.Backend.Api;
@@ -38,21 +39,23 @@ public static class KnowledgeEndpoints
                 .ToList();
 
             var overlay = governance.ToDictionary(g => g.Cas, StringComparer.OrdinalIgnoreCase);
-            var rows = new List<MsdsRegistryDoc>();
+            var rows = new List<MsdsRegistryRow>();
             foreach (var s in latest)
             {
                 // The overlay applies only if the signature names THIS revision: a review of an
                 // older sheet must never silently bless a newer one.
                 if (overlay.Remove(s.Cas, out var g) && g.Date == s.RevisionDate)
-                    rows.Add(g);
+                    rows.Add(MsdsRegistryRow.From(g, SheetDocumentId(s)));
                 else
-                    rows.Add(new MsdsRegistryDoc
+                    rows.Add(MsdsRegistryRow.From(new MsdsRegistryDoc
                     {
                         Id = KnowledgeIds.Msds(s.Cas), Cas = s.Cas, Supplier = s.Supplier,
                         Version = "", Date = s.RevisionDate,   // the corpus records no version number; don't invent one
-                    });
+                    }, SheetDocumentId(s)));
             }
-            rows.AddRange(overlay.Values);   // governance-only rows (manual/legacy) stay visible
+            // Governance-only rows (manual/legacy) stay visible, but carry no document id: there is
+            // no corpus sheet behind them, so there is nothing to open.
+            rows.AddRange(overlay.Values.Select(g => MsdsRegistryRow.From(g, null)));
             return Results.Json(rows.OrderBy(r => r.Cas, StringComparer.Ordinal), Json.Options);
         });
 
@@ -79,4 +82,45 @@ public static class KnowledgeEndpoints
             return Results.Ok(new { m.Cas, m.ReviewStatus, m.ReviewedAt });
         });
     }
+
+    /// The document id of the sheet a registry row was composed from, or null if it would not
+    /// resolve.
+    ///
+    /// Served rather than derived by the caller. The registry screen has all three parts of the id
+    /// in front of it, so the browser *could* build one — but that would put DedupKey's
+    /// normalisation in a second language, where the two copies drifting apart shows up only as a
+    /// silent 404 on the screen that blocks procurement. SdsRegistryKey is the one mirror of that
+    /// rule, and it is guarded by a test that compiles the real DedupKey.
+    ///
+    /// CanEncode, not Encode: a corpus row with a blank supplier or revision date makes a payload
+    /// with an empty segment, which DocumentId.TryDecode refuses. A link that 404s is worse than no
+    /// link — the row is still listed either way, which is what the registry is for.
+    private static string? SheetDocumentId(SdsCorpusSheet s)
+    {
+        var payload = SdsRegistryKey.ForRegistry(s.Cas, s.Supplier, s.RevisionDate);
+        return DocumentId.CanEncode(DocumentId.Sds, payload)
+            ? DocumentId.Encode(DocumentId.Sds, payload)
+            : null;
+    }
+}
+
+/// One MSDS registry row on the wire: the governance document, plus the one thing it does not and
+/// should not store — the id of the corpus sheet behind it. Derived at read time, exactly like the
+/// rest of this composition (design §6.3: reference the corpus, never duplicate it), so persisting
+/// it on MsdsRegistryDoc would create a second copy that can go stale when a newer sheet arrives.
+public sealed record MsdsRegistryRow(
+    string Id,
+    string Type,
+    string Cas,
+    string Supplier,
+    string Version,
+    string Date,
+    string ReviewStatus,
+    string? ReviewedAt,
+    IReadOnlyList<string> LinkedProjects,
+    string? DocumentId)
+{
+    public static MsdsRegistryRow From(MsdsRegistryDoc d, string? documentId) => new(
+        d.Id, d.Type, d.Cas, d.Supplier, d.Version, d.Date, d.ReviewStatus, d.ReviewedAt,
+        d.LinkedProjects, documentId);
 }

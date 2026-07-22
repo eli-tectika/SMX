@@ -15,6 +15,7 @@ import type {
   MarkerLibraryEntry,
   MatrixDoc,
   MsdsEntry,
+  MsdsReviewReceipt,
   ProjectSummary,
   RegulatoryGate,
   ReviewRequest,
@@ -153,14 +154,18 @@ export async function getMsdsRegistry(search?: string): Promise<MsdsEntry[]> {
  * This is an operator-signed record, not a UI flag: the MSDS-before-order hard precondition
  * (spec §5) reads it, and an order stays blocked until its sheet is current AND reviewed.
  * The backend stamps `reviewedAt` so that *when* it was signed stays recoverable.
+ *
+ * It answers with a RECEIPT — cas, status, timestamp — and not the row. A caller that swaps the
+ * receipt in for the row loses the supplier, the revision date and the link to the sheet, on the
+ * row it has just signed.
  */
-export async function reviewMsds(cas: string): Promise<MsdsEntry | NotFound> {
+export async function reviewMsds(cas: string): Promise<MsdsReviewReceipt | NotFound> {
   const res = await authorizedFetch(`${BASE}/msds-registry/${encodeURIComponent(cas)}/review`, {
     method: 'POST',
   });
   if (res.status === 404) return NotFound;
   if (!res.ok) throw await failure(res);
-  return (await res.json()) as MsdsEntry;
+  return (await res.json()) as MsdsReviewReceipt;
 }
 
 /* ---------------------------------------------------------------------------

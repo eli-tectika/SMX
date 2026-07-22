@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { Data } from './Data';
 
 /** Card. A hairline border and a surface change on hover. Paper, not a game tile — it does
@@ -177,14 +178,25 @@ export function CitationChip({
   reference,
   retrievedAt,
   snippet,
+  documentId,
+  entryId,
 }: {
   source: string;
   reference: string;
   retrievedAt: string;
   snippet?: string;
+  /**
+   * Present ONLY where the citation is real. The fixture-backed screens pass nothing and the
+   * chip stays inert — linking a fabricated citation into a real document viewer would let
+   * mock data borrow the authority of an agent-produced one, which is what MockBadge exists
+   * to prevent. `entryId` alone changes nothing: an anchor with no document to anchor into
+   * points at the wrong thing.
+   */
+  documentId?: string;
+  entryId?: string;
 }) {
-  return (
-    <span className="src" title={snippet ?? undefined}>
+  const body = (
+    <>
       {source} · <Data kind="code">{reference}</Data>
       {/* The corpus sync date is the load-bearing half of a citation: a regulation
           entry without the date it was retrieved is not a citation, it is a claim. */}
@@ -192,7 +204,24 @@ export function CitationChip({
         {' '}
         · <Data kind="date">{retrievedAt.slice(0, 10)}</Data>
       </span>
-    </span>
+    </>
+  );
+
+  if (!documentId) {
+    return (
+      <span className="src" title={snippet ?? undefined}>
+        {body}
+      </span>
+    );
+  }
+
+  const href = `/docs/${encodeURIComponent(documentId)}${
+    entryId ? `?entry=${encodeURIComponent(entryId)}` : ''
+  }`;
+  return (
+    <Link className="src src-link" to={href} title={snippet ?? undefined}>
+      {body}
+    </Link>
   );
 }
 

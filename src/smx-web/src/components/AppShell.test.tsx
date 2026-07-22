@@ -16,7 +16,13 @@ describe('AppShell masthead', () => {
   it('carries the wordmark and every cross-project surface', () => {
     shell();
     expect(screen.getByText('SMX')).toBeInTheDocument();
-    for (const tab of ['Projects', 'Marker library', 'Learned conclusions', 'MSDS registry']) {
+    for (const tab of [
+      'Projects',
+      'Marker library',
+      'Learned conclusions',
+      'MSDS registry',
+      'Documents',
+    ]) {
       expect(screen.getByRole('link', { name: tab })).toBeInTheDocument();
     }
   });

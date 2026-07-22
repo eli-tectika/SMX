@@ -889,6 +889,26 @@
 .fv-body { display: flex; align-items: stretch; }
 .fv-main { flex: 1; min-width: 0; }
 
+/* Both row actions — open the sheet, sign the review — on one line, at the end of the row. */
+.msds-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  white-space: nowrap;
+}
+
+/* A citation that opens the document behind it. Only a chip carrying a real documentId gets
+   this class — the inert ones keep the plain .src look exactly, so nothing about the
+   fixture-backed screens changes. */
+.src-link {
+  color: var(--text-accent);
+  border-color: var(--border-accent);
+}
+.src-link:hover {
+  background: var(--bg-accent);
+  text-decoration: none;
+}
+
 /* The library. A row is a line in a register, not a card — the list is meant to be scanned
    for what is NOT there as much as for what is. */
 .doc-list { list-style: none; margin: 0; padding: 0; }

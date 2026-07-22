@@ -332,6 +332,25 @@ export interface MsdsEntry {
   reviewStatus: string;
   reviewedAt?: string | null;
   linkedProjects: string[];
+  /**
+   * The `sds` document id of the corpus sheet this row was composed from — served, never derived
+   * here. Absent for a governance-only row (manual/legacy), which has no sheet behind it and so
+   * nothing to open.
+   */
+  documentId?: string | null;
+}
+
+/**
+ * What signing an MSDS review answers with: a receipt, not a row.
+ *
+ * `POST /msds-registry/{cas}/review` returns only what the signature changed. Typing it as a
+ * whole MsdsEntry invited callers to substitute it for one, which silently dropped the supplier,
+ * the revision date and the sheet link from a row that had just been signed.
+ */
+export interface MsdsReviewReceipt {
+  cas: string;
+  reviewStatus: string;
+  reviewedAt?: string | null;
 }
 
 /* ---------------------------------------------------------------------------

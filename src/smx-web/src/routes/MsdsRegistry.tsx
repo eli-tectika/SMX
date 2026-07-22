@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { NotFound, getMsdsRegistry, reviewMsds } from '../api/client';
-import type { MsdsEntry } from '../api/types';
+import type { MsdsEntry, MsdsReviewReceipt } from '../api/types';
 import { Data } from '../components/ui/Data';
 import { EmptyState, SearchInput, SectionHeader, StatCard } from '../components/ui/Primitives';
 import { useKnowledge } from '../hooks/useKnowledge';
@@ -30,7 +31,8 @@ import { useKnowledge } from '../hooks/useKnowledge';
 export function MsdsRegistry() {
   const [q, setQ] = useState('');
   const [signing, setSigning] = useState<string | null>(null);
-  const [signed, setSigned] = useState<Record<string, MsdsEntry>>({});
+  // Receipts, not rows: what came back from signing, merged onto the row it signed.
+  const [signed, setSigned] = useState<Record<string, MsdsReviewReceipt>>({});
   const [signError, setSignError] = useState<string | null>(null);
 
   const state = useKnowledge<MsdsEntry>(getMsdsRegistry, q);
@@ -76,8 +78,12 @@ export function MsdsRegistry() {
     );
   }
 
-  // A locally-signed review supersedes the fetched row until the next read.
-  const entries = state.items.map((e) => signed[e.cas] ?? e);
+  // A locally-signed review supersedes the fetched row until the next read — but only the fields
+  // it actually signed. Substituting the receipt for the row would drop the supplier, the
+  // revision date and the link to the sheet from the row that was just approved.
+  const entries: MsdsEntry[] = state.items.map((e) =>
+    signed[e.cas] ? { ...e, ...signed[e.cas] } : e,
+  );
 
   const reviewed = entries.filter((e) => isReviewed(e)).length;
   const blocking = entries.length - reviewed;
@@ -208,7 +214,17 @@ export function MsdsRegistry() {
                       ))
                     )}
                   </td>
-                  <td>
+                  <td className="msds-actions">
+                    {/*
+                      The sheet being signed off, openable at last. `documentId` is served by the
+                      composition that built this row (KnowledgeEndpoints), never derived here:
+                      re-deriving it in the browser would put the SDS id's normalisation rule in a
+                      second language, and a drifted copy shows up only as a 404 on the screen that
+                      blocks orders. A governance-only row carries no id and gets no link.
+                    */}
+                    {e.documentId && (
+                      <Link to={`/docs/${encodeURIComponent(e.documentId)}`}>Open sheet</Link>
+                    )}
                     {!ok && (
                       <button
                         type="button"

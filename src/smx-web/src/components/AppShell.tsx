@@ -8,6 +8,8 @@ const TABS = [
   { to: '/marker-library', label: 'Marker library' },
   { to: '/learned-conclusions', label: 'Learned conclusions' },
   { to: '/msds-registry', label: 'MSDS registry' },
+  // Not `end`: /docs/:id is the same surface, and the tab should stay lit while reading one.
+  { to: '/docs', label: 'Documents' },
 ];
 
 /**
