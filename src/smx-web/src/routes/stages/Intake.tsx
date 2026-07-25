@@ -1,30 +1,96 @@
-import type { ProjectSummary } from '../../api/types';
-import { MockBadge } from '../../components/MockBadge';
+import { useCallback, useEffect, useState } from 'react';
+import { NotFound, getIntakeBrief, startProject } from '../../api/client';
+import type { IntakeBrief as Brief, ProjectSummary } from '../../api/types';
+import { IntakeBrief } from '../../components/IntakeBrief';
 import { StageStatusCard } from '../../components/StageStatusCard';
 import { ParkSlot, SectionHeader } from '../../components/ui/Primitives';
-import library from '../../mocks/fixtures/marker-library.json';
 
-interface LibraryEntry {
-  code: string;
-  composition: string;
-  validatedFor: string[];
-  status: string;
-  reuseCount: number;
-}
+type BriefState =
+  | { kind: 'loading' }
+  /** Created through the old form: there is no interview, so there is no brief. Not an error. */
+  | { kind: 'none' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ready'; brief: Brief };
 
 /**
  * Intake & scoping (spec §4.1).
  *
- * The screen is split into a REAL zone and a MOCK zone, with a hard boundary. The
- * split is itself an anti-fabrication device: on a screen that mixes a live record
- * with illustrative content, the operator must never have to guess which is which.
+ * This screen is where a conversation becomes a project. The interview agent wrote the brief and
+ * created the project; the operator reads it and presses Start Processing, which is the ONLY thing
+ * that moves intake out of `awaiting-confirmation` and dispatches the pipeline (Law 9 — the agent may
+ * create, only the operator may start). Nothing on this screen is editable (Law 4).
+ *
+ * A project created through the old form has no brief. That is a normal state — the record zone below
+ * is then the whole screen, and it says so plainly rather than showing an empty panel.
  */
-export function Intake({ project }: { project: ProjectSummary }) {
-  const { entries } = library as { entries: LibraryEntry[] };
-  const reusable = entries.filter((e) => e.status === 'approved');
+export function Intake({
+  project,
+  onRefresh,
+}: {
+  project: ProjectSummary;
+  onRefresh?: () => void;
+}) {
+  const [state, setState] = useState<BriefState>({ kind: 'loading' });
+  const [startError, setStartError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ kind: 'loading' });
+    getIntakeBrief(project.projectId)
+      .then((r) => {
+        if (cancelled) return;
+        setState(r === NotFound ? { kind: 'none' } : { kind: 'ready', brief: r });
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setState({ kind: 'error', message: e instanceof Error ? e.message : String(e) });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.projectId]);
+
+  const start = useCallback(async () => {
+    setStarting(true);
+    setStartError(null);
+    try {
+      const result = await startProject(project.projectId);
+      // A 404 here means the project is gone from under the operator. Silence would leave them
+      // looking at a button they just pressed, believing the analysis is running.
+      if (result === NotFound) {
+        setStartError(`Could not start: no project with id ${project.projectId}.`);
+        return;
+      }
+      // Re-read rather than patching local state: the server decides what the stage status now is,
+      // and a second press is idempotent (it replies with the CURRENT status, it does not re-dispatch).
+      onRefresh?.();
+    } catch (e) {
+      setStartError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStarting(false);
+    }
+  }, [project.projectId, onRefresh]);
 
   return (
     <>
+      {startError && (
+        <div className="banner danger" role="alert">
+          <i className="ti ti-alert-triangle" aria-hidden="true" />
+          <div>{startError}</div>
+        </div>
+      )}
+
+      {state.kind === 'ready' && (
+        <IntakeBrief
+          brief={state.brief}
+          canStart={project.stages.intake?.status === 'awaiting-confirmation'}
+          onStart={() => void start()}
+          busy={starting}
+        />
+      )}
+
       <section className="screen">
         <div className="cap">
           <b>Intake &amp; scoping</b>
@@ -57,70 +123,59 @@ export function Intake({ project }: { project: ProjectSummary }) {
         <StageStatusCard name="Regulatory agent" state={project.stages.regulatory} />
         <StageStatusCard name="Matrix assembler" state={project.stages.matrix} />
 
+        {state.kind === 'loading' && (
+          <div className="tiny muted" style={{ marginTop: 10 }}>
+            <i className="ti ti-loader" data-running="" aria-hidden="true" /> Looking for the
+            interview brief…
+          </div>
+        )}
+
+        {state.kind === 'error' && (
+          <div className="banner danger" role="alert" style={{ marginTop: 10 }}>
+            <i className="ti ti-alert-triangle" aria-hidden="true" />
+            <div>Could not load the interview brief: {state.message}</div>
+          </div>
+        )}
+
         {/*
-          This used to be an apologetic paragraph. It is really a fact about the API
-          contract, and it belongs in the record's own vocabulary: here is what the
-          project holds, and here is what the projection drops.
+          No brief: this project predates the interview, or was made through the form. The record
+          still holds what was submitted, and the projection still drops most of it — which is
+          exactly what the operator needs told, in the record's own vocabulary.
         */}
-        <div className="region" style={{ marginTop: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <i className="ti ti-eye-off" aria-hidden="true" style={{ color: 'var(--text-muted)' }} />
-            <span className="sec__eyebrow">Absent from the projection</span>
+        {state.kind === 'none' && (
+          <div className="region" style={{ marginTop: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <i
+                className="ti ti-eye-off"
+                aria-hidden="true"
+                style={{ color: 'var(--text-muted)' }}
+              />
+              <span className="sec__eyebrow">Absent from the projection</span>
+            </div>
+            <div className="small secondary">
+              This project was created through the form, not through an interview, so there is no
+              brief to read — no summary, no dossier, no transcript. These were submitted and are
+              held on the project record, but <code>GET /projects/{'{id}'}</code> does not return
+              them (ProjectEndpoints.cs:24 projects to <code>projectId, client, product, stages</code>{' '}
+              only).
+            </div>
+            <div style={{ marginTop: 8 }}>
+              {['components[]', 'elementPools[]', 'clientRestrictedList[]'].map((f) => (
+                <span className="src data" key={f}>
+                  {f}
+                </span>
+              ))}
+            </div>
+            <div className="tiny muted" style={{ marginTop: 8 }}>
+              They reappear as the rows and columns of the compatibility matrix once the screening
+              agent has run.
+            </div>
           </div>
-          <div className="small secondary">
-            These were submitted and are held on the project record, but{' '}
-            <code>GET /projects/{'{id}'}</code> does not return them (ProjectEndpoints.cs:24 projects
-            to <code>projectId, client, product, stages</code> only).
-          </div>
-          <div style={{ marginTop: 8 }}>
-            {['components[]', 'elementPools[]', 'clientRestrictedList[]'].map((f) => (
-              <span className="src data" key={f}>
-                {f}
-              </span>
-            ))}
-          </div>
-          <div className="tiny muted" style={{ marginTop: 8 }}>
-            They reappear as the rows and columns of the compatibility matrix once the screening
-            agent has run.
-          </div>
-        </div>
+        )}
 
         <div style={{ marginTop: 14 }}>
           <ParkSlot awaiting="client samples / technical docs" specRef="spec §4.1" />
         </div>
-      </section>
-
-      <section className="screen" data-provenance="mock">
-        <SectionHeader
-          eyebrow="Mock — what the intake agent would surface"
-          hint="spec §4.1: the intake agent reads the Marker Library first"
-        />
-
-        <MockBadge note="No intake agent has run. Nothing below was matched against this project." />
-
-        <div className="small secondary" style={{ marginBottom: 10 }}>
-          An approved code that already covers a similar material is the cheapest possible outcome —
-          no discovery, no new regulatory screening, no new MSDS.
-        </div>
-
-        {reusable.map((e) => (
-          <div className="card" key={e.code} style={{ marginBottom: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="chip chip--neutral chip--mono">{e.code}</span>
-              <span className="small secondary">{e.composition}</span>
-              <span className="tiny muted" style={{ marginLeft: 'auto' }}>
-                reused {e.reuseCount}×
-              </span>
-            </div>
-            <div style={{ marginTop: 6 }}>
-              {e.validatedFor.map((v) => (
-                <span className="src" key={v}>
-                  {v}
-                </span>
-              ))}
-            </div>
-          </div>
-        ))}
       </section>
     </>
   );

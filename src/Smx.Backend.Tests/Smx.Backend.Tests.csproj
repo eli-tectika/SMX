@@ -54,6 +54,8 @@
              Link="Fakes/InMemoryDocumentContentStore.cs" />
     <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryDocumentTextReader.cs"
              Link="Fakes/InMemoryDocumentTextReader.cs" />
+    <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryAttachmentBlobStore.cs"
+             Link="Fakes/InMemoryAttachmentBlobStore.cs" />
     <!-- DosingCostEndToEndTests drives the REAL HTTP surface AND the REAL StageDispatcher over one shared
          store, so it needs the orchestrator's test doubles (agent runs, catalog, knowledge-writer twins).
          Linked file-by-file, the same way the in-memory stores above are — a ProjectReference to a test

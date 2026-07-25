@@ -30,6 +30,7 @@ export function Projects() {
 
   const groups: Record<Bucket, ProjectCard[]> = {
     'needs-you': ready.filter((c) => bucketOf(c) === 'needs-you'),
+    'not-started': ready.filter((c) => bucketOf(c) === 'not-started'),
     running: ready.filter((c) => bucketOf(c) === 'running'),
     settled: ready.filter((c) => bucketOf(c) === 'settled'),
   };
@@ -65,6 +66,14 @@ export function Projects() {
           tone={groups['needs-you'].length > 0 ? 'warning' : undefined}
           hint="need a human"
         />
+        {/* Without this count a created-but-not-started project appears in no stat at all, and a
+            strip reading 0/0/0 over a populated list is the way one gets forgotten. */}
+        <StatCard
+          label="Not started"
+          value={groups['not-started'].length}
+          tone={groups['not-started'].length > 0 ? 'warning' : undefined}
+          hint="created, never dispatched"
+        />
         <StatCard
           label="Running"
           value={groups.running.length}
@@ -90,7 +99,7 @@ export function Projects() {
         />
       </div>
 
-      {(['needs-you', 'running', 'settled'] as const).map((b) =>
+      {(['needs-you', 'not-started', 'running', 'settled'] as const).map((b) =>
         groups[b].length > 0 ? (
           <section key={b}>
             <SectionHeader eyebrow={BUCKET_LABEL[b]} count={groups[b].length} />

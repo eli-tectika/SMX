@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Azure.Cosmos;
 using Smx.Backend.Api;
+using Smx.Backend.Extraction;
 using Smx.Domain;
 using Smx.Domain.Documents;
 using Smx.Infrastructure;
@@ -16,6 +17,11 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 {
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
+
+// The extractor set. Order does not matter (no two claim the same extension), but a new extractor is
+// added HERE and nowhere else — TextExtraction picks the first that CanHandle.
+builder.Services.AddSingleton(new TextExtraction(
+    [new PlainTextExtractor(), new PdfExtractor(), new DocxExtractor(), new XlsxExtractor()]));
 
 // Auth is conditional on config, mirroring the Cosmos wiring below: no ENTRA_TENANT_ID/API_CLIENT_ID
 // means no auth, so every existing endpoint test (which sets neither) stays green.
@@ -141,6 +147,17 @@ if (builder.Configuration["COSMOS_ACCOUNT_ENDPOINT"] is { Length: > 0 })
             new SdsIndexTextReader(new SearchClient(
                 new Uri(opts.SearchEndpoint), opts.SdsIndex, credential, SdsIndexTextReader.ClientOptions())));
     });
+
+    // Interview attachments live in the existing `bronze` ADLS filesystem. Registered only when
+    // configured, exactly like the Cosmos stores above: the tests inject an InMemoryAttachmentBlobStore
+    // and never construct a real client.
+    if (builder.Configuration["BRONZE_ACCOUNT_NAME"] is { Length: > 0 } bronzeAccount)
+    {
+        var filesystem = builder.Configuration["BRONZE_FILESYSTEM"] ?? "bronze";
+        builder.Services.AddSingleton<IAttachmentBlobStore>(_ => new BlobAttachmentStore(
+            new DataLakeServiceClient(new Uri($"https://{bronzeAccount}.dfs.core.windows.net"), credential)
+                .GetFileSystemClient(filesystem)));
+    }
 }
 
 if (builder.Configuration["ORCHESTRATOR_BASE_URL"] is { Length: > 0 } orchestratorUrl)
@@ -186,6 +203,9 @@ app.MapDocumentEndpoints();
 app.MapDosingEndpoints();
 app.MapCostEndpoints();
 app.MapIntakeSessionEndpoints();
+app.MapAttachmentEndpoints();
+app.MapIntakeBriefEndpoints();
+app.MapXrfEndpoints();
 app.Run();
 
 public partial class Program { } // WebApplicationFactory hook

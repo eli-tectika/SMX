@@ -40,7 +40,7 @@ public class InterviewToolsTests
         {
             Id = id, SessionId = id, CreatedAt = "2026-07-21T10:00:00.0000000Z",
         });
-        return (new InterviewTools(sessions, records, id), sessions, records, id);
+        return (new InterviewTools(sessions, records, new InMemoryAttachmentBlobStore(), id), sessions, records, id);
     }
 
     private static AIFunction Tool(InterviewTools tools, string name) =>

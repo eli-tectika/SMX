@@ -7,8 +7,8 @@ import type { MatrixSummary } from './matrixSummary';
  *
  * A hard rule runs through all of it: we report only what the record proves.
  *
- * The backend knows five stage statuses — pending | running | failed |
- * needs-review | done. It does NOT know the spec's "awaiting [X]" park states.
+ * The backend knows six stage statuses — pending | running | failed |
+ * needs-review | done | awaiting-confirmation. It does NOT know the spec's "awaiting [X]" park states.
  * Rendering `pending` as "awaiting physics XRF" would fabricate a claim about an
  * offline human being; `pending` means "the agent has not started", not "a
  * physicist is standing at a machine". So we never map it that way.
@@ -88,7 +88,18 @@ export function whatsBlocking(
     };
   }
 
-  // 4. The agent stopped and wants a human. The honest analogue of a park.
+  // 4. Created by the interview agent and never started. The dossier is full and the card looks
+  //    complete, but NOTHING has been dispatched and nothing will be until the operator presses
+  //    Start Processing. Said plainly, and above the queue rules, so it cannot read as "in flight".
+  if (entries.some(([, s]) => s.status === 'awaiting-confirmation')) {
+    return {
+      tone: 'warning',
+      icon: 'ti-player-play',
+      text: 'Created but not started — open it and press Start Processing to dispatch the agents',
+    };
+  }
+
+  // 5. The agent stopped and wants a human. The honest analogue of a park.
   const parked = entries.find(([, s]) => s.status === 'needs-review');
   if (parked) {
     return {
@@ -98,7 +109,7 @@ export function whatsBlocking(
     };
   }
 
-  // 5. Flagged verdicts nobody has opened. Withholds the gate (spec §1.8).
+  // 6. Flagged verdicts nobody has opened. Withholds the gate (spec §1.8).
   if (unopenedFlagged > 0) {
     return {
       tone: 'warning',
@@ -107,7 +118,7 @@ export function whatsBlocking(
     };
   }
 
-  // 6. Work in flight.
+  // 7. Work in flight.
   const running = entries.find(([, s]) => s.status === 'running');
   if (running) {
     const [name, s] = running;
@@ -118,7 +129,7 @@ export function whatsBlocking(
     };
   }
 
-  // 7. Queued.
+  // 8. Queued.
   //
   // The "waiting on upstream" branch below is defensive rather than routine: with
   // today's linear intake -> screening -> matrix chain, if the first pending stage
@@ -147,7 +158,7 @@ export function whatsBlocking(
   return null;
 }
 
-export type Bucket = 'needs-you' | 'running' | 'settled';
+export type Bucket = 'needs-you' | 'not-started' | 'running' | 'settled';
 
 export function bucket(
   project: ProjectSummary,
@@ -163,6 +174,10 @@ export function bucket(
   ) {
     return 'needs-you';
   }
+  // Ahead of `running`: an interview-created project has pending stages behind its unconfirmed
+  // intake, and nothing dispatches them. Counted as running it would look like work in flight,
+  // counted as settled like work finished; either way the operator stops looking at it.
+  if (states.some((s) => s.status === 'awaiting-confirmation')) return 'not-started';
   if (states.some((s) => s.status === 'running' || s.status === 'pending')) return 'running';
   return 'settled';
 }
@@ -170,12 +185,16 @@ export function bucket(
 /** The card's left-edge tone. Settled is grey, never green — settled is not a Pass. */
 export function bucketTone(b: Bucket, blocking: Blocking | null): BlockTone {
   if (b === 'needs-you') return blocking?.tone === 'danger' ? 'danger' : 'warning';
+  // Not-started waits on the operator exactly as needs-you does, so it wears the same warning
+  // edge — the one thing it must never look like is quiet.
+  if (b === 'not-started') return 'warning';
   if (b === 'running') return 'accent';
   return 'muted';
 }
 
 export const BUCKET_LABEL: Record<Bucket, string> = {
   'needs-you': 'Needs you',
+  'not-started': 'Created — not started',
   running: 'Running',
   settled: 'Settled',
 };

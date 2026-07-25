@@ -18,8 +18,19 @@ export const VERDICT_DIMENSIONS = [
 ] as const;
 export type VerdictDimension = (typeof VERDICT_DIMENSIONS)[number];
 
-/** StageState.Status — src/Smx.Domain/Records/ProjectDoc.cs */
-export type StageStatus = 'pending' | 'running' | 'failed' | 'needs-review' | 'done';
+/** StageState.Status — src/Smx.Domain/Records/ProjectDoc.cs (StageStatus). */
+export type StageStatus =
+  | 'pending'
+  | 'running'
+  | 'failed'
+  | 'needs-review'
+  | 'done'
+  /**
+   * Intake only. The interview agent created this project and wrote its dossier, but NO agent has run
+   * and none will until the operator presses Start Processing. It is the line between "the agent
+   * created something" and "the analysis is running".
+   */
+  | 'awaiting-confirmation';
 
 /** Stage keys the backend actually tracks — src/Smx.Domain/Records/RecordIds.cs (Stages.All). */
 export const BACKED_STAGES = ['intake', 'discovery', 'regulatory', 'matrix'] as const;
@@ -50,10 +61,17 @@ export interface SubstanceSpec {
 /**
  * ElementPool — src/Smx.Domain/Records/ConstraintsDoc.cs.
  *
- * The physicist's measured XRF background for one element on one component, already
- * interpreted into a status. "V" = present/verified; "L" = conditional, and a conditional
- * pool MUST carry a signal-character note (the backend rejects an L with a blank note).
- * This data is the physicist's and cannot be edited through chat — only re-entered at intake.
+ * One element on one component, after the physicist's XRF background has been interpreted. The pool
+ * is the list of elements that are USABLE as markers:
+ *   V — not detected in the background, so a marker on it can be read.
+ *   L — a weak or interfered signal: conditional, and MUST carry a signal-character note (the backend
+ *       rejects an L with a blank note — anti-rubber-stamping).
+ * An element that IS present in the background is "X" and is deliberately absent from the pool; its
+ * measurement is still recorded as a MeasuredBackground, so "measured and rejected" stays
+ * distinguishable from "never measured".
+ *
+ * This is measured data. It cannot be edited through chat (IntakeAnswers refuses it by name) — it is
+ * entered on the Background stage and re-entered if the physicist re-measures.
  */
 export interface ElementPool {
   component: string;
@@ -61,6 +79,71 @@ export interface ElementPool {
   line: string;
   status: 'V' | 'L';
   signalNote?: string;
+}
+
+/** MeasuredBackground — src/Smx.Domain/Records/ConstraintsDoc.cs */
+export interface MeasuredBackground {
+  component: string;
+  element: string;
+  level: number;
+  /** Carried, never assumed — which is why this is not called `levelPpm`. */
+  unit: string;
+}
+
+/** DeviceLod / XrfDevice — src/Smx.Domain/Records/ConstraintsDoc.cs */
+export interface DeviceLod {
+  element: string;
+  lod: number;
+  unit: string;
+}
+
+export interface XrfDevice {
+  model: string;
+  lods: DeviceLod[];
+}
+
+/**
+ * XrfProposal — src/Smx.Domain/Xrf/XrfProposal.cs.
+ *
+ * One row of the physicist's result. The SAME shape whether it was parsed from a file or typed into
+ * the manual grid, because both go through the same server-side validator — the grid is a fallback for
+ * unparseable files, not a way around the checks.
+ */
+export interface XrfProposal {
+  rowNumber: number;
+  component: string;
+  element: string;
+  line: string;
+  /** 'V' | 'L' | 'X' — X is recorded but is not a pool entry. */
+  status: string;
+  signalNote?: string | null;
+  backgroundLevel?: number | null;
+  backgroundUnit?: string | null;
+  deviceModel?: string | null;
+  deviceLod?: number | null;
+  deviceLodUnit?: string | null;
+  /** Per-row, from the parser. A row with any problem cannot be confirmed. */
+  problems: string[];
+}
+
+export interface XrfParseResult {
+  proposals: XrfProposal[];
+  sheetProblems: string[];
+}
+
+/** GET /projects/{id}/xrf — what has already been confirmed. */
+export interface XrfState {
+  components: string[];
+  elementPools: ElementPool[];
+  measuredBackgrounds: MeasuredBackground[];
+  device?: XrfDevice | null;
+}
+
+export interface XrfConfirmed {
+  projectId: string;
+  pools: number;
+  backgrounds: number;
+  device?: string | null;
 }
 
 /** Citation — src/Smx.Domain/Records/ConstraintsDoc.cs */
@@ -404,4 +487,82 @@ export interface DocumentChunk {
 export interface DocumentBytes {
   blob: Blob;
   contentType: string;
+}
+
+/* ---------------------------------------------------------------------------
+   The pre-project interview — "New project" as a conversation rather than a form.
+
+   Mirrors src/Smx.Domain/Intake/DossierEntry.cs, src/Smx.Domain/Intake/IntakeQuestions.cs and
+   src/Smx.Domain/Records/IntakeDocs.cs.
+   --------------------------------------------------------------------------- */
+
+/** DossierState — src/Smx.Domain/Intake/DossierEntry.cs. There is deliberately no "never asked". */
+export type DossierState = 'answered' | 'agent-proposed' | 'unknown' | 'not-applicable';
+
+/** DossierEntry — src/Smx.Domain/Intake/DossierEntry.cs */
+export interface DossierEntry {
+  questionId: string;
+  state: DossierState;
+  answer: string;
+  provenance: string;
+  confidence?: string;
+  recordedAt: string;
+}
+
+/** IntakeQuestion — src/Smx.Domain/Intake/IntakeQuestions.cs, served by GET /intake-questions. */
+export interface IntakeQuestion {
+  id: string;
+  prompt: string;
+  why: string;
+}
+
+/** AttachmentStatus — src/Smx.Domain/Records/IntakeDocs.cs */
+export type AttachmentStatus = 'extracted' | 'unsupported' | 'failed';
+
+/** SessionAttachment — src/Smx.Domain/Records/IntakeDocs.cs */
+export interface SessionAttachment {
+  fileId: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  blobPath: string;
+  textBlobPath?: string;
+  status: AttachmentStatus;
+  error?: string;
+}
+
+/** InterviewTurn — src/Smx.Domain/Records/IntakeDocs.cs */
+export interface InterviewTurn {
+  role: 'operator' | 'agent';
+  text: string;
+  toolCalls: string[];
+  createdAt: string;
+}
+
+/** IntakeSessionDoc — src/Smx.Domain/Records/IntakeDocs.cs */
+export interface IntakeSession {
+  sessionId: string;
+  status: 'interviewing' | 'created' | 'abandoned';
+  client: string;
+  product: string;
+  summary: string;
+  turns: InterviewTurn[];
+  attachments: SessionAttachment[];
+  dossier: DossierEntry[];
+  proposedComponents: ComponentSpec[];
+  createdProjectId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** IntakeBriefDoc — src/Smx.Domain/Records/IntakeDocs.cs */
+export interface IntakeBrief {
+  projectId: string;
+  sessionId: string;
+  summary: string;
+  dossier: DossierEntry[];
+  components: ComponentSpec[];
+  attachments: SessionAttachment[];
+  transcript: InterviewTurn[];
+  createdAt: string;
 }

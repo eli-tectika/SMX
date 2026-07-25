@@ -5,6 +5,7 @@ using Azure.Identity;
 using Azure.Monitor.OpenTelemetry.Exporter;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
+using Azure.Storage.Files.DataLake;
 using Microsoft.Azure.Cosmos;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
@@ -76,6 +77,20 @@ public static class OrchestratorHost
             sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.RecordContainer)));
         services.AddSingleton<IIntakeSessionStore>(sp => new CosmosIntakeSessionStore(
             sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.IntakeSessionContainer)));
+
+        // Interview attachments live in the existing `bronze` ADLS filesystem — the backend writes them
+        // (upload + extraction), this host only ever reads (read_attachment). Registered only when
+        // configured, exactly like the Cosmos stores above: the tests inject an InMemoryAttachmentBlobStore
+        // and never construct a real client. Reuses the SAME `credential` built above; do not construct
+        // a second one.
+        if (configuration["BRONZE_ACCOUNT_NAME"] is { Length: > 0 } bronzeAccount)
+        {
+            var filesystem = configuration["BRONZE_FILESYSTEM"] ?? "bronze";
+            services.AddSingleton<IAttachmentBlobStore>(_ => new BlobAttachmentStore(
+                new DataLakeServiceClient(new Uri($"https://{bronzeAccount}.dfs.core.windows.net"), credential)
+                    .GetFileSystemClient(filesystem)));
+        }
+
         services.AddSingleton<ICompatibilityLookup>(sp => new CosmosCompatibilityLookup(
             sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.CompatibilityContainer)));
         services.AddSingleton<ICatalogLookup>(sp => new CosmosCatalogLookup(

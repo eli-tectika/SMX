@@ -11,6 +11,9 @@ import type {
   DocumentKind,
   DocumentState,
   DocumentSummary,
+  IntakeBrief,
+  IntakeQuestion,
+  IntakeSession,
   LearnedConclusion,
   MarkerLibraryEntry,
   MatrixDoc,
@@ -22,7 +25,13 @@ import type {
   ReviseAccepted,
   ReviseRequest,
   RevisionDoc,
+  SessionAttachment,
+  XrfConfirmed,
+  XrfParseResult,
+  XrfProposal,
+  XrfState,
 } from './types';
+import { createSseParser, type SseEvent } from './sse';
 
 /**
  * All requests go to /api/*. In dev, Vite's proxy strips the prefix and forwards
@@ -111,6 +120,186 @@ export async function getMatrix(projectId: string): Promise<MatrixDoc | NotFound
 
 export function matrixXlsxUrl(projectId: string): string {
   return `${BASE}/projects/${encodeURIComponent(projectId)}/matrix?format=xlsx`;
+}
+
+/* ---------------------------------------------------------------------------
+   The physicist's XRF background result (spec §4.2) — Smx.Backend/Api/XrfEndpoints.cs.
+
+   Two endpoints, one of which writes. `parse` is pure — it reads a file and hands back
+   proposals, touching nothing. `confirm` is the single writer; keeping them separate is what
+   makes the operator's confirmation a real act rather than a consequence of choosing a file.
+   --------------------------------------------------------------------------- */
+
+/**
+ * Parse a physicist's result file into proposals. Writes NOTHING — the operator confirms separately,
+ * which is what makes the confirmation an act rather than a consequence of choosing a file.
+ */
+export async function parseXrf(projectId: string, file: File): Promise<XrfParseResult> {
+  const form = new FormData();
+  // The field name MUST be "file" — it binds to the handler's `IFormFile file` parameter.
+  form.append('file', file, file.name);
+
+  const res = await authorizedFetch(`${BASE}/projects/${encodeURIComponent(projectId)}/xrf/parse`, {
+    method: 'POST',
+    // NO Content-Type header: the browser has to set it itself so it can append the multipart
+    // boundary. Setting it by hand produces a body the server cannot parse.
+    body: form,
+  });
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as XrfParseResult;
+}
+
+/** The single writer. A 422 carries the operator-readable reason the confirmation was refused. */
+export async function confirmXrf(
+  projectId: string,
+  proposals: XrfProposal[],
+): Promise<XrfConfirmed> {
+  const res = await authorizedFetch(`${BASE}/projects/${encodeURIComponent(projectId)}/xrf/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ proposals }),
+  });
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as XrfConfirmed;
+}
+
+/**
+ * What is already confirmed. A 404 means intake has not written constraints yet — a normal state for
+ * a project the operator opened straight after creating it, not a failure.
+ */
+export async function getXrfState(projectId: string): Promise<XrfState | NotFound> {
+  const res = await authorizedFetch(`${BASE}/projects/${encodeURIComponent(projectId)}/xrf`);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as XrfState;
+}
+
+/** The template lives on the API, not in the bundle, so it cannot drift from the parser. */
+export const xrfTemplateUrl = `${BASE}/xrf-template.csv`;
+
+/* ---------------------------------------------------------------------------
+   The pre-project interview — "New project" as a conversation, not a form.
+
+   Mirrors src/Smx.Backend/Api/IntakeSessionEndpoints.cs, AttachmentEndpoints.cs and
+   IntakeBriefEndpoints.cs. The session store is a scratchpad the interview agent writes turn by
+   turn; the brief is the one-time deliverable create_project hands off to the project proper.
+   --------------------------------------------------------------------------- */
+
+/** GET /intake-questions — the catalogue, served rather than duplicated client-side. */
+export async function getIntakeQuestions(): Promise<IntakeQuestion[]> {
+  const res = await authorizedFetch(`${BASE}/intake-questions`);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as IntakeQuestion[];
+}
+
+/** POST /intake-sessions — opens a new interview. Both fields are optional; the agent can ask. */
+export async function createIntakeSession(
+  client?: string,
+  product?: string,
+): Promise<{ sessionId: string }> {
+  const res = await authorizedFetch(`${BASE}/intake-sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client, product }),
+  });
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as { sessionId: string };
+}
+
+/**
+ * An expired or unknown session is a REAL error the screen must show — not an empty interview it
+ * silently starts over, which would strand the operator in a second conversation nobody can find.
+ */
+export async function getIntakeSession(sessionId: string): Promise<IntakeSession | NotFound> {
+  const res = await authorizedFetch(`${BASE}/intake-sessions/${encodeURIComponent(sessionId)}`);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as IntakeSession;
+}
+
+export async function uploadAttachment(sessionId: string, file: File): Promise<SessionAttachment> {
+  const form = new FormData();
+  // The field name MUST be "file" — it is what binds to the handler's `IFormFile file` parameter.
+  form.append('file', file, file.name);
+
+  const res = await authorizedFetch(
+    `${BASE}/intake-sessions/${encodeURIComponent(sessionId)}/attachments`,
+    {
+      method: 'POST',
+      // NO Content-Type header. The browser has to set it itself so it can append the multipart
+      // boundary; setting it by hand produces a body the server cannot parse, and the error looks
+      // like a malformed upload rather than a missing boundary.
+      body: form,
+    },
+  );
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as SessionAttachment;
+}
+
+/**
+ * One interview turn, streamed. `onEvent` is called per SSE frame as it arrives.
+ *
+ * fetch + a stream reader, NOT EventSource: EventSource cannot POST, cannot carry a body, and cannot
+ * set an Authorization header — and this request needs all three.
+ */
+export async function sendInterviewMessage(
+  sessionId: string,
+  text: string,
+  onEvent: (e: SseEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await authorizedFetch(
+    `${BASE}/intake-sessions/${encodeURIComponent(sessionId)}/messages`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+      signal,
+    },
+  );
+  if (!res.ok) throw await failure(res);
+  if (!res.body) throw new ApiError(res.status, 'the interview stream returned no body');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  const push = createSseParser();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    // stream: true — a multi-byte character can straddle a chunk boundary, and decoding without it
+    // turns the split character into U+FFFD in the middle of the operator's reply.
+    for (const event of push(decoder.decode(value, { stream: true }))) onEvent(event);
+  }
+}
+
+/**
+ * A project created through the old form has no brief. That is a normal state, not a failure, so it
+ * is the NotFound sentinel — the same discipline getMatrix already uses for a pre-assembly matrix.
+ */
+export async function getIntakeBrief(projectId: string): Promise<IntakeBrief | NotFound> {
+  const res = await authorizedFetch(`${BASE}/projects/${encodeURIComponent(projectId)}/intake-brief`);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as IntakeBrief;
+}
+
+/**
+ * The operator's signature that the dossier is right (spec §2.3). There is no agent tool for this and
+ * never will be: creating a project is safe to delegate because it runs nothing, but starting the
+ * analysis is the human asserting that what the agent wrote is correct.
+ *
+ * Returns NotFound rather than throwing on a 404 — the real endpoint 404s when the project is gone,
+ * and every other project-scoped lookup in this file treats "gone" as a state to render, not an error
+ * to surface as a toast (see getProject, getMatrix). A double-press is idempotent server-side: it
+ * replies 202 with the stage's CURRENT status rather than re-dispatching.
+ */
+export async function startProject(projectId: string): Promise<{ status: string } | NotFound> {
+  const res = await authorizedFetch(`${BASE}/projects/${encodeURIComponent(projectId)}/start`, {
+    method: 'POST',
+  });
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as { status: string };
 }
 
 /* ---------------------------------------------------------------------------

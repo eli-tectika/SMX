@@ -15,7 +15,10 @@ import { Matrix } from './stages/Matrix';
 import { Regulatory } from './stages/Regulatory';
 import type { ProjectSummary } from '../api/types';
 
-const SCREENS: Record<string, (p: { project: ProjectSummary }) => JSX.Element> = {
+const SCREENS: Record<
+  string,
+  (p: { project: ProjectSummary; onRefresh?: () => void }) => JSX.Element
+> = {
   intake: Intake,
   background: Background,
   discovery: Discovery,
@@ -28,7 +31,7 @@ const SCREENS: Record<string, (p: { project: ProjectSummary }) => JSX.Element> =
 
 export function ProjectLayout() {
   const { projectId, stage } = useParams<{ projectId: string; stage?: string }>();
-  const state = useProject(projectId);
+  const [state, refresh] = useProject(projectId);
 
   if (!stage) return <Navigate to={`/p/${projectId}/intake`} replace />;
   if (state.kind === 'loading') return <Loading what="project" />;
@@ -54,7 +57,7 @@ export function ProjectLayout() {
           />
         }
       >
-        <Screen project={state.project} />
+        <Screen project={state.project} onRefresh={refresh} />
       </Dock>
     </>
   );

@@ -63,6 +63,15 @@ public class OrchestratorHostWiringTests
     }
 
     [Fact]
+    public void Host_Resolves_TheAttachmentBlobStore()
+    {
+        // dotnet build proves nothing about DI: a missing registration is a runtime failure at the
+        // first resolve, which for this host means in production, mid-interview.
+        using var sp = Build(Config(("BRONZE_ACCOUNT_NAME", "stsmxtest")));
+        Assert.NotNull(sp.GetRequiredService<IAttachmentBlobStore>());
+    }
+
+    [Fact]
     public void Host_ResolvesTheWholeDispatchGraph()
     {
         using var sp = Build(Config());

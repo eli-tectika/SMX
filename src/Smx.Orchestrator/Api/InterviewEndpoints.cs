@@ -22,7 +22,7 @@ public static class InterviewEndpoints
         app.MapPost("/internal/intake-sessions/{sessionId}/messages", async (
             string sessionId, InterviewMessageRequest req, HttpContext http,
             [FromServices] IIntakeSessionStore sessions, [FromServices] IRecordStore records,
-            [FromServices] IAgentRuns runs, CancellationToken ct) =>
+            [FromServices] IAttachmentBlobStore blobs, [FromServices] IAgentRuns runs, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(req.Text))
             {
@@ -48,7 +48,7 @@ public static class InterviewEndpoints
             });
             await sessions.UpsertAsync(session, ct);
 
-            var tools = new InterviewTools(sessions, records, sessionId);
+            var tools = new InterviewTools(sessions, records, blobs, sessionId);
             var reply = new System.Text.StringBuilder();
             await foreach (var chunk in runs.RunInterviewAsync(tools, session, req.Text, ct)
                                .WithCancellation(ct))

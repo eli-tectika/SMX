@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ProjectSummary, StageState, StageStatus } from '../api/types';
 import type { MatrixSummary } from './matrixSummary';
-import { bucket, bucketTone, whatsBlocking } from './blocking';
+import { BUCKET_LABEL, bucket, bucketTone, whatsBlocking } from './blocking';
 
 const st = (status: StageStatus, attempts = 1, error?: string): StageState => ({
   status,
@@ -145,6 +145,48 @@ describe('bucket', () => {
 
   it('settles only when everything is done and nothing is flagged', () => {
     expect(bucket(project('done', 'done', 'done', 'done'), summary(), 0)).toBe('settled');
+  });
+});
+
+describe('a created-but-not-started project', () => {
+  // The interview agent writes the project with intake at `awaiting-confirmation`. No agent has
+  // run and none will until the operator presses Start Processing. If the list files it with the
+  // running projects the operator believes the analysis is under way; if it files it with the
+  // settled ones the project is finished-looking and forgotten. It gets its own pile or it hides.
+  const created = project('awaiting-confirmation', 'pending', 'pending', 'pending');
+
+  it('is neither running nor settled', () => {
+    const b = bucket(created);
+    expect(b).not.toBe('running');
+    expect(b).not.toBe('settled');
+    expect(b).toBe('not-started');
+  });
+
+  it('stays out of the not-started pile once intake has actually been started', () => {
+    expect(bucket(project('pending', 'pending', 'pending', 'pending'))).toBe('running');
+    expect(bucket(project('running', 'pending', 'pending', 'pending'))).toBe('running');
+  });
+
+  it('yields to a halted agent — a wrong record still outranks an unstarted one', () => {
+    const p = project('awaiting-confirmation', 'failed', 'pending', 'pending');
+    expect(bucket(p)).toBe('needs-you');
+  });
+
+  it('carries a label of its own, distinct from running and settled', () => {
+    expect(BUCKET_LABEL['not-started']).toMatch(/not started/i);
+    expect(BUCKET_LABEL['not-started']).not.toBe(BUCKET_LABEL.running);
+    expect(BUCKET_LABEL['not-started']).not.toBe(BUCKET_LABEL.settled);
+  });
+
+  it('says on the card that nothing has been dispatched and names the operator action', () => {
+    const b = whatsBlocking(created);
+    expect(b?.text).toContain('Start Processing');
+    expect(b?.text.toLowerCase()).toContain('not started');
+    expect(b?.icon).not.toBe('ti-loader'); // never the running spinner
+  });
+
+  it('is not muted — muted is the quiet of a finished project', () => {
+    expect(bucketTone('not-started', null)).not.toBe('muted');
   });
 });
 
