@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getLearnedConclusions, getMarkerLibrary, getMsdsRegistry } from '../api/client';
-import type { LearnedConclusion, MarkerLibraryEntry, MsdsEntry } from '../api/types';
+import {
+  getDocuments,
+  getLearnedConclusions,
+  getMarkerLibrary,
+  getMsdsRegistry,
+} from '../api/client';
+import type {
+  DocumentSummary,
+  LearnedConclusion,
+  MarkerLibraryEntry,
+  MsdsEntry,
+} from '../api/types';
 import { Data } from './ui/Data';
 
 /**
@@ -15,7 +25,13 @@ import { Data } from './ui/Data';
  * So this is a FINDER, not a launcher. What it searches is chemistry: a CAS number, an
  * element symbol, a marker code, a supplier, a material, an application. It queries the
  * three cross-project knowledge surfaces server-side (KnowledgeEndpoints.cs takes `?search=`
- * on all three) and takes you to the record.
+ * on all three) plus the document library (`GET /documents?q=`), and takes you to the record.
+ *
+ * A document hit opens the actual file at /docs/:id — the safety sheet or the regulation
+ * itself, not the library page. That is still a record, not navigation, so it keeps the law
+ * below. And it obeys the library's honesty rule: a gap row — a substance whose sheet was
+ * never obtained — has no file, so it is never offered as an openable hit (its absence still
+ * shows through the MSDS-registry hit, which carries "tracked, no sheet").
  *
  * That maps onto a real thing the operator does. Spec §6: the Marker Library exists so the
  * Intake agent can "search here first to surface reuse candidates", and the MSDS Registry
@@ -32,7 +48,15 @@ import { Data } from './ui/Data';
 type Hit =
   | { kind: 'marker'; id: string; title: string; sub: string; to: string; badge: string }
   | { kind: 'msds'; id: string; title: string; sub: string; to: string; badge: string }
-  | { kind: 'conclusion'; id: string; title: string; sub: string; to: string; badge: string };
+  | { kind: 'conclusion'; id: string; title: string; sub: string; to: string; badge: string }
+  | { kind: 'document'; id: string; title: string; sub: string; to: string; badge: string };
+
+// A friendly label for the document's facet, shown as the hit's badge.
+const DOC_BADGE: Record<DocumentSummary['kind'], string> = {
+  sds: 'safety sheet',
+  reg: 'regulation',
+  seed: 'seeded',
+};
 
 const MIN_QUERY = 2;
 
@@ -83,8 +107,13 @@ export function Finder() {
 
     const t = setTimeout(() => {
       const s = query.trim();
-      Promise.allSettled([getMarkerLibrary(s), getMsdsRegistry(s), getLearnedConclusions(s)])
-        .then(([markers, msds, conclusions]) => {
+      Promise.allSettled([
+        getMarkerLibrary(s),
+        getMsdsRegistry(s),
+        getLearnedConclusions(s),
+        getDocuments({ q: s }),
+      ])
+        .then(([markers, msds, conclusions, documents]) => {
           if (cancelled) return;
           const out: Hit[] = [];
 
@@ -121,6 +150,21 @@ export function Finder() {
                 sub: `${c.kind} · confidence ${(c.confidence * 100).toFixed(0)}%`,
                 to: '/learned-conclusions',
                 badge: c.kind,
+              });
+            }
+          }
+          if (documents.status === 'fulfilled') {
+            for (const d of documents.value as DocumentSummary[]) {
+              // A gap row has no file. The library renders it unlinked; the finder must not
+              // offer it as an openable hit either — same rule, same reason.
+              if (!d.available) continue;
+              out.push({
+                kind: 'document',
+                id: d.id,
+                title: d.title,
+                sub: d.subtitle,
+                to: `/docs/${encodeURIComponent(d.id)}`,
+                badge: DOC_BADGE[d.kind],
               });
             }
           }
@@ -196,14 +240,14 @@ export function Finder() {
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={onKeyDown}
                 placeholder="CAS number, element, marker code, supplier, material…"
-                aria-label="Search the marker library, MSDS registry and learned conclusions"
+                aria-label="Search the marker library, MSDS registry, learned conclusions and documents"
               />
               {busy && <i className="ti ti-loader spin" aria-hidden="true" />}
             </div>
 
             <div className="finder__scope">
-              Searches the marker library, the MSDS registry and learned conclusions. Not the
-              open web, and not a project's own verdicts.
+              Searches the marker library, the MSDS registry, learned conclusions and the
+              document library. Not the open web, and not a project's own verdicts.
             </div>
 
             {hits.length > 0 && (
@@ -239,8 +283,9 @@ export function Finder() {
 
             {empty && (
               <div className="finder__note">
-                Nothing matches <b>{query.trim()}</b>. An empty result is a real answer here: the
-                library only holds codes that have passed the VP gate.
+                Nothing matches <b>{query.trim()}</b>. An empty result is a real answer here:
+                these surfaces only hold what has been recorded — a code that cleared the VP gate,
+                a sheet that was obtained, a conclusion that was logged.
               </div>
             )}
           </div>
@@ -254,4 +299,5 @@ const LABEL: Record<Hit['kind'], string> = {
   marker: 'Marker',
   msds: 'MSDS',
   conclusion: 'Learned',
+  document: 'Document',
 };
