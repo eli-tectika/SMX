@@ -11,7 +11,11 @@ import { ProjectLayout } from './routes/ProjectLayout';
 
 export function App() {
   return (
-    <BrowserRouter>
+    // Opt into the React Router v7 behaviours now, which also silences the two dev-console
+    // future-flag warnings. v7_startTransition wraps route state updates in React.startTransition;
+    // v7_relativeSplatPath changes relative resolution under a splat — the only splat here is the
+    // catch-all redirect to "/", which resolves nothing relative, so both are safe no-ops today.
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<Projects />} />
