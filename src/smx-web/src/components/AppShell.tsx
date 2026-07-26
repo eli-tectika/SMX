@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { CORPUS_SYNCED_AT, CORPUS_UNKNOWN_REASON } from '../domain/corpus';
 import { Finder } from './Finder';
@@ -83,8 +84,35 @@ export function AppShell() {
    */
   const frame = pathname.startsWith('/p/') ? 'instrument' : 'document';
 
+  const main = useRef<HTMLElement | null>(null);
+  const firstRender = useRef(true);
+
+  /**
+   * Move focus into the page when the route changes.
+   *
+   * A single-page app replaces the content without telling anyone: a keyboard user who follows a
+   * rail link is still in the rail, and a screen reader announces nothing at all. Focusing <main>
+   * makes the new screen the next thing read and the next thing tabbed from.
+   *
+   * `preventScroll` matters here — the masthead, the rail and the context bar are all sticky, and
+   * a browser scrolling a focused element into view would fight all three on every navigation.
+   * Skipped on first render, where the browser's own initial focus is already correct.
+   */
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    main.current?.focus({ preventScroll: true });
+  }, [pathname]);
+
   return (
     <>
+      {/* First in the DOM, visible only on focus. Five rail tabs plus the finder otherwise stand
+          between the keyboard and the page. */}
+      <a className="skip" href="#main">
+        Skip to content
+      </a>
       <header className="masthead">
         <Brand />
         <div className="masthead__end">
@@ -118,7 +146,7 @@ export function AppShell() {
           </span>
         </nav>
 
-        <main className="wrap" data-frame={frame}>
+        <main className="wrap" data-frame={frame} id="main" tabIndex={-1} ref={main}>
           <Outlet />
         </main>
       </div>

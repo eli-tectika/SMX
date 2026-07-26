@@ -68,3 +68,21 @@ describe('AppShell masthead', () => {
     expect(document.querySelector('main')).toHaveAttribute('data-frame', 'instrument');
   });
 });
+
+describe('AppShell keyboard access', () => {
+  it('puts a skip link first in the tab order, pointing at main', () => {
+    shell();
+    const skip = screen.getByRole('link', { name: /skip to content/i });
+    expect(skip).toHaveAttribute('href', '#main');
+    // First in the DOM is first in the tab order — that is the whole point of a skip link.
+    const links = screen.getAllByRole('link');
+    expect(links[0]).toBe(skip);
+  });
+
+  it('gives main a focus target so a route change can land there', () => {
+    shell();
+    const main = document.querySelector('main')!;
+    expect(main).toHaveAttribute('id', 'main');
+    expect(main).toHaveAttribute('tabindex', '-1');
+  });
+});

@@ -305,6 +305,38 @@ strong {
   font-size: var(--t-small);
 }
 
+/* ---- skip link -------------------------------------------------------------
+
+   Off-screen until focused, then it lands over the masthead as an ordinary
+   control. It gets the standard focus ring, not a bespoke one — a skip link is
+   the first thing a keyboard user ever sees, and it should look like the rest of
+   the instrument. */
+
+.skip {
+  position: absolute;
+  left: var(--s3);
+  top: -60px;
+  z-index: 40; /* over the masthead (25) */
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r2);
+  background: var(--surface-0);
+  border: var(--hair) solid var(--border-strong);
+  font-size: var(--t-small);
+  color: var(--text-primary);
+  transition: top var(--dur-2) var(--ease-out);
+}
+.skip:focus {
+  top: var(--s2);
+  text-decoration: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* `main` takes focus programmatically on route change; it is not a control and
+   must not draw a focus ring for it. */
+.wrap:focus {
+  outline: none;
+}
+
 /* ---- masthead (full-width top bar, sticky) --------------------------------
    The brand lockup lives here, the way the SMX web product carries its logo. It stays
    put — the logo IS the product's identity, and the top bar is where the ⌘K finder and
