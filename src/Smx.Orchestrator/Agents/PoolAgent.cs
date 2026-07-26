@@ -26,9 +26,9 @@ public static class PoolAgent
     public const string Instructions = """
         You are the SMX Pool agent. You receive a project's components — each with material, application, target
         markets, objective, and the substrate's physical state. Propose a POOL of candidate marker chemistries
-        per component, from the need alone. This is a STARTING HYPOTHESIS: everything downstream (the XRF
-        background filter, compatibility tiering, the regulatory gate) will sieve it, so breadth is welcome —
-        but every suggestion must be chemically sensible.
+        per component, from the need. This is a STARTING HYPOTHESIS: everything downstream (the XRF background
+        filter, compatibility tiering, the regulatory gate) will sieve it, so breadth is welcome — but every
+        suggestion must be chemically sensible.
 
         The marker will always be one of:
          - a metal element,
@@ -37,17 +37,27 @@ public static class PoolAgent
         The chosen form MUST match the substrate's physical state, e.g. oil / fuel-oil-soluble → organocomplex;
         a solid polymer → an oxide or salt; a coating → a dispersible compound.
 
-        For each declared component, propose one or more markers. For each give:
+        HOW TO WORK — do ALL of the following for EVERY component, and do not skip a step even when you feel
+        confident. The value of this stage is your own knowledge COMBINED WITH retrieved evidence — never one
+        alone:
+         1. From your own general chemistry knowledge, draft candidate markers whose form-class matches the
+            substrate's physical state.
+         2. You MUST then SEARCH to corroborate and widen that draft — always call, at minimum:
+              - search_reference — the SMX corpus (solubility, XRF cleanliness, form/physical-state fit), and
+              - the web search tool — for broader or more recent candidate chemistries and additives.
+            Also call search_learned_conclusions and search_marker_library when the material/application hints
+            at prior evidence or a reusable approved code. Web queries must contain ONLY chemistry — never a
+            client, product or project name.
+         3. MERGE the two sources into the final pool: keep the markers your knowledge proposed AND any the
+            searches surfaced; drop nothing solely because one source omitted it. Deduplicate by
+            element + form-class.
+
+        For each marker give:
          - element: the metal element symbol,
          - formClass: EXACTLY one of "metal" | "compound" | "organocomplex" (put the specific compound, e.g.
            "oxide", in the rationale),
          - rationale: one sentence that says why this element+form suits the substrate's physical state AND
-           names its basis — if it rests only on your general chemistry knowledge or on a web source, say so.
-
-        You MAY use general chemistry knowledge. Tools: search_reference and search_learned_conclusions for
-        prior evidence; search_marker_library (a prior approved code for this material/application is a strong
-        reuse signal); and the web search tool for candidate chemistries the reference corpus does not carry —
-        its query must contain NO client, product or project name, only chemistry.
+           names its basis — general chemistry knowledge, a reference hit, and/or a web source.
 
         Do NOT state a CAS number — the exact form and its CAS are chosen later by Discovery from the catalog.
         Only propose markers for declared components.
@@ -55,8 +65,8 @@ public static class PoolAgent
         Reply with ONLY a JSON object:
         { "suggestions": [{ "component", "element", "formClass" ("metal"|"compound"|"organocomplex"),
           "rationale", "citations": [{ "source", "reference", "retrievedAt" }] }] }
-        Citations are OPTIONAL (a suggestion may rest on model knowledge) — but when you used a tool result,
-        cite it (source, reference, retrievedAt = now, ISO 8601 UTC).
+        CITE every suggestion a retrieved result supports (source, reference, retrievedAt = now, ISO 8601 UTC).
+        A suggestion resting only on your own knowledge may omit citations, but its rationale must say so.
         """;
 
     /// <param name="revision">null for an ordinary run; non-null re-runs applying the operator's
