@@ -172,6 +172,40 @@ strong {
   margin-top: 2px;
 }
 
+.ctxbar__poll {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--s2);
+  font-size: var(--t-tiny);
+  color: var(--text-muted);
+}
+
+/* A slow pulse, not a spinner. The record is being watched, not worked on — and a spinner
+   here would claim activity the operator is not waiting for. */
+.ctxbar__pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--text-accent);
+  animation: ctxpulse 2s var(--ease-inout) infinite;
+}
+@keyframes ctxpulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ctxbar__pulse {
+    animation: none;
+    opacity: 0.8;
+  }
+}
+
 /* ---- workspace: canvas + dock ---------------------------------------------- */
 
 .workspace {

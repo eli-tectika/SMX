@@ -39,7 +39,7 @@ const SCREENS: Record<string, (p: ScreenProps) => JSX.Element> = {
 
 export function ProjectLayout() {
   const { projectId, stage } = useParams<{ projectId: string; stage?: string }>();
-  const { state, refresh } = useProject(projectId);
+  const { state, refresh, readAt, polling } = useProject(projectId);
 
   if (!stage) return <Navigate to={`/p/${projectId}/intake`} replace />;
   if (state.kind === 'loading') return <Loading what="project" />;
@@ -56,7 +56,7 @@ export function ProjectLayout() {
 
   return (
     <>
-      <ContextBar project={state.project} />
+      <ContextBar project={state.project} readAt={readAt} polling={polling} />
 
       {def.surface === 'record' ? (
         /*

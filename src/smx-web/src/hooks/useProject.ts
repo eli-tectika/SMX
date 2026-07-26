@@ -27,9 +27,13 @@ export type ProjectState =
 export function useProject(projectId: string | undefined): {
   state: ProjectState;
   refresh: () => void;
+  readAt: number | null;
+  polling: boolean;
 } {
   const [state, setState] = useState<ProjectState>({ kind: 'loading' });
   const [nonce, setNonce] = useState(0);
+  const [readAt, setReadAt] = useState<number | null>(null);
+  const [polling, setPolling] = useState(false);
   const timer = useRef<number>();
 
   const load = useCallback(async (id: string) => {
@@ -40,6 +44,7 @@ export function useProject(projectId: string | undefined): {
         return false;
       }
       setState({ kind: 'ready', project: result });
+      setReadAt(Date.now());
       return anyRunning(result.stages);
     } catch (err) {
       setState({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
@@ -53,7 +58,14 @@ export function useProject(projectId: string | undefined): {
 
     const tick = async () => {
       const keepPolling = await load(projectId);
-      if (cancelled || !keepPolling) return;
+      if (cancelled) return;
+      // Set AFTER the cancelled check: this effect's cleanup fires on unmount (route change,
+      // or the projectId/nonce deps changing) between the `await` above and here, and calling
+      // a setState on an already-unmounted component is exactly the bug the `cancelled` guard
+      // exists to prevent — so `polling` gets the same guard as every other state write in
+      // this tick.
+      setPolling(keepPolling);
+      if (!keepPolling) return;
       timer.current = window.setTimeout(tick, POLL_MS);
     };
     void tick();
@@ -65,5 +77,5 @@ export function useProject(projectId: string | undefined): {
   }, [projectId, load, nonce]);
 
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
-  return { state, refresh };
+  return { state, refresh, readAt, polling };
 }

@@ -59,3 +59,37 @@ describe('ContextBar next line', () => {
     expect(screen.queryByText(/open it/i)).toBeNull();
   });
 });
+
+function bar2(p: ProjectSummary, readAt: number | null, polling: boolean) {
+  return render(
+    <MemoryRouter>
+      <ContextBar project={p} readAt={readAt} polling={polling} />
+    </MemoryRouter>,
+  );
+}
+
+describe('ContextBar poll freshness', () => {
+  it('says it is watching the record while polling', () => {
+    bar2(project({ discovery: { status: 'running', attempts: 1 } }), Date.now(), true);
+    expect(document.querySelector('.ctxbar__poll')).toHaveTextContent(/watching the record/i);
+  });
+
+  /** A settled project is not being watched, and claiming otherwise would be a lie about the loop. */
+  it('says nothing when the poll loop has stopped', () => {
+    bar2(project({ intake: { status: 'done', attempts: 1 } }), Date.now(), false);
+    expect(document.querySelector('.ctxbar__poll')).toBeNull();
+  });
+
+  /**
+   * The ticker re-renders every second. If it were ever a live region it would queue an
+   * announcement per second and bury the Next line, which is the sentence that actually matters
+   * when the poll finds a transition. This test is the tripwire for someone "fixing" the missing
+   * role later.
+   */
+  it('is not a live region, so it cannot drown out the next line', () => {
+    bar2(project({ discovery: { status: 'running', attempts: 1 } }), Date.now(), true);
+    const poll = document.querySelector('.ctxbar__poll')!;
+    expect(poll).toHaveAttribute('aria-hidden', 'true');
+    expect(poll).not.toHaveAttribute('aria-live');
+  });
+});

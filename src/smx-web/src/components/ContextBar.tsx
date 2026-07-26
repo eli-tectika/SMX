@@ -1,7 +1,8 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { ProjectSummary } from '../api/types';
 import { whatsBlocking } from '../domain/blocking';
+import { agoLabel } from '../domain/relativeTime';
 import { StageSpine } from './StageSpine';
 import { Data } from './ui/Data';
 
@@ -16,7 +17,15 @@ import { Data } from './ui/Data';
  * corner cell at 3). They do not compete for scroll — the table has its own container —
  * but they do compete for paint order.
  */
-export function ContextBar({ project }: { project: ProjectSummary }) {
+export function ContextBar({
+  project,
+  readAt = null,
+  polling = false,
+}: {
+  project: ProjectSummary;
+  readAt?: number | null;
+  polling?: boolean;
+}) {
   /**
    * The needle.
    *
@@ -51,6 +60,19 @@ export function ContextBar({ project }: { project: ProjectSummary }) {
   const nextIcon = blocking ? blocking.icon : settled ? 'ti-check' : 'ti-help-circle';
 
   const ref = useRef<HTMLDivElement>(null);
+
+  /**
+   * Re-render once a second so the label ages while the operator watches.
+   *
+   * Only while polling: a settled project's last-read time is not interesting, and a timer that
+   * ticks for the life of a tab on a screen nobody is watching is just heat.
+   */
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!polling) return;
+    const id = window.setInterval(() => setTick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [polling]);
 
   /**
    * The bar's height is now a function of the RECORD — a settled project gets one short line, a
@@ -119,6 +141,23 @@ export function ContextBar({ project }: { project: ProjectSummary }) {
           </span>
         </span>
       </div>
+
+      {/*
+        A live poll and a frozen tab look identical otherwise.
+
+        Deliberately NOT a live region, and `aria-hidden` so it is not one by accident. This label
+        re-renders every second by design; announcing it would queue "updated 3s ago", "updated 4s
+        ago" … forever, drowning out the Next line above it — which is the one sentence on this
+        screen a screen-reader user actually needs when the poll finds a transition. That line
+        carries `role="status"`; this one is a visual affordance for a sighted operator checking
+        the tab is alive, and the state it reports is already available elsewhere.
+      */}
+      {polling && readAt !== null && (
+        <div className="ctxbar__poll" aria-hidden="true">
+          <span className="ctxbar__pulse" />
+          Watching the record · updated {agoLabel(Date.now() - readAt)}
+        </div>
+      )}
 
       <StageSpine project={project} />
     </div>
