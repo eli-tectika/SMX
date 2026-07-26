@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import type { ProjectSummary } from '../api/types';
 import { whatsBlocking } from '../domain/blocking';
@@ -31,10 +32,48 @@ export function ContextBar({ project }: { project: ProjectSummary }) {
    * already loaded.
    */
   const blocking = whatsBlocking(project, undefined, 0, 'project');
-  const tone = blocking ? blocking.tone : 'success';
+
+  /**
+   * "Settled" is a claim, not a default. `whatsBlocking` returning `null` means only "no rule
+   * matched" — for a well-formed record that happens to coincide with every stage being done,
+   * but `stages` is an untyped `Record<string, StageState>` with no runtime validation. An empty
+   * record, or a tenth status a future backend change introduces, would also fail to match any
+   * rule and must NOT be allowed to paint a green "All stages settled" over a record we do not
+   * actually understand. So settled is asserted positively — every stage present and `done` — and
+   * the fallback for the genuinely unclassifiable case is a muted "status unknown", never success.
+   * (The dashboard card has the easier version of this problem: it renders nothing at all when
+   * `whatsBlocking` returns null, because a card can just omit the line — a status bar cannot.)
+   */
+  const stageList = Object.values(project.stages);
+  const settled = stageList.length > 0 && stageList.every((s) => s.status === 'done');
+  const tone = blocking ? blocking.tone : settled ? 'success' : 'muted';
+  const nextText = blocking ? blocking.text : settled ? 'All stages settled' : 'Status unknown';
+  const nextIcon = blocking ? blocking.icon : settled ? 'ti-check' : 'ti-help-circle';
+
+  const ref = useRef<HTMLDivElement>(null);
+
+  /**
+   * The bar's height is now a function of the RECORD — a settled project gets one short line, a
+   * halted one gets a sentence plus a verbatim error — so the sticky stack can no longer agree on
+   * a constant. `--ctxbar-h` was 74px against a real 101–132px, and everything that pins beneath
+   * it (the agent dock) was being painted over by an opaque z-index:15 bar, taking its collapse
+   * control with it. Measuring and publishing is the only version of this that stays true.
+   */
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // jsdom (our test environment) has no ResizeObserver; the constant fallback in tokens.css
+    // covers that case, and a real browser is where this actually needs to be right.
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([entry]) =>
+      document.documentElement.style.setProperty('--ctxbar-h', `${entry.contentRect.height}px`),
+    );
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   return (
-    <div className="ctxbar">
+    <div className="ctxbar" ref={ref}>
       <div className="ctxbar__row">
         <Link to="/" className="ctxbar__back" title="All projects">
           <i className="ti ti-chevron-left" aria-hidden="true" />
@@ -51,12 +90,14 @@ export function ContextBar({ project }: { project: ProjectSummary }) {
         {/* Never a celebration — a settled project is quiet (see the motion policy in craft.css). */}
         <span className="ctxbar__next" data-tone={tone}>
           <i
-            className={`ti ${blocking ? blocking.icon : 'ti-check'}`}
+            className={`ti ${nextIcon}`}
             aria-hidden="true"
             data-running={blocking?.icon === 'ti-loader' ? '' : undefined}
           />
-          <span>
-            {blocking ? blocking.text : 'All stages settled'}
+          {/* The one thing on screen that changes when the poll loop finds a transition, and the
+              operator may be thirty rows into a matrix when it does — so it announces itself. */}
+          <span role="status" aria-live="polite">
+            {nextText}
             {blocking?.detail && <span className="ctxbar__detail data">{blocking.detail}</span>}
           </span>
         </span>
