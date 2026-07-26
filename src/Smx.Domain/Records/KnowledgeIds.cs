@@ -18,6 +18,10 @@ public static class KnowledgeKinds
     public const string XrfBackground = "xrf-background";
     public const string RegulatoryJudgment = "regulatory-judgment";
     public const string Dosing = "dosing";
+
+    /// The project-close conclusion (design §6.1 trigger 2): written by the dispatcher's close handler
+    /// when the VP gate's approval lands, recording the confirmed final codes.
+    public const string Decision = "decision";
 }
 
 /// Lifecycle of a Marker Library code. Only `Approved` codes are offered as reuse candidates;

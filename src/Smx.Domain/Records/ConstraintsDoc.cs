@@ -5,9 +5,13 @@ public sealed record Citation(string Source, string Reference, string RetrievedA
 /// A component's production facts. BatchMassKg is MASS, deliberately — see OrderAmount. ppm is mg/kg, so a
 /// batch VOLUME cannot yield an order amount without a density, and assuming water (1 L = 1 kg) mis-doses a
 /// polymer by ~10% and gold by 19×. If the operator has a volume, they multiply by density and enter mass.
+/// <param name="PhysicalState">The substrate's physical state — "liquid" | "solid" | "oil-soluble" |
+/// "coating" (free text). It drives the pool agent's form-class choice (oil-soluble → organocomplex; solid
+/// polymer → oxide/salt; coating → dispersible compound). Optional so existing records/eval fixtures keep
+/// deserializing; the intake form now collects it.</param>
 public sealed record ComponentSpec(
     string Id, string Material, string Application, IReadOnlyList<string> Markets, string Objective,
-    double? BatchMassKg = null);
+    double? BatchMassKg = null, string? PhysicalState = null);
 
 public sealed record SubstanceSpec(string Element, string Form, string Cas);
 public sealed record AppliedList(string ListId, string ComponentId, string Reason, Citation Citation);

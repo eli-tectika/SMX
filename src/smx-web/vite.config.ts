@@ -1,13 +1,17 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
+// A build made with VITE_ENABLE_DEMO=true is the stakeholder-demo artifact: it ships
+// the MSW worker so the fixture proj-demo can be shown. Any other build must not carry
+// the interceptor into a deployed environment, so publicDir (which holds only
+// mockServiceWorker.js) is disabled. Must agree with DEMO_ENABLED in src/mocks/demo.ts.
+const demoBuild = process.env.VITE_ENABLE_DEMO === 'true';
+
 export default defineConfig(({ command }) => ({
   plugins: [react()],
 
-  // public/ holds only mockServiceWorker.js, which msw generates and Vite serves in
-  // dev. Disabling publicDir for the build keeps that worker script out of dist/ —
-  // a mock interceptor must never be shippable into a deployed environment.
-  publicDir: command === 'serve' ? 'public' : false,
+  // Served in dev, and emitted into dist/ only for a demo build — never for real prod.
+  publicDir: command === 'serve' || demoBuild ? 'public' : false,
 
   // The backend has no CORS policy. In dev this proxy makes the API same-origin;
   // in prod the App Gateway routes /api/* to the backend, also same-origin.

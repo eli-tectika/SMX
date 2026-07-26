@@ -35,10 +35,13 @@ public sealed class InMemoryRecordStore : IRecordStore
 
     public Task<ProjectDoc?> GetProjectAsync(string projectId, CancellationToken ct = default) =>
         Read<ProjectDoc>(projectId);
-    public Task<IReadOnlyList<ProjectDoc>> GetProjectsAsync(int max = 50, CancellationToken ct = default) =>
+
+    /// Ordinal, descending — the twin of the Cosmos ORDER BY. Both sort the raw "O"-format string rather
+    /// than a parsed instant, which is only correct because that format is fixed-width and always +00:00.
+    /// Unbounded, like the real store: no Take, so a test cannot pass against a cap the store does not have.
+    public Task<IReadOnlyList<ProjectDoc>> GetProjectsAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<ProjectDoc>>(_docs.Values.OfType<ProjectDoc>()
             .OrderByDescending(p => p.CreatedAt, StringComparer.Ordinal)   // twin of the Cosmos ORDER BY ... DESC
-            .Take(max)
             .Select(Copy)
             .ToList());
     public Task<ConstraintsDoc?> GetConstraintsAsync(string projectId, CancellationToken ct = default) =>
@@ -49,11 +52,15 @@ public sealed class InMemoryRecordStore : IRecordStore
         Read<DosingDoc>(RecordIds.Dosing(projectId));
     public Task<CostDoc?> GetCostAsync(string projectId, CancellationToken ct = default) =>
         Read<CostDoc>(RecordIds.Cost(projectId));
+    public Task<DecisionDoc?> GetDecisionAsync(string projectId, CancellationToken ct = default) =>
+        Read<DecisionDoc>(RecordIds.Decision(projectId));
     public Task<IReadOnlyList<VerdictDoc>> GetVerdictsAsync(string projectId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<VerdictDoc>>(
             _docs.Values.OfType<VerdictDoc>().Where(v => v.ProjectId == projectId).Select(Copy).ToList());
     public Task<CandidatesDoc?> GetCandidatesAsync(string projectId, CancellationToken ct = default) =>
         Read<CandidatesDoc>(RecordIds.Candidates(projectId));
+    public Task<PoolDoc?> GetPoolAsync(string projectId, CancellationToken ct = default) =>
+        Read<PoolDoc>(RecordIds.Pool(projectId));
     public Task<GateDoc?> GetGateAsync(string projectId, string gateType, CancellationToken ct = default) =>
         Read<GateDoc>(RecordIds.Gate(projectId, gateType));
     public Task<VerdictDoc?> GetVerdictAsync(string projectId, string cas, string componentId, CancellationToken ct = default) =>
@@ -92,7 +99,9 @@ public sealed class InMemoryRecordStore : IRecordStore
     public Task UpsertMatrixAsync(MatrixDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertDosingAsync(DosingDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertCostAsync(CostDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
+    public Task UpsertDecisionAsync(DecisionDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
+    public Task UpsertPoolAsync(PoolDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertGateAsync(GateDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertRevisionAsync(RevisionDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertChatMessageAsync(ChatMessageDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);

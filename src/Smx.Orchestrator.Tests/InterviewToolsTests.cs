@@ -223,7 +223,7 @@ public class InterviewToolsTests
         // second project — it returns the SAME id and writes nothing new.
         var secondResult = (await InvokeAsync(Tool(tools, "create_project"), new { }))?.ToString();
         Assert.Contains(projectId, secondResult);
-        Assert.Single(await records.GetProjectsAsync(50));
+        Assert.Single(await records.GetProjectsAsync());
         Assert.Equal(projectId, (await sessions.GetAsync(id))!.CreatedProjectId);
     }
 }

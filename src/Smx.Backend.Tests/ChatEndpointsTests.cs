@@ -261,8 +261,13 @@ public class ChatEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
             .Select(f => (string)f.GetRawConstantValue()!)
             .ToArray();
 
+        // Pool and Background are DELIBERATELY hidden, non-chattable pipeline stages (see the Stages
+        // doc-comment): backend-only phases between Intake and Discovery, absent from the UI spine and from
+        // the chat surface. Every OTHER stage constant must appear in `All`, so the guard still catches a
+        // new *chattable* stage that someone forgets to list.
+        var hidden = new[] { Stages.Pool, Stages.Background };
         Assert.NotEmpty(declared);
-        Assert.Equal([.. declared.Order()], [.. Stages.All.Order()]);
+        Assert.Equal([.. declared.Except(hidden).Order()], [.. Stages.All.Order()]);
     }
 
     [Fact]

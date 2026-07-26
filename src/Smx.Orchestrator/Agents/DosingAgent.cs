@@ -120,9 +120,11 @@ public static class DosingAgent
                 RecommendedPpm: w.RecommendedPpm,
                 QuantificationPpm: w.QuantificationPpm));
         }
-        var windowByCompCas = windows
-            .GroupBy(x => (x.ComponentId, x.Cas))
-            .ToDictionary(g => g.Key, g => g.First());
+        // Unique by Validate's window-uniqueness check, so this ToDictionary cannot throw. It used to be a
+        // GroupBy(...).First() — a silent dedup that would have shipped ONE of two conflicting ppms while the
+        // record showed both; the refusal above replaced it, and this direct build would now throw loudly if
+        // a duplicate ever slipped past.
+        var windowByCompCas = windows.ToDictionary(x => (x.ComponentId, x.Cas));
 
         var codes = new List<MarkerCode>();
         foreach (var c in output.Codes)
@@ -197,6 +199,19 @@ public static class DosingAgent
         IReadOnlyDictionary<(string ComponentId, string Element), Floor> floors,
         IReadOnlyList<VerdictDoc> compliant)
     {
+        // A substance gets EXACTLY ONE window per component — structural, so it comes before everything the
+        // windows carry. Two windows for the same (component, cas) are two recommended ppms for one marker,
+        // and every consumer downstream would have to pick one silently: the code builder, the decision
+        // matrix's window lookup, the operator reading the record could each land on a different ppm. That
+        // conflict is the MODEL's to resolve (refused here, retried with this error), never the system's to
+        // collapse — which is why RunAsync's window lookup can be a plain ToDictionary and not a quiet First().
+        var dupWindow = o.Windows.GroupBy(w => (w.ComponentId, w.Cas)).FirstOrDefault(g => g.Count() > 1);
+        if (dupWindow is not null)
+            return $"there are {dupWindow.Count()} windows for '{dupWindow.Key.Cas}' in " +
+                   $"{dupWindow.Key.ComponentId} — a substance gets exactly ONE window per component; two " +
+                   "windows are two recommended ppms for one marker, and nothing downstream may pick between " +
+                   "them silently. Emit a single window";
+
         foreach (var w in o.Windows)
         {
             // A window's element must be the element the compliant verdict assigns to that CAS. w.Element is

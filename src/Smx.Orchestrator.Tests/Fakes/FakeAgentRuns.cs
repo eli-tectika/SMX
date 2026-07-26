@@ -17,6 +17,16 @@ public sealed class FakeAgentRuns : IAgentRuns
             DerivedScope = [new("reach-annex-xvii", "*", "r", new Citation("regulatory", "x", "t"))],
         }));
 
+    /// The default pool run proposes one suggestion for the default Intake component. Mirrors the real
+    /// RunPoolAsync signature (incl. the ProjectDoc that carries sensitive terms) so a dispatcher that stops
+    /// passing the project cannot slip past unnoticed.
+    public Func<ProjectDoc, ConstraintsDoc, RevisionDoc?, Task<AgentRunResult<PoolDoc>>> Pool { get; set; } =
+        (_, c, _) => Task.FromResult(AgentRunResult<PoolDoc>.Ok(new PoolDoc
+        {
+            Id = RecordIds.Pool(c.ProjectId), ProjectId = c.ProjectId,
+            Suggestions = [new("bottle", "Zr", "compound", "an oxide suits a solid polymer", [])],
+        }));
+
     /// Takes the ProjectDoc the real IAgentRuns takes — a fake that dropped it would let the dispatcher stop
     /// passing the project (and with it the sensitive terms) without a single test noticing.
     public Func<ProjectDoc, ConstraintsDoc, RevisionDoc?, Task<Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>>> Discovery { get; set; } =
@@ -48,6 +58,25 @@ public sealed class FakeAgentRuns : IAgentRuns
             GeneratedAt = "2026-07-15T00:00:00Z",
         }));
 
+    /// The default run mirrors the assembled matrix and proposes the FIRST finalized code for each component
+    /// (never a confirmation — ConfirmedCode is the VP's field, and this fake writing it would be the exact
+    /// conflation the real agent is fenced against): a dispatch test exercises orchestration (does the
+    /// CostDoc landing trigger Decision? does the stage park awaiting-VP?), not the pick reasoning — a test
+    /// that cares about the pick scripts this. The signature mirrors the real RunDecisionAsync exactly, so a
+    /// dispatcher that stops passing the assembly or the dosing codes cannot slip past this fake unnoticed.
+    public Func<IReadOnlyList<ComponentDecision>, DosingDoc, RevisionDoc?,
+                Task<AgentRunResult<DecisionDoc>>> Decision { get; set; } =
+        (assembled, dosing, _) => Task.FromResult(AgentRunResult<DecisionDoc>.Ok(new DecisionDoc
+        {
+            Id = RecordIds.Decision(dosing.ProjectId), ProjectId = dosing.ProjectId,
+            Components = [.. assembled.Select(c =>
+                dosing.Codes.FirstOrDefault(k => k.ComponentId == c.ComponentId) is { } code
+                    ? c with { ProposedCode = new ProposedCode(
+                        code.RatioSignature, [.. code.Markers.Select(m => m.Cas)], "fake pick") }
+                    : c)],
+            GeneratedAt = "2026-07-16T00:00:00Z",
+        }));
+
     public Func<RevisionDoc, ConstraintsDoc, string, Task<AgentRunResult<ConclusionOutput>>> Conclusion { get; set; } =
         (r, _, _) => Task.FromResult(AgentRunResult<ConclusionOutput>.Ok(new ConclusionOutput
         {
@@ -76,17 +105,19 @@ public sealed class FakeAgentRuns : IAgentRuns
         await Task.CompletedTask;
     }
 
-    public int IntakeCalls; public int DiscoveryCalls; public int RegulatoryCalls; public int ConclusionCalls;
-    public int ChatCalls; public int DosingCalls; public int InterviewCalls;
+    public int IntakeCalls; public int PoolCalls; public int DiscoveryCalls; public int RegulatoryCalls; public int ConclusionCalls;
+    public int ChatCalls; public int DosingCalls; public int DecisionCalls; public int InterviewCalls;
 
     /// Every agent invocation across all arms. Cost is DETERMINISTIC (§3.4) — no agent — so a Cost dispatch
     /// test asserts this is unchanged: if Cost ever needs a model, that is a design change to argue for in the
     /// open, not one that slips in behind a green suite.
-    public int TotalCalls =>
-        IntakeCalls + DiscoveryCalls + RegulatoryCalls + ConclusionCalls + ChatCalls + DosingCalls + InterviewCalls;
+    public int TotalCalls => IntakeCalls + PoolCalls + DiscoveryCalls + RegulatoryCalls + ConclusionCalls + ChatCalls + DosingCalls
+        + DecisionCalls + InterviewCalls;
 
     Task<Smx.Orchestrator.Agents.AgentRunResult<ConstraintsDoc>> IAgentRuns.RunIntakeAsync(ProjectDoc p, CancellationToken ct)
     { Interlocked.Increment(ref IntakeCalls); return Intake(p); }
+    Task<AgentRunResult<PoolDoc>> IAgentRuns.RunPoolAsync(ProjectDoc project, ConstraintsDoc c, RevisionDoc? revision, CancellationToken ct)
+    { Interlocked.Increment(ref PoolCalls); return Pool(project, c, revision); }
     Task<Smx.Orchestrator.Agents.AgentRunResult<CandidatesDoc>> IAgentRuns.RunDiscoveryAsync(
         ProjectDoc project, ConstraintsDoc c, RevisionDoc? revision, CancellationToken ct)
     { Interlocked.Increment(ref DiscoveryCalls); return Discovery(project, c, revision); }
@@ -97,6 +128,9 @@ public sealed class FakeAgentRuns : IAgentRuns
         IReadOnlyDictionary<(string ComponentId, string Element), Floor> floors,
         IReadOnlyDictionary<string, double> loadings, RevisionDoc? revision, CancellationToken ct)
     { Interlocked.Increment(ref DosingCalls); return Dosing(c, compliant, floors, loadings, revision); }
+    Task<AgentRunResult<DecisionDoc>> IAgentRuns.RunDecisionAsync(
+        IReadOnlyList<ComponentDecision> assembled, DosingDoc dosing, RevisionDoc? revision, CancellationToken ct)
+    { Interlocked.Increment(ref DecisionCalls); return Decision(assembled, dosing, revision); }
     Task<AgentRunResult<ConclusionOutput>> IAgentRuns.RunConclusionAsync(RevisionDoc revision, ConstraintsDoc c, string stageOutputJson, CancellationToken ct)
     { Interlocked.Increment(ref ConclusionCalls); return Conclusion(revision, c, stageOutputJson); }
     Task<string> IAgentRuns.RunChatAsync(ChatTools chatTools, string thread, string stageInputsJson,

@@ -181,7 +181,7 @@ function Head() {
   return (
     <div className="cap">
       <b>Learned conclusions</b>
-      spec §6 — findings with provenance and confidence
+      Findings with provenance and confidence
     </div>
   );
 }

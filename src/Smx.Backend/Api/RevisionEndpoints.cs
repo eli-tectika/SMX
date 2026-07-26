@@ -28,7 +28,7 @@ public static class RevisionEndpoints
             if (!RevisionEffects.IsRevisable(stage))
                 return Results.UnprocessableEntity(new
                 {
-                    error = $"stage '{stage}' cannot be revised — only discovery and regulatory produce a revisable agent output",
+                    error = $"stage '{stage}' cannot be revised — only discovery, regulatory, dosing and decision produce a revisable agent output",
                 });
             if (string.IsNullOrWhiteSpace(req.Target))
                 return Results.UnprocessableEntity(new { error = "target is required — name what should change" });

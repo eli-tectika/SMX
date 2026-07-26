@@ -71,6 +71,21 @@ public sealed class ToolBox(
             "Search accumulated Learned Conclusions (prior material/regulatory findings with confidence + provenance) relevant to tiering this element/form. Treat them as prior evidence, not fact; a higher-confidence, more recent conclusion supersedes an older one."),
     ];
 
+    /// The Pool stage's tools (the need-driven pool agent, PoolAgent). Like DiscoveryTools it closes over the
+    /// project's SensitiveTerms so its web egress is guarded — but its read surface deliberately EXCLUDES
+    /// search_catalog: the pool is allowed to reach beyond the catalog (that is the point), and its CAS is
+    /// Discovery's to mint. The web tool is the same anonymizing egress Discovery uses (hosted or proxy).
+    public IList<AITool> PoolTools(SensitiveTerms terms) =>
+    [
+        AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
+            "Search SMX reference prose: solubility, XRF cleanliness, marker forms, form/physical-state fit. Use to justify which form-class suits the substrate."),
+        AIFunctionFactory.Create(SearchLearnedConclusionsAsync, "search_learned_conclusions",
+            "Search accumulated Learned Conclusions relevant to proposing markers for this material/application. Treat them as prior evidence, not fact; do not fabricate a prior finding if the tool returns nothing."),
+        AIFunctionFactory.Create(SearchMarkerLibraryAsync, "search_marker_library",
+            "Search the cross-project Marker Library for a previously approved code to reuse. Pass application, material, and/or objective as SEPARATE arguments (omit a dimension to leave it unconstrained). A prior approved code for this material/application is a strong reuse signal."),
+        useHostedWebSearch ? HostedWebSearch() : ProxyWebSearch(terms),
+    ];
+
     public IList<AITool> RegulatoryTools() =>
     [
         AIFunctionFactory.Create(SearchRegulatoryAsync, "search_regulatory",
@@ -104,6 +119,11 @@ public sealed class ToolBox(
         AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
             "The reference corpus — formulation-impact basis, application notes, typical loadings."),
     ];
+
+    /// Decision reads what Dosing reads: prior conclusions and the reference corpus. The decision matrix
+    /// itself is DETERMINISTIC assembly — there is deliberately no tool that could let the model "look up"
+    /// a different answer than the record it is proposing over.
+    public IList<AITool> DecisionReadTools() => DosingReadTools();
 
     /// The Dosing stage's tools. The two calculators are DETERMINISTIC and the agent may not do their
     /// arithmetic itself: a model that computes its own floor can compute one that is too low, and a low
@@ -149,6 +169,7 @@ public sealed class ToolBox(
         Stages.Discovery => DiscoveryReadTools(),
         Stages.Regulatory => RegulatoryTools(),
         Stages.Dosing => DosingReadTools(),
+        Stages.Decision => DecisionReadTools(),
         // Cost is deterministic — its output is a table lookup, not a reasoned claim over a corpus — so a
         // chat turn on it holds NO read tools and answers only from the CostDoc in its prompt. Listed
         // explicitly (not left to the default) so the intent reads as deliberate, not as an unknown stage.

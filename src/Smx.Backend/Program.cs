@@ -206,6 +206,8 @@ app.MapIntakeSessionEndpoints();
 app.MapAttachmentEndpoints();
 app.MapIntakeBriefEndpoints();
 app.MapXrfEndpoints();
+app.MapDecisionEndpoints();
+app.MapExportEndpoints();
 app.Run();
 
 public partial class Program { } // WebApplicationFactory hook

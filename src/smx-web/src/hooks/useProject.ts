@@ -13,20 +13,23 @@ export type ProjectState =
 
 /**
  * Loads GET /projects/{id} and re-polls while any stage is still pending or
- * running. Once every stage is terminal (done / failed / needs-review) nothing
- * further changes without operator action, so polling stops rather than hammering
+ * running. Once every stage is terminal (done / failed / needs-review / a park)
+ * nothing further changes without a human, so polling stops rather than hammering
  * the API for the life of the tab.
  *
- * Returns `[state, refresh]`. `refresh` exists for exactly that "operator action":
- * pressing Start Processing moves intake out of awaiting-confirmation, and polling
- * had already stopped because awaiting-confirmation is not running. Without a way to
- * re-read, the spine would still show the pre-Start status after the operator started
- * the analysis — the screen lying about the record.
+ * `refresh` is how a screen restarts that loop after IT is the human: pressing Start
+ * Processing moves intake out of `awaiting-confirmation`, and an operator un-parking
+ * Dosing (POST /dosing/loading) flips that stage back to `pending` — in both cases the
+ * poll loop had already settled (neither state is `running`), so the caller that wrote
+ * the record is the one that knows to look again. Without it the spine would keep
+ * showing the pre-write status, the screen lying about the record.
  */
-export function useProject(projectId: string | undefined): [ProjectState, () => void] {
+export function useProject(projectId: string | undefined): {
+  state: ProjectState;
+  refresh: () => void;
+} {
   const [state, setState] = useState<ProjectState>({ kind: 'loading' });
   const [nonce, setNonce] = useState(0);
-  const refresh = useCallback(() => setNonce((n) => n + 1), []);
   const timer = useRef<number>();
 
   const load = useCallback(async (id: string) => {
@@ -61,5 +64,6 @@ export function useProject(projectId: string | undefined): [ProjectState, () => 
     };
   }, [projectId, load, nonce]);
 
-  return [state, refresh];
+  const refresh = useCallback(() => setNonce((n) => n + 1), []);
+  return { state, refresh };
 }

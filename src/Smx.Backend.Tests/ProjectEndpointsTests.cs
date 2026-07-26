@@ -119,14 +119,15 @@ public class ProjectEndpointsTests : IClassFixture<WebApplicationFactory<Program
     }
 
     [Fact]
-    public async Task Post_WithNeitherPoolsNorCandidates_Returns202_BecauseThePreconditionIsDropped()
+    public async Task Post_NeedOnly_NoPoolsNoCandidates_Returns202()
     {
-        // Was a 400 before design §2.4: the pool-or-candidates precondition is DROPPED, not relocated.
-        // A project created through the interview reaches here with a confirmed component set and no
-        // measured background at all — that is the normal case, not an error.
+        // Need-only is now valid: with neither an element pool nor provided candidates, the pool agent proposes
+        // the candidate pool from the need (before §2.4 this was a 400). A project created through the interview
+        // also reaches here this way — a confirmed component set and no measured background — which is the
+        // normal case, not an error. (Empty COMPONENTS is still a 400 — see PostProjects_Rejects_… above.)
         var req = new CreateProjectRequest("Acme", "MUFE",
-            Components: [new("bottle", "PET", "packaging", ["EU"], "brand")],
-            ElementPools: [], Candidates: null, ClientRestrictedList: null);
+            Components: [new("bottle", "PET", "packaging", ["EU"], "brand", PhysicalState: "solid")],
+            ElementPools: null, Candidates: null, ClientRestrictedList: null);
         var resp = await _client.PostAsJsonAsync("/projects", req);
         Assert.Equal(HttpStatusCode.Accepted, resp.StatusCode);
     }
@@ -138,6 +139,55 @@ public class ProjectEndpointsTests : IClassFixture<WebApplicationFactory<Program
         var id = (await post.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("projectId").GetString()!;
         var status = await _client.GetFromJsonAsync<JsonElement>($"/projects/{id}");
         Assert.Equal("pending", status.GetProperty("stages").GetProperty("intake").GetProperty("status").GetString());
+    }
+
+    /// The intake payload used to be write-only across the whole API: submitted, held on the record, and
+    /// readable by nothing. The intake screen's only recourse was to apologise for its own absence in prose.
+    /// It is the operator's OWN input — never an agent's output — so returning it cannot launder a
+    /// fabricated verdict; it is the safest data in the record to render.
+    [Fact]
+    public async Task GetProject_ReturnsTheIntakePayload_SoIntakeCanRenderWhatWasSubmitted()
+    {
+        var post = await _client.PostAsJsonAsync("/projects", ValidBody);
+        var id = (await post.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("projectId").GetString()!;
+        var body = await _client.GetFromJsonAsync<JsonElement>($"/projects/{id}");
+
+        var payload = body.GetProperty("payload");
+        Assert.Equal("bottle", payload.GetProperty("components")[0].GetProperty("id").GetString());
+        Assert.Equal("HDPE", payload.GetProperty("components")[0].GetProperty("material").GetString());
+        Assert.Equal("Zr", payload.GetProperty("elementPools")[0].GetProperty("element").GetString());
+        Assert.Equal("Pb", payload.GetProperty("clientRestrictedList")[0].GetString());
+    }
+
+    /// Absence has to survive the round trip, because it is not cosmetic: an empty measuredBackground and
+    /// no device key IS the awaiting-physics precondition Dosing parks on. A projection that dropped these
+    /// keys, or emitted a null device, would leave the intake screen unable to tell "no XRF yet" from
+    /// "never asked" — and those are different facts.
+    [Fact]
+    public async Task GetProject_ReportsAbsentPhysics_AsAnEmptyListAndNoDeviceKey()
+    {
+        var post = await _client.PostAsJsonAsync("/projects", ValidBody);
+        var id = (await post.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("projectId").GetString()!;
+        var payload = (await _client.GetFromJsonAsync<JsonElement>($"/projects/{id}")).GetProperty("payload");
+
+        Assert.Empty(payload.GetProperty("measuredBackground").EnumerateArray());
+        Assert.False(payload.TryGetProperty("device", out _));
+    }
+
+    [Fact]
+    public async Task GetProject_ReturnsThePhysicsInputs_WhenTheyAreOnFile()
+    {
+        var post = await _client.PostAsJsonAsync("/projects", PhysicsBody());
+        var id = (await post.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("projectId").GetString()!;
+        var payload = (await _client.GetFromJsonAsync<JsonElement>($"/projects/{id}")).GetProperty("payload");
+
+        var background = payload.GetProperty("measuredBackground")[0];
+        Assert.Equal(4.0, background.GetProperty("level").GetDouble());
+        // The unit travels WITH the level, always. A level read without its unit is the exact confusion
+        // DetectionFloor refuses to make — ppm and counts are not interchangeable.
+        Assert.Equal("ppm", background.GetProperty("unit").GetString());
+        Assert.Equal("Olympus Vanta M", payload.GetProperty("device").GetProperty("model").GetString());
+        Assert.Equal(250.0, payload.GetProperty("components")[0].GetProperty("batchMassKg").GetDouble());
     }
 
     [Fact]
@@ -152,6 +202,69 @@ public class ProjectEndpointsTests : IClassFixture<WebApplicationFactory<Program
         var resp = await _client.GetAsync($"/projects/{id}/matrix");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         Assert.Contains("bottle", await resp.Content.ReadAsStringAsync());
+    }
+
+    // ---- the per-stage reads (Task 13): thin projections, mirroring GET /dosing ------------------------
+
+    [Fact]
+    public async Task GetCandidates_404UntilSeeded_ThenReturnsDoc()
+    {
+        var post = await _client.PostAsJsonAsync("/projects", ValidBody);
+        var id = (await post.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("projectId").GetString()!;
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/projects/{id}/candidates")).StatusCode);
+
+        await _store.UpsertCandidatesAsync(new CandidatesDoc
+        {
+            Id = RecordIds.Candidates(id), ProjectId = id,
+            Substances = [new CandidateSubstance("bottle", "Zr", "zirconium dioxide", "1314-23-4",
+                null, null, false, "A", "strong XRF line", [])],
+        });
+        var resp = await _client.GetAsync($"/projects/{id}/candidates");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var doc = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("1314-23-4", doc.GetProperty("substances")[0].GetProperty("cas").GetString());
+    }
+
+    [Fact]
+    public async Task GetPool_404UntilSeeded_ThenReturnsDoc()
+    {
+        var post = await _client.PostAsJsonAsync("/projects", ValidBody);
+        var id = (await post.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("projectId").GetString()!;
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/projects/{id}/pool")).StatusCode);
+
+        await _store.UpsertPoolAsync(new PoolDoc
+        {
+            Id = RecordIds.Pool(id), ProjectId = id,
+            Suggestions = [new PoolSuggestion("bottle", "Zr", "compound", "an oxide suits a solid polymer", [])],
+        });
+        var resp = await _client.GetAsync($"/projects/{id}/pool");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var doc = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Zr", doc.GetProperty("suggestions")[0].GetProperty("element").GetString());
+    }
+
+    [Fact]
+    public async Task GetVerdicts_EmptyArrayNever404_ThenReturnsTheArray()
+    {
+        // A partition query, never a 404 — an empty analysis is a state, not an error (mirror
+        // GetVerdictsAsync). Even for a project id nothing was ever written under.
+        var empty = await _client.GetAsync("/projects/proj-no-verdicts/verdicts");
+        Assert.Equal(HttpStatusCode.OK, empty.StatusCode);
+        var arr = await empty.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Array, arr.ValueKind);
+        Assert.Equal(0, arr.GetArrayLength());
+
+        await _store.UpsertVerdictAsync(new VerdictDoc
+        {
+            Id = RecordIds.Verdict("proj-with-verdicts", "1314-23-4", "bottle"), ProjectId = "proj-with-verdicts",
+            Cas = "1314-23-4", ComponentId = "bottle", Element = "Zr", Form = "zirconium dioxide",
+            Dimensions = [new("ElementGate", VerdictStatus.Pass, [new Citation("regulatory", "reach-annex", "2026-07-01")], 0.9, "ok")],
+        });
+        var resp = await _client.GetAsync("/projects/proj-with-verdicts/verdicts");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var verdicts = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, verdicts.GetArrayLength());
+        Assert.Equal("1314-23-4", verdicts[0].GetProperty("cas").GetString());
     }
 
     [Fact]

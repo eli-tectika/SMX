@@ -95,7 +95,7 @@ public sealed class ChatTools(IRecordStore store, string projectId, string stage
         // the dangerous `false` — and a RevisionDoc on a non-revisable stage is one the dispatcher can only
         // throw on.
         if (!RevisionEffects.IsRevisable(stage))
-            return Error($"stage '{stage}' cannot be revised — only discovery and regulatory produce a revisable agent output");
+            return Error($"stage '{stage}' cannot be revised — only discovery, regulatory, dosing and decision produce a revisable agent output");
         if (string.IsNullOrWhiteSpace(target))
             return Error("target is required — name what should change");
         // Law 4: no silent edits. The reason is also the seed of the Learned Conclusion; without it there

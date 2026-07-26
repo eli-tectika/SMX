@@ -17,8 +17,12 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
         ReadAsync<DosingDoc>(RecordIds.Dosing(projectId), projectId, ct);
     public Task<CostDoc?> GetCostAsync(string projectId, CancellationToken ct = default) =>
         ReadAsync<CostDoc>(RecordIds.Cost(projectId), projectId, ct);
+    public Task<DecisionDoc?> GetDecisionAsync(string projectId, CancellationToken ct = default) =>
+        ReadAsync<DecisionDoc>(RecordIds.Decision(projectId), projectId, ct);
     public Task<CandidatesDoc?> GetCandidatesAsync(string projectId, CancellationToken ct = default) =>
         ReadAsync<CandidatesDoc>(RecordIds.Candidates(projectId), projectId, ct);
+    public Task<PoolDoc?> GetPoolAsync(string projectId, CancellationToken ct = default) =>
+        ReadAsync<PoolDoc>(RecordIds.Pool(projectId), projectId, ct);
     public Task<GateDoc?> GetGateAsync(string projectId, string gateType, CancellationToken ct = default) =>
         ReadAsync<GateDoc>(RecordIds.Gate(projectId, gateType), projectId, ct);
     public Task<VerdictDoc?> GetVerdictAsync(string projectId, string cas, string componentId, CancellationToken ct = default) =>
@@ -26,22 +30,41 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
     public Task<IntakeBriefDoc?> GetIntakeBriefAsync(string projectId, CancellationToken ct = default) =>
         ReadAsync<IntakeBriefDoc>(RecordIds.IntakeBrief(projectId), projectId, ct);
 
-    /// The ONE query in this class with no PartitionKey in its request options: the projects list spans
-    /// every partition. `MaxItemCount = max` + `Take(max)` keep the fan-out bounded page-side and
-    /// result-side. Wire names pinned by CosmosQueryTextTests.GetProjects_query_uses_wire_property_names.
-    public async Task<IReadOnlyList<ProjectDoc>> GetProjectsAsync(int max = 50, CancellationToken ct = default)
+    /// The ONE query in this class with no PartitionKey in its request options — that absence is what makes
+    /// it cross-partition. The container is partitioned by /projectId, so "every project" is a fan-out by
+    /// definition, and that is acceptable here rather than something to engineer around: one operator,
+    /// projects in the tens, and the dashboard asks on mount and window focus rather than on a timer. The
+    /// container takes the default indexing policy (infra/modules/data.bicep), so every path is indexed and
+    /// both the `type` filter and the ORDER BY are index-served — a composite index is only needed for a
+    /// multi-property sort. Wire names pinned by CosmosQueryTextTests.
+    ///
+    /// PAGE size is bounded; the RESULT is not, and the difference is the design. MaxItemCount caps the
+    /// fan-out per round trip while the loop drains every page, so a large estate costs more requests rather
+    /// than returning a short answer. A `Take(n)` here would silently drop the oldest projects, and this list
+    /// is the only route to a project — there is no search or paging on the dashboard — so a dropped project
+    /// is an unreachable one. Worse, GET /projects feeds the "Needs signing" card: a truncated list means a
+    /// gate awaiting the VP on an older project stops being surfaced by the surface that exists to surface
+    /// it, and parked projects are exactly the ones that age. At thousands of projects this wants a
+    /// continuation token exposed to the client, NOT a cap.
+    ///
+    /// Newest first, ordered on the STRING: CreatedAt is always DateTimeOffset.UtcNow.ToString("O"), so the
+    /// offset is fixed-width and always +00:00 and lexicographic order IS chronological order.
+    /// GetRevisionsAsync below leans on the same property.
+    public async Task<IReadOnlyList<ProjectDoc>> GetProjectsAsync(CancellationToken ct = default)
     {
         var results = new List<ProjectDoc>();
         var query = container.GetItemLinqQueryable<ProjectDoc>(
-                requestOptions: new QueryRequestOptions { MaxItemCount = max })
+                requestOptions: new QueryRequestOptions { MaxItemCount = PageSize })
             .Where(d => d.Type == RecordTypes.Project)
             .OrderByDescending(d => d.CreatedAt)
-            .Take(max)
             .ToFeedIterator();
         while (query.HasMoreResults)
             results.AddRange(await query.ReadNextAsync(ct));
         return results;
     }
+
+    /// Round-trip size for the projects fan-out, not a limit on it. See GetProjectsAsync.
+    private const int PageSize = 50;
 
     public async Task<IReadOnlyList<VerdictDoc>> GetVerdictsAsync(string projectId, CancellationToken ct = default)
     {
@@ -115,7 +138,9 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
     public Task UpsertMatrixAsync(MatrixDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertDosingAsync(DosingDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertCostAsync(CostDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
+    public Task UpsertDecisionAsync(DecisionDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
+    public Task UpsertPoolAsync(PoolDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertGateAsync(GateDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertRevisionAsync(RevisionDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertChatMessageAsync(ChatMessageDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);

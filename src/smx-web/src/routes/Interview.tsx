@@ -11,7 +11,6 @@ import {
 import type { IntakeQuestion, IntakeSession, InterviewTurn } from '../api/types';
 import { AttachmentChip } from '../components/AttachmentChip';
 import { coverage, createBlocker } from '../domain/intakeGate';
-import { rememberProject } from '../hooks/useRecentProjects';
 
 /**
  * "New project" is a conversation, not a form.
@@ -109,12 +108,8 @@ export function Interview() {
     // stream that died after the tool ran.
     const createdProjectId = created ?? refreshed?.createdProjectId ?? null;
     if (createdProjectId) {
-      rememberProject({
-        projectId: createdProjectId,
-        client: refreshed?.client ?? '',
-        product: refreshed?.product ?? '',
-        createdAt: new Date().toISOString(),
-      });
+      // No localStorage "recents" to update: the projects list now reads GET /projects (the record),
+      // so a just-created project appears there on its own. Just go to it.
       navigate(`/p/${createdProjectId}/intake`);
     }
   }

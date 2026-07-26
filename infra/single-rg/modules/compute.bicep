@@ -38,6 +38,19 @@ param uamiClientId string = ''
 @description('Foundry account endpoint; the app derives the /anthropic/v1 base itself.')
 param foundryEndpoint string = ''
 
+@description('Which model the agents call: "anthropic" (Claude on Foundry) or "openai" (the gpt-5-mini stand-in). main.bicep derives this from deployClaude so it cannot name a model that was never deployed.')
+@allowed([
+  'anthropic'
+  'openai'
+])
+param modelProvider string = 'anthropic'
+
+@description('Claude deployment name; used only when modelProvider is "anthropic". Must match the deployment ai.bicep creates.')
+param claudeDeployment string = 'claude-opus-4-7'
+
+@description('OpenAI chat deployment name; used only when modelProvider is "openai". Must match the deployment ai.bicep creates.')
+param openAiDeployment string = 'gpt-5-mini'
+
 @description('Cosmos account document endpoint.')
 param cosmosEndpoint string = ''
 
@@ -58,9 +71,6 @@ param keyVaultUri string = ''
 
 @description('Search Proxy base URL (https://<app>.azurewebsites.net), reached over its private endpoint.')
 param searchProxyEndpoint string = ''
-
-@description('MODEL_PROVIDER for the agent apps: anthropic | openai.')
-param modelProvider string = 'anthropic'
 
 @description('Entra audience of the Search Proxy (api://<proxyAuthClientId>). Web search is gated on SEARCH_PROXY_ENDPOINT, not this: with an endpoint set but no audience the tool is ON but every call fails safe at token acquisition.')
 param searchProxyAudience string = ''
@@ -111,11 +121,14 @@ var sharedEnv = [
   { name: 'COSMOS_ACCOUNT_ENDPOINT', value: cosmosEndpoint }
   { name: 'SEARCH_ENDPOINT', value: searchEndpoint }
   { name: 'KEYVAULT_URI', value: keyVaultUri }
-  { name: 'CLAUDE_DEPLOYMENT', value: 'claude-opus-4-7' }
-  { name: 'OPENAI_DEPLOYMENT', value: 'gpt-5-mini' }
-  // Which of the two the agents actually use. BackendOptions defaults to "anthropic"; this makes the
-  // choice an explicit estate fact so an env without Claude quota (deployClaude=false) can run on gpt-5-mini.
+  // Which model the agents actually call. This is passed in rather than defaulted in code, and main.bicep
+  // derives it from `deployClaude`, because the two drifting apart is not a hypothetical: the code defaults
+  // to 'anthropic', a deploy passed deployClaude=false, and every agent turn then died on a 404
+  // `api_not_supported` — the /anthropic API surface is not even enabled on an account with no Anthropic
+  // deployment. Deriving the provider from what was deployed makes that combination unrepresentable.
   { name: 'MODEL_PROVIDER', value: modelProvider }
+  { name: 'CLAUDE_DEPLOYMENT', value: claudeDeployment }
+  { name: 'OPENAI_DEPLOYMENT', value: openAiDeployment }
   // The estate's regulatory index is named regulatory-corpus (created by the reg-sync pipeline).
   // BackendOptions now defaults to the same name; this stays explicit per the Functions-app convention.
   // A wrong name here is a 404 that fails intake/regulatory outright (deliberately: a silenced regulatory

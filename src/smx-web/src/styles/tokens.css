@@ -1,5 +1,7 @@
-/* Design-token source of truth. Copied verbatim from the :root block shared by
-   project_files/mockups_{1,2,3}_*.html. Do not drift from those files. */
+/* Design-token source of truth. The semantic block below is copied verbatim from the
+   :root shared by project_files/mockups_{1,2,3}_*.html — do not drift from those files.
+   The brand-chrome layer further down (Layer 3) is a deliberate, authorized addition that
+   post-dates the mockups; it never touches these semantic values. */
 :root {
   --text-primary: #18191b;
   --text-secondary: #55575c;
@@ -133,6 +135,36 @@
   /* focus. Accent blue is grammar-correct here: focus IS "active/selected".
      Geometry separates the two — focus is an outer halo, selection an inner ring. */
   --focus-ring: 0 0 0 2px var(--page-bg), 0 0 0 4px var(--text-accent);
+}
+
+/* ---------------------------------------------------------------------------
+   Layer 3 — brand chrome (SMX corporate identity).
+
+   These are NOT part of the semantic chroma budget above. They dress the FRAME —
+   the masthead logo, the primary action, a brand hairline — and they may NEVER be
+   used to signal a verdict. That separation is the whole point: green still means
+   Pass, red still means Fail, and no marker result is ever coloured SMX-navy.
+   Values sampled directly from the SMX brand template (project_files/SMX.png and the
+   presentation deck).
+   --------------------------------------------------------------------------- */
+:root {
+  --brand-navy: #1f3864; /* the wordmark navy — primary action */
+  --brand-deep: #0b3041; /* deep navy — dark surfaces, if ever needed */
+  --brand-teal: #156082; /* brand divider / hairline accent */
+  --prism-cyan: #34b1e1;
+  --prism-indigo: #3f55a3;
+  --prism-yellow: #f0ea40;
+  --prism-green: #5ba545;
+  --prism-gray: #b1b2b2;
+
+  /* Georgia is the brand's title face (presentation deck). It is a system font — no
+     @fontsource, no CDN, no egress — so it stays inside the private-by-default rule.
+     It dresses TITLES only; every data value stays IBM Plex Mono, every prose word
+     stays IBM Plex Sans. */
+  --font-serif: Georgia, 'Times New Roman', serif;
+
+  --rail-w: 64px; /* vertical nav rail — icons only, DMPP-style */
+  --masthead-h: 64px; /* full-width top bar; the rail and context bar pin beneath it */
 }
 
 @media (prefers-reduced-motion: reduce) {

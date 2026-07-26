@@ -29,8 +29,26 @@ param deployGpt4o bool = false
 @description('Deploy the Claude Opus 4.7 reasoning model on Foundry (Anthropic, GlobalStandard). ON by default — the agent backend needs it.')
 param deployClaude bool = true
 
-@description('Chat provider for the agents: "anthropic" (Claude on Foundry — the SOW target) or "openai" (the gpt-5-mini Responses path). Set "openai" in envs where deployClaude is off (no Anthropic quota) — an "anthropic" provider with no Claude deployment fails every agent run with api_not_supported.')
-param modelProvider string = 'anthropic'
+@description('Deploy the gpt-5-mini chat model — the stand-in the agents run on when Claude is off. ON by default so the account always offers a chat model.')
+param deployGpt5Mini bool = true
+
+// The agents call Claude when it was deployed, and the gpt-5-mini stand-in otherwise. The DEFAULT is
+// derived rather than fixed, because a fixed 'anthropic' default is what caused the outage: a deploy
+// passed deployClaude=false, nothing connected that to the provider, and every agent turn died on a 404
+// `api_not_supported` — an account with no Anthropic deployment does not serve /anthropic at all. Derived,
+// that pairing cannot arise by omission; it takes someone typing 'anthropic' next to deployClaude=false.
+//
+// It stays overridable because one pairing IS legitimate and a derivation forbids it: Claude deployed but
+// the agents deliberately on the openai path — exercising that path, or riding out an exhausted Claude
+// quota without tearing down the deployment. Overriding to 'openai' needs deployGpt5Mini on (it is, by
+// default); overriding to 'anthropic' with deployClaude=false reproduces the outage, which is why the
+// default never does it for you.
+@description('Chat provider for the agents: "anthropic" (Claude on Foundry — the SOW target) or "openai" (the gpt-5-mini Responses path). Defaults to whichever model was actually deployed; set it explicitly only to run the openai path on an estate that HAS Claude.')
+@allowed([
+  'anthropic'
+  'openai'
+])
+param modelProvider string = deployClaude ? 'anthropic' : 'openai'
 
 @description('Frontend SPA image (ACR path incl. tag). Empty = placeholder.')
 param frontendImage string = ''
@@ -146,6 +164,7 @@ module ai 'modules/ai.bicep' = {
     searchSku: searchSku
     deployGpt4o: deployGpt4o
     deployClaude: deployClaude
+    deployGpt5Mini: deployGpt5Mini
   }
 }
 
@@ -213,6 +232,7 @@ module compute 'modules/compute.bicep' = {
     orchestratorImage: orchestratorImage
     uamiClientId: security.outputs.uamiClientId
     foundryEndpoint: ai.outputs.foundryEndpoint
+    modelProvider: modelProvider
     cosmosEndpoint: data.outputs.cosmosDocumentEndpoint
     searchEndpoint: 'https://${ai.outputs.searchName}.search.windows.net'
     // Threaded from data rather than restated here, so a rename on either side cannot leave the
@@ -226,7 +246,6 @@ module compute 'modules/compute.bicep' = {
     searchProxyEndpoint: 'https://${functions.outputs.searchProxyDefaultHostName}'
     searchProxyAudience: empty(proxyAuthClientId) ? '' : 'api://${proxyAuthClientId}'
     webSearchEnabled: webSearchEnabled
-    modelProvider: modelProvider
     entraTenantId: empty(apiClientId) ? '' : tenant().tenantId
     apiClientId: apiClientId
   }
@@ -282,6 +301,9 @@ module gateway 'modules/gateway.bicep' = {
     gatewaySku: env == 'prod' ? 'WAF_v2' : 'Standard_v2'
     uamiId: security.outputs.uamiId
     certKeyVaultSecretId: certKeyVaultSecretId
+    // Gives the gateway a real hostname instead of a bare IP. uniqueSuffix keeps the label
+    // globally unique within the region, which cloudapp.azure.com requires.
+    dnsLabel: '${namePrefix}-${env}-${uniqueSuffix}'
   }
 }
 
@@ -316,5 +338,7 @@ output foundryEndpoint string = ai.outputs.foundryEndpoint
 output acrLoginServer string = acr.outputs.acrLoginServer
 output frontendFqdn string = compute.outputs.frontendFqdn
 output gatewayPublicIp string = gateway.outputs.gatewayPublicIp
+output gatewayFqdn string = gateway.outputs.gatewayFqdn
+output gatewayUrl string = 'http://${gateway.outputs.gatewayFqdn}'
 output searchProxyAppName string = functions.outputs.searchProxyAppName
 output regSyncAppName string = functions.outputs.regSyncAppName

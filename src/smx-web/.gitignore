@@ -1,3 +1,6 @@
 node_modules/
 dist/
 public/mockServiceWorker.js
+# tsc -b writes this next to the config; it is a build cache, and it is one `git add -A`
+# away from being committed by anyone who typechecks before staging.
+*.tsbuildinfo

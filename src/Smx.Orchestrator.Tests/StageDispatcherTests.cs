@@ -48,6 +48,69 @@ public class StageDispatcherTests
         Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Discovery].Status);
     }
 
+    /// Constraints with NO element pool and NO provided candidates — the need-only path. Intake produces just
+    /// the need (with the substrate's physical state); the pool agent proposes the pool.
+    private static void NeedOnly(FakeAgentRuns agents) =>
+        agents.Intake = p => Task.FromResult(Smx.Orchestrator.Agents.AgentRunResult<ConstraintsDoc>.Ok(new ConstraintsDoc
+        {
+            Id = RecordIds.Constraints(p.ProjectId), ProjectId = p.ProjectId,
+            Components = [new("bottle", "HDPE", "packaging", ["EU"], "brand", null, "solid")],
+            ElementPools = [],
+            DerivedScope = [new("reach-annex-xvii", "*", "r", new Citation("regulatory", "x", "t"))],
+        }));
+
+    // The need-only journey: the operator enters only the need, so Intake writes a ConstraintsDoc with no
+    // element pool. That must run the POOL agent (not Discovery), and the pool's own write is what then drives
+    // Background (pass-through) and Discovery — over the proposed pool, mapped onto the constraints in memory.
+    [Fact]
+    public async Task NeedOnly_RunsPoolAgent_ThenBackgroundPassthrough_ThenDiscoveryOverTheProposedPool()
+    {
+        var (d, store, agents) = Sut();
+        NeedOnly(agents);
+        ConstraintsDoc? handedToDiscovery = null;
+        var run = agents.Discovery;
+        agents.Discovery = (pr, c, r) => { handedToDiscovery = c; return run(pr, c, r); };
+
+        // Intake → need-only ConstraintsDoc.
+        await d.OnRecordChangedAsync(await Seed(store), default);
+        var constraints = (await store.GetConstraintsAsync("p1"))!;
+
+        // The ConstraintsDoc write runs the pool agent — NOT Discovery yet.
+        await d.OnRecordChangedAsync(constraints, default);
+        Assert.Equal(1, agents.PoolCalls);
+        Assert.Equal(0, agents.DiscoveryCalls);
+        var pool = await store.GetPoolAsync("p1");
+        Assert.NotNull(pool);
+        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Pool].Status);
+
+        // The PoolDoc write drives Background (pass-through) and Discovery over the proposed pool.
+        await d.OnRecordChangedAsync(pool!, default);
+        Assert.Equal(1, agents.DiscoveryCalls);
+        Assert.NotNull(await store.GetCandidatesAsync("p1"));
+        var p = (await store.GetProjectAsync("p1"))!;
+        Assert.Equal("done", p.Stages[Stages.Background].Status);
+        Assert.Equal("done", p.Stages[Stages.Discovery].Status);
+
+        // Discovery was handed the proposed pool (mapped onto the in-memory constraints), not an empty one.
+        Assert.NotNull(handedToDiscovery);
+        Assert.Contains(handedToDiscovery!.ElementPools, e => e.Component == "bottle" && e.Element == "Zr");
+        // ...and the PERSISTED constraints stay frozen: the map is in-memory only.
+        Assert.Empty((await store.GetConstraintsAsync("p1"))!.ElementPools);
+    }
+
+    // At-least-once feed: a redelivered need-only ConstraintsDoc must not re-run the pool agent once a pool exists.
+    [Fact]
+    public async Task NeedOnly_RedeliveredConstraints_DoesNotRerunPoolAgent()
+    {
+        var (d, store, agents) = Sut();
+        NeedOnly(agents);
+        await d.OnRecordChangedAsync(await Seed(store), default);
+        var constraints = (await store.GetConstraintsAsync("p1"))!;
+        await d.OnRecordChangedAsync(constraints, default);
+        await d.OnRecordChangedAsync(constraints, default); // redelivery
+        Assert.Equal(1, agents.PoolCalls);
+    }
+
     // Discovery is the only stage that can reach the public internet, and its web-search tool is built from
     // the ProjectDoc's client/product/project-id — the terms it must refuse to send. The dispatcher is what
     // hands them over: a ConstraintsDoc carries neither name, so a Discovery run dispatched without the

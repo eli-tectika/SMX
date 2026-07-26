@@ -50,18 +50,42 @@ foreach (var gc in cases)
     // the harness: the matrix half of this case is already scored, and losing the whole report to an
     // optional read would hide it. Not silent, though — the skip is printed, because "dosing unchecked"
     // and "dosing checked clean" must never look the same.
+    DosingDoc? dosing = null;   // hoisted: the decision invariants below validate signed codes against it
     try
     {
         var dosingResp = await http.GetAsync($"projects/{projectId}/dosing");
         if (dosingResp.IsSuccessStatusCode)
         {
-            var dosing = JsonSerializer.Deserialize<DosingDoc>(await dosingResp.Content.ReadAsStringAsync(), Json.Options)!;
+            dosing = JsonSerializer.Deserialize<DosingDoc>(await dosingResp.Content.ReadAsStringAsync(), Json.Options)!;
             EvalMetrics.ScoreDosing(dosing, report);
         }
     }
     catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
     {
         Console.WriteLine($"   dosing check SKIPPED (transport failure: {e.Message}) — matrix scores above still stand");
+    }
+
+    // Plan-5 Decision invariants, same contract: the harness signs no gates (neither regulatory nor VP),
+    // so most cases never mint a DecisionDoc — a 404 here is expected and scores nothing. When one DOES
+    // exist, a breach in it is a harm case (a signed nonexistent code, an order outside the signature, a
+    // signature over an uncleared row) and counts as a FALSE PASS, tripping the non-zero exit. Same
+    // transport guard, same reason: an optional read must not cost us the report, and a printed skip keeps
+    // "decision unchecked" from ever looking like "decision checked clean".
+    try
+    {
+        var decisionResp = await http.GetAsync($"projects/{projectId}/decision");
+        if (decisionResp.IsSuccessStatusCode)
+        {
+            var decision = JsonSerializer.Deserialize<DecisionDoc>(await decisionResp.Content.ReadAsStringAsync(), Json.Options)!;
+            if (dosing is not null)
+                EvalMetrics.ScoreDecision(decision, dosing, report);
+            else
+                Console.WriteLine("   decision check SKIPPED (no DosingDoc fetched to validate the signed codes against)");
+        }
+    }
+    catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
+    {
+        Console.WriteLine($"   decision check SKIPPED (transport failure: {e.Message}) — scores above still stand");
     }
 
     Merge(overall, report);

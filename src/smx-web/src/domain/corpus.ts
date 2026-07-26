@@ -19,9 +19,9 @@
  * have since changed.
  *
  * The slot is therefore rendered *unfilled*, and says so. That follows the same rule as
- * `.stat--absent` and `ParkSlot`: showing the hole and naming it is more honest than
- * quietly dropping the question. When a `GET /corpus` (or a field on an existing
- * response) exists, this becomes a data swap, not a redesign.
+ * `.stat--absent`: showing the hole and naming it is more honest than quietly dropping
+ * the question. When a `GET /corpus` (or a field on an existing response) exists, this
+ * becomes a data swap, not a redesign.
  */
 export const CORPUS_SYNCED_AT: string | null = null;
 

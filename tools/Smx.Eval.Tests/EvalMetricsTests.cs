@@ -111,4 +111,85 @@ public class EvalMetricsTests
         Assert.Equal(1, report.FalsePassCount);
         Assert.Contains(report.Failures, f => f.Contains("cas-no") && f.Contains("no ppm window"));
     }
+
+    // ---- the Plan-5 Decision invariants (ScoreDecision) -------------------------------------------------
+
+    /// The one finalized code the decision fixtures share — RatioSignature derived, never hard-coded.
+    private static MarkerCode SignedCode() =>
+        new("bottle", [Marker("cas-zr", "Zr"), Marker("cas-y", "Y")], "ratio");
+
+    /// A VP-signed decision over one component: ConfirmedCode as given, procurement Released with the
+    /// given orders — the state ScoreDecision audits after a close.
+    private static DecisionDoc SignedDecision(string confirmedCode, bool regulatoryCleared = true,
+        string[]? ordered = null) => new()
+    {
+        Id = "p|decision", ProjectId = "p", GeneratedAt = "t",
+        Components =
+        [
+            new("bottle",
+                Rows:
+                [
+                    new DecisionRow("cas-zr", "Zr", Determinations.Recommended, 110.0,
+                        new ClearedCriteria(regulatoryCleared, Dosing: true, Cost: true),
+                        new TraceRefs("p|verdict|cas-zr|bottle", "p|dosing", "p|cost")),
+                ],
+                ProposedCode: new ProposedCode(confirmedCode, ["cas-zr", "cas-y"], "agent pick"),
+                ConfirmedCode: confirmedCode, ConfirmedBy: "VP R&D", ConfirmedReason: "reviewed"),
+        ],
+        Procurement = new ProcurementState
+        {
+            Status = ProcurementStatus.Released,
+            OrderedCas = [.. ordered ?? []],
+        },
+    };
+
+    [Fact]
+    public void ScoreDecision_OnACleanSignedDecision_AddsNoFalsePasses()
+    {
+        // Signed code exists in the DosingDoc, every row cleared, every order a marker of the signed code.
+        var report = new EvalReport();
+        EvalMetrics.ScoreDecision(
+            SignedDecision(SignedCode().RatioSignature, ordered: ["cas-zr"]),
+            Dosing([], SignedCode()), report);
+        Assert.Equal(0, report.FalsePassCount);
+        Assert.Empty(report.Failures);
+    }
+
+    [Fact]
+    public void ScoreDecision_AConfirmedCodeWithNoMatchingDosingCode_IsAFalsePass()
+    {
+        // The headline harm, verbatim: a signed code that exists in NO DosingDoc is a signature over a
+        // code nothing downstream can trace, dose, or order — and nothing re-checks it after the close.
+        var report = new EvalReport();
+        EvalMetrics.ScoreDecision(
+            SignedDecision("Zr:Y = 1.00:0.99"), Dosing([], SignedCode()), report);
+        Assert.Equal(1, report.FalsePassCount);
+        Assert.Contains(report.Failures, f => f.Contains("Zr:Y = 1.00:0.99") && f.Contains("does not exist"));
+    }
+
+    [Fact]
+    public void ScoreDecision_AnOrderedCasOutsideTheConfirmedCodes_IsAFalsePass()
+    {
+        // Released procurement + an order for a substance in NO confirmed code = something was bought
+        // that the VP never signed — the MSDS gate checks review status, not signature membership twice.
+        var report = new EvalReport();
+        EvalMetrics.ScoreDecision(
+            SignedDecision(SignedCode().RatioSignature, ordered: ["cas-zr", "cas-ba"]),
+            Dosing([], SignedCode()), report);
+        Assert.Equal(1, report.FalsePassCount);
+        Assert.Contains(report.Failures, f => f.Contains("cas-ba"));
+    }
+
+    [Fact]
+    public void ScoreDecision_ASignatureOverAnUnclearedRegulatoryRow_IsAFalsePass()
+    {
+        // A ConfirmedCode present while a row shows Cleared.Regulatory == false is a signature over an
+        // uncleared row — the harm case, verbatim.
+        var report = new EvalReport();
+        EvalMetrics.ScoreDecision(
+            SignedDecision(SignedCode().RatioSignature, regulatoryCleared: false),
+            Dosing([], SignedCode()), report);
+        Assert.Equal(1, report.FalsePassCount);
+        Assert.Contains(report.Failures, f => f.Contains("cas-zr") && f.Contains("uncleared"));
+    }
 }

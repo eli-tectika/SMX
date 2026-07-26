@@ -49,8 +49,8 @@ function ClosedPanel({ stageLabel }: { stageLabel: string }) {
     <PanelFrame stageLabel={stageLabel}>
       <div className="tiny muted" style={{ marginTop: 'auto', marginBottom: 'auto', textAlign: 'center', padding: 12 }}>
         <i className="ti ti-message-off" aria-hidden="true" style={{ fontSize: 20, display: 'block', marginBottom: 6 }} />
-        No agent for this stage. The conversation is available on intake, discovery, regulatory and the
-        matrix — the stages the backend runs an agent for.
+        No agent for this stage. The conversation is available on intake, discovery, regulatory, the
+        matrix, dosing and cost — the stages the backend runs an agent for.
       </div>
     </PanelFrame>
   );

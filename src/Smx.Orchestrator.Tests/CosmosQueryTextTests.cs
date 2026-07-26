@@ -42,6 +42,18 @@ public sealed class CosmosQueryTextTests
             .GetItemLinqQueryable<T>(
                 requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey("p1") });
 
+    /// The twin of <see cref="Query{T}"/> for the one store method that is NOT partition-scoped.
+    ///
+    /// The distinction is invisible in the emitted SQL — a partition key is a request option, not query
+    /// text — so this exists to keep the test honest about what it pins rather than because the string
+    /// differs. What it therefore CANNOT catch: a PartitionKey left on GetProjectsAsync's query, which
+    /// would return exactly the one project in that partition, silently, in Azure only. Nothing here can
+    /// see that; only reading the store or driving a real emulator can.
+    private static IQueryable<T> CrossPartitionQuery<T>() =>
+        new CosmosClient(EmulatorEndpoint, EmulatorKey, ProductionOptions())
+            .GetContainer("smx", "record")
+            .GetItemLinqQueryable<T>();
+
     /// Asserts the emitted SQL addresses <paramref name="camel"/> (the on-the-wire name) and NOT the
     /// PascalCase C# name. The negative half is the load-bearing one: it is what fails loudly if someone
     /// re-bases SystemTextJsonCosmosSerializer on CosmosSerializer.
@@ -64,6 +76,56 @@ public sealed class CosmosQueryTextTests
         AssertWireName(sql, "type");
     }
 
+    // ---- CosmosRecordStore.GetProjectsAsync ------------------------------------------------------
+
+    /// The dashboard's only source of project ids, and the landing page itself is the stake. A PascalCase
+    /// `root["Type"]` here would not throw — it would match zero documents, and the operator would be told
+    /// the record holds no projects at all while every one of them sat there. The `createdAt` half is the
+    /// ORDER BY: get that name wrong and the list comes back in arbitrary order while claiming newest-first.
+    ///
+    /// No Take: the production query is unbounded, and a cap pinned here that the store does not have would
+    /// be a test agreeing with itself.
+    [Fact]
+    public void GetProjects_query_uses_wire_property_names()
+    {
+        var sql = CrossPartitionQuery<ProjectDoc>()
+            .Where(d => d.Type == RecordTypes.Project)
+            .OrderByDescending(d => d.CreatedAt)
+            .ToQueryDefinition().QueryText;
+
+        AssertWireName(sql, "type");
+        AssertWireName(sql, "createdAt");
+    }
+
+    /// The loop-closer for the list, in the shape of
+    /// <see cref="Query_property_names_match_the_keys_the_serializer_actually_writes"/>: whatever keys the
+    /// production serializer writes for a ProjectDoc are the keys its query must address. This is the half
+    /// that cannot pass while the writer and the reader disagree.
+    [Fact]
+    public void GetProjects_query_property_names_match_the_keys_the_serializer_actually_writes()
+    {
+        var serializer = new SystemTextJsonCosmosSerializer(Json.Options);
+        var doc = ProjectDoc.Create("proj-1", "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
+        doc.CreatedAt = "2026-07-16T01:00:00.0000000+00:00";
+
+        using var stream = serializer.ToStream(doc);
+        var onDisk = JsonDocument.Parse(stream).RootElement;
+
+        var sql = CrossPartitionQuery<ProjectDoc>()
+            .Where(d => d.Type == RecordTypes.Project)
+            .OrderByDescending(d => d.CreatedAt)
+            .ToQueryDefinition().QueryText;
+
+        foreach (var member in new[] { nameof(ProjectDoc.Type), nameof(ProjectDoc.CreatedAt) })
+        {
+            var wireName = Json.Options.PropertyNamingPolicy!.ConvertName(member);
+            Assert.True(onDisk.TryGetProperty(wireName, out _),
+                $"serializer did not write a '{wireName}' key; document keys: " +
+                string.Join(", ", onDisk.EnumerateObject().Select(p => p.Name)));
+            Assert.Contains($"root[\"{wireName}\"]", sql);
+        }
+    }
+
     // ---- CosmosRecordStore.GetRevisionsAsync -----------------------------------------------------
 
     [Fact]
@@ -76,26 +138,6 @@ public sealed class CosmosQueryTextTests
 
         AssertWireName(sql, "type");
         AssertWireName(sql, "createdAt");   // the ORDER BY: a PascalCase key here silently unsorts the audit trail
-    }
-
-    // ---- CosmosRecordStore.GetProjectsAsync ------------------------------------------------------
-
-    /// The store's FIRST cross-partition query: the projects list spans every partition, so its request
-    /// options carry no PartitionKey (options never reach the QueryText, so the shared helper still pins
-    /// it faithfully). The stakes are the landing page itself — a PascalCase `root["Type"]` matches ZERO
-    /// docs in Azure and the estate renders empty; a PascalCase `root["CreatedAt"]` in the ORDER BY DESC
-    /// silently unsorts "newest first".
-    [Fact]
-    public void GetProjects_query_uses_wire_property_names()
-    {
-        var sql = Query<ProjectDoc>()
-            .Where(d => d.Type == RecordTypes.Project)
-            .OrderByDescending(d => d.CreatedAt)
-            .Take(50)
-            .ToQueryDefinition().QueryText;
-
-        AssertWireName(sql, "type");
-        AssertWireName(sql, "createdAt");
     }
 
     // ---- CosmosRecordStore.GetChatThreadAsync ----------------------------------------------------

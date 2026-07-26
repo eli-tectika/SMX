@@ -9,16 +9,18 @@ public class RevisionEffectsTests
     [InlineData(Stages.Discovery, true)]
     [InlineData(Stages.Regulatory, true)]
     [InlineData(Stages.Dosing, true)]       // Plan 4 — the operator changes a ppm by telling the agent why
+    [InlineData(Stages.Decision, true)]     // Plan 5 — the operator changes the pick by telling the agent why
     [InlineData(Stages.Intake, false)]
     [InlineData(Stages.Matrix, false)]      // assembled deterministically — there is no agent to re-run
     [InlineData(Stages.Cost, false)]        // deterministic table lookup — change its inputs, not the audit
-    public void IsRevisable_DiscoveryRegulatoryAndDosingOnly(string stage, bool expected) =>
+    public void IsRevisable_DiscoveryRegulatoryDosingAndDecisionOnly(string stage, bool expected) =>
         Assert.Equal(expected, RevisionEffects.IsRevisable(stage));
 
     [Theory]
     [InlineData(Stages.Discovery, true)]
     [InlineData(Stages.Regulatory, true)]
     [InlineData(Stages.Dosing, false)]      // downstream of the gate — consumes the compliant set, cannot void it
+    [InlineData(Stages.Decision, false)]    // further downstream still — the pick reads the signed analysis
     public void BreaksRegulatoryGate_ForStagesAtOrUpstreamOfTheGate(string stage, bool expected) =>
         Assert.Equal(expected, RevisionEffects.BreaksRegulatoryGate(stage));
 
@@ -36,6 +38,7 @@ public class RevisionEffectsTests
         Assert.Equal(KnowledgeKinds.Material, RevisionEffects.ConclusionKind(Stages.Discovery));
         Assert.Equal(KnowledgeKinds.RegulatoryJudgment, RevisionEffects.ConclusionKind(Stages.Regulatory));
         Assert.Equal(KnowledgeKinds.Dosing, RevisionEffects.ConclusionKind(Stages.Dosing));
+        Assert.Equal(KnowledgeKinds.Decision, RevisionEffects.ConclusionKind(Stages.Decision));
     }
 
     [Theory]
@@ -52,6 +55,7 @@ public class RevisionEffectsTests
     [InlineData(Stages.Matrix)]
     [InlineData(Stages.Dosing)]
     [InlineData(Stages.Cost)]
+    [InlineData(Stages.Decision)]
     public void EveryRevisableStage_HasAConclusionKindAndAGateAnswer(string stage)
     {
         // The three rules must stay in lockstep. If a later plan makes a stage revisable but forgets to

@@ -11,6 +11,14 @@ public interface IAgentRuns
 {
     Task<AgentRunResult<ConstraintsDoc>> RunIntakeAsync(ProjectDoc project, CancellationToken ct);
 
+    /// The need-driven pool proposal (PoolAgent), run BEFORE Discovery from the need alone.
+    /// <param name="project">carries the sensitive terms the pool's web-search tool must refuse to send —
+    /// same contract as RunDiscoveryAsync.</param>
+    /// <param name="revision">null for an ordinary run; non-null re-proposes applying the operator's
+    /// revise-with-reason. Explicit, not an overload, for the usual reason.</param>
+    Task<AgentRunResult<PoolDoc>> RunPoolAsync(
+        ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, CancellationToken ct);
+
     /// <param name="project">carries Client / Product / ProjectId — the terms the web-search tool must
     /// refuse to send. Required, not optional: a Discovery run without them is a run that cannot protect the
     /// project, and that must be a compile error rather than a silent leak.</param>
@@ -37,6 +45,16 @@ public interface IAgentRuns
         IReadOnlyDictionary<string, double> loadings,
         RevisionDoc? revision, CancellationToken ct);
 
+    /// <param name="assembled">the DETERMINISTIC decision matrix (DecisionAssembler.Assemble) — the agent
+    /// only PICKS a code over these rows; it authors none of them.</param>
+    /// <param name="dosing">the finalized codes the pick chooses among, and the ProjectId the doc is keyed
+    /// by.</param>
+    /// <param name="revision">null for an ordinary run; non-null re-picks applying the operator's
+    /// revise-with-reason. Explicit rather than an overload: forgetting it is a compile error, not an agent
+    /// that silently ignores the operator.</param>
+    Task<AgentRunResult<DecisionDoc>> RunDecisionAsync(
+        IReadOnlyList<ComponentDecision> assembled, DosingDoc dosing, RevisionDoc? revision, CancellationToken ct);
+
     Task<AgentRunResult<ConclusionOutput>> RunConclusionAsync(RevisionDoc revision, ConstraintsDoc constraints, string stageOutputJson, CancellationToken ct);
 
     /// One chat turn. Returns the agent's reply text; the tool-call trail is collected by the ChatTools
@@ -62,6 +80,13 @@ public sealed class AgentRuns(IChatClient chatClient, ToolBox toolBox) : IAgentR
         IntakeAgent.RunAsync(
             new MafAgent(chatClient, IntakeAgent.AgentName, IntakeAgent.Instructions, toolBox.IntakeTools()),
             project, ct);
+
+    public Task<AgentRunResult<PoolDoc>> RunPoolAsync(
+        ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, CancellationToken ct) =>
+        PoolAgent.RunAsync(
+            new MafAgent(chatClient, PoolAgent.AgentName, PoolAgent.Instructions,
+                toolBox.PoolTools(TermsFor(project))),
+            constraints, revision, ct);
 
     public Task<AgentRunResult<CandidatesDoc>> RunDiscoveryAsync(
         ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, CancellationToken ct) =>
@@ -94,6 +119,15 @@ public sealed class AgentRuns(IChatClient chatClient, ToolBox toolBox) : IAgentR
         DosingAgent.RunAsync(
             new MafAgent(chatClient, DosingAgent.AgentName, DosingAgent.Instructions, toolBox.DosingTools(constraints)),
             constraints, compliant, floors, loadings, revision, ct);
+
+    /// Decision reads what Dosing reads (learned conclusions + reference) — the matrix it picks over is
+    /// already assembled deterministically, so there is deliberately no tool that could let the model "look
+    /// up" a different answer than the record it is proposing over.
+    public Task<AgentRunResult<DecisionDoc>> RunDecisionAsync(
+        IReadOnlyList<ComponentDecision> assembled, DosingDoc dosing, RevisionDoc? revision, CancellationToken ct) =>
+        DecisionAgent.RunAsync(
+            new MafAgent(chatClient, DecisionAgent.AgentName, DecisionAgent.Instructions, toolBox.DecisionReadTools()),
+            assembled, dosing, revision, ct);
 
     /// No tools: the distiller reasons only over what it is handed (the revision + the stage output it
     /// produced). Giving it search tools would let it "support" the conclusion with evidence the revision

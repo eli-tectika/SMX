@@ -11,11 +11,13 @@ public static class RecordDocRouter
         {
             RecordTypes.Project => element.Deserialize<ProjectDoc>(Json.Options),
             RecordTypes.Constraints => element.Deserialize<ConstraintsDoc>(Json.Options),
+            RecordTypes.Pool => element.Deserialize<PoolDoc>(Json.Options),
             RecordTypes.Candidates => element.Deserialize<CandidatesDoc>(Json.Options),
             RecordTypes.Verdict => element.Deserialize<VerdictDoc>(Json.Options),
             RecordTypes.Matrix => element.Deserialize<MatrixDoc>(Json.Options),
             RecordTypes.Dosing => element.Deserialize<DosingDoc>(Json.Options),
             RecordTypes.Cost => element.Deserialize<CostDoc>(Json.Options),
+            RecordTypes.Decision => element.Deserialize<DecisionDoc>(Json.Options),
             RecordTypes.Gate => element.Deserialize<GateDoc>(Json.Options),
             RecordTypes.Revision => element.Deserialize<RevisionDoc>(Json.Options),
             RecordTypes.ChatMessage => element.Deserialize<ChatMessageDoc>(Json.Options),

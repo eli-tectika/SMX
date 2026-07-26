@@ -1,21 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
-import { NotFound, getMatrix, getProject } from '../api/client';
-import type { ProjectSummary } from '../api/types';
+import { NotFound, getMatrix, listProjects } from '../api/client';
+import type { ProjectListItem } from '../api/types';
 import { summarize, type MatrixSummary } from '../domain/matrixSummary';
 import { readReviewed, reviewProgress } from '../domain/review';
-import { readRecentProjects, type RecentProject } from './useRecentProjects';
+import { DEMO_ENABLED, demoListItem, isDemoLoaded } from '../mocks/demo';
 
 export interface ProjectCard {
-  recent: RecentProject;
-  state:
-    | { kind: 'loading' }
-    /** The pointer outlived the record — a 404, not an error. */
-    | { kind: 'stale' }
-    | { kind: 'error'; message: string }
-    | { kind: 'ready'; project: ProjectSummary; matrix?: MatrixSummary; unopenedFlagged: number };
+  project: ProjectListItem;
+  matrix?: MatrixSummary;
+  unopenedFlagged: number;
+  /** The matrix read failed. The project itself is still real and still worth showing. */
+  error?: string;
 }
 
-/** The API is fine with this, but a browser with 20 recents should not open 20 sockets at once. */
+/** The API is fine with this, but a record with 20 projects should not open 20 sockets at once. */
 const CONCURRENCY = 4;
 
 async function mapWithLimit<T, R>(
@@ -36,56 +34,70 @@ async function mapWithLimit<T, R>(
 }
 
 /**
- * Loads every remembered project's real record.
+ * Loads every project in the record.
  *
- * Everything the dashboard shows is real: localStorage supplies only the ids, and
- * the stage states, verdicts and citations all come from the API. That is why the
- * dashboard carries no MockBadge — nothing on it is fabricated.
+ * GET /projects is the source of truth, so the dashboard shows what EXISTS rather than what this
+ * browser happens to remember — a project is reachable from any machine, and an id can no longer
+ * be lost by clearing site data. Everything here is real; that is why the screen carries no
+ * MockBadge. The one exception is the opt-in demo fixture, which is merged in behind `isDemo()`
+ * and badged wherever it renders.
  *
- * It deliberately does NOT poll. This is a re-entry surface for a workflow that
- * proceeds in bursts across days; a 3-second timer would be pure noise. It refetches
- * when the window regains focus, and on demand.
+ * The list already carries each project's stages, so there is no per-card GET /projects/{id} —
+ * only the matrix is fetched per project, and only once its stage reports done.
+ *
+ * It deliberately does NOT poll. This is a re-entry surface for a workflow that proceeds in bursts
+ * across days; a 3-second timer would be pure noise. It refetches when the window regains focus,
+ * and on demand.
  */
 export function useProjectsOverview() {
-  const [cards, setCards] = useState<ProjectCard[]>(() =>
-    readRecentProjects().map((recent) => ({ recent, state: { kind: 'loading' as const } })),
-  );
+  const [cards, setCards] = useState<ProjectCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>();
 
   const load = useCallback(async (signal: AbortSignal) => {
-    const recents = readRecentProjects();
-    if (recents.length === 0) {
+    setLoading(true);
+    setError(undefined);
+
+    let projects: ProjectListItem[];
+    try {
+      projects = await listProjects();
+    } catch (err) {
+      if (signal.aborted) return;
+      setError(err instanceof Error ? err.message : String(err));
       setCards([]);
       setLoading(false);
       return;
     }
-    setLoading(true);
-    setCards(recents.map((recent) => ({ recent, state: { kind: 'loading' as const } })));
 
-    const next = await mapWithLimit(recents, CONCURRENCY, async (recent): Promise<ProjectCard> => {
+    // Appended, not prepended: the list is newest-first and the demo's fixture date is old, so this
+    // is where it would sort anyway.
+    if (DEMO_ENABLED && isDemoLoaded()) {
+      const demo = await demoListItem();
+      if (demo) projects = [...projects, demo];
+    }
+
+    const next = await mapWithLimit(projects, CONCURRENCY, async (project): Promise<ProjectCard> => {
+      // The matrix only exists once the assembler has run. Asking before then would be a guaranteed
+      // 404, so gate on the stage the record reports.
+      if (project.stages.matrix?.status !== 'done') return { project, unopenedFlagged: 0 };
       try {
-        const project = await getProject(recent.projectId);
-        if (project === NotFound) return { recent, state: { kind: 'stale' } };
-
-        // The matrix only exists once the assembler has run. Asking before then
-        // would be a guaranteed 404, so gate on the stage the record reports.
-        let matrix: MatrixSummary | undefined;
-        if (project.stages.matrix?.status === 'done') {
-          const doc = await getMatrix(recent.projectId);
-          if (doc !== NotFound) matrix = summarize(doc);
-        }
-
-        const reviewed = readReviewed(recent.projectId);
-        const unopenedFlagged = matrix
-          ? reviewProgress(matrix.flagged, reviewed).remaining.length
-          : 0;
-
-        return { recent, state: { kind: 'ready', project, matrix, unopenedFlagged } };
-      } catch (err) {
-        if (signal.aborted) return { recent, state: { kind: 'loading' } };
+        const doc = await getMatrix(project.projectId);
+        if (doc === NotFound) return { project, unopenedFlagged: 0 };
+        const matrix = summarize(doc);
+        const reviewed = readReviewed(project.projectId);
         return {
-          recent,
-          state: { kind: 'error', message: err instanceof Error ? err.message : String(err) },
+          project,
+          matrix,
+          unopenedFlagged: reviewProgress(matrix.flagged, reviewed).remaining.length,
+        };
+      } catch (err) {
+        if (signal.aborted) return { project, unopenedFlagged: 0 };
+        // A failed matrix read costs the ribbon, not the card: the project is real, its stages came
+        // from the list, and dropping it would hide a project that exists.
+        return {
+          project,
+          unopenedFlagged: 0,
+          error: err instanceof Error ? err.message : String(err),
         };
       }
     });
@@ -111,15 +123,5 @@ export function useProjectsOverview() {
     return () => window.removeEventListener('focus', onFocus);
   }, [refresh]);
 
-  return { cards, loading, refresh };
-}
-
-/** Drops a pointer whose record no longer exists. Never touches the record itself. */
-export function forgetProject(projectId: string): void {
-  const remaining = readRecentProjects().filter((p) => p.projectId !== projectId);
-  try {
-    localStorage.setItem('smx.recentProjects', JSON.stringify(remaining));
-  } catch {
-    /* ignore — recents are a convenience */
-  }
+  return { cards, loading, error, refresh };
 }

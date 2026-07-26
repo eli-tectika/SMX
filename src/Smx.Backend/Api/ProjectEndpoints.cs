@@ -37,9 +37,20 @@ public static class ProjectEndpoints
             return Results.Accepted($"/projects/{projectId}", new { projectId });
         });
 
+        // GET /projects lives in ProjectsListEndpoints, not here: it carries the gate statuses the
+        // "Needs signing" card is computed from, so it reads gates as well as projects.
+
+        // The payload is returned, not just the stage spine. It is the operator's OWN submitted input —
+        // never an agent's output — so echoing it back cannot launder a fabricated verdict into the UI;
+        // it is the safest data in the record to show. It is also the LIVE intake record rather than a
+        // stale snapshot: record_answer gap-fills this very element (ChatTools.cs:227-230), and only
+        // while constraints do not yet exist, after which it is frozen.
+        //
+        // Its shape is fixed by the anonymous object POST /projects builds — not a verbatim echo of the
+        // request — so there is no unbounded key surface here.
         app.MapGet("/projects/{projectId}", async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
             await store.GetProjectAsync(projectId, ct) is { } doc
-                ? Results.Json(new { doc.ProjectId, doc.Client, doc.Product, doc.Stages }, Json.Options)
+                ? Results.Json(new { doc.ProjectId, doc.Client, doc.Product, doc.Stages, doc.Payload }, Json.Options)
                 : Results.NotFound());
 
         app.MapGet("/projects/{projectId}/matrix",
@@ -162,6 +173,26 @@ public static class ProjectEndpoints
             await store.UpsertProjectAsync(project, ct);
             return Results.Accepted($"/projects/{projectId}", new { projectId, status = StageStatus.Pending });
         });
+
+        // The per-stage reads (§7): thin projections mirroring GET /dosing — the doc verbatim or a 404.
+        app.MapGet("/projects/{projectId}/candidates",
+            async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
+            await store.GetCandidatesAsync(projectId, ct) is { } candidates
+                ? Results.Json(candidates, Json.Options)
+                : Results.NotFound());
+
+        // The need-driven pool (the agent-proposed candidate chemistries), or a 404 before the pool agent has
+        // run. Read-only, like /candidates — the pool is derived data the operator inspects, not edits.
+        app.MapGet("/projects/{projectId}/pool",
+            async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
+            await store.GetPoolAsync(projectId, ct) is { } pool
+                ? Results.Json(pool, Json.Options)
+                : Results.NotFound());
+
+        // A partition query, never a 404: an empty analysis is a state, not an error (mirror GetVerdictsAsync).
+        app.MapGet("/projects/{projectId}/verdicts",
+            async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
+            Results.Json(await store.GetVerdictsAsync(projectId, ct), Json.Options));
 
         app.MapGet("/healthz", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
     }

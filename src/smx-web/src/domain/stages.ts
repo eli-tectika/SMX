@@ -1,24 +1,34 @@
+import { isAwaiting } from '../api/types';
 import type { StageState, StageStatus } from '../api/types';
 
 /**
  * The 8-stage journey from project_files/SMX_Marker_System_UX_Spec.md §4.
  *
- * The backend's ProjectDoc.Stages now tracks FOUR of these — intake, discovery, regulatory,
- * matrix (src/Smx.Domain/Records/ProjectDoc.cs; the old "screening" key was renamed to
- * "discovery" and a real "regulatory" stage status was added). The other four (background,
- * dosing, cost, decision) have no agent and no record; their screens render fixture data
- * behind a MockBadge.
+ * The backend's ProjectDoc.Stages tracks SIX of these — intake, discovery, regulatory, matrix, dosing,
+ * cost (Stages.All in src/Smx.Domain/Records/RecordIds.cs). Only `background` and `decision` have no
+ * agent and no record; those two screens render fixture data behind a MockBadge.
  *
  * `backedBy` names the ProjectDoc stage key whose real status drives the pill. `gate` marks a
  * hard gate; regulatory is BOTH a backed stage and a gate. The decision/VP gate has no backend.
+ *
+ * `surface: 'record'` marks a screen that is a SIGNING SURFACE rather than a work surface: no agent
+ * dock, a document measure, the gate as its terminus (ProjectLayout). Only `decision` is one.
+ *
+ * It is DECLARED here rather than derived, because both things you would derive it from are wrong.
+ * `canChat` is false for `background` too, and it states a TRANSIENT fact about the backend ("no chat
+ * endpoint yet") — a background agent landing later would silently restyle that page. `gate` is true
+ * for `regulatory`, which is a gate WITH an agent and rightly keeps its dock. What is permanent about
+ * the VP gate is not that the backend lacks something: it is that a human signature is not a
+ * conversation. That survives a Decision agent ever being built.
  */
-export type BackendStage = 'intake' | 'discovery' | 'regulatory' | 'matrix';
+export type BackendStage = 'intake' | 'discovery' | 'regulatory' | 'matrix' | 'dosing' | 'cost';
 
 export interface StageDef {
   slug: string;
   label: string;
   backedBy?: BackendStage;
   gate?: boolean;
+  surface?: 'record';
 }
 
 export const STAGES: readonly StageDef[] = [
@@ -26,10 +36,10 @@ export const STAGES: readonly StageDef[] = [
   { slug: 'background', label: 'Background' },
   { slug: 'discovery', label: 'Discovery', backedBy: 'discovery' },
   { slug: 'regulatory', label: 'Reg gate', backedBy: 'regulatory', gate: true },
-  { slug: 'dosing', label: 'Dosing' },
-  { slug: 'cost', label: 'Cost' },
+  { slug: 'dosing', label: 'Dosing', backedBy: 'dosing' },
+  { slug: 'cost', label: 'Cost', backedBy: 'cost' },
   { slug: 'matrix', label: 'Matrix', backedBy: 'matrix' },
-  { slug: 'decision', label: 'VP gate', gate: true },
+  { slug: 'decision', label: 'VP gate', gate: true, surface: 'record' },
 ];
 
 export const isMocked = (stage: StageDef) => stage.backedBy === undefined;
@@ -37,16 +47,25 @@ export const isMocked = (stage: StageDef) => stage.backedBy === undefined;
 /**
  * Which backend stage a spine slug maps to — the routing key for chat and revise.
  *
- * Chat (ChatEndpoints.cs) accepts all four backend stages; revise (RevisionEndpoints.cs) accepts
- * only discovery and regulatory — those are the two stages that produce a revisable agent output.
- * A slug with no backend stage can do neither, and its controls say so honestly rather than pretend.
+ * Chat (ChatEndpoints.cs) accepts all six backend stages. Revise (RevisionEffects.IsRevisable) accepts
+ * only the three that produce a revisable agent output: matrix is deterministically assembled, cost is a
+ * table lookup with no "why" to record over a price fetch, and intake is excluded despite having an agent
+ * because re-running it invalidates the whole project. A slug with no backend stage can do neither, and its
+ * controls say so honestly rather than pretend.
  */
 export function backendStage(slug: string): BackendStage | undefined {
   return STAGES.find((s) => s.slug === slug)?.backedBy;
 }
 
-const CHAT_STAGES: readonly BackendStage[] = ['intake', 'discovery', 'regulatory', 'matrix'];
-const REVISE_STAGES: readonly BackendStage[] = ['discovery', 'regulatory'];
+const CHAT_STAGES: readonly BackendStage[] = [
+  'intake',
+  'discovery',
+  'regulatory',
+  'matrix',
+  'dosing',
+  'cost',
+];
+const REVISE_STAGES: readonly BackendStage[] = ['discovery', 'regulatory', 'dosing'];
 
 export function canChat(slug: string): boolean {
   const s = backendStage(slug);
@@ -58,9 +77,14 @@ export function canRevise(slug: string): boolean {
   return s !== undefined && REVISE_STAGES.includes(s);
 }
 
-/** Terminal for polling purposes: nothing further will change without operator action. */
+/**
+ * Terminal for polling purposes: nothing further will change without a human.
+ *
+ * The three park states are terminal in exactly that sense — the record is stopped on a named person
+ * (the operator, physics, the R.E.) and no amount of polling will move it until they act.
+ */
 export const isTerminal = (status: StageStatus) =>
-  status === 'done' || status === 'failed' || status === 'needs-review';
+  status === 'done' || status === 'failed' || status === 'needs-review' || isAwaiting(status);
 
 export const anyRunning = (stages: Record<string, StageState>) =>
   Object.values(stages).some((s) => s.status === 'running' || s.status === 'pending');
@@ -86,6 +110,12 @@ export function pillClass(stage: StageDef, state: StageState | undefined): strin
     case 'pending':
       cls.push('mut');
       break;
+    // A park reads like a gate: stopped, waiting on a person, and it wants to be noticed.
+    case 'awaiting-operator':
+    case 'awaiting-physics':
+    case 'awaiting-RE':
+      cls.push('gate');
+      break;
   }
   return cls.join(' ');
 }
@@ -102,6 +132,10 @@ export function stageIcon(state: StageState | undefined, gate?: boolean): string
       return 'ti-alert-triangle';
     case 'needs-review':
       return 'ti-eye-exclamation';
+    case 'awaiting-operator':
+    case 'awaiting-physics':
+    case 'awaiting-RE':
+      return 'ti-player-pause';
     default:
       return 'ti-point';
   }

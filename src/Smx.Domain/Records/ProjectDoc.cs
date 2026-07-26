@@ -9,10 +9,16 @@ public static class StageStatus
 {
     public const string Pending = "pending";
     public const string Running = "running";
-    public const string AwaitingRe = "awaiting-RE";
     public const string Failed = "failed";
     public const string NeedsReview = "needs-review";
     public const string Done = "done";
+
+    /// The spec's PARK states, written by StageDispatcher: the record is stopped on a named human, which
+    /// is NOT the same as `pending` (the agent has not started). `awaiting-RE` on Regulatory,
+    /// `awaiting-physics` and `awaiting-operator` on Dosing.
+    public const string AwaitingRe = "awaiting-RE";
+    public const string AwaitingPhysics = "awaiting-physics";
+    public const string AwaitingOperator = "awaiting-operator";
 
     /// Intake only. The project EXISTS and its dossier is written, but no agent has run and none will
     /// until POST /projects/{id}/start flips this to Pending. This constant is the line between
@@ -22,8 +28,9 @@ public static class StageStatus
 
 public sealed class StageState
 {
-    /// See <see cref="StageStatus"/> for the named constants; this stays a plain string because that is
-    /// what is on the wire and in Cosmos.
+    /// See <see cref="StageStatus"/> for the named constants (pending, running, the three awaiting-*
+    /// park states, failed, needs-review, done, awaiting-confirmation); this stays a plain string
+    /// because that is what is on the wire and in Cosmos.
     public string Status { get; set; } = StageStatus.Pending;
     public int Attempts { get; set; }
     public string? Error { get; set; }
@@ -52,11 +59,16 @@ public sealed class ProjectDoc
         Stages = new()
         {
             [Records.Stages.Intake] = new StageState { Status = intakeStatus },
+            // Pool (agent-proposed candidate pool) and Background (XRF filter, currently pass-through) sit
+            // between Intake and Discovery. Backend-only — the UI spine does not render them.
+            [Records.Stages.Pool] = new StageState(),
+            [Records.Stages.Background] = new StageState(),
             [Records.Stages.Discovery] = new StageState(),
             [Records.Stages.Regulatory] = new StageState(),
             [Records.Stages.Matrix] = new StageState(),
             [Records.Stages.Dosing] = new StageState(),
             [Records.Stages.Cost] = new StageState(),
+            [Records.Stages.Decision] = new StageState(),
         },
     };
 }

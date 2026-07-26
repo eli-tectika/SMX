@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import type { ProjectSummary } from '../../api/types';
 import { MockBadge } from '../../components/MockBadge';
 import { Data } from '../../components/ui/Data';
 import { SectionHeader } from '../../components/ui/Primitives';
 import { XrfEntry } from '../../components/xrf/XrfEntry';
+import type { ScreenProps } from '../ProjectLayout';
 
 import background from '../../mocks/fixtures/background.json';
 
@@ -38,13 +38,7 @@ interface Row {
  * hatched, struck, inert. That is a correct place to spend the loudness budget.
  * An application limit is a single-cell flag.
  */
-export function Background({
-  project,
-  onRefresh,
-}: {
-  project: ProjectSummary;
-  onRefresh?: () => void;
-}) {
+export function Background({ project, refreshProject }: ScreenProps) {
   const [objective, setObjective] = useState<'brand' | 'quantification'>('brand');
   const discovery = project.stages.discovery;
   const { components, rows, pools } = background as {
@@ -64,7 +58,7 @@ export function Background({
   return (
     <>
       {/* Real, and first — this is the thing the operator came here to do. */}
-      <XrfEntry projectId={project.projectId} onConfirmed={() => onRefresh?.()} />
+      <XrfEntry projectId={project.projectId} onConfirmed={() => refreshProject()} />
 
       {/*
         The real downstream consequence, replacing a ParkSlot that said "no endpoint reports a park

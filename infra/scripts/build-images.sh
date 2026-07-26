@@ -38,20 +38,21 @@ if [[ -z "${ACR_BUILD_LOGS:-}" && ( "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == c
   LOG_ARGS+=(--no-logs)
 fi
 
-# app -> Dockerfile dir : build context. The SPA's context is its own dir (its Dockerfile
-# COPYs package.json from the context root); the .NET images need the whole src/ tree.
+# app -> tag : Dockerfile dir : build context [: extra az args…]. The SPA's context is its own
+# dir (its Dockerfile COPYs package.json from the context root); the .NET images need the whole
+# src/ tree.
 build() {
-  local app="$1" dockerfile="$2" context="$3"
-  shift 3
-  log "az acr build ${app} -> smx-${app}:${TAG}"
+  local app="$1" tag="$2" dockerfile="$3" context="$4"; shift 4
+  local extra=("$@")
+  log "az acr build ${app} -> smx-${app}:${tag}"
   # -o none drops the run JSON; it does not suppress streamed build logs.
-  # ${arr[@]+…} keeps `set -u` happy when LOG_ARGS is empty. "$@" carries any extra
-  # --build-arg pairs (frontend only; see FRONTEND_BUILD_ARGS below).
+  # ${arr[@]+…} keeps `set -u` happy when an array is empty. `extra` carries any extra
+  # --build-arg pairs (frontend only; see FRONTEND_BUILD_ARGS / FRONTEND_ARGS below).
   az acr build --registry "${ACR_NAME}" \
-    --image "smx-${app}:${TAG}" \
+    --image "smx-${app}:${tag}" \
     --file "${dockerfile}" \
+    ${extra[@]+"${extra[@]}"} \
     ${LOG_ARGS[@]+"${LOG_ARGS[@]}"} \
-    "$@" \
     -o none \
     "${context}"
 }
@@ -65,11 +66,25 @@ FRONTEND_BUILD_ARGS=(
   --build-arg "VITE_API_SCOPE=${VITE_API_SCOPE:-}"
 )
 
+# FRONTEND_ENABLE_DEMO=true builds the STAKEHOLDER-DEMO frontend: it ships the fixture proj-demo
+# (see src/smx-web/Dockerfile). It is tagged '-demo' so it can never be mistaken for a real image
+# at the registry, and it must be served from its own origin — never a production one (MSW registers
+# a service worker at the origin scope; see src/smx-web/src/mocks/demo.ts). The backend and
+# orchestrator images are unaffected.
+FRONTEND_TAG="${TAG}"
+FRONTEND_ARGS=()
+if [[ "${FRONTEND_ENABLE_DEMO:-}" == "true" ]]; then
+  warn "FRONTEND_ENABLE_DEMO=true: building a DEMO frontend (ships fixture proj-demo) as smx-frontend:${TAG}-demo. Never serve it from a production origin."
+  FRONTEND_TAG="${TAG}-demo"
+  FRONTEND_ARGS=(--build-arg ENABLE_DEMO=true)
+fi
+
 log "Building images in ${ACR_NAME} (tag ${TAG})"
-build frontend     "${SRC_DIR}/smx-web/Dockerfile"          "${SRC_DIR}/smx-web" "${FRONTEND_BUILD_ARGS[@]}"
-build backend      "${SRC_DIR}/Smx.Backend/Dockerfile"      "${SRC_DIR}"
-build orchestrator "${SRC_DIR}/Smx.Orchestrator/Dockerfile" "${SRC_DIR}"
+build frontend     "${FRONTEND_TAG}" "${SRC_DIR}/smx-web/Dockerfile"          "${SRC_DIR}/smx-web" "${FRONTEND_BUILD_ARGS[@]}" ${FRONTEND_ARGS[@]+"${FRONTEND_ARGS[@]}"}
+build backend      "${TAG}"          "${SRC_DIR}/Smx.Backend/Dockerfile"      "${SRC_DIR}"
+build orchestrator "${TAG}"          "${SRC_DIR}/Smx.Orchestrator/Dockerfile" "${SRC_DIR}"
 
 log "images:"
-for app in frontend backend orchestrator; do log "  ${ACR_NAME}.azurecr.io/smx-${app}:${TAG}"; done
+log "  ${ACR_NAME}.azurecr.io/smx-frontend:${FRONTEND_TAG}"
+for app in backend orchestrator; do log "  ${ACR_NAME}.azurecr.io/smx-${app}:${TAG}"; done
 log "roll out with: az deployment ... -p frontendImage=... backendImage=... orchestratorImage=...  (or swap-images.sh)"
