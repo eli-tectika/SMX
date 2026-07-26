@@ -3,6 +3,7 @@ import { ApiError, NotFound, getChatThread, sendChatMessage } from '../api/clien
 import type { ChatTurn } from '../api/types';
 import { backendStage, canChat } from '../domain/stages';
 import { usePolling } from '../hooks/usePolling';
+import { useStickToBottom } from '../hooks/useStickToBottom';
 
 /**
  * The docked agent panel — a real, per-stage conversation (spec §3).
@@ -73,6 +74,11 @@ function LiveChat({ projectId, stage, stageLabel }: { projectId: string; stage: 
   const turns = state.kind === 'ready' ? state.data : [];
   const pending = turns.some((t) => t.status === 'pending');
 
+  // `turns.length` follows a landed reply; `pending` follows the "the agent is working…" line
+  // that appears the instant a message is sent, before any poll has found the answer — without
+  // it, sending a message wouldn't move the viewport until the reply actually arrived.
+  const scroller = useStickToBottom<HTMLDivElement>([turns.length, pending]);
+
   async function send(e: FormEvent) {
     e.preventDefault();
     const message = text.trim();
@@ -96,7 +102,7 @@ function LiveChat({ projectId, stage, stageLabel }: { projectId: string; stage: 
 
   return (
     <PanelFrame stageLabel={stageLabel}>
-      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      <div ref={scroller.ref} onScroll={scroller.onScroll} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {state.kind === 'loading' && (
           <div className="tiny muted">
             <i className="ti ti-loader" data-running="" aria-hidden="true" /> Loading the thread…

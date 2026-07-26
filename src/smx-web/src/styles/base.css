@@ -908,3 +908,11 @@ select:focus {
   border-color: var(--border-accent);
   color: var(--text-accent);
 }
+
+/* The interview transcript scrolls inside itself rather than growing the page. Without a height
+   there is no "bottom" to stick to — the composer would keep marching down the document, and a
+   long interview would put the thing the operator is typing into off-screen. */
+.convo {
+  max-height: 52vh;
+  overflow-y: auto;
+}

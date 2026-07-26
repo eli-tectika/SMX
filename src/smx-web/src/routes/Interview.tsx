@@ -11,6 +11,7 @@ import {
 import type { IntakeQuestion, IntakeSession, InterviewTurn } from '../api/types';
 import { AttachmentChip } from '../components/AttachmentChip';
 import { coverage, createBlocker } from '../domain/intakeGate';
+import { useStickToBottom } from '../hooks/useStickToBottom';
 
 /**
  * "New project" is a conversation, not a form.
@@ -32,6 +33,9 @@ export function Interview() {
   const [uploading, setUploading] = useState(false);
   const [openShown, setOpenShown] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  // `streaming` is a dep so the view follows the reply as it arrives token by token, not only
+  // once the finished turn lands.
+  const scroller = useStickToBottom<HTMLDivElement>([session?.turns.length, streaming, sending]);
 
   // No sessionId in the URL: mint one and put it there. The id lives in the URL, not in component
   // state, precisely so a reload, a bookmark or a closed tab all resume the SAME interview — Law 6.
@@ -157,7 +161,12 @@ export function Interview() {
 
       {session && (
         <>
-          <div className="region" style={{ marginBottom: 12 }}>
+          <div
+            className="region convo"
+            style={{ marginBottom: 12 }}
+            ref={scroller.ref}
+            onScroll={scroller.onScroll}
+          >
             {session.turns.length === 0 && streaming === null && (
               <div className="tiny muted">
                 Nothing said yet. Start with who the client is and what the job is — and drop any file
