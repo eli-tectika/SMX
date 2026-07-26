@@ -5,13 +5,18 @@ import { Finder } from './Finder';
 import { Data } from './ui/Data';
 import logoUrl from '../assets/smx-logo.png';
 
+/**
+ * `label` is the accessible name — the full name of the destination.
+ * `short` is what fits under a 76px rail icon. Both exist because truncating the accessible
+ * name to fit a layout would make the screen reader read the layout's problem aloud.
+ */
 const TABS = [
-  { to: '/', label: 'Projects', end: true, icon: 'ti-layout-grid' },
-  { to: '/marker-library', label: 'Marker library', icon: 'ti-books' },
-  { to: '/learned-conclusions', label: 'Learned conclusions', icon: 'ti-bulb' },
-  { to: '/msds-registry', label: 'MSDS registry', icon: 'ti-clipboard-list' },
+  { to: '/', label: 'Projects', short: 'Projects', end: true, icon: 'ti-layout-grid' },
+  { to: '/marker-library', label: 'Marker library', short: 'Library', icon: 'ti-books' },
+  { to: '/learned-conclusions', label: 'Learned conclusions', short: 'Learned', icon: 'ti-bulb' },
+  { to: '/msds-registry', label: 'MSDS registry', short: 'MSDS', icon: 'ti-clipboard-list' },
   // Not `end`: /docs/:id is the same surface, and the tab should stay lit while reading one.
-  { to: '/docs', label: 'Documents', icon: 'ti-files' },
+  { to: '/docs', label: 'Documents', short: 'Docs', icon: 'ti-files' },
 ];
 
 /**
@@ -139,6 +144,7 @@ export function AppShell() {
                 className={({ isActive }) => (isActive ? 'rail__item on' : 'rail__item')}
               >
                 <i className={`ti ${t.icon}`} aria-hidden="true" />
+                <span className="rail__label">{t.short}</span>
               </NavLink>
             ))}
           </div>

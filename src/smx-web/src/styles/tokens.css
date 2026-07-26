@@ -163,7 +163,7 @@
      stays IBM Plex Sans. */
   --font-serif: Georgia, 'Times New Roman', serif;
 
-  --rail-w: 64px; /* vertical nav rail — icons only, DMPP-style */
+  --rail-w: 76px; /* vertical nav rail — icon over a micro-label, matching the operator chip */
   --masthead-h: 64px; /* full-width top bar; the rail and context bar pin beneath it */
 }
 

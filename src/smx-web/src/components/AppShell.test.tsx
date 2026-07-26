@@ -71,6 +71,28 @@ describe('AppShell masthead', () => {
   });
 });
 
+describe('AppShell rail', () => {
+  /**
+   * The rail is the only way to reach four of the five top-level surfaces. Icon-plus-hover-title
+   * means the operator must either already know the icons or hunt with the mouse; a visible label
+   * is what makes a destination findable the first time.
+   */
+  it('renders a visible label beside each destination icon', () => {
+    shell();
+    for (const label of ['Projects', 'Library', 'Learned', 'MSDS', 'Docs']) {
+      expect(screen.getByText(label, { selector: '.rail__label' })).toBeInTheDocument();
+    }
+  });
+
+  /** The full name stays the accessible name; the visible label is the short form. */
+  it('keeps the full accessible name on every rail link', () => {
+    shell();
+    for (const tab of ['Projects', 'Marker library', 'Learned conclusions', 'MSDS registry', 'Documents']) {
+      expect(screen.getByRole('link', { name: tab })).toBeInTheDocument();
+    }
+  });
+});
+
 describe('AppShell keyboard access', () => {
   it('puts a skip link first in the tab order, pointing at main', () => {
     shell();

@@ -467,13 +467,25 @@ strong {
 
 .rail__item {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  gap: 3px;
+  width: 64px;
+  padding: 6px 0 5px;
   border-radius: var(--r2);
   color: var(--text-secondary);
   font-size: 20px;
+  line-height: 1;
+}
+
+/* The same treatment the operator chip at the foot of this rail already uses. Making the
+   nav items match it is why the rail reads as one component instead of two. */
+.rail__label {
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
+  line-height: 1.1;
 }
 .rail__item:hover {
   text-decoration: none;
