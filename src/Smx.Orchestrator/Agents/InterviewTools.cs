@@ -28,6 +28,12 @@ public sealed class InterviewTools(
 
     public IList<AITool> Tools() =>
     [
+        AIFunctionFactory.Create(SetProjectIdentityAsync, "set_project_identity",
+            "Record the CLIENT (the company this project is for) and the PRODUCT name. Establish BOTH " +
+            "early — if the operator's first message did not name them, ask, and confirm the exact " +
+            "spelling. The project CANNOT be created without both, so do this before create_project. " +
+            "Safe to call again to correct them."),
+
         AIFunctionFactory.Create(WriteSummaryAsync, "write_summary",
             "Write or rewrite the plain-prose summary of this project. The operator reads this first when " +
             "they open the project, so write it for someone who was not in this conversation. " +
@@ -82,6 +88,20 @@ public sealed class InterviewTools(
     {
         if (string.IsNullOrWhiteSpace(text)) return "the summary cannot be blank.";
         return await MutateAsync(s => s.Summary = text.Trim(), "write_summary", "summary written.", ct);
+    }
+
+    /// The interview's ONLY writer of the session's identity. IntakeGate requires a client and a product,
+    /// and no other tool sets them: without this the agent could gather everything else and still never
+    /// create the project — create_project's "needs a client and a product" refusal would have nothing the
+    /// agent could act on. The session is minted with these blank (createIntakeSession sends none), so the
+    /// agent must fill them here.
+    public async Task<string> SetProjectIdentityAsync(string client, string product, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(client) || string.IsNullOrWhiteSpace(product))
+            return "both a client (the company this project is for) and a product name are required — " +
+                   "ask the operator for whichever is missing.";
+        return await MutateAsync(s => { s.Client = client.Trim(); s.Product = product.Trim(); },
+            "set_project_identity", $"recorded client '{client.Trim()}', product '{product.Trim()}'.", ct);
     }
 
     /// `confidence` defaults to null because AIFunctionFactory emits a parameter WITHOUT a default as

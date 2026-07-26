@@ -88,6 +88,32 @@ public class InterviewToolsTests
     }
 
     [Fact]
+    public async Task SetProjectIdentity_WritesClientAndProduct_TheOnlyPathThatSetsThem()
+    {
+        // The session is minted blank and no other tool sets these, so without this tool IntakeGate's
+        // client/product check can never pass and the project can never be created (the bug the UI
+        // interview E2E surfaced).
+        var (tools, sessions, id) = await SetupAsync();
+        await InvokeAsync(Tool(tools, "set_project_identity"),
+            new { client = "Acme Fuels", product = "middle-distillate diesel" });
+
+        var s = (await sessions.GetAsync(id))!;
+        Assert.Equal("Acme Fuels", s.Client);
+        Assert.Equal("middle-distillate diesel", s.Product);
+    }
+
+    [Fact]
+    public async Task SetProjectIdentity_RefusesABlankHalf()
+    {
+        var (tools, sessions, id) = await SetupAsync();
+        var result = (await InvokeAsync(Tool(tools, "set_project_identity"),
+            new { client = "Acme Fuels", product = "  " }))?.ToString();
+
+        Assert.Contains("required", result);
+        Assert.True(string.IsNullOrEmpty((await sessions.GetAsync(id))!.Client));
+    }
+
+    [Fact]
     public async Task RecordFinding_RefusesAQuestionNotInTheCatalogue_AndSaysWhichAreValid()
     {
         var (tools, sessions, id) = await SetupAsync();
@@ -157,12 +183,10 @@ public class InterviewToolsTests
     {
         var (tools, sessions, records, id) = await SetupWithRecordsAsync();
 
-        // Client/Product: no tool exists for these in this task, so set them directly on the session,
-        // exactly as the task instructions call for.
-        var session = (await sessions.GetAsync(id))!;
-        session.Client = "Acme Beverages";
-        session.Product = "500 mL sports-drink bottle";
-        await sessions.UpsertAsync(session);
+        // Client/Product go on the record through the agent's own tool — the SAME path the deployed
+        // interview takes (the session is minted blank; there is no other writer of these fields).
+        await InvokeAsync(Tool(tools, "set_project_identity"),
+            new { client = "Acme Beverages", product = "500 mL sports-drink bottle" });
 
         await InvokeAsync(Tool(tools, "write_summary"), new
         {
