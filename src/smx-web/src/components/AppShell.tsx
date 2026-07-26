@@ -135,6 +135,10 @@ export function AppShell() {
         <nav className="rail" aria-label="Sections">
           <div className="rail__nav">
             {TABS.map((t) => (
+              // `title` is not a duplicate of the visible label below it — the visible label is
+              // the abbreviated form ("MSDS"), and the tooltip expands it back to the full name
+              // ("MSDS registry"). That matters most for exactly the domain acronym a newcomer
+              // won't already know.
               <NavLink
                 key={t.to}
                 to={t.to}

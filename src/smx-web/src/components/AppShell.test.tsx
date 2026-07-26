@@ -19,7 +19,8 @@ describe('AppShell masthead', () => {
     shell();
     // The brand mark is the official SMX logo image; its accessible name is "SMX".
     expect(screen.getByAltText('SMX')).toBeInTheDocument();
-    // Each rail destination is icon-only, so its accessible name comes from aria-label.
+    // The rail also carries a visible abbreviated label now, but the accessible name still
+    // comes from aria-label — the full name, not the abbreviation, is what a screen reader owes.
     for (const tab of ['Projects', 'Marker library', 'Learned conclusions', 'MSDS registry', 'Documents']) {
       expect(screen.getByRole('link', { name: tab })).toBeInTheDocument();
     }
