@@ -54,10 +54,15 @@ public sealed class InterviewTools(
         AIFunctionFactory.Create(ProposeComponentsAsync, "propose_components",
             "Propose how this product decomposes into components (bottle, lid, label, liquid…). " +
             "Everything downstream runs PER COMPONENT — there is no product-wide marker. " +
-            "Each needs id, material, application, objective (brand or quantification) and at least one market. " +
+            "Each needs id, material, application, objective (brand or quantification), at least one market, " +
+            "and physicalState — the substrate's physical state, e.g. \"liquid\", \"solid\", \"oil-soluble\", " +
+            "\"coating\". physicalState drives which marker FORM-CLASS the pool agent proposes right after " +
+            "creation (oil-soluble → organocomplex; solid polymer → oxide or salt; coating → a dispersible " +
+            "compound), so ASK the operator for it rather than guessing; omit it only if they genuinely do " +
+            "not know. " +
             "`components` is a JSON array: " +
             "[{\"id\":\"bottle\",\"material\":\"PET\",\"application\":\"food contact\"," +
-            "\"objective\":\"brand\",\"markets\":[\"EU\",\"US\"]}]."),
+            "\"objective\":\"brand\",\"markets\":[\"EU\",\"US\"],\"physicalState\":\"solid\"}]."),
 
         AIFunctionFactory.Create(ReadAttachmentAsync, "read_attachment",
             "Read the text of a file the operator attached to this interview. `fileId` is the id shown " +

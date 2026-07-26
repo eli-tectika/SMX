@@ -198,6 +198,7 @@ export function Intake({ project, refreshProject }: ScreenProps) {
                   <th>Application</th>
                   <th>Markets</th>
                   <th>Objective</th>
+                  <th>State</th>
                   <th>Batch mass</th>
                 </tr>
               </thead>
@@ -209,6 +210,11 @@ export function Intake({ project, refreshProject }: ScreenProps) {
                     <td>{c.application}</td>
                     <td>{c.markets.join(', ')}</td>
                     <td>{c.objective}</td>
+                    {/* The substrate's physical state — the pool agent reads it to match a marker
+                        form-class. Absent when the operator did not know it; say so rather than blank. */}
+                    <td className="tiny">
+                      {c.physicalState ? c.physicalState : <span className="muted">—</span>}
+                    </td>
                     {/* Absent is not zero. ppm is mg/kg, so a missing batch mass yields no order
                         amount at all — say "not given", never render a 0 the operator could act on. */}
                     <td className="tiny">

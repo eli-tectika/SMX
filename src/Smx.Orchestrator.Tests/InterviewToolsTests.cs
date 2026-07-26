@@ -174,8 +174,8 @@ public class InterviewToolsTests
         {
             components = JsonSerializer.Serialize(new object[]
             {
-                new { id = "bottle", material = "HDPE", application = "food contact", objective = "brand", markets = new[] { "EU", "US" } },
-                new { id = "cap", material = "PP", application = "food contact", objective = "brand", markets = new[] { "EU", "US" } },
+                new { id = "bottle", material = "HDPE", application = "food contact", objective = "brand", markets = new[] { "EU", "US" }, physicalState = "solid" },
+                new { id = "cap", material = "PP", application = "food contact", objective = "brand", markets = new[] { "EU", "US" }, physicalState = "solid" },
             }),
         });
 
@@ -217,6 +217,10 @@ public class InterviewToolsTests
         Assert.Equal(reloaded.Summary, brief.Summary);
         Assert.Contains("Acme wants a covert anti-counterfeit marker", brief.Summary);
         Assert.Equal(2, brief.Components.Count);
+        // physicalState survives propose_components' deserialization into ComponentSpec — this is the field
+        // the pool agent reads to match a marker FORM-CLASS to the substrate (design D5). A drop here would
+        // hand the pool agent a null and silently defeat its whole reason for existing.
+        Assert.All(brief.Components, c => Assert.Equal("solid", c.PhysicalState));
         Assert.Equal(IntakeQuestions.All.Count, brief.Dossier.Count);
 
         // Idempotent: a second call (the model retries, or the change feed redelivers) must not mint a

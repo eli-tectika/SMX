@@ -4,9 +4,14 @@ import type { StageState, StageStatus } from '../api/types';
 /**
  * The 8-stage journey from project_files/SMX_Marker_System_UX_Spec.md §4.
  *
- * The backend's ProjectDoc.Stages tracks SIX of these — intake, discovery, regulatory, matrix, dosing,
- * cost (Stages.All in src/Smx.Domain/Records/RecordIds.cs). Only `background` and `decision` have no
- * agent and no record; those two screens render fixture data behind a MockBadge.
+ * The backend's ProjectDoc.Stages now tracks EIGHT real stages — intake, pool, background, discovery,
+ * regulatory, matrix, dosing, cost (Stages in src/Smx.Domain/Records/RecordIds.cs). Two of them —
+ * `pool` (the need-driven pool agent) and `background` (the XRF filter, still a passthrough) — are
+ * deliberately HIDDEN from this operator spine per the pool-subsystem design (§9): the operator's whole
+ * input is the need, and the pool is derived server-side. `pool` therefore has no entry below at all, and
+ * `background` is shown here only as the XRF-entry screen, unbacked in the spine. `decision` (the VP gate)
+ * is the other unbacked screen — a human signature, never an agent. Those screens carry a MockBadge where
+ * they still render fixture data.
  *
  * `backedBy` names the ProjectDoc stage key whose real status drives the pill. `gate` marks a
  * hard gate; regulatory is BOTH a backed stage and a gate. The decision/VP gate has no backend.

@@ -284,6 +284,7 @@ export function Interview() {
                   <i className="ti ti-box" aria-hidden="true" />
                   <div>
                     <b className="data">{c.id}</b> — {c.material} · {c.application} · {c.objective}
+                    {c.physicalState && <> · {c.physicalState}</>}
                     <div className="tiny muted">{c.markets.join(', ')}</div>
                   </div>
                 </div>

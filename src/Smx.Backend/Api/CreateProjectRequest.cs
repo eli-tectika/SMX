@@ -26,13 +26,17 @@ public sealed record CreateProjectRequest(
         // and is deliberately not moved to POST /start either: a project created through the interview reaches
         // start with a confirmed component set and no measured background, and the stage that needs the XRF
         // background PARKS until the operator enters it on Background (Law 6, design §2.4).
-        var hasPools = ElementPools is { Count: > 0 };
         var componentIds = Components.Select(c => c.Id).ToHashSet();
-        if (hasPools && ElementPools.Any(p => !componentIds.Contains(p.Component)))
-            return "every element pool must reference a declared component";
-        // Anti-rubber-stamping (design §4): a conditional (L) pool entry must carry its signal-character note.
-        if (hasPools && ElementPools.Any(p => p.Status == "L" && string.IsNullOrWhiteSpace(p.SignalNote)))
-            return "each conditional (L) element pool entry must carry a signal-character note";
+        // Pattern-match into a local so the non-null narrowing carries into the `.Any(...)` calls (a bare
+        // `hasPools && ElementPools.Any(...)` does not narrow across the `&&`, warning CS8604).
+        if (ElementPools is { Count: > 0 } pools)
+        {
+            if (pools.Any(p => !componentIds.Contains(p.Component)))
+                return "every element pool must reference a declared component";
+            // Anti-rubber-stamping (design §4): a conditional (L) pool entry must carry its signal-character note.
+            if (pools.Any(p => p.Status == "L" && string.IsNullOrWhiteSpace(p.SignalNote)))
+                return "each conditional (L) element pool entry must carry a signal-character note";
+        }
         if (Candidates is { Count: > 0 } && Candidates.Any(c => !componentIds.Contains(c.ComponentId)))
             return "every candidate must reference a declared component";
         // A background measured on a component this product does not have is a measurement of nothing. It
