@@ -64,6 +64,9 @@ function attemptSuffix(s: StageState): string {
   return s.attempts > 1 ? ` · attempt ${s.attempts}` : '';
 }
 
+/** Where the line will be read. Inside a project, an instruction to open the project is noise. */
+export type BlockingWhere = 'list' | 'project';
+
 /**
  * The single most important line on a project card. One tone, one icon, one
  * sentence — in strict priority order, worst first.
@@ -72,6 +75,7 @@ export function whatsBlocking(
   project: ProjectSummary,
   matrix?: MatrixSummary,
   unopenedFlagged = 0,
+  where: BlockingWhere = 'list',
 ): Blocking | null {
   const stages = project.stages;
   const entries = Object.entries(stages);
@@ -113,7 +117,10 @@ export function whatsBlocking(
     return {
       tone: 'warning',
       icon: 'ti-player-play',
-      text: 'Created but not started — open it and press Start Processing to dispatch the agents',
+      text:
+        where === 'project'
+          ? 'Not started — press Start Processing to dispatch the agents'
+          : 'Created but not started — open it and press Start Processing to dispatch the agents',
     };
   }
 

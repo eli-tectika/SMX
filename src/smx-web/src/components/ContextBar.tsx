@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { ProjectSummary } from '../api/types';
-import { anyRunning } from '../domain/stages';
+import { whatsBlocking } from '../domain/blocking';
 import { StageSpine } from './StageSpine';
 import { Data } from './ui/Data';
 
@@ -9,19 +9,29 @@ import { Data } from './ui/Data';
  *
  * The masthead is a compact brand/utility top bar (logo, finder, corpus stamp); this is
  * the per-project status board. Thirty rows into a compatibility matrix you need to know
- * which project you are in and which stages are parked — so this pins where it stays
- * useful, while the masthead stays small enough to keep permanently.
- *
- * This replaces the old free-scrolling `ProjectHeader`, which used to drift off the top of
- * the page along with the spine — so on the one screen where the operator scrolls furthest,
- * the status board vanished exactly when it became useful.
+ * which project you are in and what it is waiting on — so this pins where it stays useful.
  *
  * z-index must clear the matrix's own sticky `thead` (craft.css puts it at 2, and its
  * corner cell at 3). They do not compete for scroll — the table has its own container —
  * but they do compete for paint order.
  */
 export function ContextBar({ project }: { project: ProjectSummary }) {
-  const running = anyRunning(project.stages);
+  /**
+   * The needle.
+   *
+   * A project runs in bursts across days, parking in an explicit `awaiting <X>` state each time
+   * it needs a human. `whatsBlocking` folds the record into one prioritised sentence naming the
+   * wait and whom it is on — and it used to render only on the dashboard card, so the operator
+   * lost it the moment they opened the project. The dashboard calls the SAME function, so the two
+   * surfaces cannot drift apart.
+   *
+   * No matrix summary is passed: this bar is on every stage screen, and fetching the matrix to
+   * render a status line would make the whole workspace wait on it. The matrix-derived rules
+   * (inconsistent, uncited, unopened-flagged) stay the dashboard's job, where the summary is
+   * already loaded.
+   */
+  const blocking = whatsBlocking(project, undefined, 0, 'project');
+  const tone = blocking ? blocking.tone : 'success';
 
   return (
     <div className="ctxbar">
@@ -38,18 +48,17 @@ export function ContextBar({ project }: { project: ProjectSummary }) {
           client {project.client} · <Data kind="id">{project.projectId}</Data>
         </span>
 
-        {/* The record's own summary of itself. Never a celebration — a settled project is
-            quiet (see the motion policy in craft.css). */}
-        <span
-          className="ctxbar__status"
-          style={{ color: running ? 'var(--text-warning)' : 'var(--text-success)' }}
-        >
+        {/* Never a celebration — a settled project is quiet (see the motion policy in craft.css). */}
+        <span className="ctxbar__next" data-tone={tone}>
           <i
-            className={`ti ${running ? 'ti-loader' : 'ti-check'}`}
+            className={`ti ${blocking ? blocking.icon : 'ti-check'}`}
             aria-hidden="true"
-            data-running={running ? '' : undefined}
+            data-running={blocking?.icon === 'ti-loader' ? '' : undefined}
           />
-          {running ? 'in progress' : 'all stages settled'}
+          <span>
+            {blocking ? blocking.text : 'All stages settled'}
+            {blocking?.detail && <span className="ctxbar__detail data">{blocking.detail}</span>}
+          </span>
         </span>
       </div>
 

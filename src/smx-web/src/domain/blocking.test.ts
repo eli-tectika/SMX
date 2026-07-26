@@ -243,3 +243,19 @@ describe('bucketTone', () => {
     expect(bucketTone('needs-you', { tone: 'warning', icon: '', text: '' })).toBe('warning');
   });
 });
+
+describe('whatsBlocking — where', () => {
+  /**
+   * The same fact, addressed from two places. On the dashboard the operator has not opened the
+   * project yet, so the line tells them to; inside the project they are already there, and
+   * "open it and press Start Processing" would send them somewhere they are standing.
+   */
+  it('drops the "open it" instruction when already inside the project', () => {
+    const p = project('awaiting-confirmation', 'pending', 'pending', 'pending');
+
+    expect(whatsBlocking(p)!.text).toMatch(/open it and press Start Processing/i);
+    expect(whatsBlocking(p, undefined, 0, 'project')!.text).toMatch(
+      /^Not started — press Start Processing/i,
+    );
+  });
+});
