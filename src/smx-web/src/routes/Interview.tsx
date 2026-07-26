@@ -34,7 +34,12 @@ export function Interview() {
   const [openShown, setOpenShown] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   // `streaming` is a dep so the view follows the reply as it arrives token by token, not only
-  // once the finished turn lands.
+  // once the finished turn lands. `sending` looks redundant next to `turns.length` — React 18
+  // batches `setSending(true)` with the optimistic operator turn, so `turns.length` has usually
+  // already moved in that commit — but it is the ONLY dep that changes on the empty-reply failure
+  // path: the stream produces no text, so no turn is ever appended, and the sole visible change is
+  // `sending` flipping back to false as the "agent is thinking…" line disappears. Without it here,
+  // that commit shrinks the transcript with nothing re-measuring the scroll position.
   const scroller = useStickToBottom<HTMLDivElement>([session?.turns.length, streaming, sending]);
 
   // No sessionId in the URL: mint one and put it there. The id lives in the URL, not in component

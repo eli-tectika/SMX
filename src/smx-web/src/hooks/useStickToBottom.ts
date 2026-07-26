@@ -1,7 +1,13 @@
 import { useLayoutEffect, useRef } from 'react';
 
-/** Within this many px of the bottom still counts as "at the bottom" — sub-pixel layout, zoom. */
-const THRESHOLD = 48;
+/**
+ * Within this many px of the bottom still counts as "at the bottom". One constant governs both
+ * arming and disarming — a split "generous re-arm / sensitive disarm" pair was tried and rejected:
+ * the two ranges overlap, so a position in the overlap flips `pinned` back and forth on every
+ * measurement. 24px is about one line of slack: enough for sub-pixel layout and zoom, small enough
+ * that a deliberate nudge upward — the reader re-reading a citation two lines up — disarms.
+ */
+const THRESHOLD = 24;
 
 /**
  * Follow a growing list, but only for a reader who is already at the bottom of it.
@@ -21,39 +27,29 @@ const THRESHOLD = 48;
 export function useStickToBottom<T extends HTMLElement>(deps: React.DependencyList) {
   const ref = useRef<T | null>(null);
   const pinned = useRef(true);
-  // Whether we have ever measured this element's real geometry yet. Only the FIRST measurement
-  // is allowed to override `pinned` from raw geometry — see the long comment in the effect for
-  // why re-measuring on every later run is actually wrong, not just redundant.
-  const measured = useRef(false);
+  // Set right before our own `scrollTop` assignment below, so the `scroll` event it queues (it
+  // lands async, in the frame's scroll steps — never synchronously inside this effect) can be
+  // told apart from one the reader produced by hand.
+  const self = useRef(false);
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (!measured.current) {
-      // The first time we can see this element there is no history to trust yet: `pinned`
-      // defaults to true, but if the operator has navigated back into an existing thread that
-      // is already scrolled up (or, in the tests, we are simply handed an element mid-scroll
-      // with no prior onScroll call), the default must lose to what the geometry shows.
-      pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight <= THRESHOLD;
-      measured.current = true;
+    // `onScroll` is the only thing that ever clears `pinned`: it is the one signal that fires on
+    // a real, reader-initiated scroll and never on content merely growing below the fold.
+    if (pinned.current) {
+      self.current = true; // this scroll is ours, not the reader's — see onScroll
+      el.scrollTop = el.scrollHeight;
     }
-    // From here on the decision to follow is `pinned` alone — it is deliberately NOT
-    // re-measured against the geometry on every run. A first draft of this hook did re-measure
-    // every time, on the theory that `onScroll` never fires when content is merely appended so
-    // geometry is the only signal available. That reasoning is backwards: appending content
-    // below the fold never moves `scrollTop` (that is the entire reason this hook has to exist),
-    // so the very next turn after any reply taller than THRESHOLD makes "distance from bottom"
-    // large for EVERY reader, pinned or not — the gap is the growth, not evidence that the
-    // reader scrolled away. Gating the follow on that fresh reading meant auto-follow silently
-    // died after the first turn in any real conversation. `onScroll` remains the sole way
-    // `pinned` changes after this first measurement, because it is the one signal that only
-    // fires on a real, reader-initiated scroll.
-    if (pinned.current) el.scrollTop = el.scrollHeight;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
   /** Wire to the scroller's `onScroll`: re-arms following when the reader returns to the bottom. */
   const onScroll = () => {
+    if (self.current) {
+      self.current = false; // the deferred event from our own assignment above — not the reader
+      return;
+    }
     const el = ref.current;
     if (!el) return;
     pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight <= THRESHOLD;
