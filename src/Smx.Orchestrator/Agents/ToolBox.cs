@@ -83,8 +83,30 @@ public sealed class ToolBox(
             "Search accumulated Learned Conclusions relevant to proposing markers for this material/application. Treat them as prior evidence, not fact; do not fabricate a prior finding if the tool returns nothing."),
         AIFunctionFactory.Create(SearchMarkerLibraryAsync, "search_marker_library",
             "Search the cross-project Marker Library for a previously approved code to reuse. Pass application, material, and/or objective as SEPARATE arguments (omit a dimension to leave it unconstrained). A prior approved code for this material/application is a strong reuse signal."),
-        useHostedWebSearch ? HostedWebSearch() : ProxyWebSearch(terms),
+        useHostedWebSearch ? HostedWebSearch() : PoolProxyWebSearch(terms),
     ];
+
+    /// The pool stage's web egress — the SAME anonymizing proxy Discovery uses (k-anonymity cover queries,
+    /// project-blind contract, SensitiveTerms stripped), but WITHOUT Discovery's endorsement hardening. The
+    /// pool is a hypothesis stage: web is a FIRST-CLASS source here, not a "starting point" capped at Tier B,
+    /// so the description invites web use rather than fencing it and there is no tier/CAS language (the pool
+    /// names elements + form-class, never a CAS, and carries no tier). The anonymization stays — it protects
+    /// the client IP and is NOT the hardening being dropped. The note the results carry is pool-flavoured too
+    /// (see PoolHitsNote / PoolNoMatchNote), so nothing at runtime tells the model to distrust the web.
+    private AITool PoolProxyWebSearch(SensitiveTerms terms)
+    {
+        var web = webSearchFactory(terms);
+        return AIFunctionFactory.Create(
+            (string query, string intent, CancellationToken ct) =>
+                SearchWebAsync(query, intent, ct, web, PoolHitsNote, PoolNoMatchNote),
+            "search_web",
+            "Anonymized external web search for candidate marker chemistries — a FIRST-CLASS source for the " +
+            "pool, to be used alongside your own chemistry knowledge and the reference corpus. Use it freely " +
+            "to WIDEN the candidate set (marker forms, additives, XRF-suitable elements for this substrate). " +
+            "Do NOT state a CAS — the exact form and CAS are Discovery's to mint later. The query must contain " +
+            "NO client, product or project name — only chemistry. " +
+            "intent must be one of: discovery.candidate_forms, discovery.form_properties, discovery.supplier_availability.");
+    }
 
     public IList<AITool> RegulatoryTools() =>
     [
@@ -267,7 +289,22 @@ public sealed class ToolBox(
     public async Task<string> SearchWebAsync(string query, string intent, SensitiveTerms terms, CancellationToken ct) =>
         await SearchWebAsync(query, intent, ct, webSearchFactory(terms));
 
-    private static async Task<string> SearchWebAsync(string query, string intent, CancellationToken ct, IWebSearch web)
+    /// Discovery's result notes (the DEFAULTS): web is a fenced "starting point" whose sole-source candidates
+    /// cap at Tier B. The pool overrides both (PoolHitsNote / PoolNoMatchNote) because it has no tier and treats
+    /// web as first-class — see PoolProxyWebSearch. Parameterising the note is what lets ONE SearchWebAsync
+    /// serve both stances without Discovery's wording leaking into the pool.
+    private const string DiscoveryHitsNote =
+        "WEB SOURCE: a starting point, not an authority. Corroborate against search_catalog before relying on it. " +
+        "A candidate whose citations are all web sources must be Tier B, never Tier A and never preferred.";
+    private const string DiscoveryNoMatchNote = "no matches — do not invent facts; stay with the catalog candidates";
+    private const string PoolHitsNote =
+        "WEB SOURCE for the pool: a first-class source alongside your own knowledge and the reference corpus. " +
+        "Use these hits to widen the candidate set; name the source in the suggestion's rationale.";
+    private const string PoolNoMatchNote =
+        "no web matches — propose from your own chemistry knowledge and the reference corpus.";
+
+    private static async Task<string> SearchWebAsync(string query, string intent, CancellationToken ct, IWebSearch web,
+        string hitsNote = DiscoveryHitsNote, string noMatchNote = DiscoveryNoMatchNote)
     {
         var result = await web.SearchAsync(query, intent, ct);
 
@@ -278,13 +315,12 @@ public sealed class ToolBox(
             return JsonSerializer.Serialize(new { results = Array.Empty<object>(), note = result.Note }, Json.Options);
 
         if (result.Hits.Count == 0)
-            return "{\"results\":[],\"note\":\"no matches — do not invent facts; stay with the catalog candidates\"}";
+            return JsonSerializer.Serialize(new { results = Array.Empty<object>(), note = noMatchNote }, Json.Options);
 
         return JsonSerializer.Serialize(new
         {
             results = result.Hits.Select(h => new AgentVisibleChunk($"web:{h.Host}", h.Url, $"{h.Title} — {h.Snippet}")),
-            note = "WEB SOURCE: a starting point, not an authority. Corroborate against search_catalog before relying on it. " +
-                   "A candidate whose citations are all web sources must be Tier B, never Tier A and never preferred.",
+            note = hitsNote,
         }, Json.Options);
     }
 
