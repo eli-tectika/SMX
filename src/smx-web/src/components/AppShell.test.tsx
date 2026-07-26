@@ -1,4 +1,6 @@
+import { StrictMode } from 'react';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { AppShell } from './AppShell';
@@ -84,5 +86,36 @@ describe('AppShell keyboard access', () => {
     const main = document.querySelector('main')!;
     expect(main).toHaveAttribute('id', 'main');
     expect(main).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('moves focus to main when the route changes, and not on first render', async () => {
+    const user = userEvent.setup();
+    shell('/');
+    const main = document.querySelector('main')!;
+    // First render: the browser's own initial focus stands. Focusing main here would drop the
+    // skip link out of the tab order, since main is tabIndex={-1} and comes after it.
+    expect(document.activeElement).not.toBe(main);
+
+    await user.click(screen.getByRole('link', { name: 'Marker library' }));
+    expect(document.activeElement).toBe(main);
+  });
+
+  /**
+   * StrictMode (main.tsx) mounts every component twice in dev to surface effects that are
+   * not idempotent. A "first render" flag consumed by the first of the two invocations would
+   * leave the second free to focus <main> on initial load — exactly the case above is meant
+   * to rule out, and it would silently drop the skip link out of the tab order on every dev
+   * page load. Comparing the pathname instead survives the phantom remount because neither
+   * invocation observes a change.
+   */
+  it('does not steal focus on initial render under StrictMode', () => {
+    render(
+      <StrictMode>
+        <MemoryRouter initialEntries={['/']}>
+          <AppShell />
+        </MemoryRouter>
+      </StrictMode>,
+    );
+    expect(document.activeElement).not.toBe(document.querySelector('main'));
   });
 });

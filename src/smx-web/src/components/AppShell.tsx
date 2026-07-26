@@ -85,7 +85,7 @@ export function AppShell() {
   const frame = pathname.startsWith('/p/') ? 'instrument' : 'document';
 
   const main = useRef<HTMLElement | null>(null);
-  const firstRender = useRef(true);
+  const prevPathname = useRef(pathname);
 
   /**
    * Move focus into the page when the route changes.
@@ -94,15 +94,17 @@ export function AppShell() {
    * rail link is still in the rail, and a screen reader announces nothing at all. Focusing <main>
    * makes the new screen the next thing read and the next thing tabbed from.
    *
+   * The guard compares the pathname rather than flipping a "first render" flag, because the app
+   * runs under StrictMode (main.tsx) and a one-shot boolean is consumed by the first of the two
+   * dev invocations — leaving the second to focus <main> on initial load, which is exactly the
+   * case this is supposed to skip, and which would drop the skip link out of the tab order.
+   *
    * `preventScroll` matters here — the masthead, the rail and the context bar are all sticky, and
    * a browser scrolling a focused element into view would fight all three on every navigation.
-   * Skipped on first render, where the browser's own initial focus is already correct.
    */
   useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
-    }
+    if (prevPathname.current === pathname) return;
+    prevPathname.current = pathname;
     main.current?.focus({ preventScroll: true });
   }, [pathname]);
 
