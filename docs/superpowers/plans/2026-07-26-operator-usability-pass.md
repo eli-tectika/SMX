@@ -814,11 +814,19 @@ And add, immediately after the closing `</span>` of `.ctxbar__next` and before `
 ```tsx
       </div>
 
-      {/* A live poll and a frozen tab look identical otherwise. `role="status"` so the fact
-          reaches a screen reader too, and `polite` so it never interrupts. */}
+      {/*
+        A live poll and a frozen tab look identical otherwise.
+
+        Deliberately NOT a live region, and `aria-hidden` so it is not one by accident. This label
+        re-renders every second by design; announcing it would queue "updated 3s ago", "updated 4s
+        ago" … forever, drowning out the Next line above it — which is the one sentence on this
+        screen a screen-reader user actually needs when the poll finds a transition. That line
+        carries `role="status"` (Task 3); this one is a visual affordance for a sighted operator
+        checking the tab is alive, and the state it reports is already available elsewhere.
+      */}
       {polling && readAt !== null && (
-        <div className="ctxbar__poll" role="status" aria-live="polite">
-          <span className="ctxbar__pulse" aria-hidden="true" />
+        <div className="ctxbar__poll" aria-hidden="true">
+          <span className="ctxbar__pulse" />
           Watching the record · updated {agoLabel(Date.now() - readAt)}
         </div>
       )}
@@ -874,15 +882,26 @@ Append to `src/components/ContextBar.test.tsx`:
 describe('ContextBar poll freshness', () => {
   it('says it is watching the record while polling', () => {
     bar2(project({ discovery: { status: 'running', attempts: 1 } }), Date.now(), true);
-    const status = screen.getByRole('status');
-    expect(status).toHaveTextContent(/watching the record/i);
-    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(document.querySelector('.ctxbar__poll')).toHaveTextContent(/watching the record/i);
   });
 
   /** A settled project is not being watched, and claiming otherwise would be a lie about the loop. */
   it('says nothing when the poll loop has stopped', () => {
     bar2(project({ intake: { status: 'done', attempts: 1 } }), Date.now(), false);
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.querySelector('.ctxbar__poll')).toBeNull();
+  });
+
+  /**
+   * The ticker re-renders every second. If it were ever a live region it would queue an
+   * announcement per second and bury the Next line, which is the sentence that actually matters
+   * when the poll finds a transition. This test is the tripwire for someone "fixing" the missing
+   * role later.
+   */
+  it('is not a live region, so it cannot drown out the next line', () => {
+    bar2(project({ discovery: { status: 'running', attempts: 1 } }), Date.now(), true);
+    const poll = document.querySelector('.ctxbar__poll')!;
+    expect(poll).toHaveAttribute('aria-hidden', 'true');
+    expect(poll).not.toHaveAttribute('aria-live');
   });
 });
 ```
