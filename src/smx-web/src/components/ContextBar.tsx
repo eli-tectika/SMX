@@ -58,6 +58,12 @@ export function ContextBar({ project }: { project: ProjectSummary }) {
    * a constant. `--ctxbar-h` was 74px against a real 101–132px, and everything that pins beneath
    * it (the agent dock) was being painted over by an opaque z-index:15 bar, taking its collapse
    * control with it. Measuring and publishing is the only version of this that stays true.
+   *
+   * `borderBoxSize`, not `contentRect`: the dock's `top` has to clear the bar's border-box
+   * bottom edge (content + padding + border), and `contentRect` excludes the padding and
+   * border — 25px of them here (12 top + 12 bottom + 1 border), which is exactly the constant
+   * overlap a first pass at this left behind. `getBoundingClientRect()` is the fallback for the
+   * browsers where `borderBoxSize` isn't reported.
    */
   useLayoutEffect(() => {
     const el = ref.current;
@@ -66,10 +72,21 @@ export function ContextBar({ project }: { project: ProjectSummary }) {
     // covers that case, and a real browser is where this actually needs to be right.
     if (typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(([entry]) =>
-      document.documentElement.style.setProperty('--ctxbar-h', `${entry.contentRect.height}px`),
+      document.documentElement.style.setProperty(
+        '--ctxbar-h',
+        `${entry.borderBoxSize?.[0]?.blockSize ?? el.getBoundingClientRect().height}px`,
+      ),
     );
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      // Otherwise <html> keeps the last mounted bar's height after this one unmounts, and the
+      // NEXT ContextBar (a different project, a different stage) paints its first frame — before
+      // its own observer fires — against a stale value. Going from a tall (failed) bar to a short
+      // (settled) one is merely wrong for a frame; going the other way is a one-frame occlusion
+      // of the dock again, the exact bug this effect exists to prevent.
+      document.documentElement.style.removeProperty('--ctxbar-h');
+    };
   }, []);
 
   return (

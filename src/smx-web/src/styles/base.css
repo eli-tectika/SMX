@@ -196,17 +196,21 @@ strong {
    dock has a width. The canvas gets everything else. */
 .dock {
   position: sticky;
+  /*
+   * `top` has to clear the context bar's actual painted (border-box) bottom edge, or this pins
+   * UNDER the bar rather than beneath it — .ctxbar is z-index: 15 with an opaque background,
+   * so any overlap here is a real occlusion, not a harmless z-fight. There is no z-index rescue
+   * for that: .ctxbar's 15 already beats anything reasonable this element could carry (and
+   * raising this above 15 would only flip which of the two paints over the other), so getting
+   * --ctxbar-h right (ContextBar.tsx measures its own border-box height and publishes it) is
+   * the only thing that actually keeps this a gap instead of an occlusion.
+   */
   top: calc(var(--masthead-h) + var(--ctxbar-h));
   height: calc(100vh - var(--masthead-h) - var(--ctxbar-h) - var(--s5));
   min-height: 320px;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  /* The context bar sits at z-index: 15 with an opaque background and now measures its own
-     height into --ctxbar-h (ContextBar.tsx). If that measurement is ever wrong — a font load
-     shifts height after paint, a browser lacks ResizeObserver — this bar should degrade to a
-     gap under the dock, never to an occlusion that also swallows the collapse button's clicks. */
-  z-index: 1;
 }
 
 .dock > .region {
