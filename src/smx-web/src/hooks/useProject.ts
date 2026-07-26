@@ -59,11 +59,16 @@ export function useProject(projectId: string | undefined): {
     const tick = async () => {
       const keepPolling = await load(projectId);
       if (cancelled) return;
-      // Set AFTER the cancelled check: this effect's cleanup fires on unmount (route change,
-      // or the projectId/nonce deps changing) between the `await` above and here, and calling
-      // a setState on an already-unmounted component is exactly the bug the `cancelled` guard
-      // exists to prevent — so `polling` gets the same guard as every other state write in
-      // this tick.
+      // Set AFTER the cancelled check: this effect's cleanup fires on unmount (route change, or
+      // the projectId/nonce deps changing) between the `await` above and here, and calling a
+      // setState on an already-unmounted component is exactly the bug the `cancelled` guard exists
+      // to prevent. Note this guard covers only `setPolling` — the `setState`/`setReadAt` calls
+      // inside `load()` are a separate `useCallback` with no visibility into this closure's
+      // `cancelled` flag, so those two writes can still fire post-unmount. That is pre-existing
+      // (not introduced by `polling`) and harmless in React 18, which drops state updates on
+      // unmounted components as a no-op rather than the "can't perform a state update" warning
+      // older React logged — so it is not a leak, just a guarantee this particular guard does not
+      // extend to `load`'s own writes.
       setPolling(keepPolling);
       if (!keepPolling) return;
       timer.current = window.setTimeout(tick, POLL_MS);
