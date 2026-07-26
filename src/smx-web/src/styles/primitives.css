@@ -403,7 +403,7 @@
   font-family: var(--font-serif); /* SMX brand title face */
   font-size: var(--t-lead);
   font-weight: 500;
-  color: var(--ink);
+  color: var(--brand-navy); /* client brand direction: titles carry navy */
 }
 
 .sec__count {

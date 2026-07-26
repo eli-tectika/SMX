@@ -277,7 +277,8 @@ strong {
 }
 .cap b {
   display: block;
-  color: var(--ink);
+  /* Client brand direction: screen titles carry the SMX navy, not neutral ink. */
+  color: var(--brand-navy);
   /* Georgia is the SMX brand's title face. Titles only — the data below stays Plex. */
   font-family: var(--font-serif);
   font-weight: var(--w-semibold);
@@ -409,7 +410,11 @@ strong {
 
 /* The navigation is a vertical icon rail, matching the SMX web product. It pins beneath
    the masthead and runs the full height of the viewport, with the operator identity at
-   its foot — the way that product seats the signed-in user. */
+   its foot — the way that product seats the signed-in user.
+
+   Per the client brand direction, the rail carries the SMX navy: a dark-blue sidebar
+   under the light top bar. Its icons are light; the active destination lifts to a bright
+   overlay. */
 .rail {
   position: sticky;
   top: var(--masthead-h);
@@ -422,8 +427,8 @@ strong {
   flex-direction: column;
   align-items: center;
   padding: var(--s3) 0;
-  background: var(--surface-0);
-  border-right: var(--hair) solid var(--border);
+  background: var(--brand-navy);
+  border-right: var(--hair) solid var(--brand-deep);
 }
 
 .rail__nav {
@@ -440,19 +445,18 @@ strong {
   width: 40px;
   height: 40px;
   border-radius: var(--r2);
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.62);
   font-size: 20px;
 }
 .rail__item:hover {
   text-decoration: none;
-  color: var(--text-primary);
-  background: var(--surface-2);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
 }
-/* Active nav item = the accent tint. Grammar-correct: an active destination IS
-   "active/selected", the one meaning accent-blue carries. */
+/* Active destination = the brightest item on the rail. */
 .rail__item.on {
-  background: var(--bg-accent);
-  color: var(--text-accent);
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
 }
 
 .rail__operator {
@@ -461,8 +465,8 @@ strong {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  /* Teal MEANS operator, and the frame around the work is the operator's. */
-  color: var(--text-teal);
+  /* Teal MEANS operator; lifted toward white so it reads on the navy rail. */
+  color: color-mix(in srgb, var(--text-teal) 45%, white);
   font-size: 18px;
 }
 .rail__operator-label {

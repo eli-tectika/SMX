@@ -165,6 +165,13 @@
 
   --rail-w: 64px; /* vertical nav rail — icons only, DMPP-style */
   --masthead-h: 64px; /* full-width top bar; the rail and context bar pin beneath it */
+
+  /* Client brand direction (2026-07): the lettering leans bluer and darker than the
+     mockup greys — non-error text pulls toward navy instead of a neutral wash. These
+     override the semantic block above ON PURPOSE; errors keep the semantic red/amber.
+     Kept here (not edited in place) so the mockup-derived originals stay on record. */
+  --text-secondary: #38465c; /* was #55575c — darker, navy-leaning */
+  --text-muted: #5c6b7d; /* was #8b8d93 — darker, navy-leaning */
 }
 
 @media (prefers-reduced-motion: reduce) {

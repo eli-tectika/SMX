@@ -1,0 +1,9 @@
+# The .NET images (Smx.Backend, Smx.Orchestrator) use this whole `src/` tree as their build
+# context. Without this file, `az acr build` uploads every bin/obj/node_modules folder too —
+# hundreds of MB of build output that the multi-stage Dockerfiles restore fresh anyway. Excluding
+# them here keeps the context upload to just source. (The frontend has its own smx-web/.dockerignore.)
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/.vs/
