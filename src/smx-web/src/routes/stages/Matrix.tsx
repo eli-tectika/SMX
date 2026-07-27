@@ -208,7 +208,12 @@ export function Matrix({ project }: { project: ProjectSummary }) {
     <section className="screen">
       <SectionHeader
         title="Compatibility matrix"
-        hint={`${s.rows} substances × ${s.cols} components · assembled ${m.generatedAt.slice(0, 10)}`}
+        // The substance/component count used to be stated here too, duplicating the
+        // `.mxscroll__count` line a few hundred pixels below. Kept there instead: it sits at the
+        // scroll pane itself, where the eye already is when the right edge is in question, while
+        // this header scrolls away — and on the 1280×800 laptop this task targets, two conditional
+        // banners and a progress block sit between the two, so the header copy was the stale one.
+        hint={`assembled ${m.generatedAt.slice(0, 10)}`}
         actions={
           <>
             {/* Density changes padding and nothing else — never a chip size, never a flag
