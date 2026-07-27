@@ -190,10 +190,10 @@ public class ThreadControlEndpointsTests : IClassFixture<WebApplicationFactory<P
             StartedAt = At(3),
         });
 
-        var all = await _client.GetFromJsonAsync<JsonElement[]>("/projects/p1/runs");
+        var all = (await _client.GetFromJsonAsync<JsonElement[]>("/projects/p1/runs"))!;
         Assert.Equal(
             [RunIds.Run("p1", Stages.Intake, 1), RunIds.Run("p1", Stages.Discovery, 1)],
-            all!.Select(r => r.GetProperty("runId").GetString()));
+            all.Select(r => r.GetProperty("runId").GetString()));
         Assert.False(all[0].TryGetProperty("projectId", out _));
         // `agent: null` is how the client tells a deterministic stage from an agent run — present, not absent.
         Assert.Equal(JsonValueKind.Null, all[1].GetProperty("agent").ValueKind);

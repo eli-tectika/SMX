@@ -184,6 +184,17 @@ public static class ProjectEndpoints
             var intake = project.Stages[Stages.Intake];
             // Idempotent, and not merely tolerant: everything in this system is at-least-once, and a
             // double-press must never re-dispatch a stage that has already run.
+            //
+            // `pending` is the exception, and it is not a loophole: it means nothing has run YET. It is the
+            // status POST /projects writes (the API create path — the eval harness and the tests), as opposed
+            // to the interview's `awaiting-confirmation`. There is no flip to make and no confirmation to
+            // honour, so start simply starts. Before the change feed was replaced, creating a project WAS the
+            // dispatch; without this arm an API-created project could never be run by any door at all.
+            if (intake.Status == StageStatus.Pending)
+            {
+                supervisor?.TryStart(projectId);
+                return Results.Accepted($"/projects/{projectId}", new { projectId, status = intake.Status });
+            }
             if (intake.Status != StageStatus.AwaitingConfirmation)
                 return Results.Accepted($"/projects/{projectId}", new { projectId, status = intake.Status });
 

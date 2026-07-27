@@ -129,6 +129,36 @@ public class ProjectStartEndpointTests : IClassFixture<WebApplicationFactory<Pro
             (await app.CreateClient().PostAsync("/projects/nope/start", null)).StatusCode);
     }
 
+    /// The API create path (POST /projects — the eval harness, the tests) writes intake `pending`, not
+    /// `awaiting-confirmation`: there is nothing to confirm and nothing to flip. Creating a project used to
+    /// BE the dispatch; now start is the only door, so start has to open for a `pending` project too or an
+    /// API-created project could never be run by anything.
+    [Fact]
+    public async Task Start_LaunchesAPendingProject_WithNothingToFlip()
+    {
+        var store = new InMemoryRecordStore();
+        // ProjectDoc.Create's default intake status — exactly what POST /projects writes.
+        await store.UpsertProjectAsync(ProjectDoc.Create("proj-1", "Acme", "MUFE", Payload(OneGoodComponent())));
+        var runs = new InMemoryRunStore();
+        var runner = new PipelineRunner(store, runs, new FakeAgentRuns(), new ThreadEventHub(),
+            new LearnedConclusionWriter(new InMemoryKnowledgeStore(), new FakeLearnedConclusionsIndex(),
+                new FakeEmbedder(), NullLogger<LearnedConclusionWriter>.Instance), 2);
+        var supervisor = new PipelineSupervisor(store, runs, runner, NullLogger<PipelineSupervisor>.Instance);
+        using var app = _factory.WithWebHostBuilder(b => b.ConfigureServices(s =>
+        {
+            s.AddSingleton<IRecordStore>(store);
+            s.AddSingleton<IRunStore>(runs);
+            s.AddSingleton(supervisor);
+        }));
+
+        var res = await app.CreateClient().PostAsync("/projects/proj-1/start", null);
+
+        Assert.Equal(HttpStatusCode.Accepted, res.StatusCode);
+        await supervisor.Completion("proj-1");
+        // It RAN: intake produced the constraints the rest of the journey reads.
+        Assert.NotNull(await store.GetConstraintsAsync("proj-1"));
+    }
+
     /// The endpoint used to be a status flip and nothing else, because a change feed was watching the record.
     /// Nothing watches it now — so a start that still stopped at `pending` would leave the project looking
     /// started, forever, with no agent ever having run. This is the assertion that says it launches.

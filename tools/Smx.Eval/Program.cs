@@ -21,6 +21,11 @@ foreach (var gc in cases)
     var post = await http.PostAsJsonAsync("projects", gc.ProjectPayload);
     post.EnsureSuccessStatusCode();
     var projectId = (await post.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("projectId").GetString()!;
+    // Creating a project used to BE the dispatch — a change feed picked the record up. It does not any
+    // more: the pipeline runs when someone starts it, so the harness has to press start like an operator.
+    // Without this the poll below would watch a project that was never going to move for twenty minutes
+    // and then score every cell as missing, which reads exactly like a catastrophic agent regression.
+    (await http.PostAsync($"projects/{projectId}/start", null)).EnsureSuccessStatusCode();
 
     MatrixDoc? matrix = null;
     var deadline = DateTimeOffset.UtcNow.AddMinutes(20); // agent runs take minutes; poll patiently
