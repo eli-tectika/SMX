@@ -33,6 +33,23 @@ describe('SSE frame parser', () => {
     expect(push('\nevent: done\ndata: b\n\n').map((e) => e.event)).toEqual(['chunk', 'done']);
   });
 
+  /**
+   * The thread stream's `id:` is the resume cursor (`e{entrySeq}.s{stepSeq}` — execution-core-design
+   * §7.2). It cannot be rebuilt from `data`, because the entry seq appears in no step payload, so it
+   * has to survive the parser or reconnect sends a cursor no server can resolve.
+   */
+  it('carries the frame id when the server sends one', () => {
+    const push = createSseParser();
+    expect(push('event: step\nid: e2.s3\ndata: {}\n\n')).toEqual([
+      { event: 'step', data: '{}', id: 'e2.s3' },
+    ]);
+  });
+
+  it('omits the id entirely for a stream that sends none', () => {
+    const push = createSseParser();
+    expect(push('event: chunk\ndata: a\n\n')[0]).not.toHaveProperty('id');
+  });
+
   it('ignores keep-alive comments and blank leading lines', () => {
     const push = createSseParser();
     expect(push(': keep-alive\n\nevent: done\ndata: {}\n\n')).toEqual([
