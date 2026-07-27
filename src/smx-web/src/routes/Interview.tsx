@@ -211,7 +211,7 @@ export function Interview() {
   const blocker = session ? createBlocker(session, questions) : 'the interview has not loaded yet.';
 
   return (
-    <>
+    <div className="chatpage">
       <div className="cap">
         <b>New project</b>
         Tell the agent about the job. It asks the rest.
@@ -440,7 +440,7 @@ export function Interview() {
           <i className="ti ti-loader" data-running="" aria-hidden="true" /> Opening the interview…
         </div>
       )}
-    </>
+    </div>
   );
 }
 

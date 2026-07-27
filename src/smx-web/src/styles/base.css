@@ -1081,9 +1081,15 @@ select:focus {
    draws a border. Brand chrome is untouched — the rail, the lockup and the serif title keep
    the colours the client signed off; what changed is layout, nesting and weight. */
 
-.chat {
+/* The whole screen shares the column, not just the thread — otherwise the title and its rule
+   align to the page frame while the conversation is centred beneath them, and the two read as
+   unrelated blocks. */
+.chatpage {
   max-width: 720px;
   margin: 0 auto;
+}
+
+.chat {
   display: flex;
   flex-direction: column;
   /* Fill the space under the masthead so the composer sits at the foot of the column instead
