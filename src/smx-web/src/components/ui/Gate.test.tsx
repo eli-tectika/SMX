@@ -185,6 +185,43 @@ describe('Gate — rejection', () => {
     expect(onReject).not.toHaveBeenCalled();
   });
 
+  /**
+   * The one asymmetry the server actually has. DecisionEndpoints.cs returns from its `rejected` branch
+   * — writing the locked gate and the reason — BEFORE it reads dosing or validates the confirmations,
+   * so "a finalized code for every component" is an APPROVE-ONLY precondition. A requirement marked
+   * `appliesTo: 'sign'` must therefore withhold the pen without taking the escape hatch with it.
+   */
+  it('lets an approve-only requirement block signing without blocking rejection', async () => {
+    const onReject = vi.fn();
+    render(
+      <Gate
+        kind="hard"
+        title="VP gate"
+        records="nothing"
+        requirements={[
+          { id: 'server', label: 'Every gate condition met', met: true },
+          { id: 'codes', label: 'A finalized code for every component', met: false, appliesTo: 'sign' },
+        ]}
+        signLabel="Approve"
+        rejectLabel="Reject"
+        onSign={vi.fn()}
+        onReject={onReject}
+        signNote={{ placeholder: 'why' }}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled();
+
+    const reject = screen.getByRole('button', { name: 'Reject' });
+    await userEvent.type(screen.getByLabelText(/note/i), 'no code we can sign — sending it back');
+    expect(reject).toBeEnabled();
+    // ...and the copy around it must not call a live button locked.
+    expect(reject).not.toHaveAttribute('title');
+    expect(screen.getByText(/a rejection can still be recorded/i)).toBeInTheDocument();
+
+    await userEvent.click(reject);
+    expect(onReject).toHaveBeenCalledWith('no code we can sign — sending it back');
+  });
+
   /** Arming is necessary, not sufficient: an armed gate still refuses a rejection with no reason. */
   it('still requires a reason to reject once the gate IS armed', async () => {
     const onReject = vi.fn();

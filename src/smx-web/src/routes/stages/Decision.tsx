@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ApiError,
@@ -18,6 +18,7 @@ import type {
   VpGate as VpGateState,
 } from '../../api/types';
 import { Loading } from '../../components/Loading';
+import { Procurement } from '../../components/Procurement';
 import { StageStatusCard } from '../../components/StageStatusCard';
 import { Data } from '../../components/ui/Data';
 import { Gate, type Requirement } from '../../components/ui/Gate';
@@ -68,41 +69,105 @@ export function Decision({ project, refreshProject }: ScreenProps) {
   const [gate, setGate] = useState<VpGateState | null>(null);
   const [dosing, setDosing] = useState<DosingDoc | null>(null);
   const [sheets, setSheets] = useState<MsdsEntry[]>([]);
+  /**
+   * Whether the MSDS read itself failed — which is NOT "no sheet on file", and here the difference is
+   * load-bearing twice over: this is the screen that PLACES the order. See `Procurement`.
+   */
+  const [sheetsUnknown, setSheetsUnknown] = useState(false);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'absent' | 'error'>('loading');
   const [errMsg, setErrMsg] = useState<string>();
+  /** A post-action re-read failed: the record on screen is the last good one and may be stale. */
+  const [staleMsg, setStaleMsg] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [choice, setChoice] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<'sign' | 'reject' | null>(null);
   const [signError, setSignError] = useState<string | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [ordering, setOrdering] = useState<string | null>(null);
+  /**
+   * That a rejection was recorded IN THIS SESSION.
+   *
+   * It has to be held here because the wire cannot tell us: `GET /gate/vp` reports
+   * `status = gate?.Status ?? "locked"`, and the rejection branch writes a gate whose status is
+   * literally `"locked"` — so *rejected* and *never signed* are the same three bytes. The stage also
+   * stays parked at `awaiting-VP` and no `confirmedCode` is written, so nothing else on the record
+   * moves either, and without this flag a successful rejection looks exactly like a no-op.
+   *
+   * The DURABLE fix is a BACKEND change: `GET /gate/vp` would have to project the gate's `Reason` and
+   * a status that distinguishes a rejection from an unsigned gate. This pass is frontend-only, so what
+   * is deliverable here is the acknowledgment plus this note. Until then a reload loses the fact.
+   */
+  const [rejectedHere, setRejectedHere] = useState(false);
+  /** The `generatedAt` of the doc currently in state — how a re-read notices the decision changed. */
+  const generatedAtRef = useRef<string | null>(null);
+  /**
+   * A cancellation token for the re-reads that happen OUTSIDE the effect (after a sign, a rejection or
+   * an order). The effect owns a local one; these calls had none, so an unmount mid-flight left them
+   * writing into a dead component.
+   */
+  const alive = useRef({ cancelled: false });
+  useEffect(() => {
+    const token = alive.current;
+    token.cancelled = false;
+    return () => {
+      token.cancelled = true;
+    };
+  }, []);
 
   const load = useCallback(
-    async (signal?: { cancelled: boolean }) => {
+    async (signal?: { cancelled: boolean }, opts?: { keepRecord?: boolean }) => {
+      // The MSDS read fails INDEPENDENTLY of the three project reads, the same separation Cost.tsx
+      // makes and for the same reason: the registry is a CROSS-PROJECT surface that only the order
+      // rows need, and a hiccup on it must not replace the decision, the evidence and the gate with
+      // "the decision record could not be read" — a sentence that would also be false, since it was.
+      const sheetsRead = getMsdsRegistry().then(
+        (entries) => ({ ok: true, entries }),
+        () => ({ ok: false, entries: [] as MsdsEntry[] }),
+      );
       try {
-        const [d, g, dose, ms] = await Promise.all([
+        const [d, g, dose] = await Promise.all([
           getDecision(project.projectId),
           getVpGate(project.projectId),
           getDosing(project.projectId),
-          getMsdsRegistry(),
         ]);
         if (signal?.cancelled) return;
+        setStaleMsg(null);
         setGate(g);
         setDosing(dose === NotFound ? null : dose);
-        setSheets(ms);
         if (d === NotFound) {
           setDoc(null);
+          generatedAtRef.current = null;
           setPhase('absent');
         } else {
+          // The operator's per-component overrides are picks against a SPECIFIC decision. When the
+          // decision itself has been regenerated underneath them (a revise, a re-pick), a surviving
+          // pick is a choice nobody made about the rows now on screen — and it is still submittable.
+          if (generatedAtRef.current !== null && generatedAtRef.current !== d.generatedAt) {
+            setChoice({});
+          }
+          generatedAtRef.current = d.generatedAt;
           setDoc(d);
           setPhase('ready');
         }
       } catch (err) {
-        if (!signal?.cancelled) {
-          setErrMsg(err instanceof Error ? err.message : String(err));
+        if (signal?.cancelled) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        if (opts?.keepRecord) {
+          // A POST-ACTION re-read. Blanking the screen here would unmount the `ready` subtree and take
+          // the banner explaining WHY the determination was refused with it — the single most important
+          // message on this screen, destroyed by a transient failure to re-read. The record is already
+          // on screen; keep it, and say plainly that it may now be stale.
+          setStaleMsg(msg);
+        } else {
+          setErrMsg(msg);
           setPhase('error');
         }
+        return;
       }
+      const ms = await sheetsRead;
+      if (signal?.cancelled) return;
+      setSheets(ms.entries);
+      setSheetsUnknown(!ms.ok);
     },
     [project.projectId],
   );
@@ -125,11 +190,25 @@ export function Decision({ project, refreshProject }: ScreenProps) {
     [doc, choice],
   );
 
+  /*
+   * All three actions re-read with `keepRecord`, and the re-read is EXPLICIT rather than left to
+   * `refreshProject()`. It has to be: this effect keys on the stage `status`, and neither ruling
+   * changes it synchronously — a rejection leaves the stage parked at `awaiting-VP` forever, and an
+   * approval is closed by the ORCHESTRATOR reacting to the gate, seconds later. Dropping the explicit
+   * call would leave a signed determination showing an unsigned, armed gate.
+   */
   const sign = useCallback(
     async (note?: string) => {
-      if (!note) return;
+      if (!note) {
+        // Unreachable today — `Gate` keeps the pen disabled until the note is non-blank (`noteReady`).
+        // Kept as a loud refusal rather than a silent `return`: a signature that quietly does nothing
+        // is the worst outcome available on this screen.
+        setSignError('A note is required — it records what was reviewed.');
+        return;
+      }
       setBusy('sign');
       setSignError(null);
+      setRejectedHere(false);
       try {
         await recordVpDetermination(project.projectId, {
           determination: 'approved',
@@ -137,12 +216,12 @@ export function Decision({ project, refreshProject }: ScreenProps) {
           confirmations,
         });
         refreshProject();
-        await load();
+        await load(alive.current, { keepRecord: true });
       } catch (err) {
         // The server re-checks and can refuse a button that looked enabled (a concurrent revise, a
         // stage that left its park). Show its words and re-read the gate for the fresh blockers.
         setSignError(err instanceof ApiError ? err.message : String(err));
-        await load();
+        await load(alive.current, { keepRecord: true });
       } finally {
         setBusy(null);
       }
@@ -159,11 +238,12 @@ export function Decision({ project, refreshProject }: ScreenProps) {
           determination: 'rejected',
           reason: note,
         });
+        setRejectedHere(true);
         refreshProject();
-        await load();
+        await load(alive.current, { keepRecord: true });
       } catch (err) {
         setSignError(err instanceof ApiError ? err.message : String(err));
-        await load();
+        await load(alive.current, { keepRecord: true });
       } finally {
         setBusy(null);
       }
@@ -177,7 +257,7 @@ export function Decision({ project, refreshProject }: ScreenProps) {
       setOrderError(null);
       try {
         await orderSubstance(project.projectId, cas);
-        await load();
+        await load(alive.current, { keepRecord: true });
       } catch (err) {
         setOrderError(err instanceof ApiError ? err.message : String(err));
       } finally {
@@ -213,10 +293,11 @@ export function Decision({ project, refreshProject }: ScreenProps) {
    * The determination has been made — either the gate record says so, or every component carries a
    * signature (both are written by the same endpoint, and either alone is proof one ran).
    *
-   * When it has, the pen is withdrawn rather than left on screen disabled. That is rule 2 again from
-   * the other side: once the stage leaves `awaiting-VP` the POST refuses BOTH rulings, and `Gate`
-   * deliberately does not gate its reject button on `armed` — so a gate left mounted here would offer
-   * a live-looking "Reject" the server would 422. A control the API would refuse must not exist.
+   * When it has, the pen is withdrawn entirely rather than left on screen disabled. That is rule 2
+   * again from the other side: once the stage leaves `awaiting-VP` the POST refuses BOTH rulings, so
+   * every control in the gate is dead — and a signing surface that keeps drawing a dead "Approve &
+   * close project" beside a signed determination is inviting a second pen at exactly the moment there
+   * is none. A gate the API would refuse in full must not be on screen at all.
    */
   const determined =
     gate?.status === 'approved' || (components.length > 0 && confirmed === components.length);
@@ -255,6 +336,13 @@ export function Decision({ project, refreshProject }: ScreenProps) {
     {
       id: 'codes',
       label: 'A finalized code chosen for every component',
+      /*
+       * APPROVE-ONLY, and verified against the endpoint rather than assumed: DecisionEndpoints.cs
+       * returns from its `rejected` branch (writing the locked gate + reason) BEFORE it reads dosing
+       * or walks the confirmations. So a component with no signable code blocks an approval and not a
+       * rejection — and rejection is the escape hatch on exactly the state this requirement describes.
+       */
+      appliesTo: 'sign',
       met: components.length > 0 && unsignable.length === 0,
       detail:
         components.length === 0
@@ -279,6 +367,19 @@ export function Decision({ project, refreshProject }: ScreenProps) {
       </div>
 
       <StageStatusCard name="Decision" state={stage} />
+
+      {staleMsg && (
+        <div className="banner warn" role="alert">
+          <i className="ti ti-alert-triangle" aria-hidden="true" />
+          <div>
+            <b>The record could not be re-read after that action.</b>
+            <div className="tiny" style={{ marginTop: 3 }}>
+              What is shown below is the last good read and may now be out of date — reload before
+              acting on it. {staleMsg}
+            </div>
+          </div>
+        </div>
+      )}
 
       {phase === 'absent' && (
         <EmptyState
@@ -344,6 +445,7 @@ export function Decision({ project, refreshProject }: ScreenProps) {
               components={components}
               dosing={dosing}
               sheets={sheets}
+              sheetsUnknown={sheetsUnknown}
               ordered={doc?.procurement.orderedCas ?? []}
               ordering={ordering}
               error={orderError}
@@ -359,6 +461,28 @@ export function Decision({ project, refreshProject }: ScreenProps) {
               <div>
                 <b>The determination was refused.</b>
                 <div className="tiny" style={{ marginTop: 3 }}>{signError}</div>
+              </div>
+            </div>
+          )}
+
+          {/*
+            The acknowledgment a rejection otherwise never gets. The server records it and then
+            nothing observable moves: the gate stays "locked", the stage stays parked, no
+            `confirmedCode` appears — so the gate below re-renders LIVE AND ARMED, which is correct
+            (the endpoint really does allow a re-determination) but reads as "nothing happened" while
+            still offering "Approve & close project". Saying so is the whole fix available from here;
+            the durable one is the backend change described on `rejectedHere` above.
+          */}
+          {rejectedHere && !determined && (
+            <div className="banner info" role="status" style={{ marginBottom: 8 }}>
+              <i className="ti ti-ban" aria-hidden="true" />
+              <div>
+                <b>The rejection was recorded with your reason; the gate is locked.</b>
+                <div className="tiny" style={{ marginTop: 3 }}>
+                  The stage stays parked at <span className="data">awaiting-VP</span>, so the gate below
+                  is still live — the endpoint permits a re-determination after a rejection. Approving
+                  now would supersede it.
+                </div>
               </div>
             </div>
           )}
@@ -473,11 +597,12 @@ function ComponentBand({
               {c.proposedCode.rationale}
             </p>
           )}
+          {/* The wrapping <label> IS the accessible name. An identical `aria-label` on the select was a
+              second, competing source for the same string — one label, not two. */}
           {codes.length > 0 && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span className="tiny muted">Code to confirm for {c.componentId}</span>
               <select
-                aria-label={`Code to confirm for ${c.componentId}`}
                 value={chosen}
                 onChange={(e) => onChoose(e.target.value)}
                 style={{ font: 'inherit', fontSize: 'var(--t-small)', padding: '4px 6px' }}
@@ -495,6 +620,11 @@ function ComponentBand({
       )}
 
       <table className="mx">
+        <caption className="sr-only">
+          The substances in {c.componentId}&rsquo;s decision: each row&rsquo;s determination, its
+          recommended ppm, and whether it clears regulatory, dosing and cost. &ldquo;View&rdquo; opens
+          the trace to the stage that owns each criterion.
+        </caption>
         <thead>
           <tr>
             <th>Substance</th>
@@ -532,6 +662,12 @@ function ComponentBand({
                         title={`${k} — ${r.cleared[k] ? 'clear' : 'blocking'} (owned by ${OWNER[k].label})`}
                       >
                         {r.cleared[k] ? '✓' : '✕'}
+                        {/* The glyph and the `title` carry the meaning visually; neither is announced
+                            reliably. Whether a criterion BLOCKS is the cell's entire content. */}
+                        <span className="sr-only">
+                          {' '}
+                          {k} — {r.cleared[k] ? 'clear' : 'blocking'}
+                        </span>
                       </span>
                     </td>
                   ))}
@@ -543,8 +679,10 @@ function ComponentBand({
                 </tr>
                 {isOpen && (
                   <tr>
-                    {/* 7 columns: substance, determination, ppm, three criteria, trace. */}
-                    <td colSpan={7} style={{ padding: 0, background: 'var(--surface-2)' }}>
+                    <td
+                      colSpan={4 + CRITERIA.length}
+                      style={{ padding: 0, background: 'var(--surface-2)' }}
+                    >
                       <div style={{ borderLeft: '2px solid var(--text-accent)', padding: 'var(--s3)' }}>
                         <div className="tiny muted" style={{ marginBottom: 6 }}>
                           Each criterion is owned by the stage that produced it. The record id is what
@@ -586,115 +724,5 @@ function ComponentBand({
         </tbody>
       </table>
     </div>
-  );
-}
-
-/**
- * Procurement — visible only once the record says `released`.
- *
- * The orderable set is the markers of CONFIRMED codes, never the decision rows and never a proposal:
- * "you cannot order what the VP did not sign". Each order is independently gated on a REVIEWED MSDS
- * (§5), and the button is disabled with the reason rather than hidden — a missing safety sheet is
- * what blocks an order, and hiding the control would hide the blocker with it.
- */
-function Procurement({
-  components,
-  dosing,
-  sheets,
-  ordered,
-  ordering,
-  error,
-  onOrder,
-}: {
-  components: ComponentDecision[];
-  dosing: DosingDoc | null;
-  sheets: MsdsEntry[];
-  ordered: string[];
-  ordering: string | null;
-  error: string | null;
-  onOrder: (cas: string) => void;
-}) {
-  const markers = components
-    .filter((c) => c.confirmedCode !== null)
-    .flatMap((c) =>
-      (dosing?.codes ?? [])
-        .filter((k) => k.componentId === c.componentId && k.ratioSignature === c.confirmedCode)
-        .flatMap((k) => k.markers.map((m) => ({ ...m, componentId: c.componentId }))),
-    );
-
-  return (
-    <>
-      <SectionHeader
-        eyebrow="Procurement"
-        count={markers.length}
-        hint="the markers of the signed codes — each order gated on a reviewed MSDS"
-      />
-
-      {error && (
-        <div className="banner warn" role="alert" style={{ marginBottom: 8 }}>
-          <i className="ti ti-alert-triangle" aria-hidden="true" />
-          <div>
-            <b>The order was refused.</b>
-            <div className="tiny" style={{ marginTop: 3 }}>{error}</div>
-          </div>
-        </div>
-      )}
-
-      <table className="mx">
-        <thead>
-          <tr>
-            <th>Substance</th>
-            <th>Component</th>
-            <th>MSDS</th>
-            <th style={{ width: 90 }} />
-          </tr>
-        </thead>
-        <tbody>
-          {markers.map((m) => {
-            const sheet = sheets.find((s) => s.cas === m.cas);
-            const reviewed = sheet?.reviewStatus === 'reviewed';
-            const isOrdered = ordered.includes(m.cas);
-            return (
-              <tr key={`${m.componentId}|${m.cas}`}>
-                <td>
-                  <span style={{ fontWeight: 500 }}>{m.element}</span>{' '}
-                  <span className="tiny muted">
-                    <Data kind="code">{m.cas}</Data>
-                  </span>
-                </td>
-                <td className="tiny">{m.componentId}</td>
-                <td className="tiny">
-                  {reviewed ? (
-                    <span style={{ color: 'var(--text-success)' }}>reviewed</span>
-                  ) : (
-                    <span style={{ color: 'var(--text-danger)' }}>
-                      {sheet ? sheet.reviewStatus : 'no sheet on file'}
-                    </span>
-                  )}
-                </td>
-                <td>
-                  {isOrdered ? (
-                    <span className="chip chip--neutral">ordered</span>
-                  ) : (
-                    <button
-                      className="btn"
-                      disabled={!reviewed || ordering === m.cas}
-                      onClick={() => onOrder(m.cas)}
-                      title={
-                        reviewed
-                          ? undefined
-                          : 'MSDS-before-order: a reviewed safety sheet is required before this can be ordered'
-                      }
-                    >
-                      Order
-                    </button>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </>
   );
 }

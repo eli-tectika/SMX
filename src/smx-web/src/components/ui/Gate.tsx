@@ -6,6 +6,19 @@ export interface Requirement {
   met: boolean;
   detail?: ReactNode;
   action?: { label: string; onClick: () => void };
+  /**
+   * Which ruling this requirement gates.
+   *
+   * `'both'` (the default) is for conditions the SERVER applies to every determination — the gate's own
+   * armability, which the endpoint checks before it ever looks at which ruling was asked for.
+   *
+   * `'sign'` is for a condition the endpoint applies to APPROVALS ONLY (the VP gate's "a finalized code
+   * for every component": the `rejected` branch returns before it reads dosing). Marking it keeps it out
+   * of the rejection's arming — otherwise an approve-only requirement would silently make rejection
+   * unreachable in a state the server accepts, and rejection is the escape hatch on the highest-
+   * consequence screen in the system.
+   */
+  appliesTo?: 'sign' | 'both';
 }
 
 /**
@@ -62,18 +75,25 @@ export function Gate({
    */
   signNote?: { placeholder: string };
   /**
-   * When provided, the reject button is LIVE — gated on `armed` exactly as signing is, and on the note.
+   * When provided, the reject button is LIVE — gated on the note, and on the requirements that gate a
+   * REJECTION (`rejectArmed`, i.e. every requirement except the ones marked `appliesTo: 'sign'`).
    *
    * The arming half is not a UI opinion, it is the server's contract. `POST …/decision/determination`
    * runs its guards — the park check, the pending-revision check, `VpGate.Armable`, the regulatory
    * coverage re-check — BEFORE it branches on `determination`, so a rejection on an unarmed gate is
-   * refused with the same 422 an approval would get. A reject button enabled over blockers would be a
-   * lying affordance, which is the precise failure `armable` is computed server-side to prevent.
+   * refused with the same 422 an approval would get. A reject button enabled over those blockers would
+   * be a lying affordance, which is the precise failure `armable` is computed server-side to prevent.
    *
-   * (An earlier version of this comment argued the opposite — that refusing to let the VP say no until
-   * every blocker clears traps a bad decision open. That describes a system we do not have. If the
-   * product ever wants a blocked project to be rejectable, the fix is a BACKEND change to the guard
-   * order, moving the `rejected` branch ahead of the armability checks. The UI may not fake it.)
+   * It is NOT, however, identical arming: the endpoint's `rejected` branch returns before it validates
+   * the confirmations, so a requirement that only an APPROVAL must satisfy would wrongly lock the
+   * rejection out of a state the server accepts. `appliesTo` is how a caller says which is which — the
+   * asymmetry is read off the endpoint, never invented here, and the default stays `'both'`.
+   *
+   * (An earlier version of this comment argued something broader — that the VP should be able to say
+   * no over ANY blocker, because refusing traps a bad decision open. That describes a system we do not
+   * have. If the product ever wants a fully blocked project to be rejectable, the fix is a BACKEND
+   * change to the guard order, moving the `rejected` branch ahead of the armability checks entirely.
+   * The UI may not fake it.)
    *
    * The note half is unconditional: a rejection is a ruling and needs its reason exactly as much as an
    * approval does, so the note field renders whenever `onReject` is wired, whether or not the caller
@@ -88,8 +108,10 @@ export function Gate({
   const armed = met === total;
   const noteReady = !signNote || note.trim().length > 0;
   const canSign = Boolean(onSign) && armed && !signBusy && noteReady;
+  /** Rejection arms on the requirements that gate a rejection — see `appliesTo` on Requirement. */
+  const rejectArmed = requirements.every((r) => r.appliesTo === 'sign' || r.met);
   const canReject =
-    Boolean(onReject) && armed && !rejectBusy && !signBusy && note.trim().length > 0;
+    Boolean(onReject) && rejectArmed && !rejectBusy && !signBusy && note.trim().length > 0;
 
   return (
     <section className="gatebox" data-kind={kind} aria-label={title}>
@@ -199,7 +221,10 @@ export function Gate({
             onClick={() => onReject?.(note.trim())}
             title={
               onReject
-                ? !armed
+                ? // `rejectArmed`, not `armed`: an approve-only requirement leaves `armed` false while
+                  // this button is genuinely live, and a disabled-sounding title on a live button is
+                  // the same lie as a live-looking title on a dead one.
+                  !rejectArmed
                   ? 'Locked until every requirement above is met — the endpoint refuses a rejection on an unarmed gate too'
                   : note.trim().length > 0
                     ? undefined
@@ -221,9 +246,14 @@ export function Gate({
           {!onSign
             ? 'No endpoint to sign this gate — this control is inert.'
             : !armed
-              ? // Both rulings, not just approval: the endpoint runs its armability guards before it
-                // looks at which determination was asked for, so neither can be recorded from here yet.
-                'Locked until every requirement above is met — no determination can be recorded until then.'
+              ? // Which rulings are locked depends on WHY. The endpoint runs its armability guards
+                // before it looks at the determination, so an unmet `'both'` requirement locks both —
+                // but an approve-only one leaves the rejection live, and saying "no determination can
+                // be recorded" over an enabled Reject button would be the lie this branch exists to
+                // avoid. See `appliesTo`.
+                rejectArmed && onReject
+                ? 'Locked for approval until every requirement above is met — a rejection can still be recorded.'
+                : 'Locked until every requirement above is met — no determination can be recorded until then.'
               : !noteReady
                 ? 'A note is required — it records what was reviewed.'
                 : kind === 'soft'

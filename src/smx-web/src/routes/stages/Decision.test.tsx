@@ -14,7 +14,17 @@ import type {
 
 vi.mock('../../api/client', () => ({
   NotFound: Symbol.for('NotFound'),
-  ApiError: class ApiError extends Error {},
+  // Mirrors the real signature (status, message) — a one-arg stand-in would swallow the server's
+  // words, which are the whole subject of the refusal test below.
+  ApiError: class ApiError extends Error {
+    constructor(
+      readonly status: number,
+      message: string,
+    ) {
+      super(message);
+      this.name = 'ApiError';
+    }
+  },
   getDecision: vi.fn(),
   getVpGate: vi.fn(),
   getDosing: vi.fn(),
@@ -159,6 +169,92 @@ describe('Decision', () => {
     await waitFor(() => expect(screen.getByText(/confirmed code/i)).toBeInTheDocument());
     expect(screen.getByText(/VP R&D/)).toBeInTheDocument();
     expect(screen.getByText(/Approved on the evidence/)).toBeInTheDocument();
+    /*
+     * And the pen is WITHDRAWN, not left on screen disabled. Once the determination is on the record
+     * the stage leaves its park and the POST refuses BOTH rulings — a gate left mounted would offer a
+     * live-looking "Reject" the server would 422. A control the API would refuse must not exist.
+     */
+    expect(screen.queryByLabelText('VP R&D gate')).toBeNull();
+  });
+
+  /**
+   * The refusal message is the most important sentence on this screen, and it used to be destroyed by
+   * its own follow-up: the catch set it and then re-read, and a re-read that threw flipped the whole
+   * screen to the error phase, unmounting the banner it had just written.
+   */
+  it('keeps the server refusal on screen and re-reads the gate when signing fails', async () => {
+    vi.mocked(api.recordVpDetermination).mockRejectedValue(
+      new api.ApiError(422, 'VP gate not armable: a dosing revision is in flight'),
+    );
+    view();
+    await waitFor(() => expect(screen.getByText(/proposed/i)).toBeInTheDocument());
+    await userEvent.type(screen.getByLabelText(/note/i), 'Signing off.');
+    await userEvent.click(screen.getByRole('button', { name: /approve & close/i }));
+
+    await waitFor(() => expect(screen.getByText(/a dosing revision is in flight/)).toBeInTheDocument());
+    expect(screen.getByText(/the determination was refused/i)).toBeInTheDocument();
+    // Re-read for the fresh blockers: the initial load plus one more after the refusal.
+    expect(vi.mocked(api.getVpGate)).toHaveBeenCalledTimes(2);
+    // And the record is still there — the refusal did not blank the screen it was written onto.
+    expect(screen.getByLabelText('VP R&D gate')).toBeInTheDocument();
+  });
+
+  /** ...and it survives its own follow-up failing, which is the case that used to destroy it. */
+  it('does not let a failed post-refusal re-read blank the refusal', async () => {
+    vi.mocked(api.recordVpDetermination).mockRejectedValue(
+      new api.ApiError(422, "component 'lid' has no confirmed code"),
+    );
+    vi.mocked(api.getDecision)
+      .mockResolvedValueOnce(decision())
+      .mockRejectedValue(new Error('the record read timed out'));
+    view();
+    await waitFor(() => expect(screen.getByText(/proposed/i)).toBeInTheDocument());
+    await userEvent.type(screen.getByLabelText(/note/i), 'Signing off.');
+    await userEvent.click(screen.getByRole('button', { name: /approve & close/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/component 'lid' has no confirmed code/)).toBeInTheDocument(),
+    );
+    // The record is still on screen — not replaced by "the decision record could not be read".
+    expect(screen.getByText(/1314-36-9/)).toBeInTheDocument();
+    // ...but it is honestly labelled as possibly stale rather than passed off as a fresh read.
+    expect(screen.getByText(/could not be re-read after that action/i)).toBeInTheDocument();
+  });
+
+  /**
+   * The MSDS registry is a CROSS-PROJECT read that only the order rows need. Losing it must not take
+   * down the decision, the evidence and the gate — the old `Promise.all` made a registry hiccup say
+   * "the decision record could not be read", which was also false.
+   */
+  it('survives a failed MSDS registry read with the record and the gate intact', async () => {
+    vi.mocked(api.getMsdsRegistry).mockRejectedValue(new Error('registry unavailable'));
+    view();
+    await waitFor(() => expect(screen.getByText(/1314-36-9/)).toBeInTheDocument());
+    expect(screen.getByLabelText('VP R&D gate')).toBeInTheDocument();
+    expect(screen.queryByText(/could not be read/i)).toBeNull();
+  });
+
+  /**
+   * ...and where the registry DOES matter, an unread one reports as unknown. Substituting `[]` would
+   * print "no sheet on file" for every substance — a fabricated claim about an absence, on the control
+   * that places the order. So the order is withheld rather than described as blocked by a missing sheet.
+   */
+  it('reports an unread MSDS registry as unknown, never as a missing sheet', async () => {
+    vi.mocked(api.getMsdsRegistry).mockRejectedValue(new Error('registry unavailable'));
+    vi.mocked(api.getDecision).mockResolvedValue(
+      decision({
+        components: [component({ confirmedCode: 'Y:Zr = 1.00:0.50', confirmedBy: 'VP R&D' })],
+        procurement: { status: 'released', orderedCas: [] },
+      }),
+    );
+    view();
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^order$/i }).length).toBe(2));
+    expect(screen.getAllByText(/unknown — the registry did not load/).length).toBe(2);
+    expect(screen.queryByText(/no sheet on file/)).toBeNull();
+    for (const b of screen.getAllByRole('button', { name: /^order$/i })) {
+      expect(b).toBeDisabled();
+      expect(b).toHaveAttribute('title', expect.stringMatching(/registry did not load/));
+    }
   });
 
   /**
