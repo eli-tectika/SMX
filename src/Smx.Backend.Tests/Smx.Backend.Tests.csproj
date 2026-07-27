@@ -23,10 +23,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Smx.Domain\Smx.Domain.csproj" />
     <ProjectReference Include="..\Smx.Backend\Smx.Backend.csproj" />
-    <!-- ChatRevisionParityTests drives BOTH front doors of revise-with-reason against one store: the HTTP
-         endpoint (which only a project that can host WebApplicationFactory may drive) and the orchestrator's
-         ChatTools.apply_revision. The parity of the two RevisionDocs is the contract; testing it needs both. -->
-    <ProjectReference Include="..\Smx.Orchestrator\Smx.Orchestrator.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -44,6 +40,7 @@
 
   <ItemGroup>
     <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryRecordStore.cs" Link="Fakes/InMemoryRecordStore.cs" />
+    <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryRunStore.cs" Link="Fakes/InMemoryRunStore.cs" />
     <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryKnowledgeStore.cs" Link="Fakes/InMemoryKnowledgeStore.cs" />
     <Compile Include="../Smx.Domain.Tests/Fakes/InMemorySdsCorpusReader.cs" Link="Fakes/InMemorySdsCorpusReader.cs" />
     <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryIntakeSessionStore.cs"
@@ -56,13 +53,9 @@
              Link="Fakes/InMemoryDocumentTextReader.cs" />
     <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryAttachmentBlobStore.cs"
              Link="Fakes/InMemoryAttachmentBlobStore.cs" />
-    <!-- DosingCostEndToEndTests drives the REAL HTTP surface AND the REAL StageDispatcher over one shared
-         store, so it needs the orchestrator's test doubles (agent runs, catalog, knowledge-writer twins).
-         Linked file-by-file, the same way the in-memory stores above are — a ProjectReference to a test
-         project would double-discover that project's own tests. -->
-    <Compile Include="../Smx.Orchestrator.Tests/Fakes/FakeAgentRuns.cs" Link="Fakes/FakeAgentRuns.cs" />
-    <Compile Include="../Smx.Orchestrator.Tests/Fakes/FakeTools.cs" Link="Fakes/FakeTools.cs" />
-    <Compile Include="../Smx.Orchestrator.Tests/Fakes/FakeKnowledgeWriting.cs" Link="Fakes/FakeKnowledgeWriting.cs" />
+    <!-- FakeAgentRuns / FakeTools / FakeKnowledgeWriting used to be LINKED in from Smx.Orchestrator.Tests.
+         They now live in this project's own Fakes/ folder — the orchestrator's tests were folded in here —
+         so they compile by glob, and an explicit Compile Include would be a duplicate-file build error. -->
   </ItemGroup>
 
 </Project>

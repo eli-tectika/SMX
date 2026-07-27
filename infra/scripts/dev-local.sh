@@ -11,8 +11,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 #   backend   5169          dotnet watch
 #   web       5173          vite; proxies /api -> :5169
 #
-# The orchestrator and Smx.Functions are NOT started: both need AI Search + Foundry, which
-# harden.sh puts behind private endpoints — unreachable from a laptop. Run them in Azure.
+# Smx.Functions is NOT started: it needs AI Search + Foundry, which harden.sh puts behind
+# private endpoints — unreachable from a laptop. Run it in Azure.
 CMD="${1:-up}"
 REPO_ROOT="$(cd "${INFRA_DIR}/.." && pwd)"
 RUN_DIR="${REPO_ROOT}/.dev-local"

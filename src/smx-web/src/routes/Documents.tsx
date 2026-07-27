@@ -1,10 +1,11 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { getDocuments } from '../api/client';
 import type { DocumentKind, DocumentSummary } from '../api/types';
 import { EmptyState, SearchInput, SectionHeader } from '../components/ui/Primitives';
 import { Data } from '../components/ui/Data';
 import { useKnowledge } from '../hooks/useKnowledge';
+import { useQueryParam } from '../hooks/useQueryParam';
 
 /**
  * The kind filter, typed against `DocumentKind` on purpose.
@@ -35,8 +36,12 @@ const FILTERS: { key: 'all' | DocumentKind; label: string }[] = [
  * report that as "the system holds no documents".
  */
 export function Documents() {
-  const [kind, setKind] = useState<'all' | DocumentKind>('all');
-  const [q, setQ] = useState('');
+  // In the URL, not in state: opening a document and coming back has to land on the same list.
+  const [rawKind, setKind] = useQueryParam('kind', 'all');
+  const [q, setQ] = useQueryParam('q');
+  // A hand-edited URL is untrusted input. An unknown facet reads as `all` rather than reaching the
+  // endpoint, which answers 400 for a kind it does not define.
+  const kind = (FILTERS.some((f) => f.key === rawKind) ? rawKind : 'all') as 'all' | DocumentKind;
 
   // Stable per kind, which is what useKnowledge's effect keys on: changing the facet re-reads.
   const read = useCallback(
@@ -110,7 +115,12 @@ export function Documents() {
                         exist — and the whole point of listing it is that absence stays visible
                         as absence. */}
                     {r.available ? (
-                      <Link to={`/docs/${encodeURIComponent(r.id)}`}>{r.title}</Link>
+                      <Link
+                        to={`/docs/${encodeURIComponent(r.id)}`}
+                        state={{ from: { label: 'the library' } }}
+                      >
+                        {r.title}
+                      </Link>
                     ) : (
                       <span className="doc-gap-title">
                         <i className="ti ti-file-off" aria-hidden="true" /> {r.title}

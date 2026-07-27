@@ -8,10 +8,10 @@ using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
 using Smx.Domain.Tools;
-using Smx.Orchestrator.Agents;
-using Smx.Orchestrator.Dispatch;
-using Smx.Orchestrator.Knowledge;
-using Smx.Orchestrator.Tests.Fakes;
+using Smx.Backend.Agents;
+using Smx.Backend.Pipeline;
+using Smx.Backend.Knowledge;
+using Smx.Backend.Tests.Fakes;
 
 namespace Smx.Backend.Tests;
 
@@ -20,7 +20,7 @@ namespace Smx.Backend.Tests;
 /// awaiting-VP, a proposal is not a signature), the VP's determination arrives over the REAL HTTP surface,
 /// the persisted gate's delivery runs the close (Marker Library + the close conclusion + released
 /// procurement), and an order exists only behind the MSDS-before-order precondition. Same harness as the
-/// Plan-4 E2E: ONE shared store pair under both the HTTP app and the real StageDispatcher, because writing
+/// Plan-4 E2E: ONE shared store pair under both the HTTP app and the real PipelineRunner, because writing
 /// a doc IS the dispatch.
 ///
 /// The three assertions at the end are the shipped-bug tripwires: nothing half-signed (every component
@@ -35,7 +35,7 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
     private readonly FakeCatalogLookup _catalog = new();
     private readonly FakeAgentRuns _agents = new();
     private readonly HttpClient _client;
-    private readonly StageDispatcher _dispatcher;
+    private readonly PipelineRunner _dispatcher;
 
     public DecisionVpCloseEndToEndTests(WebApplicationFactory<Program> factory)
     {
@@ -54,7 +54,8 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
         })).CreateClient();
         var conclusions = new LearnedConclusionWriter(_knowledge, new FakeLearnedConclusionsIndex(),
             new FakeEmbedder(), NullLogger<LearnedConclusionWriter>.Instance);
-        _dispatcher = new StageDispatcher(_store, _agents, conclusions, 2, _knowledge, _catalog);
+        _dispatcher = new PipelineRunner(_store, new InMemoryRunStore(), _agents, new ThreadEventHub(),
+            conclusions, 2, knowledge: _knowledge, catalog: _catalog);
     }
 
     /// What the change feed actually hands the dispatcher: a FRESH object round-tripped through the real
@@ -134,7 +135,8 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
 
         var approve = await _client.PostAsync($"/projects/{P}/regulatory/approve", null);
         Assert.Equal(HttpStatusCode.OK, approve.StatusCode);
-        await _dispatcher.OnRecordChangedAsync(Delivered((await _store.GetGateAsync(P, GateTypes.Regulatory))!), default);
+        await _dispatcher.OnGateAsync(Delivered((await _store.GetGateAsync(P, GateTypes.Regulatory))!), default);
+        await _dispatcher.RunAsync(P, default);   // in production the supervisor re-enters the pipeline here
         Assert.Equal("awaiting-operator", (await StageAsync(Stages.Dosing)).Status);
 
         // The scripted fake Dosing agent from DosingCostEndToEndTests, verbatim: a floor-respecting doc
@@ -164,13 +166,13 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
 
         Assert.Equal(HttpStatusCode.Accepted, (await LoadingAsync("cas-zr", "Zr")).StatusCode);
         Assert.Equal(HttpStatusCode.Accepted, (await LoadingAsync("cas-y", "Y")).StatusCode);
-        await _dispatcher.OnRecordChangedAsync(Delivered((await _store.GetProjectAsync(P))!), default);
+        await _dispatcher.RunAsync(P, default);
         Assert.Equal("done", (await StageAsync(Stages.Dosing)).Status);
 
         _catalog
             .Returns("Zr", Card("cas-zr", "Zr", "Acme", "cat-zr", "$66.00", "25 g"))
             .Returns("Y", Card("cas-y", "Y", "Beta", "cat-y", "$50.00", "25 g"));
-        await _dispatcher.OnRecordChangedAsync(Delivered((await _store.GetDosingAsync(P))!), default);
+        await _dispatcher.RunAsync(P, default);
         Assert.Equal("done", (await StageAsync(Stages.Cost)).Status);
     }
 
@@ -182,7 +184,7 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
         // 1. Pump the CostDoc (the change feed's job): its landing IS the Decision trigger. Assembly is
         //    deterministic; the fake Decision agent's default mirrors the assembly and proposes the first
         //    finalized code. The stage parks at awaiting-VP — a proposal is not a signature.
-        await _dispatcher.OnRecordChangedAsync(Delivered((await _store.GetCostAsync(P))!), default);
+        await _dispatcher.RunAsync(P, default);
         Assert.Equal("awaiting-VP", (await StageAsync(Stages.Decision)).Status);
 
         var dosing = (await _client.GetFromJsonAsync<DosingDoc>($"/projects/{P}/dosing"))!;
@@ -204,7 +206,7 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
 
         // 3. Pump the PERSISTED gate (the production sequence: the POST wrote it, the feed delivers it;
         //    the close's F3 re-read trusts only the record on file) → the project closes.
-        await _dispatcher.OnRecordChangedAsync(Delivered((await _store.GetGateAsync(P, GateTypes.Vp))!), default);
+        await _dispatcher.OnGateAsync(Delivered((await _store.GetGateAsync(P, GateTypes.Vp))!), default);
 
         Assert.Equal("done", (await StageAsync(Stages.Decision)).Status);
         var decision = (await _store.GetDecisionAsync(P))!;

@@ -48,7 +48,7 @@ public class RecordDocsTests
     /// THE TRIPWIRE FOR PLAN 4. `ProjectDoc.Create`'s stage dictionary is a fourth, hand-maintained
     /// enumeration of the stages, and it was the only one nothing pinned. The other three are safe: Stages.All
     /// is reflection-tested against the constants (ChatEndpointsTests), and ToolBox.ReadToolsFor and
-    /// StageDispatcher.StageInputsJsonAsync both fail CLOSED on a stage they do not know.
+    /// PipelineRunner.StageInputsJsonAsync both fail CLOSED on a stage they do not know.
     ///
     /// This one fails OPEN, in both directions. Add `Stages.Dosing` and forget this dictionary and:
     ///   - Stages.All gains it the same commit (the reflection test forces that), so POST /stages/dosing/chat
@@ -62,10 +62,10 @@ public class RecordDocsTests
     {
         var doc = ProjectDoc.Create("p1", "Acme", "Shampoo bottle", JsonDocument.Parse("{}").RootElement);
         // Every Stages.All (chattable) member must be seeded, or SetStageAsync throws KeyNotFoundException on a
-        // stage the product says exists. Pool and Background are seeded too — they are real backend stages the
-        // dispatcher writes, just deliberately absent from Stages.All (hidden, non-chattable). Assert the exact
-        // set so a forgotten seed still fails, in both directions.
-        string[] expected = [.. Stages.All, Stages.Pool, Stages.Background];
+        // stage the product says exists. Background is seeded too — a real backend stage the runner stamps,
+        // just deliberately absent from Stages.All (no agent, so nothing to talk to). Assert the exact set so
+        // a forgotten seed still fails, in both directions.
+        string[] expected = [.. Stages.All, Stages.Background];
         Assert.Equal([.. expected.Order()], [.. doc.Stages.Keys.Order()]);
     }
 

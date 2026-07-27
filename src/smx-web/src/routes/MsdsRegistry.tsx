@@ -5,6 +5,7 @@ import type { MsdsEntry, MsdsReviewReceipt } from '../api/types';
 import { Data } from '../components/ui/Data';
 import { EmptyState, SearchInput, SectionHeader, StatCard } from '../components/ui/Primitives';
 import { useKnowledge } from '../hooks/useKnowledge';
+import { useQueryParam } from '../hooks/useQueryParam';
 
 /**
  * MSDS Registry (spec §6) — the surface that gates procurement.
@@ -29,7 +30,8 @@ import { useKnowledge } from '../hooks/useKnowledge';
  * one job.
  */
 export function MsdsRegistry() {
-  const [q, setQ] = useState('');
+  // In the URL, so opening a sheet and coming back lands on the same filtered registry.
+  const [q, setQ] = useQueryParam('q');
   const [signing, setSigning] = useState<string | null>(null);
   // Receipts, not rows: what came back from signing, merged onto the row it signed.
   const [signed, setSigned] = useState<Record<string, MsdsReviewReceipt>>({});
@@ -223,7 +225,12 @@ export function MsdsRegistry() {
                       blocks orders. A governance-only row carries no id and gets no link.
                     */}
                     {e.documentId && (
-                      <Link to={`/docs/${encodeURIComponent(e.documentId)}`}>Open sheet</Link>
+                      <Link
+                        to={`/docs/${encodeURIComponent(e.documentId)}`}
+                        state={{ from: { label: 'the MSDS registry' } }}
+                      >
+                        Open sheet
+                      </Link>
                     )}
                     {!ok && (
                       <button

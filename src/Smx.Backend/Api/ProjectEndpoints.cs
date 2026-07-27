@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using Smx.Backend.Pipeline;
 using Smx.Domain;
 using Smx.Domain.Records;
 
@@ -94,7 +95,9 @@ public static class ProjectEndpoints
         });
 
         app.MapPost("/projects/{projectId}/regulatory/approve",
-            async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
+            async (string projectId, [FromServices] IRecordStore store,
+                   [FromServices] PipelineRunner? runner, [FromServices] PipelineSupervisor? supervisor,
+                   CancellationToken ct) =>
         {
             var verdicts = await store.GetVerdictsAsync(projectId, ct);
             var candidates = await store.GetCandidatesAsync(projectId, ct);
@@ -106,12 +109,26 @@ public static class ProjectEndpoints
             if (!ok)
                 return Results.UnprocessableEntity(new { error = "gate not armable — open the flagged items first", blockers });
             var existing = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
-            await store.UpsertGateAsync(new GateDoc
+            var gate = new GateDoc
             {
                 Id = RecordIds.Gate(projectId, GateTypes.Regulatory), ProjectId = projectId,
                 GateType = GateTypes.Regulatory, Status = "approved",
                 ApprovedAt = existing?.Status == "approved" ? existing.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
-            }, ct);
+            };
+            await store.UpsertGateAsync(gate, ct);
+
+            // The signature is recorded; now make it MEAN something. Two separate acts, deliberately kept
+            // separate:
+            //   OnGateAsync is a stamp — the Regulatory stage leaves `awaiting-RE`. It touches one record and
+            //   runs no agent, so it is safe on the caller's thread.
+            //   TryStart is what actually moves the project: Dosing SKIPS behind an unsigned gate, so before
+            //   this line the signed determination changed nothing and the project sat parked under a gate
+            //   the operator had already signed — waiting for a change feed that no longer exists.
+            // The runner itself never re-enters the pipeline from a gate; re-entry is the supervisor's job,
+            // and it happens here rather than inside OnGateAsync so that stamping a signature can never turn
+            // into an endpoint that spends minutes in Foundry.
+            if (runner is not null) await runner.OnGateAsync(gate, ct);
+            supervisor?.TryStart(projectId);
             return Results.Ok(new { status = "approved" });
         });
 
@@ -142,16 +159,42 @@ public static class ProjectEndpoints
         // never will be: creating a project is safe to delegate because it runs nothing, but starting
         // the analysis is the human asserting that what the agent wrote is correct (design §2.3).
         //
-        // Writing `pending` is the dispatch — the change feed picks the doc up and StageDispatcher runs
-        // intake. That is why this endpoint, and not create_project, is the trigger.
+        // Writing `pending` is what makes the project runnable: PipelineRunner.RunIntakeAsync skips a
+        // project still at `awaiting-confirmation`, so until this endpoint is called no pass over it can
+        // start intake. That is why this endpoint, and not create_project, is the trigger — and the flip is
+        // the precondition whether or not a supervisor is there to launch the runner.
+        //
+        // The supervisor is OPTIONAL here, unlike on §7.3's control endpoints. Those have no answer without
+        // it; this one does — the readiness checks and the flip are the operator's signature, and they are
+        // meaningful on their own. A test host that registers only an IRecordStore therefore still exercises
+        // the door it cares about. Production always has one (BackendHost registers it beside the runner, and
+        // BackendHostWiringTests fails if that stops being true), so the null branch never runs in Azure.
         app.MapPost("/projects/{projectId}/start",
-            async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
+            async (string projectId, [FromServices] IRecordStore store,
+                   [FromServices] PipelineSupervisor? supervisor, CancellationToken ct) =>
         {
             if (await store.GetProjectAsync(projectId, ct) is not { } project) return Results.NotFound();
+
+            // BEFORE the idempotent branch below, not after: §7.3 says a start against a live pipeline is a
+            // 409, and a 202 carrying the current status would read to the client as "already fine" when what
+            // it means is "something is running that you did not just start".
+            if (supervisor?.IsRunning(projectId) == true)
+                return Results.Conflict(new { error = "a pipeline is already running for this project" });
 
             var intake = project.Stages[Stages.Intake];
             // Idempotent, and not merely tolerant: everything in this system is at-least-once, and a
             // double-press must never re-dispatch a stage that has already run.
+            //
+            // `pending` is the exception, and it is not a loophole: it means nothing has run YET. It is the
+            // status POST /projects writes (the API create path — the eval harness and the tests), as opposed
+            // to the interview's `awaiting-confirmation`. There is no flip to make and no confirmation to
+            // honour, so start simply starts. Before the change feed was replaced, creating a project WAS the
+            // dispatch; without this arm an API-created project could never be run by any door at all.
+            if (intake.Status == StageStatus.Pending)
+            {
+                supervisor?.TryStart(projectId);
+                return Results.Accepted($"/projects/{projectId}", new { projectId, status = intake.Status });
+            }
             if (intake.Status != StageStatus.AwaitingConfirmation)
                 return Results.Accepted($"/projects/{projectId}", new { projectId, status = intake.Status });
 
@@ -171,6 +214,12 @@ public static class ProjectEndpoints
 
             intake.Status = StageStatus.Pending;
             await store.UpsertProjectAsync(project, ct);
+
+            // AND NOW IT ACTUALLY RUNS. The flip alone used to be the whole endpoint, back when a change
+            // feed was watching the record; nothing watches it any more, so a start that only wrote `pending`
+            // would leave the project sitting there looking started and never move.
+            if (supervisor?.TryStart(projectId) == false)
+                return Results.Conflict(new { error = "a pipeline is already running for this project" });
             return Results.Accepted($"/projects/{projectId}", new { projectId, status = StageStatus.Pending });
         });
 

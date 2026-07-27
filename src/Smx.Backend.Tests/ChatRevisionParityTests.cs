@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
-using Smx.Orchestrator.Agents;
+using Smx.Backend.Agents;
 
 namespace Smx.Backend.Tests;
 
@@ -27,7 +27,7 @@ namespace Smx.Backend.Tests;
 /// is not `pending` — each one silently costs the gate void, the re-run, or the conclusion.
 ///
 /// This test lives HERE, in the backend's test project, and not beside the rest of Law 9 in
-/// Smx.Orchestrator.Tests/ChatGuardrailTests.cs, for one reason: the HTTP door can only be driven from a
+/// Smx.Backend.Tests/ChatGuardrailTests.cs, for one reason: the HTTP door can only be driven from a
 /// project that can host it (WebApplicationFactory), and only this test project targets a framework whose
 /// TestHost runs on the installed runtime. Hitting the REAL endpoint — real routing, real JSON binding — is
 /// the whole point of the test, so the test goes where the endpoint can run, and ChatGuardrailTests points here.

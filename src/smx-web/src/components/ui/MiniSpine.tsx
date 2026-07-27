@@ -1,5 +1,5 @@
 import type { StageState } from '../../api/types';
-import { STAGES } from '../../domain/stages';
+import { STAGES, backendStages, foldStatus } from '../../domain/stages';
 
 /**
  * The eight-stage journey as a rail of nodes.
@@ -20,9 +20,11 @@ export function MiniSpine({
   stages?: Record<string, StageState>;
   showLabels?: boolean;
 }) {
+  // Folded, because one node can cover several backend stages (Intake & pool covers two) — and
+  // attention-first, so a failed pool behind a done intake does not read as a completed node.
   const statusOf = (i: number) => {
-    const s = STAGES[i];
-    return s.backedBy && stages ? stages[s.backedBy]?.status : undefined;
+    const keys = backendStages(STAGES[i].slug);
+    return keys.length > 0 && stages ? foldStatus(keys.map((k) => stages[k])) : undefined;
   };
 
   return (

@@ -9,6 +9,9 @@ vi.mock('../../api/client', () => ({
   NotFound: Symbol.for('NotFound'),
   getIntakeBrief: vi.fn(),
   startProject: vi.fn(),
+  // The screen now mounts ProposedPool, which reads the pool on its own. These cases are about the
+  // record zone, so it resolves to the not-yet-run state and renders one honest line.
+  getPool: vi.fn().mockResolvedValue(Symbol.for('NotFound')),
 }));
 import * as api from '../../api/client';
 

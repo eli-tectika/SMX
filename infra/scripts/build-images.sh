@@ -2,7 +2,7 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-# Build + push the frontend, backend and orchestrator images in ACR (cloud build, no local docker).
+# Build + push the frontend and backend images in ACR (cloud build, no local docker).
 # Usage: build-images.sh <env> [tag]
 #   <env>  dev|prod (etc.) — selects the ACR named acr${NAME_PREFIX}${env}<suffix>.
 #   [tag]  image tag; defaults to the current short git SHA.
@@ -69,8 +69,8 @@ FRONTEND_BUILD_ARGS=(
 # FRONTEND_ENABLE_DEMO=true builds the STAKEHOLDER-DEMO frontend: it ships the fixture proj-demo
 # (see src/smx-web/Dockerfile). It is tagged '-demo' so it can never be mistaken for a real image
 # at the registry, and it must be served from its own origin — never a production one (MSW registers
-# a service worker at the origin scope; see src/smx-web/src/mocks/demo.ts). The backend and
-# orchestrator images are unaffected.
+# a service worker at the origin scope; see src/smx-web/src/mocks/demo.ts). The backend image is
+# unaffected.
 FRONTEND_TAG="${TAG}"
 FRONTEND_ARGS=()
 if [[ "${FRONTEND_ENABLE_DEMO:-}" == "true" ]]; then
@@ -80,11 +80,10 @@ if [[ "${FRONTEND_ENABLE_DEMO:-}" == "true" ]]; then
 fi
 
 log "Building images in ${ACR_NAME} (tag ${TAG})"
-build frontend     "${FRONTEND_TAG}" "${SRC_DIR}/smx-web/Dockerfile"          "${SRC_DIR}/smx-web" "${FRONTEND_BUILD_ARGS[@]}" ${FRONTEND_ARGS[@]+"${FRONTEND_ARGS[@]}"}
-build backend      "${TAG}"          "${SRC_DIR}/Smx.Backend/Dockerfile"      "${SRC_DIR}"
-build orchestrator "${TAG}"          "${SRC_DIR}/Smx.Orchestrator/Dockerfile" "${SRC_DIR}"
+build frontend "${FRONTEND_TAG}" "${SRC_DIR}/smx-web/Dockerfile"     "${SRC_DIR}/smx-web" "${FRONTEND_BUILD_ARGS[@]}" ${FRONTEND_ARGS[@]+"${FRONTEND_ARGS[@]}"}
+build backend  "${TAG}"          "${SRC_DIR}/Smx.Backend/Dockerfile" "${SRC_DIR}"
 
 log "images:"
 log "  ${ACR_NAME}.azurecr.io/smx-frontend:${FRONTEND_TAG}"
-for app in backend orchestrator; do log "  ${ACR_NAME}.azurecr.io/smx-${app}:${TAG}"; done
-log "roll out with: az deployment ... -p frontendImage=... backendImage=... orchestratorImage=...  (or swap-images.sh)"
+log "  ${ACR_NAME}.azurecr.io/smx-backend:${TAG}"
+log "roll out with: az deployment ... -p frontendImage=... backendImage=...  (or swap-images.sh)"

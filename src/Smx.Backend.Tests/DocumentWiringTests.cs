@@ -14,10 +14,17 @@ public class DocumentWiringTests
 {
     /// COSMOS_ACCOUNT_ENDPOINT is what gates the whole production block; a syntactically valid
     /// endpoint is all the CosmosClient constructor needs, since it connects lazily.
+    ///
+    /// SEARCH_ENDPOINT and FOUNDRY_ENDPOINT are here because that block now also builds the agents (the
+    /// orchestrator was folded into this app) and refuses to start without them — see
+    /// AMissingSearchEndpointFailsByName, which is the test for that refusal. They are irrelevant to the
+    /// document wiring these tests are about; they are what a configured deployment always has.
     private static WebApplicationFactory<Program> HostWith(params (string Key, string Value)[] settings)
         => new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseSetting("COSMOS_ACCOUNT_ENDPOINT", "https://cosmos.example.invalid:443/");
+            b.UseSetting("SEARCH_ENDPOINT", "https://search.example.invalid");
+            b.UseSetting("FOUNDRY_ENDPOINT", "https://foundry.example.invalid");
             foreach (var (key, value) in settings) b.UseSetting(key, value);
         });
 
@@ -60,9 +67,7 @@ public class DocumentWiringTests
     [Fact]
     public void TheCatalogAndTextReaderResolveFromTheProductionRegistrations()
     {
-        using var host = HostWith(
-            ("BRONZE_LOCAL_PATH", Path.GetTempPath()),
-            ("SEARCH_ENDPOINT", "https://search.example.invalid"));
+        using var host = HostWith(("BRONZE_LOCAL_PATH", Path.GetTempPath()));
 
         Assert.IsType<DocumentCatalog>(host.Services.GetRequiredService<IDocumentCatalog>());
         Assert.IsType<CompositeDocumentTextReader>(host.Services.GetRequiredService<IDocumentTextReader>());
@@ -71,16 +76,43 @@ public class DocumentWiringTests
     }
 
     // SEARCH_ENDPOINT defaults to "" in BackendOptions, and `new Uri("")` throws a UriFormatException
-    // that names nothing.
+    // that names nothing. The document viewer reads SDS chunk text from the sds-index and the agents
+    // search all three indexes, so a configured deployment without it is broken either way — since the
+    // orchestrator was folded in, that is caught at host construction rather than at the operator's
+    // first click. Either way it must NAME the setting.
     [Fact]
     public void AMissingSearchEndpointFailsByName()
     {
-        using var host = HostWith(("BRONZE_LOCAL_PATH", Path.GetTempPath()));
+        using var host = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseSetting("COSMOS_ACCOUNT_ENDPOINT", "https://cosmos.example.invalid:443/");
+            b.UseSetting("FOUNDRY_ENDPOINT", "https://foundry.example.invalid");
+            b.UseSetting("BRONZE_LOCAL_PATH", Path.GetTempPath());
+        });
 
         var ex = Assert.Throws<InvalidOperationException>(
             () => host.Services.GetRequiredService<IDocumentTextReader>());
 
         Assert.Contains("SEARCH_ENDPOINT", ex.Message);
+    }
+
+    // The same for the other half of the agent host's config. FOUNDRY_ENDPOINT feeds an AzureOpenAIClient
+    // that IS constructed eagerly, so without the guard the host dies on `new Uri("")` — an opaque
+    // UriFormatException from a client nobody mentioned.
+    [Fact]
+    public void AMissingFoundryEndpointFailsByName()
+    {
+        using var host = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseSetting("COSMOS_ACCOUNT_ENDPOINT", "https://cosmos.example.invalid:443/");
+            b.UseSetting("SEARCH_ENDPOINT", "https://search.example.invalid");
+            b.UseSetting("BRONZE_LOCAL_PATH", Path.GetTempPath());
+        });
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => host.Services.GetRequiredService<IDocumentTextReader>());
+
+        Assert.Contains("FOUNDRY_ENDPOINT", ex.Message);
     }
 
     // Spec §8: "Bronze unconfigured — 503 with a plain message, surfaced by the viewer rather than

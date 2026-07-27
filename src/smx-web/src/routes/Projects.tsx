@@ -46,7 +46,7 @@ export function Projects() {
             <button className="btn" onClick={refresh} disabled={loading}>
               <i className={`ti ti-refresh ${loading ? 'spin' : ''}`} aria-hidden="true" /> Refresh
             </button>
-            <Link className="btn primary" to="/new">
+            <Link className="btn primary" to="/new" state={{ from: { label: 'projects' } }}>
               <i className="ti ti-plus" aria-hidden="true" /> New project
             </Link>
           </>
@@ -152,6 +152,17 @@ function ProjectRow({ card, onForgetDemo }: { card: ProjectCard; onForgetDemo: (
         <div style={{ margin: '14px 0 10px' }}>
           <MiniSpine stages={project.stages} showLabels />
         </div>
+
+        {/* What is happening right now, in words. The spine says which stage; this says what it is
+            doing — the cheap answer to "where should I even look". Named by agent where there is
+            one, by stage where the work is deterministic. */}
+        {project.activeRun && (
+          <div className="tiny muted">
+            <i className="ti ti-loader" data-running="" aria-hidden="true" />{' '}
+            {project.activeRun.agent ? `${project.activeRun.agent} agent` : project.activeRun.stage}
+            {project.activeRun.lastStep ? ` — ${project.activeRun.lastStep}` : ''}
+          </div>
+        )}
 
         {blocking && (
           <div
@@ -326,7 +337,7 @@ function ProjectsEmpty({ onLoadDemo }: { onLoadDemo: () => void }) {
       <SectionHeader
         title="Projects"
         actions={
-          <Link className="btn primary" to="/new">
+          <Link className="btn primary" to="/new" state={{ from: { label: 'projects' } }}>
             <i className="ti ti-plus" aria-hidden="true" /> New project
           </Link>
         }
@@ -337,7 +348,7 @@ function ProjectsEmpty({ onLoadDemo }: { onLoadDemo: () => void }) {
         body={<>Start one — the agent asks what it needs.</>}
         actions={
           <>
-            <Link className="btn primary" to="/new">
+            <Link className="btn primary" to="/new" state={{ from: { label: 'projects' } }}>
               <i className="ti ti-plus" aria-hidden="true" /> New project
             </Link>
             {DEMO_ENABLED && (

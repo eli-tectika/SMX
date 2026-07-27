@@ -8,14 +8,14 @@ using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
 using Smx.Domain.Tools;
-using Smx.Orchestrator.Agents;
-using Smx.Orchestrator.Dispatch;
-using Smx.Orchestrator.Knowledge;
-using Smx.Orchestrator.Tests.Fakes;
+using Smx.Backend.Agents;
+using Smx.Backend.Pipeline;
+using Smx.Backend.Knowledge;
+using Smx.Backend.Tests.Fakes;
 
 namespace Smx.Backend.Tests;
 
-/// The whole Plan-4 journey, driven through the REAL HTTP surface AND the REAL StageDispatcher over ONE
+/// The whole Plan-4 journey, driven through the REAL HTTP surface AND the REAL PipelineRunner over ONE
 /// shared in-memory store — the two halves this system splits its work across (the backend cannot run an
 /// agent; the orchestrator's change feed does), joined the way production joins them: writing a doc IS the
 /// dispatch. The unit tests pin each seam in isolation; this is the one that proves they compose into a
@@ -33,7 +33,7 @@ public class DosingCostEndToEndTests : IClassFixture<WebApplicationFactory<Progr
     private readonly FakeCatalogLookup _catalog = new();
     private readonly FakeAgentRuns _agents = new();
     private readonly HttpClient _client;
-    private readonly StageDispatcher _dispatcher;
+    private readonly PipelineRunner _dispatcher;
 
     public DosingCostEndToEndTests(WebApplicationFactory<Program> factory)
     {
@@ -46,7 +46,8 @@ public class DosingCostEndToEndTests : IClassFixture<WebApplicationFactory<Progr
         })).CreateClient();
         var conclusions = new LearnedConclusionWriter(_knowledge, new FakeLearnedConclusionsIndex(),
             new FakeEmbedder(), NullLogger<LearnedConclusionWriter>.Instance);
-        _dispatcher = new StageDispatcher(_store, _agents, conclusions, 2, _knowledge, _catalog);
+        _dispatcher = new PipelineRunner(_store, new InMemoryRunStore(), _agents, new ThreadEventHub(),
+            conclusions, 2, knowledge: _knowledge, catalog: _catalog);
     }
 
     /// What the change feed actually hands the dispatcher: a FRESH object round-tripped through the real
@@ -135,9 +136,10 @@ public class DosingCostEndToEndTests : IClassFixture<WebApplicationFactory<Progr
         var approve = await _client.PostAsync($"/projects/{P}/regulatory/approve", null);
         Assert.Equal(HttpStatusCode.OK, approve.StatusCode);
 
-        // 4. Pump the gate through the dispatcher (the change feed's job in production). TryDoseAsync runs,
-        //    finds the metal loadings unknown, and PARKS — it does not guess a mass fraction.
-        await _dispatcher.OnRecordChangedAsync(Delivered((await _store.GetGateAsync(P, GateTypes.Regulatory))!), default);
+        // 4. Record the signature, then re-enter the pipeline (in production the supervisor does this).
+        //    Dosing runs, finds the metal loadings unknown, and PARKS — it does not guess a mass fraction.
+        await _dispatcher.OnGateAsync(Delivered((await _store.GetGateAsync(P, GateTypes.Regulatory))!), default);
+        await _dispatcher.RunAsync(P, default);
         Assert.Equal("awaiting-operator", (await DosingStageAsync()).Status);
         Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/projects/{P}/dosing")).StatusCode);
 
@@ -172,16 +174,17 @@ public class DosingCostEndToEndTests : IClassFixture<WebApplicationFactory<Progr
         Assert.Equal(HttpStatusCode.Accepted, (await LoadingAsync("cas-y", "Y")).StatusCode);
         Assert.Equal("pending", (await DosingStageAsync()).Status);
 
-        // 7. Pump the re-opened project. TryDoseAsync now resolves EVERY input and runs the fake → DosingDoc
-        //    lands on the bus, Dosing `done`.
-        await _dispatcher.OnRecordChangedAsync(Delivered((await _store.GetProjectAsync(P))!), default);
-        Assert.Equal("done", (await DosingStageAsync()).Status);
-
-        // 8. Prime the catalog for both substances, then pump the DosingDoc → the deterministic Cost audit.
+        // 7. Prime the catalog for both substances. BEFORE the pass, not after: the runner walks Dosing and
+        //    Cost in ONE pass now, so a catalog primed afterwards would be primed for a Cost stage that has
+        //    already run and will skip.
         _catalog
             .Returns("Zr", Card("cas-zr", "Zr", "Acme", "cat-zr", "$66.00", "25 g"))
             .Returns("Y", Card("cas-y", "Y", "Beta", "cat-y", "$50.00", "25 g"));
-        await _dispatcher.OnRecordChangedAsync(Delivered((await _store.GetDosingAsync(P))!), default);
+
+        // 8. Run the re-opened project. Dosing resolves EVERY input and runs the fake → the DosingDoc lands,
+        //    and the deterministic Cost audit follows it in the same pass.
+        await _dispatcher.RunAsync(P, default);
+        Assert.Equal("done", (await DosingStageAsync()).Status);
         Assert.Equal("done", (await StageAsync(Stages.Cost)).Status);
 
         // 9. Real HTTP reads + the three tripwires — deserialize into the domain records.

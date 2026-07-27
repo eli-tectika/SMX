@@ -81,7 +81,7 @@ public sealed class ChatReplyDoc
 /// operator across that line, so the failure is made visible.
 ///
 /// An AGENT turn carries <see cref="ChatStatus.Answered"/> and never an error. It has no status of its own to
-/// carry: a ChatReplyDoc is only ever written by a turn that COMPLETED (StageDispatcher writes no reply on the
+/// carry: a ChatReplyDoc is only ever written by a turn that COMPLETED (PipelineRunner writes no reply on the
 /// failure path — the operator must never read a half-answer as the agent's word), so the reply's existence IS
 /// the completion. A failed turn's error lives on the message, the only doc that turn wrote.
 public sealed record ChatTurn(

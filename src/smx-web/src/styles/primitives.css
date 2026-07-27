@@ -901,3 +901,11 @@
 .fv-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.42); }
 .fv-panel { position: relative; width: min(1100px, 92vw); max-height: 92vh; overflow: auto; background: var(--surface-0); border: 0.5px solid var(--border); border-radius: var(--r2); padding: var(--s4); }
 .fv-close { position: absolute; top: var(--s3); right: var(--s3); background: none; border: 0; font-size: 20px; line-height: 1; cursor: pointer; color: var(--text-secondary); }
+
+/* A run in the timeline. `data-outcome` carries the state so the border speaks without a badge. */
+.runGroup { margin: 4px 0; }
+.runGroup[data-outcome='failed'],
+.runGroup[data-outcome='interrupted'] { border-left: 2px solid var(--text-danger); padding-left: 6px; }
+.runGroup[data-outcome='cancelled'] { opacity: 0.7; }
+/* A rejection is the validation loop working. Distinct, deliberately not danger-coloured. */
+.step[data-kind='rejected'] { color: var(--text-muted); font-style: italic; }

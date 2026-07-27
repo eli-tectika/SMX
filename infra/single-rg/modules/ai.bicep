@@ -31,8 +31,8 @@ param gpt4oCapacity int = 1
 @description('Deploy the gpt-5-mini chat model. ON by default: it is the OpenAI-provider stand-in the agents run on when Claude is not deployed, and the account must always offer SOME chat model — otherwise MODEL_PROVIDER=openai resolves to a deployment that does not exist.')
 param deployGpt5Mini bool = true
 
-@description('gpt-5-mini deployment capacity (thousands of TPM). Kept minimal.')
-param gpt5MiniCapacity int = 1
+@description('gpt-5-mini deployment capacity (thousands of TPM). GlobalStandard TPM capacity is a RATE LIMIT, not a cost — the same lesson embeddingCapacity learned below. At 1 (=1K TPM) every agent turn died on HTTP 429 the moment the pipeline ran (live 2026-07-27): one RAG-shaped request carries more than 1K tokens of system prompt and retrieved context before it asks anything. 200 leaves the bulk of the region quota (limit 1000) free.')
+param gpt5MiniCapacity int = 200
 
 @description('text-embedding-3-large deployment capacity (thousands of TPM). Standard TPM capacity is a rate limit, not a cost — 1 (=1K TPM) starved a single 16-chunk SDS embed batch into HTTP 429 (live 2026-07-16), so this stays at 50.')
 param embeddingCapacity int = 50

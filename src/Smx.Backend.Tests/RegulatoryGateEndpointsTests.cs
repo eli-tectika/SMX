@@ -3,7 +3,11 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Smx.Backend.Api;
+using Smx.Backend.Knowledge;
+using Smx.Backend.Pipeline;
+using Smx.Backend.Tests.Fakes;
 using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
@@ -13,10 +17,12 @@ namespace Smx.Backend.Tests;
 public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly InMemoryRecordStore _store = new();
+    private readonly WebApplicationFactory<Program> _factory;
     private readonly HttpClient _client;
 
     public RegulatoryGateEndpointsTests(WebApplicationFactory<Program> factory)
     {
+        _factory = factory;
         _client = factory.WithWebHostBuilder(b =>
             b.ConfigureServices(s => s.AddSingleton<IRecordStore>(_store))).CreateClient();
     }
@@ -256,5 +262,65 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
         var g = await _client.GetFromJsonAsync<JsonElement>("/projects/p1/gate/regulatory");
         Assert.False(g.GetProperty("armable").GetBoolean());
         Assert.Contains("incomplete", g.GetProperty("blockers").ToString());
+    }
+
+    /// THE SIGNATURE HAS TO MOVE SOMETHING. Dosing SKIPS behind an unsigned regulatory gate, and nothing
+    /// watches the record any more — so before this endpoint learned to re-enter the pipeline, the R.E.'s
+    /// determination changed a gate document and the project sat exactly where it was, parked under a
+    /// signature the operator had already given.
+    ///
+    /// Recording the signature and running agents stay separate acts: OnGateAsync is the one-record stamp,
+    /// and the SUPERVISOR is what re-enters. This proves the pair of them, through the real endpoint.
+    [Fact]
+    public async Task Approve_StampsTheStage_AndRe_entersThePipelineSoDosingAdvances()
+    {
+        var store = new InMemoryRecordStore();
+        var project = ProjectDoc.Create("p1", "Acme", "P", JsonDocument.Parse("{}").RootElement);
+        foreach (var stage in new[] { Stages.Intake, Stages.Discovery, Stages.Matrix })
+            project.Stages[stage].Status = "done";
+        project.Stages[Stages.Regulatory].Status = StageStatus.AwaitingRe;
+        await store.UpsertProjectAsync(project);
+        await store.UpsertConstraintsAsync(new ConstraintsDoc
+        {
+            Id = RecordIds.Constraints("p1"), ProjectId = "p1",
+            Components = [new("bottle", "HDPE", "packaging", ["EU"], "brand")],
+            ElementPools = [new("bottle", "Zr", "K\u03b1", "V", null)],
+        });
+        await store.UpsertCandidatesAsync(new CandidatesDoc
+        {
+            Id = RecordIds.Candidates("p1"), ProjectId = "p1",
+            Substances = [new("bottle", "Zr", "neodec", "cas1", null, null, false, "A", "seed", [])],
+        });
+        await store.UpsertVerdictAsync(new VerdictDoc
+        {
+            Id = RecordIds.Verdict("p1", "cas1", "bottle"), ProjectId = "p1", Cas = "cas1",
+            ComponentId = "bottle", Element = "Zr", Form = "neodec", EvidenceReviewed = true,
+            Determination = Determinations.Recommended, DeterminationReason = "cleared",
+            Dimensions = [new("ElementGate", VerdictStatus.Pass, [new Citation("r", "x", "t")], 0.9, "r")],
+        });
+
+        var runs = new InMemoryRunStore();
+        var runner = new PipelineRunner(store, runs, new FakeAgentRuns(), new ThreadEventHub(),
+            new LearnedConclusionWriter(new InMemoryKnowledgeStore(), new FakeLearnedConclusionsIndex(),
+                new FakeEmbedder(), NullLogger<LearnedConclusionWriter>.Instance), 2);
+        var supervisor = new PipelineSupervisor(store, runs, runner, NullLogger<PipelineSupervisor>.Instance);
+        using var app = _factory.WithWebHostBuilder(b => b.ConfigureServices(s =>
+        {
+            s.AddSingleton<IRecordStore>(store);
+            s.AddSingleton<IRunStore>(runs);
+            s.AddSingleton(runner);
+            s.AddSingleton(supervisor);
+        }));
+
+        var res = await app.CreateClient().PostAsync("/projects/p1/regulatory/approve", null);
+
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        await supervisor.Completion("p1");
+        // The stamp: the stage leaves `awaiting-RE` the moment the signature lands.
+        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+        // The re-entry: Dosing RAN — it is no longer `pending`. It parks on the physicist because no measured
+        // background is on file, which is the correct next stop, and is the proof it executed at all.
+        Assert.Equal(StageStatus.AwaitingPhysics,
+            (await store.GetProjectAsync("p1"))!.Stages[Stages.Dosing].Status);
     }
 }

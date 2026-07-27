@@ -3,9 +3,9 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # Repoint an ACA app from the placeholder to a real image (single-RG variant).
-# Usage: ./swap-images.sh <RG> <frontend|backend|orchestrator> <image-ref>
+# Usage: ./swap-images.sh <RG> <frontend|backend> <image-ref>
 RG="${1:-${SMX_RG:-Tectica}}"
-APP="${2:?app name: frontend | backend | orchestrator}"
+APP="${2:?app name: frontend | backend}"
 IMAGE="${3:?image reference, e.g. <acr>.azurecr.io/smx-frontend:1.0.0}"
 ENV_LABEL="${SMX_ENV:-prod}"
 confirm_subscription

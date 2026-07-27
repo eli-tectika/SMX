@@ -11,7 +11,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory, Position = 0)][string]$Environment,
-    [Parameter(Mandatory, Position = 1)][ValidateSet('frontend', 'backend', 'orchestrator')][string]$App,
+    [Parameter(Mandatory, Position = 1)][ValidateSet('frontend', 'backend')][string]$App,
     [Parameter(Mandatory, Position = 2)][string]$Image
 )
 

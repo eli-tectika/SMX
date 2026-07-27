@@ -9,27 +9,25 @@ using Microsoft.Extensions.Hosting;
 using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
-using Smx.Orchestrator.Api;
-using Smx.Orchestrator.Dispatch;
-using Smx.Orchestrator.Tests.Fakes;
+using Smx.Backend.Api;
+using Smx.Backend.Pipeline;
+using Smx.Backend.Tests.Fakes;
 
 namespace Smx.Backend.Tests;
 
-/// The orchestrator's ONE HTTP surface (Task 10). Hosted here, not in Smx.Orchestrator.Tests (net8.0): the
-/// net8-targeted Microsoft.AspNetCore.TestHost's `ResponseBodyPipeWriter` does not implement
-/// `PipeWriter.UnflushedBytes`, which the System.Text.Json shipped with the only-installed net10 runtime
-/// requires of ANY PipeWriter it serializes onto — so `Results.Ok(...)` and `WriteAsJsonAsync` both throw
-/// `PipeWriter 'ResponseBodyPipeWriter' does not implement PipeWriter.UnflushedBytes` the instant a minimal
-/// API tries to write a JSON response under that combination. This project already carries the matching
-/// net10.0 TestHost for exactly this reason (see the class comment on Program and
-/// ChatRevisionParityTests) — a project already proven able to host ASP.NET Core endpoint tests in this
-/// environment, rather than a second, untested one.
+/// The interview's streaming turn, per event. It is served by the backend itself now — there is no second
+/// host and no SSE relay — but the test still builds a minimal WebApplication + TestServer rather than
+/// Smx.Backend's own Program: the surface under test is Smx.Backend.Api.InterviewEndpoints alone, and an
+/// inline app keeps the DI graph to exactly what it needs (IIntakeSessionStore, IRecordStore,
+/// IAttachmentBlobStore, IAgentRuns) — the same fakes FakeAgentRunsSmokeTests and DosingCostEndToEndTests
+/// already use. That the route ALSO works through the real Program, streaming as it goes, is
+/// IntakeSessionEndpointsTests.Messages_ReachTheClientAsTheAgentProducesThem_NotInOneLumpAtTheEnd.
 ///
-/// A minimal, self-built WebApplication + TestServer, NOT Smx.Backend's own Program: the surface under
-/// test is Smx.Orchestrator.Api.InterviewEndpoints, which has nothing to do with the backend's routes, auth,
-/// or Cosmos wiring. Building it inline keeps the DI graph to exactly what InterviewEndpoints needs
-/// (IIntakeSessionStore, IRecordStore, IAttachmentBlobStore, IAgentRuns) — the same fakes
-/// FakeAgentRunsSmokeTests and DosingCostEndToEndTests already use.
+/// This project targets net10.0 for a reason that bears on any test that hosts endpoints: the net8-targeted
+/// Microsoft.AspNetCore.TestHost's `ResponseBodyPipeWriter` does not implement `PipeWriter.UnflushedBytes`,
+/// which the System.Text.Json shipped with the only-installed net10 runtime requires of ANY PipeWriter it
+/// serializes onto — so `Results.Ok(...)` and `WriteAsJsonAsync` both throw the instant a minimal API tries
+/// to write a JSON response under that combination.
 public class InterviewEndpointsTests : IAsyncLifetime
 {
     private readonly InMemoryIntakeSessionStore _sessions = new();
@@ -83,7 +81,7 @@ public class InterviewEndpointsTests : IAsyncLifetime
     });
 
     private Task<HttpResponseMessage> PostMessage(string sessionId, string text) =>
-        _client.PostAsJsonAsync($"/internal/intake-sessions/{sessionId}/messages", new { text });
+        _client.PostAsJsonAsync($"/intake-sessions/{sessionId}/messages", new { text });
 
     [Fact]
     public async Task Healthz_StillRoutes_BesideTheInterviewSurface()

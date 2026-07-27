@@ -13,12 +13,16 @@ public static class StageStatus
     public const string NeedsReview = "needs-review";
     public const string Done = "done";
 
-    /// The spec's PARK states, written by StageDispatcher: the record is stopped on a named human, which
+    /// The spec's PARK states, written by PipelineRunner: the record is stopped on a named human, which
     /// is NOT the same as `pending` (the agent has not started). `awaiting-RE` on Regulatory,
     /// `awaiting-physics` and `awaiting-operator` on Dosing.
     public const string AwaitingRe = "awaiting-RE";
     public const string AwaitingPhysics = "awaiting-physics";
     public const string AwaitingOperator = "awaiting-operator";
+    /// Decision only: the pick is the agent's PROPOSAL and the stage completes only when the VP signs.
+    /// A Decision that went straight to `done` off the agent's own pick would be the agent signing the
+    /// hard gate (Law 9), so this park is the thing standing between the two.
+    public const string AwaitingVp = "awaiting-VP";
 
     /// Intake only. The project EXISTS and its dossier is written, but no agent has run and none will
     /// until POST /projects/{id}/start flips this to Pending. This constant is the line between

@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
-using Smx.Orchestrator.Agents;
+using Smx.Backend.Agents;
 
 namespace Smx.Backend.Tests;
 
@@ -56,7 +56,7 @@ public class ChatEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.Equal(Stages.Discovery, doc.Stage);
         Assert.Equal("why did you drop the Zr neodecanoate?", doc.Text);
         // `pending` is the dispatcher's ONLY idempotency guard on an at-least-once feed
-        // (StageDispatcher.OnChatMessageAsync): a message that arrives in any other status is never run.
+        // (PipelineRunner.OnChatMessageAsync): a message that arrives in any other status is never run.
         Assert.Equal(ChatStatus.Pending, doc.Status);
         Assert.Null(doc.Error);
         // The thread is ordered by a LEXICOGRAPHIC sort on CreatedAt, which is only chronological while every
@@ -133,7 +133,7 @@ public class ChatEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
 
         await PostChat("p1", Stages.Discovery, "why did you drop the Zr neodecanoate?");
         // The agent's side of the turn arrives on the bus, not through this API — the backend cannot run an
-        // agent. Write it the way StageDispatcher.OnChatMessageAsync does, so the thread this endpoint serves
+        // agent. Write it the way PipelineRunner.OnChatMessageAsync does, so the thread this endpoint serves
         // is the mixed transcript the UI will actually render.
         var messageId = Messages("p1").Single().Id;
         await _store.UpsertChatReplyAsync(new ChatReplyDoc
@@ -261,11 +261,11 @@ public class ChatEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
             .Select(f => (string)f.GetRawConstantValue()!)
             .ToArray();
 
-        // Pool and Background are DELIBERATELY hidden, non-chattable pipeline stages (see the Stages
-        // doc-comment): backend-only phases between Intake and Discovery, absent from the UI spine and from
-        // the chat surface. Every OTHER stage constant must appear in `All`, so the guard still catches a
-        // new *chattable* stage that someone forgets to list.
-        var hidden = new[] { Stages.Pool, Stages.Background };
+        // Background is the one DELIBERATELY hidden, non-chattable stage (see the Stages doc-comment): a
+        // pass-through with no agent behind it, so a thread on it could only be a conversation with nobody.
+        // Pool is chattable — it is an agent, and the operator argues with its proposal. Every OTHER stage
+        // constant must appear in `All`, so the guard still catches a new *chattable* stage someone forgets.
+        var hidden = new[] { Stages.Background };
         Assert.NotEmpty(declared);
         Assert.Equal([.. declared.Except(hidden).Order()], [.. Stages.All.Order()]);
     }
@@ -274,7 +274,7 @@ public class ChatEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
     public async Task PostChat_MintsAnIdSafeMessageKey()
     {
         // The whole chain: the orchestrator derives the chat KEY from THIS id's last '|'-segment
-        // (StageDispatcher.KeyOf) and hands it to ChatTools, which concatenates it into a Cosmos item id and
+        // (PipelineRunner.KeyOf) and hands it to ChatTools, which concatenates it into a Cosmos item id and
         // ASSERTS it is `[A-Za-z0-9_-]+`. Cosmos rejects an id containing '/', '\', '?' or '#' with a 400 that
         // no in-memory store would ever produce — so a "friendlier" id scheme minted here (a slug of the text,
         // a timestamp with ':', an email) would pass every backend test and break every chat turn in Azure.
@@ -285,7 +285,7 @@ public class ChatEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
         var resp = await PostChat("p1", Stages.Discovery, "why did you drop the Zr neodecanoate?");
         var messageId = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("messageId").GetString()!;
 
-        var key = messageId.Split('|')[^1]; // StageDispatcher.KeyOf
+        var key = messageId.Split('|')[^1]; // PipelineRunner.KeyOf
         Assert.Matches(new Regex("^[A-Za-z0-9_-]+$"), key);
         _ = new ChatTools(_store, "p1", Stages.Discovery, key); // throws unless id-safe
 

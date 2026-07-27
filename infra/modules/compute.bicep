@@ -29,9 +29,6 @@ param frontendImage string = ''
 @description('Backend API image (empty = placeholder).')
 param backendImage string = ''
 
-@description('Orchestrator image (empty = placeholder).')
-param orchestratorImage string = ''
-
 @description('Client ID of the workload UAMI (env var for ManagedIdentityCredential).')
 param uamiClientId string = ''
 
@@ -149,7 +146,7 @@ var sharedEnv = [
   { name: 'SDS_REGISTRY_CONTAINER', value: 'sds-registry' }
   // The bronze filesystem, shared by two consumers on this side. The document viewer reads bytes
   // from it (SDS PDFs + regulatory source documents); intake writes interview attachments + their
-  // extracted text to it, which the orchestrator reads back for the read_attachment tool. The
+  // extracted text to it, which this service reads back for the read_attachment tool. The
   // workload UAMI has held Storage Blob Data Contributor at account scope since data.bicep landed, so
   // this adds no RBAC — it only says where to look; the regsync Functions app is the only writer of
   // the SDS/regulatory corpus.
@@ -157,32 +154,13 @@ var sharedEnv = [
   { name: 'BRONZE_FILESYSTEM', value: bronzeFilesystem }
   { name: 'SUBSTANCE_PROPERTIES_CONTAINER', value: 'substance-properties' }
   { name: 'LEARNED_CONCLUSIONS_SEARCH_INDEX', value: 'learned-conclusions' }
-]
-
-// Only the orchestrator hosts the Discovery agent's search_web tool, so only it is told where the proxy is:
-// the API has no reason to hold an audience for the one component that egresses to the public internet.
-var orchestratorEnv = concat(sharedEnv, [
+  // The Discovery agent's search_web tool lives in this one merged backend service, so it holds
+  // the Search Proxy wiring directly.
   { name: 'SEARCH_PROXY_ENDPOINT', value: searchProxyEndpoint }
   { name: 'SEARCH_PROXY_AUDIENCE', value: searchProxyAudience }
   { name: 'WEB_SEARCH_ENABLED', value: string(webSearchEnabled) }
   { name: 'WEB_SEARCH_MAX_PER_STAGE', value: string(webSearchMaxPerStage) }
-])
-
-// The backend needs the orchestrator's internal base URL to proxy interview turns
-// (POST /internal/intake-sessions/{sessionId}/messages). Referencing
-// containerApps[2].properties.configuration.ingress.fqdn from here would be a circular reference —
-// all three apps are the SAME resource, created by one `for` loop over `apps` below. Worse: even
-// `cae.properties.defaultDomain` (a runtime property, not just a same-resource self-reference) can't be
-// folded into the `apps` array itself — Bicep must fully evaluate that array at the start to drive the
-// for-loop (BCP178), and a resource's runtime property isn't available that early. So the FQDN is instead
-// spliced onto the backend's env from OUTSIDE `apps`, inside the containerApps resource body below (each
-// iteration's resource body CAN reference other resources' runtime properties — only the loop's source
-// array can't). The app-name half mirrors the loop's own convention
-// ('ca-${namePrefix}-${env}-${app.name}-${regionShort}') and the domain half is `cae.properties.defaultDomain`,
-// the same '<app>.<defaultDomain>' apex form gateway.bicep documents and targets for the frontend/backend FQDNs.
-var orchestratorAppName = 'ca-${namePrefix}-${env}-orchestrator-${regionShort}'
-var orchestratorBaseUrl = 'https://${orchestratorAppName}.${cae.properties.defaultDomain}'
-var orchestratorBaseUrlEnv = { name: 'ORCHESTRATOR_BASE_URL', value: orchestratorBaseUrl }
+]
 
 var registries = empty(acrLoginServer) ? [] : [
   {
@@ -207,11 +185,10 @@ var apps = [
     image: empty(backendImage) ? placeholderImage : backendImage
     hasIngress: true
     targetPort: empty(backendImage) ? 80 : 8080 // aspnet:8.0 default port
-    minReplicas: 0
+    // The pipeline runner is a hosted service inside this same process: it must be running to resume
+    // pipelines that were interrupted mid-run, so (unlike the pre-merge backend) this can't scale to zero.
+    minReplicas: 1
     // PATH_BASE makes the API serve under /api (App Gateway forwards /api/* unstripped).
-    // NOTE: ORCHESTRATOR_BASE_URL is deliberately NOT listed here — it depends on cae.properties.defaultDomain
-    // (a runtime property), which can't be folded into this array (see the comment above orchestratorBaseUrlEnv).
-    // It's appended to the backend's env from outside `apps`, in the containerApps resource body below.
     env: concat(sharedEnv, [
       { name: 'PATH_BASE', value: '/api' }
       { name: 'ENTRA_TENANT_ID', value: entraTenantId }
@@ -225,19 +202,6 @@ var apps = [
         periodSeconds: 10
       }
     ]
-  }
-  {
-    name: 'orchestrator'
-    image: empty(orchestratorImage) ? placeholderImage : orchestratorImage
-    // The real worker now also serves the interview SSE surface, so it needs ingress even when a real
-    // image is deployed. INTERNAL only: on an internal Container Apps environment `external: true`
-    // means "limited to the VNet", not "public" — see the comment on the ingress block below. The
-    // Search Proxy remains the system's only public egress.
-    hasIngress: true
-    targetPort: empty(orchestratorImage) ? 80 : 8080 // aspnet:8.0 default port
-    minReplicas: empty(orchestratorImage) ? 0 : 1 // change-feed processor must be running to dispatch
-    env: orchestratorEnv
-    probes: []
   }
 ]
 
@@ -278,9 +242,7 @@ resource containerApps 'Microsoft.App/containerApps@2024-03-01' = [for app in ap
             cpu: json('0.5')
             memory: '1Gi'
           }
-          // ORCHESTRATOR_BASE_URL is spliced in here (not in `apps` above) because it's built from
-          // cae.properties.defaultDomain — see the comment on orchestratorBaseUrlEnv.
-          env: app.name == 'backend' ? concat(app.env, [orchestratorBaseUrlEnv]) : app.env
+          env: app.env
           probes: app.probes
         }
       ]
@@ -298,5 +260,4 @@ output envDefaultDomain string = cae.properties.defaultDomain
 output frontendFqdn string = containerApps[0].properties.configuration.ingress.fqdn
 output frontendAppName string = containerApps[0].name
 output backendAppName string = containerApps[1].name
-output orchestratorAppName string = containerApps[2].name
 output backendFqdn string = containerApps[1].properties.configuration.ingress.fqdn

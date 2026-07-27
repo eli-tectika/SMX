@@ -26,5 +26,5 @@ az webapp auth update -g "${RG}" -n "${APP}" \
   --aad-client-id "${CLIENT_ID}" \
   --aad-token-issuer-url "https://login.microsoftonline.com/${TENANT_ID}/v2.0" --output none
 
-warn "Callers (ACA orchestrator) must present an Entra token for audience api://${APP_REG_NAME}."
+warn "Callers (the ACA backend) must present an Entra token for audience api://${APP_REG_NAME}."
 log "Keep Bicep in sync: redeploy with -p authClientId=${CLIENT_ID}, then run harden.sh."

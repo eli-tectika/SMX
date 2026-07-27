@@ -1,4 +1,3 @@
-using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
 using Smx.Domain;
 using Smx.Domain.Records;
@@ -7,16 +6,11 @@ namespace Smx.Backend.Api;
 
 public sealed record CreateIntakeSessionRequest(string? Client, string? Product);
 
-public sealed record InterviewMessageBody(string Text);
-
-/// The pre-project interview's front door. The backend owns session CRUD and JWT validation; the
-/// orchestrator owns the agent. The message route is a PROXY — the backend cannot run an agent, and
-/// the orchestrator is not publicly routable, so the stream passes through here.
+/// The pre-project interview's session CRUD. The streaming turn itself lives in InterviewEndpoints, in
+/// this same app: it used to be a relay to a separate orchestrator process, and that relay existed only
+/// because this app could not run an agent. It can now.
 public static class IntakeSessionEndpoints
 {
-    /// The named HttpClient the proxy is built over, pointed at the orchestrator's internal FQDN.
-    public const string OrchestratorClient = "orchestrator";
-
     public static void MapIntakeSessionEndpoints(this IEndpointRouteBuilder app)
     {
         // [FromServices] on every store param is required, not decorative — see the long comment at
@@ -40,33 +34,5 @@ public static class IntakeSessionEndpoints
             await sessions.GetAsync(sessionId, ct) is { } s
                 ? Results.Json(s, Json.Options)
                 : Results.NotFound());
-
-        // The SSE proxy. ResponseHeadersRead + a copied body, NOT ReadAsStringAsync: buffering the
-        // orchestrator's stream here would collapse it into one lump and defeat the entire feature.
-        app.MapPost("/intake-sessions/{sessionId}/messages", async (
-            string sessionId, InterviewMessageBody body, HttpContext http,
-            [FromServices] IHttpClientFactory factory, CancellationToken ct) =>
-        {
-            var upstream = factory.CreateClient(OrchestratorClient);
-            using var request = new HttpRequestMessage(HttpMethod.Post,
-                $"/internal/intake-sessions/{sessionId}/messages")
-            {
-                Content = JsonContent.Create(body),
-            };
-            using var response = await upstream.SendAsync(
-                request, HttpCompletionOption.ResponseHeadersRead, ct);
-
-            http.Response.StatusCode = (int)response.StatusCode;
-            http.Response.Headers.ContentType = "text/event-stream";
-            http.Response.Headers.CacheControl = "no-cache";
-            await using var stream = await response.Content.ReadAsStreamAsync(ct);
-
-            // CopyToAsync is enough, and no hand-rolled read/write/flush loop is needed: it writes each
-            // read straight through (its buffer size is a MAX READ, not a fill-before-write threshold),
-            // and ASP.NET Core flushes response-body writes to the client. Verified, not assumed —
-            // Messages_ProxiesTheOrchestratorsEventsToTheClient_WithoutWaitingForTheTurnToEnd deadlocks
-            // if anything on this path buffers.
-            await stream.CopyToAsync(http.Response.Body, ct);
-        });
     }
 }

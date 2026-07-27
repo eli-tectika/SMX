@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   NotFound,
   createIntakeSession,
@@ -10,6 +10,7 @@ import {
 } from '../api/client';
 import type { IntakeQuestion, IntakeSession, InterviewTurn } from '../api/types';
 import { AttachmentChip } from '../components/AttachmentChip';
+import { BackLink } from '../components/BackLink';
 import { coverage, createBlocker } from '../domain/intakeGate';
 import { useStickToBottom } from '../hooks/useStickToBottom';
 
@@ -24,6 +25,7 @@ import { useStickToBottom } from '../hooks/useStickToBottom';
 export function Interview() {
   const { sessionId } = useParams<{ sessionId?: string }>();
   const navigate = useNavigate();
+  const { state: entryState } = useLocation();
   const [questions, setQuestions] = useState<IntakeQuestion[]>([]);
   const [session, setSession] = useState<IntakeSession | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -93,13 +95,15 @@ export function Interview() {
     let cancelled = false;
     createIntakeSession()
       .then(({ sessionId: id }) => {
-        if (!cancelled) navigate(`/new/${id}`, { replace: true });
+        // The state is carried across: it is what lets the way out name where it came from,
+        // and this replace is the only thing standing between the two.
+        if (!cancelled) navigate(`/new/${id}`, { replace: true, state: entryState });
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
     return () => {
       cancelled = true;
     };
-  }, [sessionId, navigate]);
+  }, [sessionId, navigate, entryState]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -223,6 +227,13 @@ export function Interview() {
 
   return (
     <div className="chatpage">
+      {/* The interview has no context bar to carry a way out, and it is the one screen an
+          operator can land on with nowhere obvious to go. The session is persisted, so leaving
+          costs nothing. */}
+      <nav className="small muted" style={{ marginBottom: 8 }}>
+        <BackLink fallback="/" fallbackLabel="projects" />
+      </nav>
+
       <div className="cap">
         <b>New project</b>
         Tell the agent about the job. It asks the rest.

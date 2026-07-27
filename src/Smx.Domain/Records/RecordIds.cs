@@ -23,10 +23,11 @@ public static class RecordTypes
 public static class Stages
 {
     public const string Intake = "intake";
-    /// The need-driven pool proposal (an agent) and the XRF background filter. Both sit between Intake and
-    /// Discovery and are DELIBERATELY absent from `All` below: they are backend-only stages, neither
-    /// operator-chattable nor rendered in the UI spine. `Background` is currently a pass-through (XRF deferred).
+    /// The need-driven pool proposal — an AGENT, and therefore something the operator can argue with: it is
+    /// in `All` below, so its thread is postable (the Intake/Pool composer, execution-core design §3.1).
     public const string Pool = "pool";
+    /// The XRF background filter, currently a pass-through (XRF deferred). DELIBERATELY absent from `All`:
+    /// there is no agent to talk to, so a thread on it could only be a conversation with nobody.
     public const string Background = "background";
     public const string Discovery = "discovery";
     public const string Regulatory = "regulatory";
@@ -35,12 +36,22 @@ public static class Stages
     public const string Cost = "cost";
     public const string Decision = "decision";
 
-    /// Every CHATTABLE stage — and therefore every stage the operator can TALK to (ChatEndpoints validates
-    /// against it). Hand-maintained beside the constants, so ChatEndpointsTests reflects over the class and
-    /// fails if the two ever part company: a stage added above but not here is silently un-chattable, and
-    /// nobody finds out until an operator gets a 422 for a stage the product says exists. Pool and Background
-    /// are intentionally excluded — they are hidden, non-chattable stages (see their doc-comment above).
-    public static readonly string[] All = [Intake, Discovery, Regulatory, Matrix, Dosing, Cost, Decision];
+    /// Every CHATTABLE stage — and therefore every stage the operator can TALK to (ChatEndpoints and
+    /// ThreadEndpoints both validate against it). Hand-maintained beside the constants, so ChatEndpointsTests
+    /// reflects over the class and fails if the two ever part company: a stage added above but not here is
+    /// silently un-chattable, and nobody finds out until an operator gets a 422 for a stage the product says
+    /// exists. Background is the one exclusion — a pass-through with no agent behind it.
+    ///
+    /// Listed in pipeline order, but do NOT read adjacency off this array: `Pool` is a stage that legitimately
+    /// SKIPS (provided candidates, an operator element pool), so it can sit at `pending` on a project that ran
+    /// to completion. <see cref="Spine"/> is the ordered list for anything that reasons about what comes next.
+    public static readonly string[] All = [Intake, Pool, Discovery, Regulatory, Matrix, Dosing, Cost, Decision];
+
+    /// The OPERATOR-FACING journey, in order — the eight-stage spine the UI renders and the dashboard's
+    /// "ready to continue" walks. Pool and Background are excluded on purpose: both can be skipped by the
+    /// runner without ever being stamped, so a neighbour-is-done rule over them would either advertise a
+    /// stage the operator has no screen for, or stall the walk at a stage nothing will ever complete.
+    public static readonly string[] Spine = [Intake, Discovery, Regulatory, Matrix, Dosing, Cost, Decision];
 }
 
 public static class RecordIds

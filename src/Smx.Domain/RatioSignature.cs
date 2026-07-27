@@ -11,7 +11,7 @@ namespace Smx.Domain;
 /// ppm arriving here is code-owned: DosingAgent.Validate has already pinned each recommended ppm strictly
 /// inside (floor, upper), and a detection floor is always positive (background >= 0 plus 3 x a positive LOD).
 /// So a non-positive or non-finite ppm here means an invariant upstream has broken, and the loudest failure
-/// is the one you want — StageDispatcher wraps every stage run in a catch and parks the stage `failed` with
+/// is the one you want — PipelineRunner wraps every stage run in a catch and parks the stage `failed` with
 /// this message, so a throw costs a visible parked stage, not a crashed dispatch loop. The alternative is
 /// worse than a parked stage: a rendered-anyway signature mints a code whose IDENTITY is wrong, and a wrong
 /// signature makes a field reader call a genuine product counterfeit. Nothing downstream re-derives it.

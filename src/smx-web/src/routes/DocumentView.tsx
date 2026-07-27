@@ -1,4 +1,5 @@
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { BackLink } from '../components/BackLink';
 import { FileViewer } from '../components/FileViewer';
 
 /**
@@ -29,8 +30,10 @@ export function DocumentView() {
 
   return (
     <section className="screen">
+      {/* The reader is reached from the library, from an MSDS row that is blocking an order, and
+          from the finder. It goes back to whichever of those it came from. */}
       <nav className="small muted" style={{ marginBottom: 10 }}>
-        <Link to="/docs">Documents</Link> ›
+        <BackLink fallback="/docs" fallbackLabel="documents" />
       </nav>
       <FileViewer
         documentId={documentId}
