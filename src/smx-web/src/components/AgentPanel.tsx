@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ThreadError, cancelRun, rerunStage, sendMessage } from '../api/thread';
-import { backendStage, canChat } from '../domain/stages';
+import { backendStages, isChatStage, type BackendStage } from '../domain/stages';
 import { useStickToBottom } from '../hooks/useStickToBottom';
 import { useThread } from '../hooks/useThread';
 import { Timeline } from './timeline/Timeline';
@@ -23,9 +23,24 @@ export function AgentPanel({
   stageSlug: string;
   stageLabel: string;
 }) {
-  const stage = backendStage(stageSlug);
-  if (!canChat(stageSlug) || !stage) return <ClosedPanel stageLabel={stageLabel} />;
-  return <LiveChat projectId={projectId} stage={stage} stageLabel={stageLabel} />;
+  // `isChatStage`, not `canChat`: these are backend keys, and `pool` has no spine slug of its own,
+  // so the slug-shaped predicate would drop the very thread the merged stage exists to show.
+  const stages = backendStages(stageSlug).filter(isChatStage);
+  if (stages.length === 0) return <ClosedPanel stageLabel={stageLabel} />;
+  /*
+   * Keyed on the stage list. `LiveChat` calls `useThread` once per backing stage, and this panel
+   * sits at a stable position in ProjectLayout — so navigating Intake & pool (two stages) → Discovery
+   * (one) would change the hook count of a component React never unmounts. The key forces the
+   * remount that keeps the count stable for the lifetime of each mount.
+   */
+  return (
+    <LiveChat
+      key={stages.join('|')}
+      projectId={projectId}
+      stages={stages}
+      stageLabel={stageLabel}
+    />
+  );
 }
 
 function PanelFrame({ stageLabel, children }: { stageLabel: string; children: React.ReactNode }) {
@@ -67,14 +82,29 @@ function ClosedPanel({ stageLabel }: { stageLabel: string }) {
 
 function LiveChat({
   projectId,
-  stage,
+  stages,
   stageLabel,
 }: {
   projectId: string;
-  stage: string;
+  stages: BackendStage[];
   stageLabel: string;
 }) {
-  const { entries, live, loading, error } = useThread(projectId, stage);
+  // One thread per backing stage, merged by timestamp for display. They are separate threads
+  // server-side and stay separate on the wire; only the READING is merged.
+  //
+  // Hook-order note: `stages` comes from a static table, and `AgentPanel` both returns early when
+  // it is empty and keys this component on it — so the map has a fixed arity for the lifetime of
+  // every mount. Do not make `stages` dynamic without replacing this with a fixed-arity hook.
+  const threads = stages.map((s) => useThread(projectId, s));
+  const entries = threads.flatMap((t) => t.entries).sort((a, b) => a.at.localeCompare(b.at));
+  const live = threads.every((t) => t.live);
+  const loading = threads.some((t) => t.loading);
+  const error = threads.find((t) => t.error)?.error ?? null;
+
+  // Defaults to the LAST backing stage — the one whose output the screen shows. On Intake & pool
+  // that is `pool`: the brief is a transcription of the operator's own answers, the pool is the
+  // hypothesis they would argue with.
+  const [stage, setStage] = useState(stages[stages.length - 1]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -175,6 +205,27 @@ function LiveChat({
         </div>
       )}
 
+      {/* Only when there is a choice to make. Two backing stages are two threads server-side, and a
+          composer that picked one silently would post the operator's instruction to an agent they
+          did not mean to instruct. */}
+      {stages.length > 1 && (
+        <div role="tablist" aria-label="Which agent to talk to" style={{ display: 'flex', gap: 4 }}>
+          {stages.map((s) => (
+            <button
+              key={s}
+              role="tab"
+              type="button"
+              aria-selected={s === stage}
+              onClick={() => setStage(s)}
+              className="btn tiny"
+              style={{ textTransform: 'capitalize', opacity: s === stage ? 1 : 0.6 }}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
       <form
         onSubmit={send}
         style={{
@@ -192,8 +243,10 @@ function LiveChat({
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={`Message the ${stageLabel.toLowerCase()} agent…`}
-          aria-label={`Message the ${stageLabel} agent`}
+          /* The ACTIVE stage, not the screen's label — on the merged stage those differ, and the
+             box must name the agent the message will actually reach. */
+          placeholder={`Message the ${stage} agent…`}
+          aria-label={`Message the ${stage} agent`}
           disabled={busy}
           style={{ border: 0, background: 'transparent', flex: 1, padding: 0 }}
         />

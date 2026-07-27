@@ -97,4 +97,21 @@ describe('AgentPanel', () => {
 
     await waitFor(() => expect(screen.getByText('The discovery agent failed.')).toBeInTheDocument());
   });
+
+  /**
+   * Two backing stages means two threads server-side. An untabbed composer would silently post to
+   * whichever one the code happened to pick — so the choice is on screen, and named.
+   */
+  it('offers Intake and Pool tabs on the merged stage, defaulting to Pool', async () => {
+    vi.mocked(useThread).mockReturnValue(ready());
+    render(<AgentPanel projectId="proj-test" stageSlug="intake" stageLabel="Intake & pool" />);
+    expect(screen.getByRole('tab', { name: /pool/i })).toHaveAttribute('aria-selected', 'true');
+
+    await userEvent.click(screen.getByRole('tab', { name: /intake/i }));
+    await userEvent.type(screen.getByLabelText(/message/i), 'hello');
+    await userEvent.click(screen.getByRole('button', { name: /send/i }));
+    await waitFor(() =>
+      expect(api.sendMessage).toHaveBeenCalledWith('proj-test', 'intake', 'hello'),
+    );
+  });
 });
