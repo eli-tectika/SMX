@@ -920,3 +920,28 @@ select:focus {
   max-height: 52vh;
   overflow-y: auto;
 }
+
+/* The composer accepted a dropped file with no indication that it would. */
+.dropzone {
+  position: relative;
+  transition: border-color var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease-out);
+}
+.dropzone[data-dragging='true'] {
+  border-color: var(--text-accent);
+  background: var(--bg-accent);
+}
+.dropzone__hint {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  border-radius: var(--r3);
+  background: color-mix(in srgb, var(--bg-accent) 92%, transparent);
+  color: var(--text-accent);
+  font-size: var(--t-small);
+  font-weight: var(--w-medium);
+  pointer-events: none;
+}

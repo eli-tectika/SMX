@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -122,5 +122,46 @@ describe('the interview screen', () => {
 
     expect(await screen.findByText('line-photo.jpg')).toBeInTheDocument();
     expect(screen.getByText(/couldn.t read|cannot read/i)).toBeInTheDocument();
+  });
+
+  it('lets the operator dismiss a failed turn\'s error, so it cannot be mistaken for a current one', async () => {
+    vi.mocked(api.sendInterviewMessage).mockRejectedValue(new Error('the model call timed out'));
+    renderAt();
+
+    await userEvent.type(await screen.findByRole('textbox'), 'Acme, PET bottles.');
+    await userEvent.click(screen.getByRole('button', { name: /send/i }));
+
+    expect(await screen.findByText('the model call timed out')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+    expect(screen.queryByText('the model call timed out')).not.toBeInTheDocument();
+  });
+});
+
+describe('Interview composer', () => {
+  it('sends on Ctrl+Enter and inserts a newline on plain Enter', async () => {
+    const user = userEvent.setup();
+    renderAt();
+    const box = await screen.findByLabelText(/message the interview agent/i);
+
+    await user.click(box);
+    await user.keyboard('first line{Enter}second line');
+    expect(box).toHaveValue('first line\nsecond line');
+
+    await user.keyboard('{Control>}{Enter}{/Control}');
+    // Sending clears the draft — that is the observable fact, independent of transport.
+    await waitFor(() => expect(box).toHaveValue(''));
+  });
+
+  it('shows a drop target while a file is over the composer', async () => {
+    renderAt();
+    const zone = await screen.findByTestId('interview-dropzone');
+    expect(zone).toHaveAttribute('data-dragging', 'false');
+
+    fireEvent.dragEnter(zone, { dataTransfer: { types: ['Files'] } });
+    expect(zone).toHaveAttribute('data-dragging', 'true');
+    expect(screen.getByText(/drop to hand it over/i)).toBeInTheDocument();
+
+    fireEvent.dragLeave(zone);
+    expect(zone).toHaveAttribute('data-dragging', 'false');
   });
 });

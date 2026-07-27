@@ -32,7 +32,11 @@ export function Interview() {
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [openShown, setOpenShown] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  // `dragenter`/`dragleave` fire for every child the pointer crosses, so the depth is counted
+  // rather than toggled — otherwise the highlight flickers off as the cursor passes the textarea.
+  const dragDepth = useRef(0);
   // `streaming` is a dep so the view follows the reply as it arrives token by token, not only
   // once the finished turn lands. `sending` looks redundant next to `turns.length` — React 18
   // batches `setSending(true)` with the optimistic operator turn, so `turns.length` has usually
@@ -143,7 +147,23 @@ export function Interview() {
 
   function onDrop(e: DragEvent<HTMLDivElement>) {
     e.preventDefault();
+    // A drop fires `dragenter` without a matching `dragleave`, so the depth counter is reset here
+    // rather than decremented — otherwise it would drift positive across repeated drags and the
+    // zone would need TWO leaves to notice the pointer is gone.
+    dragDepth.current = 0;
+    setDragging(false);
     void attach(e.dataTransfer?.files ?? null);
+  }
+
+  function onDragEnter(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragging(true);
+  }
+
+  function onDragLeave() {
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragging(false);
   }
 
   const cov = coverage(session?.dossier ?? [], questions);
@@ -160,7 +180,13 @@ export function Interview() {
       {error && (
         <div className="banner danger" role="alert">
           <i className="ti ti-alert-triangle" aria-hidden="true" />
-          <div>{error}</div>
+          <div style={{ flex: 1 }}>{error}</div>
+          {/* Nothing else ever clears `error`, so a stale banner from ten minutes ago and one from
+              the turn just now render identically. The operator must be able to clear it once they
+              have read it, or there is no way to tell "current" from "already dealt with". */}
+          <button className="btn" type="button" onClick={() => setError(null)}>
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -215,14 +241,32 @@ export function Interview() {
           )}
 
           <div
-            className="region"
+            className="region dropzone"
+            data-testid="interview-dropzone"
+            data-dragging={dragging ? 'true' : 'false'}
             style={{ marginBottom: 12 }}
             onDrop={onDrop}
             onDragOver={(e) => e.preventDefault()}
+            onDragEnter={onDragEnter}
+            onDragLeave={onDragLeave}
           >
+            {dragging && (
+              <div className="dropzone__hint" aria-hidden="true">
+                <i className="ti ti-file-download" /> Drop to hand it over
+              </div>
+            )}
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                // Cmd/Ctrl+Enter sends; plain Enter is a newline. The operator is writing a brief
+                // here, not a chat line — paragraphs are normal, and a bare Enter that fired off a
+                // half-written thought would be the worse default.
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  if (draft.trim() && !sending) void send(draft);
+                }
+              }}
               placeholder="Talk to the agent… (drop a file here to hand it over)"
               aria-label="Message the interview agent"
               rows={3}
@@ -245,6 +289,7 @@ export function Interview() {
               <button
                 className="btn primary"
                 type="button"
+                title="Send (Ctrl/Cmd + Enter)"
                 style={{ marginLeft: 'auto' }}
                 disabled={sending || !draft.trim()}
                 onClick={() => void send(draft)}
