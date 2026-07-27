@@ -249,41 +249,53 @@ namespace Smx.Domain;
 /// on purpose: nothing that reads project state should ever page through telemetry.
 public interface IRunStore
 {
-    Task UpsertAsync(RunDoc run, CancellationToken ct);
+    Task UpsertAsync(RunDoc run, CancellationToken ct = default);
 
     /// Every run for the project, oldest first. `stage` null ⇒ all stages.
-    Task<IReadOnlyList<RunDoc>> ListAsync(string projectId, string? stage, CancellationToken ct);
+    Task<IReadOnlyList<RunDoc>> ListAsync(string projectId, string? stage, CancellationToken ct = default);
 
-    Task<RunDoc?> GetAsync(string projectId, string runId, CancellationToken ct);
+    Task<RunDoc?> GetAsync(string projectId, string runId, CancellationToken ct = default);
 }
 ```
 
 ```csharp
 // src/Smx.Domain.Tests/Fakes/InMemoryRunStore.cs
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Smx.Domain;
 using Smx.Domain.Records;
 
 namespace Smx.Domain.Tests.Fakes;
 
+/// The test twin of CosmosRunStore. DEEP-COPIES through Json.Options in both directions, for the reason
+/// InMemoryRecordStore spells out at length — and which binds harder here: RunDoc.Steps is appended IN
+/// PLACE by RunDoc.Append, so a fake holding live references would make a trail that appends and forgets
+/// to persist look perfectly correct in every test, while Cosmos loses the steps. A silently empty trail
+/// is the exact failure this feature exists to prevent.
 public sealed class InMemoryRunStore : IRunStore
 {
     private readonly ConcurrentDictionary<string, RunDoc> _runs = new();
 
-    public Task UpsertAsync(RunDoc run, CancellationToken ct)
+    private static RunDoc Copy(RunDoc doc) =>
+        JsonSerializer.Deserialize<RunDoc>(JsonSerializer.Serialize(doc, Json.Options), Json.Options)!;
+
+    public Task UpsertAsync(RunDoc run, CancellationToken ct = default)
     {
-        _runs[run.Id] = run;
+        _runs[run.Id] = Copy(run);
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<RunDoc>> ListAsync(string projectId, string? stage, CancellationToken ct) =>
+    /// Ordinal — the twin of the Cosmos ORDER BY. Both sort the raw "O" string rather than a parsed
+    /// instant, which is only correct because that format is fixed-width and always +00:00.
+    public Task<IReadOnlyList<RunDoc>> ListAsync(string projectId, string? stage, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<RunDoc>>(
             [.. _runs.Values
                 .Where(r => r.ProjectId == projectId && (stage is null || r.Stage == stage))
-                .OrderBy(r => r.StartedAt, StringComparer.Ordinal)]);
+                .OrderBy(r => r.StartedAt, StringComparer.Ordinal)
+                .Select(Copy)]);
 
-    public Task<RunDoc?> GetAsync(string projectId, string runId, CancellationToken ct) =>
-        Task.FromResult(_runs.TryGetValue(runId, out var run) && run.ProjectId == projectId ? run : null);
+    public Task<RunDoc?> GetAsync(string projectId, string runId, CancellationToken ct = default) =>
+        Task.FromResult(_runs.TryGetValue(runId, out var run) && run.ProjectId == projectId ? Copy(run) : null);
 }
 ```
 
@@ -305,17 +317,22 @@ public sealed class CosmosRunStore(Container container) : IRunStore
 
     public async Task<IReadOnlyList<RunDoc>> ListAsync(string projectId, string? stage, CancellationToken ct)
     {
-        // Property names are camelCase on the wire (SystemTextJsonCosmosSerializer + Json.Options).
-        // Writing `r.ProjectId` in SQL text here silently matches nothing — the recurring Cosmos-LINQ
-        // trap in this codebase. Parameterised, camelCase, always.
-        var sql = "SELECT * FROM r WHERE r.projectId = @p" + (stage is null ? "" : " AND r.stage = @s") +
-                  " ORDER BY r.startedAt ASC";
-        var query = new QueryDefinition(sql).WithParameter("@p", projectId);
-        if (stage is not null) query = query.WithParameter("@s", stage);
+        // LINQ, NOT a hand-written SQL string. SystemTextJsonCosmosSerializer.SerializeMemberName is
+        // wired so the LINQ provider translates `d.Stage` to root["stage"], and CosmosQueryTextTests
+        // exists purely to pin that translation. Hand-typing the wire names sidesteps the one
+        // mechanism built to catch a mismatch — which compiles, runs, returns nothing, and only in
+        // Azure. Every query in CosmosRecordStore goes through LINQ for this reason.
+        //
+        // No `projectId` predicate: the PartitionKey request option already scopes it, which is how
+        // CosmosRecordStore's partition-scoped reads (e.g. GetVerdictsAsync) are written.
+        // Explicitly IQueryable, not var: GetItemLinqQueryable returns IOrderedQueryable and
+        // reassigning it through .Where does not compile under inference (CS0266).
+        IQueryable<RunDoc> query = container.GetItemLinqQueryable<RunDoc>(
+            requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(projectId) });
+        if (stage is not null) query = query.Where(d => d.Stage == stage);
 
         var results = new List<RunDoc>();
-        using var iterator = container.GetItemQueryIterator<RunDoc>(
-            query, requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(projectId) });
+        using var iterator = query.OrderBy(d => d.StartedAt).ToFeedIterator();
         while (iterator.HasMoreResults)
             results.AddRange(await iterator.ReadNextAsync(ct));
         return results;
