@@ -153,6 +153,17 @@ function ProjectRow({ card, onForgetDemo }: { card: ProjectCard; onForgetDemo: (
           <MiniSpine stages={project.stages} showLabels />
         </div>
 
+        {/* What is happening right now, in words. The spine says which stage; this says what it is
+            doing — the cheap answer to "where should I even look". Named by agent where there is
+            one, by stage where the work is deterministic. */}
+        {project.activeRun && (
+          <div className="tiny muted">
+            <i className="ti ti-loader" data-running="" aria-hidden="true" />{' '}
+            {project.activeRun.agent ? `${project.activeRun.agent} agent` : project.activeRun.stage}
+            {project.activeRun.lastStep ? ` — ${project.activeRun.lastStep}` : ''}
+          </div>
+        )}
+
         {blocking && (
           <div
             className="small"

@@ -3,8 +3,10 @@ import { AgentPanel } from '../components/AgentPanel';
 import { ContextBar } from '../components/ContextBar';
 import { Dock } from '../components/Dock';
 import { ErrorScreen, Loading } from '../components/Loading';
+import { Timeline } from '../components/timeline/Timeline';
 import { STAGES } from '../domain/stages';
 import { useProject } from '../hooks/useProject';
+import { useThread } from '../hooks/useThread';
 import { Background } from './stages/Background';
 import { Cost } from './stages/Cost';
 import { Decision } from './stages/Decision';
@@ -68,7 +70,10 @@ export function ProjectLayout() {
          * last screen of the journey on an absence — and it is the one screen whose subject is a
          * human's own signature.
          */
-        <div className="recordframe">{screen}</div>
+        <div className="recordframe">
+          {screen}
+          <ReadOnlyTrail projectId={state.project.projectId} stage="decision" />
+        </div>
       ) : (
         <Dock
           panel={
@@ -83,5 +88,22 @@ export function ProjectLayout() {
         </Dock>
       )}
     </>
+  );
+}
+
+/**
+ * The trail without the conversation. The Decision agent's pick and the deterministic assembly
+ * before it are both worth seeing; a composer here would make the gate chattable, which is the one
+ * thing the signing surface exists to prevent.
+ *
+ * Runs only — a message bubble here would be half a conversation with no way to reply.
+ */
+function ReadOnlyTrail({ projectId, stage }: { projectId: string; stage: string }) {
+  const { entries } = useThread(projectId, stage);
+  const noop = () => {};
+  return (
+    <section aria-label="Decision trail" style={{ marginTop: 16 }}>
+      <Timeline entries={entries.filter((e) => e.kind === 'run')} onCancel={noop} onRerun={noop} />
+    </section>
   );
 }

@@ -1,6 +1,15 @@
 export interface SseEvent {
   event: string;
   data: string;
+  /**
+   * The frame's `id:` line, when the server sent one — the resume cursor for `?since=`.
+   *
+   * Carried rather than reconstructed. The thread stream's ids are `e{entrySeq}.s{stepSeq}`
+   * (execution-core-design §7.2), and the entry seq is not in the step frame's payload, so a
+   * client that rebuilt the cursor from `data` would produce one no server can resolve. Absent
+   * on the interview stream, which sends no ids at all.
+   */
+  id?: string;
 }
 
 /**
@@ -35,14 +44,19 @@ export function createSseParser(): (chunk: string) => SseEvent[] {
 
 function parseFrame(frame: string): SseEvent | null {
   let event = 'message';
+  let id: string | undefined;
   const data: string[] = [];
 
   for (const line of frame.split('\n')) {
     // ':' opens a comment — the conventional keep-alive. Not an event.
     if (line.startsWith(':') || line.trim() === '') continue;
     if (line.startsWith('event:')) event = line.slice('event:'.length).trim();
+    else if (line.startsWith('id:')) id = line.slice('id:'.length).trim();
     else if (line.startsWith('data:')) data.push(line.slice('data:'.length).trimStart());
   }
 
-  return data.length > 0 ? { event, data: data.join('\n') } : null;
+  if (data.length === 0) return null;
+  // The key is omitted, not set to undefined, when the server sent no id — the field is genuinely
+  // absent for the interview stream and should read that way to anything inspecting the frame.
+  return id === undefined ? { event, data: data.join('\n') } : { event, data: data.join('\n'), id };
 }
