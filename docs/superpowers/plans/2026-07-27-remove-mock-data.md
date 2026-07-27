@@ -23,6 +23,8 @@ Things about this codebase you must know before touching it:
 - **Cancellation uses a plain object, not AbortController:** `const signal = { cancelled: false }` and the effect's cleanup sets `signal.cancelled = true`. Match it.
 - **Law 9 (`proposal ≠ signature`) is enforced by types and must be enforced by pixels.** An agent's proposal and a human's signature never share a visual treatment. This is the single most important rule in the Decision task.
 - **Tests mock the client module wholesale**, e.g. `vi.mock('../../api/client', () => ({ NotFound: Symbol.for('NotFound'), getCandidates: vi.fn() }))`. Note `Symbol.for`, not `Symbol` — the mock factory must produce a symbol the module and the test both resolve to. `src/routes/stages/Matrix.test.tsx:1-75` is the reference.
+- **`?: T`, not `?: T | null`.** `Smx.Domain/Json.cs:11` sets `DefaultIgnoreCondition = WhenWritingNull`, so a null value is *omitted from the JSON*, never sent as `null`. Model optional fields as `field?: T`. A `| null` is unreachable and would let a future `=== null` check silently never fire. The one exception is a field the backend explicitly opts OUT of that rule with `[JsonIgnore(Condition = JsonIgnoreCondition.Never)]` — `ComponentDecision.ConfirmedCode` is the only one, and it is `string | null` precisely so "not signed yet" arrives as a value rather than a missing key.
+- **Every client function gets tests in `src/api/client.test.ts`.** The file has an established two-test pattern per read — "404 → NotFound sentinel" and "200 → parsed doc" — using its own `stubFetch`/`json` helpers. See `describe('getMatrix', …)` at lines 137-150 and the `getDosing`/`getCost` blocks at 317-357. Follow it for every function you add, and write the comment about *why* a 404 is not an error for that endpoint rather than restating the assertion.
 - **Do not "improve" copy while rewiring.** Comments in this codebase carry reasoning; preserve the reasoning that still applies and delete only what became false.
 
 Baseline before you start: `npm test` → 327 passing, 38 files.
@@ -615,10 +617,11 @@ export interface ProposedCode {
 export interface ComponentDecision {
   componentId: string;
   rows: DecisionRow[];
-  proposedCode?: ProposedCode | null;
+  proposedCode?: ProposedCode;
+  /** Explicitly nullable — see the JsonIgnore note above. The ONLY `| null` in this group. */
   confirmedCode: string | null;
-  confirmedBy?: string | null;
-  confirmedReason?: string | null;
+  confirmedBy?: string;
+  confirmedReason?: string;
 }
 
 /**
@@ -740,15 +743,27 @@ export async function orderSubstance(projectId: string, cas: string): Promise<{ 
 
 Add `DecisionDoc`, `VpGate` and `VpDeterminationRequest` to the `import type { ... } from './types'` list at the top of `client.ts`.
 
-- [ ] **Step 3: Verify it compiles**
+- [ ] **Step 3: Test the four client functions**
+
+In `src/api/client.test.ts`, add a block per function, following the established pattern (`describe('getMatrix', …)` at lines 137-150; `getDosing`/`getCost` at 317-357) and using the file's own `stubFetch` / `json` helpers:
+
+- `getDecision` — 404 → `NotFound` sentinel; 200 → the parsed `DecisionDoc`.
+- `getVpGate` — 200 → the parsed gate. It has **no 404 branch**: the gate read is computed, not stored, so it always answers. Assert instead that a non-ok status **throws** rather than returning the sentinel — an unreadable gate must never be mistaken for an unarmed one.
+- `recordVpDetermination` — a 200 returns `{status}`; a **422 throws an `ApiError` carrying the backend's `error` message**. That second test is the load-bearing one: the server re-checks armability and can refuse a button that looked enabled, and the screen shows this message.
+- `orderSubstance` — 202 returns `{ordered}`; a 422 throws with the message. Also assert the CAS is URL-encoded into the path (a CAS contains hyphens, but the encoding is what stops a malformed id escaping the route).
+
+Run: `npx vitest run src/api/client.test.ts`
+Expected: PASS, including the pre-existing tests.
+
+- [ ] **Step 4: Verify it compiles**
 
 Run: `npm run typecheck`
 Expected: no output, exit 0.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/api/types.ts src/api/client.ts
+git add src/api/types.ts src/api/client.ts src/api/client.test.ts
 git commit -m "feat(web): type the decision record and the VP gate
 
 confirmedCode is typed as an explicit nullable, not an optional: the
