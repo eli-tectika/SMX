@@ -1,5 +1,6 @@
 using Smx.Backend.Agents;
 using Smx.Backend.Tests.Fakes;
+using Smx.Domain.Records;
 
 namespace Smx.Backend.Tests;
 
@@ -53,5 +54,44 @@ public class ValidatedAgentRunnerTests
         var agent = new ScriptedAgent("Here you go:\n```json\n{\"value\":\"abc\"}\n```");
         var result = await ValidatedAgentRunner.RunAsync<Out>(agent, "prompt", RequireAbc, default);
         Assert.True(result.Succeeded);
+    }
+
+    /// The two rejected attempts vanish today. They are the system working — the validator caught a
+    /// bad output and made the agent fix it — and an operator who cannot see them cannot tell a
+    /// struggling run from a fast one.
+    [Fact]
+    public async Task Each_rejected_attempt_writes_a_step()
+    {
+        var trail = new RecordingTrail();
+        var agent = new ScriptedAgent("""{"value":"x"}""", """{"value":"y"}""", """{"value":"abc"}""")
+        {
+            Trail = trail,
+        };
+
+        await ValidatedAgentRunner.RunAsync<Out>(agent, "go", RequireAbc, default);
+
+        var rejected = trail.Steps.Where(s => s.Kind == RunStepKind.Rejected).ToList();
+        Assert.Equal(2, rejected.Count);
+        Assert.Contains("attempt 2 of 3", rejected[0].Text);
+        Assert.Equal(2, rejected[0].Detail?.Attempt);
+        Assert.Equal(3, rejected[0].Detail?.Of);
+        Assert.Contains("attempt 3 of 3", rejected[1].Text);
+    }
+
+    /// The LAST attempt's failure is the run's OUTCOME, not a retry — writing "retrying, attempt 4 of 3"
+    /// would promise the operator a turn that never happens.
+    [Fact]
+    public async Task The_final_failure_is_not_written_as_a_retry()
+    {
+        var trail = new RecordingTrail();
+        var agent = new ScriptedAgent("""{"value":"x"}""", """{"value":"y"}""", """{"value":"z"}""")
+        {
+            Trail = trail,
+        };
+
+        var result = await ValidatedAgentRunner.RunAsync<Out>(agent, "go", RequireAbc, default);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(2, trail.Steps.Count(s => s.Kind == RunStepKind.Rejected));
     }
 }

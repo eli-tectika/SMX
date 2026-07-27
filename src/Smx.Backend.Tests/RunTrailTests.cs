@@ -60,6 +60,40 @@ public class RunTrailTests
         Assert.Equal("the agent timed out", run.Error);
     }
 
+    /// `Seq` is the SSE resume cursor — a client reconnects with the last id it saw and the server
+    /// replays what came after. If two steps shared a seq, or one repeated, the reconnect would either
+    /// duplicate a step or skip one, and the operator would read a trail that never happened.
+    [Fact]
+    public async Task Steps_are_numbered_monotonically_from_one()
+    {
+        var (trail, store, _) = Make();
+
+        await trail.StepAsync(RunStepKind.Started, "Screening 3 substances.", ct: default);
+        await trail.StepAsync(RunStepKind.ToolCall, "Called search_regulatory — 4 result(s).", ct: default);
+        await trail.StepAsync(RunStepKind.Outcome, "Done.", ct: default);
+
+        var run = await store.GetAsync("p1", "r1", default);
+        Assert.Equal([1, 2, 3], run!.Steps.Select(s => s.Seq));
+    }
+
+    /// A stage body can throw before its first step — a null store, an unreadable record — and
+    /// ExecuteAsync's catch completes a trail nothing ever opened. Publishing the `run` frame alone
+    /// would give a live subscriber a completion for a group it never saw; the failure would simply
+    /// not render. Opening first makes an instantly-failing stage VISIBLE, which is the whole point.
+    [Fact]
+    public async Task Completing_without_a_step_still_opens_the_run_first()
+    {
+        var (trail, _, hub) = Make();
+        var subscription = hub.Subscribe("p1", Stages.Pool);
+
+        await trail.CompleteAsync(RunOutcome.Failed, "the record store was unreachable", default);
+
+        Assert.True(subscription.Reader.TryRead(out var first));
+        Assert.Equal("entry", first!.Event);
+        Assert.True(subscription.Reader.TryRead(out var second));
+        Assert.Equal("run", second!.Event);
+    }
+
     private sealed class ThrowingRunStore : IRunStore
     {
         public Task UpsertAsync(RunDoc run, CancellationToken ct = default) => throw new InvalidOperationException("cosmos is down");

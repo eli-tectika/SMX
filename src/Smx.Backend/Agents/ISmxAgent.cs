@@ -1,10 +1,17 @@
 using System.Runtime.CompilerServices;
+using Smx.Backend.Pipeline;
 
 namespace Smx.Backend.Agents;
 
 public interface ISmxAgent
 {
     string Name { get; }
+
+    /// Where this agent's observed work is recorded. A property rather than a parameter threaded
+    /// through all seven agents' RunAsync statics: the runner passes it once at construction, and
+    /// ValidatedAgentRunner reads it here, so none of the agent bodies change.
+    IRunTrail Trail { get; }
+
     /// Starts a fresh conversation. Subsequent SendAsync calls on the returned thread continue
     /// the same conversation (used to feed validation errors back to the agent).
     Task<ISmxAgentThread> StartThreadAsync(CancellationToken ct);

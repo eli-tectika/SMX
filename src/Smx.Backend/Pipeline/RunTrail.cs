@@ -8,6 +8,11 @@ namespace Smx.Backend.Pipeline;
 /// a telemetry write must never be the thing that fails a regulatory screen, so every persist is
 /// swallowed. The consequence — a run with a hole in it — is acceptable because the STAGE's own status
 /// and error remain authoritative. The trail explains; it does not adjudicate.
+///
+/// SINGLE WRITER, by assumption and not by enforcement: `_opened` and the doc's step list are both
+/// mutated without a lock. One RunTrail therefore belongs to exactly one sequential body — the
+/// regulatory fan-out gives every parallel branch its OWN RunDoc and its own trail, and sharing one
+/// across Task.WhenAll branches would race both.
 public sealed class RunTrail(RunDoc run, IRunStore store, ThreadEventHub hub, ILogger? logger = null) : IRunTrail
 {
     public RunDoc Run => run;
@@ -24,6 +29,13 @@ public sealed class RunTrail(RunDoc run, IRunStore store, ThreadEventHub hub, IL
 
     public async Task CompleteAsync(string outcome, string? error, CancellationToken ct)
     {
+        // A run can complete having written no step at all — a stage body that throws on entry (a null
+        // store, an unreadable record) reaches ExecuteAsync's catch before its first StepAsync. Opening
+        // here means the live subscriber sees the group appear and then fail, instead of a stray `run`
+        // frame for a group it never saw. The alternative — skipping the completion for an unopened
+        // trail — would make an instantly-failing stage invisible, which is precisely the failure an
+        // operator most needs to see. Idempotent, so this is free on the normal path.
+        await OpenAsync(ct);
         run.Outcome = outcome;
         run.Error = error;
         run.EndedAt = DateTimeOffset.UtcNow.ToString("O");

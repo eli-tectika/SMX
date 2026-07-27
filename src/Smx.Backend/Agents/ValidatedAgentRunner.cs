@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Smx.Domain;
+using Smx.Domain.Records;
 
 namespace Smx.Backend.Agents;
 
@@ -46,6 +47,16 @@ public static class ValidatedAgentRunner
             }
             if (error is null) return AgentRunResult<T>.Ok(parsed!);
             lastError = error;
+            // The retry the operator never saw. Attempt numbers are 1-based and `MaxRetries + 1` is
+            // the total, so this reads as "attempt 2 of 3" the way a person counts.
+            //
+            // The final iteration writes NOTHING: a third failure is the run's OUTCOME, not a retry, and
+            // "retrying, attempt 4 of 3" would promise the operator a turn that never happens. The
+            // needs-review the caller returns is where that failure is recorded.
+            if (attempt < MaxRetries)
+                await agent.Trail.StepAsync(RunStepKind.Rejected,
+                    $"Output rejected: {error} Retrying, attempt {attempt + 2} of {MaxRetries + 1}.",
+                    new RunStepDetail { Attempt = attempt + 2, Of = MaxRetries + 1 }, ct);
             message = $"Your previous response was rejected: {error}\n" +
                       "Correct the response. Reply with ONLY the corrected JSON object.";
         }

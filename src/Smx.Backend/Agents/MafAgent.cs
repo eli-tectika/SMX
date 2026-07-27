@@ -1,6 +1,9 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Smx.Backend.Pipeline;
+using Smx.Domain.Records;
 
 namespace Smx.Backend.Agents;
 
@@ -16,17 +19,63 @@ public sealed class MafAgent : ISmxAgent
 {
     private readonly AIAgent _agent;
     public string Name { get; }
+    public IRunTrail Trail { get; }
 
-    public MafAgent(IChatClient chatClient, string name, string instructions, IList<AITool> tools)
+    public MafAgent(IChatClient chatClient, string name, string instructions, IList<AITool> tools,
+        IRunTrail? trail = null)
     {
         Name = name;
+        Trail = trail ?? NullRunTrail.Instance;
         _agent = new ChatClientAgent(chatClient, instructions: instructions, name: name, tools: tools);
     }
 
     public async Task<ISmxAgentThread> StartThreadAsync(CancellationToken ct)
     {
         var session = await _agent.CreateSessionAsync(ct).ConfigureAwait(false);
-        return new AgentThreadAdapter(_agent, session);
+        return new AgentThreadAdapter(_agent, session, Trail);
+    }
+
+    /// One tool invocation the SDK actually performed, paired with its result.
+    public sealed record ObservedToolCall(string Tool, string? Query, int? ResultCount);
+
+    /// The tools the SDK actually invoked on this turn, paired with their results.
+    ///
+    /// Read from FunctionCallContent/FunctionResultContent — the SDK's own record of what it ran,
+    /// exactly as WebCitationUrls reads the annotations above. Nothing the model asserted about
+    /// itself reaches the trail through here.
+    internal static IEnumerable<ObservedToolCall> ToolCalls(IEnumerable<ChatMessage> messages)
+    {
+        var materialized = messages as IReadOnlyCollection<ChatMessage> ?? [.. messages];
+        var results = new Dictionary<string, string?>();
+        foreach (var message in materialized)
+            foreach (var content in message.Contents)
+                if (content is FunctionResultContent result)
+                    results[result.CallId] = result.Result?.ToString();
+
+        foreach (var message in materialized)
+            foreach (var content in message.Contents)
+                if (content is FunctionCallContent call)
+                {
+                    // The first STRING argument, which is the query on every tool in ToolBox that takes
+                    // one. Not named ("query") because the parameter names differ across tools, and not
+                    // the whole argument bag because this is a display sentence, not a payload dump.
+                    var query = call.Arguments?.Values.OfType<string>().FirstOrDefault();
+                    results.TryGetValue(call.CallId, out var raw);
+                    yield return new ObservedToolCall(call.Name, query, CountResults(raw));
+                }
+    }
+
+    /// A hit count when the result is a JSON array; null otherwise. Never a guess — "6 hits" that
+    /// was inferred rather than counted is a fabricated number in an audit trail.
+    private static int? CountResults(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            return doc.RootElement.ValueKind == JsonValueKind.Array ? doc.RootElement.GetArrayLength() : null;
+        }
+        catch (JsonException) { return null; }
     }
 
     /// The URLs a hosted web-search tool cited across these messages, pulled straight from their
@@ -48,7 +97,7 @@ public sealed class MafAgent : ISmxAgent
         return urls ?? (IReadOnlyCollection<string>)[];
     }
 
-    private sealed class AgentThreadAdapter(AIAgent agent, AgentSession session) : ISmxAgentThread
+    private sealed class AgentThreadAdapter(AIAgent agent, AgentSession session, IRunTrail trail) : ISmxAgentThread
     {
         private IReadOnlyCollection<string> _lastTurnWebCitations = [];
         public IReadOnlyCollection<string> LastTurnWebCitations => _lastTurnWebCitations;
@@ -57,7 +106,22 @@ public sealed class MafAgent : ISmxAgent
         {
             var response = await agent.RunAsync(message, session, cancellationToken: ct).ConfigureAwait(false);
             _lastTurnWebCitations = WebCitationUrls(response.Messages);
+
+            // After the turn, not during: UseFunctionInvocation runs the whole tool loop inside
+            // RunAsync, so there is no seam mid-loop. Steps therefore land in a burst when the turn
+            // returns — an accepted limit, recorded in the design (§6.2).
+            foreach (var call in ToolCalls(response.Messages))
+                await trail.StepAsync(RunStepKind.ToolCall, Describe(call),
+                    new RunStepDetail { Tool = call.Tool, Query = call.Query, ResultCount = call.ResultCount }, ct)
+                    .ConfigureAwait(false);
+
             return response.Text;
+        }
+
+        private static string Describe(ObservedToolCall call)
+        {
+            var what = call.Query is { Length: > 0 } q ? $"{call.Tool} for \"{q}\"" : call.Tool;
+            return call.ResultCount is { } n ? $"Called {what} — {n} result(s)." : $"Called {what}.";
         }
 
         /// Overrides the interface default with real incremental delivery. Uses the MAF streaming API
