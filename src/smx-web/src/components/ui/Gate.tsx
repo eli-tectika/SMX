@@ -197,6 +197,12 @@ export function Gate({
           </button>
         )}
         <span className="tiny" style={{ color: 'var(--text-warning)', alignSelf: 'center' }}>
+          {/*
+            Known dead corner: this branch keys on `!onSign` alone, so a gate wired with `onReject`
+            but no `onSign` would read "this control is inert" while its reject button is genuinely
+            live. No caller does that today (every live gate passes both), so it is unreachable — but
+            a future reject-only gate must widen this condition rather than inherit the lie.
+          */}
           {!onSign
             ? 'No endpoint to sign this gate — this control is inert.'
             : !armed

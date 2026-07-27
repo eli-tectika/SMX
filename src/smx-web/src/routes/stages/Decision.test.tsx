@@ -1,101 +1,265 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
-import type { ProjectSummary } from '../../api/types';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Decision } from './Decision';
+import type {
+  ComponentDecision,
+  DecisionDoc,
+  DosingDoc,
+  MsdsEntry,
+  ProjectSummary,
+  VpGate,
+} from '../../api/types';
 
-const PROJECT: ProjectSummary = {
-  projectId: 'proj-test',
-  client: 'MUFE',
-  product: 'clear bottle',
-  stages: {},
+vi.mock('../../api/client', () => ({
+  NotFound: Symbol.for('NotFound'),
+  ApiError: class ApiError extends Error {},
+  getDecision: vi.fn(),
+  getVpGate: vi.fn(),
+  getDosing: vi.fn(),
+  getMsdsRegistry: vi.fn(),
+  recordVpDetermination: vi.fn(),
+  orderSubstance: vi.fn(),
+}));
+import * as api from '../../api/client';
+
+const project: ProjectSummary = {
+  projectId: 'proj-1',
+  client: 'Acme',
+  product: 'PET bottle',
+  stages: {
+    intake: { status: 'done', attempts: 0 },
+    dosing: { status: 'done', attempts: 0 },
+    decision: { status: 'awaiting-VP', attempts: 0 },
+  },
 };
 
-function decision() {
-  return render(
+const component = (over: Partial<ComponentDecision> = {}): ComponentDecision => ({
+  componentId: 'bottle',
+  rows: [
+    {
+      cas: '1314-36-9',
+      element: 'Y',
+      determination: 'recommended',
+      recommendedPpm: 42,
+      cleared: { regulatory: true, dosing: true, cost: true },
+      traceability: { verdict: 'v-1', window: 'w-1', audit: 'a-1' },
+    },
+  ],
+  proposedCode: {
+    ratioSignature: 'Y:Zr = 1.00:0.50',
+    markerCas: ['1314-36-9', '1314-23-4'],
+    rationale: 'Both clear on every dimension and the ratio is readable at the floor.',
+  },
+  confirmedCode: null,
+  ...over,
+});
+
+const decision = (over: Partial<DecisionDoc> = {}): DecisionDoc => ({
+  id: 'proj-1|decision',
+  projectId: 'proj-1',
+  type: 'decision',
+  components: [component()],
+  procurement: { status: 'unreleased', orderedCas: [] },
+  generatedAt: '2026-07-20T09:00:00Z',
+  ...over,
+});
+
+const dosing: DosingDoc = {
+  id: 'proj-1|dosing',
+  projectId: 'proj-1',
+  type: 'dosing',
+  windows: [],
+  codes: [
+    {
+      componentId: 'bottle',
+      markers: [
+        { cas: '1314-36-9', element: 'Y', ppm: 42, metalLoading: 0.787, elementMassMg: 1, compoundMassMg: 2 },
+        { cas: '1314-23-4', element: 'Zr', ppm: 21, metalLoading: 0.74, elementMassMg: 1, compoundMassMg: 2 },
+      ],
+      rationale: 'The proposed pair.',
+      ratioSignature: 'Y:Zr = 1.00:0.50',
+    },
+    {
+      componentId: 'bottle',
+      markers: [
+        { cas: '1314-36-9', element: 'Y', ppm: 60, metalLoading: 0.787, elementMassMg: 1, compoundMassMg: 2 },
+        { cas: '1314-23-4', element: 'Zr', ppm: 20, metalLoading: 0.74, elementMassMg: 1, compoundMassMg: 2 },
+      ],
+      rationale: 'The override the VP may pick instead.',
+      ratioSignature: 'Y:Zr = 1.00:0.33',
+    },
+  ],
+  generatedAt: '2026-07-20T08:00:00Z',
+};
+
+const armed: VpGate = { status: 'locked', armable: true, blockers: [] };
+
+const msds = (reviewStatus: string): MsdsEntry => ({
+  id: 'msds|1314-36-9',
+  cas: '1314-36-9',
+  supplier: 'Sigma-Aldrich',
+  version: '4.1',
+  date: '2025-11-02',
+  reviewStatus,
+  linkedProjects: [],
+});
+
+const view = () =>
+  render(
     <MemoryRouter>
-      <Decision project={PROJECT} />
+      <Decision project={project} refreshProject={() => {}} />
     </MemoryRouter>,
   );
-}
 
-describe('Decision — the VP gate as a record', () => {
-  /**
-   * The load-bearing one.
-   *
-   * `data-provenance="mock"` is not a styling hook. The hatched surface hangs off it
-   * (craft.css), and so — the half that matters — do the black margin rule and the printed
-   * "MOCK DATA — NOT AGENT-PRODUCED … NOT FOR REGULATORY USE" footer (print.css). This screen's
-   * codes, ppm values and clearances are fixture data, and its subject is the signature that
-   * releases procurement.
-   *
-   * A redesign that split the page into sibling sections would leave the attribute on only one
-   * of them, and the printed disclaimer would vanish silently — at which point a fabricated
-   * determination prints as cleanly as a real one and can be walked into a room in a folder.
-   * So: exactly one `.screen`, and the provenance is on it.
-   */
-  it('keeps the whole record under one mock-provenance surface', () => {
-    decision();
-    const screens = document.querySelectorAll('.screen');
-    expect(screens).toHaveLength(1);
-    expect(screens[0]).toHaveAttribute('data-provenance', 'mock');
-  });
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(api.getDecision).mockResolvedValue(decision());
+  vi.mocked(api.getVpGate).mockResolvedValue(armed);
+  vi.mocked(api.getDosing).mockResolvedValue(dosing);
+  vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds('reviewed')]);
+  vi.mocked(api.recordVpDetermination).mockResolvedValue({ status: 'approved' });
+});
 
-  it('says in words that no agent produced this', () => {
-    decision();
-    expect(screen.getByText(/Mock data/i)).toBeInTheDocument();
-    expect(screen.getByText(/No decision agent has run/i)).toBeInTheDocument();
+describe('Decision', () => {
+  it('renders the real rows, criteria and trace ids from the record', async () => {
+    view();
+    await waitFor(() => expect(screen.getByText(/1314-36-9/)).toBeInTheDocument());
+    expect(screen.getByText('bottle')).toBeInTheDocument();
+    expect(screen.getByText(/42/)).toBeInTheDocument();
   });
 
   /**
-   * The VP gate has no endpoint, so it must never look signable — not at any arming level.
-   * The `vp` requirement is permanently unmet by construction, which keeps the meter below
-   * full; the button is inert because no `onSign` is wired (see Gate.tsx). Both halves are
-   * the honesty, and a future "let's make the demo feel complete" pass must trip on this.
+   * Law 9, as pixels. The proposal must be legible AS a proposal while confirmedCode is null. If the
+   * screen ever renders the ratio signature with the same treatment it uses for a signed code, the
+   * agent has signed the gate through the back door.
    */
-  it('never offers a signature it cannot record', () => {
-    decision();
-    expect(screen.getByRole('button', { name: /Approve & close project/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Reject/i })).toBeDisabled();
-    expect(screen.getByText(/No endpoint exists to record one/i)).toBeInTheDocument();
+  it('never renders an unconfirmed proposal as a confirmed code', async () => {
+    view();
+    await waitFor(() => expect(screen.getByText(/proposed/i)).toBeInTheDocument());
+    expect(screen.queryByText(/confirmed code/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Y:Zr = 1\.00:0\.50/)).toBeInTheDocument();
+  });
+
+  it('shows the confirmed code, its signer and its reason once signed', async () => {
+    vi.mocked(api.getDecision).mockResolvedValue(
+      decision({
+        components: [
+          component({
+            confirmedCode: 'Y:Zr = 1.00:0.50',
+            confirmedBy: 'VP R&D',
+            confirmedReason: 'Approved on the evidence.',
+          }),
+        ],
+        procurement: { status: 'released', orderedCas: [] },
+      }),
+    );
+    view();
+    await waitFor(() => expect(screen.getByText(/confirmed code/i)).toBeInTheDocument());
+    expect(screen.getByText(/VP R&D/)).toBeInTheDocument();
+    expect(screen.getByText(/Approved on the evidence/)).toBeInTheDocument();
   });
 
   /**
-   * Inert is not the same as broken, and the difference has to be visible: a meter stuck below
-   * full with a greyed button reads as a failure. What makes the stall legible as DELIBERATE is
-   * the gate naming the missing capability ("no endpoint exists to record one"), asserted above.
-   *
-   * What it must NOT do is dress the stall up as a park — the tempting move, since a gate waiting
-   * on the VP reads like one. It isn't: there is no `decision` stage in the record, no VP park
-   * state, and the dispatcher writes exactly three awaiting-* states (awaiting-RE,
-   * awaiting-physics, awaiting-operator), none of them here. A park implies a real record stopped
-   * on a named human who can unblock it; an unbuilt gate is an absent capability. Selling the
-   * second as the first invents backend behaviour on a screen a client reads, which is the one
-   * thing this codebase must not do. Intake and Background each carried exactly that fiction
-   * until ParkSlot was deleted; this asserts the sibling screen never grows its own.
+   * The gate must read the server's armability, never a browser-side tally — and the server's
+   * blockers are plain English meant to be shown verbatim.
    */
-  it('explains the stall as an absent capability and never as a park', () => {
-    decision();
-    expect(screen.getByText(/No endpoint exists to record one/i)).toBeInTheDocument();
-    expect(screen.queryByText(/parks here in the real system/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/awaiting VP/i)).not.toBeInTheDocument();
+  it('shows the server blockers verbatim and keeps the gate shut', async () => {
+    vi.mocked(api.getVpGate).mockResolvedValue({
+      status: 'locked',
+      armable: false,
+      blockers: ['regulatory gate is not approved', "component 'lid' has no proposed code"],
+    });
+    view();
+    await waitFor(() =>
+      expect(screen.getByText(/regulatory gate is not approved/)).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/component 'lid' has no proposed code/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /approve & close/i })).toBeDisabled();
   });
 
-  /**
-   * Summary-first: the determination's state is readable in the first band, without a
-   * signature being faked to express it. The absent tile renders an em-dash, never a verdict.
-   */
-  it('reports the determination as absent rather than pending or approved', () => {
-    decision();
-    const tile = document.querySelector('.stat--absent');
-    expect(tile).toBeInTheDocument();
-    expect(tile).toHaveTextContent('VP determination');
-    expect(tile).toHaveTextContent('—');
+  /** MSDS gates ORDERS, not the gate. Listing it as a gate requirement invents a precondition. */
+  it('does not make MSDS a requirement of the VP gate', async () => {
+    vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds('pending')]);
+    view();
+    await waitFor(() => expect(screen.getByText(/1314-36-9/)).toBeInTheDocument());
+    const gate = screen.getByLabelText('VP R&D gate');
+    expect(gate.textContent).not.toMatch(/MSDS/i);
   });
 
-  /** The evidence stays traceable to the stage that produced each criterion (spec §4.7). */
-  it('links every criterion back to its owning stage', () => {
-    decision();
-    expect(screen.getAllByRole('button', { name: 'View' })).toHaveLength(4);
+  it('signs with the proposed code confirmed for every component', async () => {
+    view();
+    await waitFor(() => expect(screen.getByText(/proposed/i)).toBeInTheDocument());
+    await userEvent.type(screen.getByLabelText(/note/i), 'Cleared on all three criteria.');
+    await userEvent.click(screen.getByRole('button', { name: /approve & close/i }));
+    await waitFor(() =>
+      expect(api.recordVpDetermination).toHaveBeenCalledWith('proj-1', {
+        determination: 'approved',
+        reason: 'Cleared on all three criteria.',
+        confirmations: [{ componentId: 'bottle', code: 'Y:Zr = 1.00:0.50' }],
+      }),
+    );
+  });
+
+  it('lets the VP override the proposal with another real code from dosing', async () => {
+    view();
+    await waitFor(() => expect(screen.getByText(/proposed/i)).toBeInTheDocument());
+    await userEvent.selectOptions(
+      screen.getByLabelText(/code to confirm for bottle/i),
+      'Y:Zr = 1.00:0.33',
+    );
+    await userEvent.type(screen.getByLabelText(/note/i), 'Overriding for headroom.');
+    await userEvent.click(screen.getByRole('button', { name: /approve & close/i }));
+    await waitFor(() =>
+      expect(api.recordVpDetermination).toHaveBeenCalledWith('proj-1', {
+        determination: 'approved',
+        reason: 'Overriding for headroom.',
+        confirmations: [{ componentId: 'bottle', code: 'Y:Zr = 1.00:0.33' }],
+      }),
+    );
+  });
+
+  it('rejects with the reason and no confirmations', async () => {
+    vi.mocked(api.recordVpDetermination).mockResolvedValue({ status: 'rejected' });
+    view();
+    await waitFor(() => expect(screen.getByText(/proposed/i)).toBeInTheDocument());
+    await userEvent.type(screen.getByLabelText(/note/i), 'The cost audit is stale.');
+    await userEvent.click(screen.getByRole('button', { name: /reject/i }));
+    await waitFor(() =>
+      expect(api.recordVpDetermination).toHaveBeenCalledWith('proj-1', {
+        determination: 'rejected',
+        reason: 'The cost audit is stale.',
+      }),
+    );
+  });
+
+  /** You cannot order what the VP did not sign, and not before the orchestrator releases procurement. */
+  it('offers no order action while procurement is unreleased', async () => {
+    view();
+    await waitFor(() => expect(screen.getByText(/1314-36-9/)).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /order/i })).not.toBeInTheDocument();
+  });
+
+  it('offers an order per confirmed marker once released, blocked without a reviewed MSDS', async () => {
+    vi.mocked(api.getDecision).mockResolvedValue(
+      decision({
+        components: [component({ confirmedCode: 'Y:Zr = 1.00:0.50', confirmedBy: 'VP R&D' })],
+        procurement: { status: 'released', orderedCas: [] },
+      }),
+    );
+    vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds('reviewed')]); // Y only; Zr has none
+    view();
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /order/i }).length).toBe(2));
+    const buttons = screen.getAllByRole('button', { name: /order/i });
+    expect(buttons[0]).toBeEnabled(); // Y — reviewed sheet on file
+    expect(buttons[1]).toBeDisabled(); // Zr — no sheet at all
+  });
+
+  it('carries no mock provenance marker', async () => {
+    const { container } = view();
+    await waitFor(() => expect(screen.getByText(/1314-36-9/)).toBeInTheDocument());
+    expect(container.querySelector('[data-provenance]')).toBeNull();
+    expect(screen.queryByText(/Mock data/i)).not.toBeInTheDocument();
   });
 });

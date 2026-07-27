@@ -30,6 +30,12 @@ export type VerdictDimension = (typeof VERDICT_DIMENSIONS)[number];
  * it creates the project. No agent has run and none will until the operator presses Start Processing. It is
  * deliberately NOT one of AWAITING_STATES below — those carry a dispatcher-written `error` to surface, and
  * this one does not; the Projects list and the intake screen handle it on their own.
+ *
+ * `awaiting-VP` is the fifth, and is where the Decision stage PARKS: StageDispatcher writes it instead of
+ * `done` (with `error` deliberately null), because only the VP gate's signature completes that stage. It is
+ * likewise not in AWAITING_STATES — there is no dispatcher-written instruction to surface, and the VP gate
+ * screen is the whole story. See the note in Decision.tsx: nothing may infer armability from this status;
+ * GET /gate/vp is the only authority on whether the pen is live.
  */
 export type StageStatus =
   | 'pending'
@@ -40,6 +46,7 @@ export type StageStatus =
   | 'awaiting-RE'
   | 'awaiting-physics'
   | 'awaiting-operator'
+  | 'awaiting-VP'
   | 'awaiting-confirmation';
 
 /** The park states, and who each one is stopped on. Order = the operator's ability to act. */

@@ -10,6 +10,7 @@ const TOKEN: Record<StageStatus, string> = {
   'awaiting-operator': 'warning',
   'awaiting-physics': 'warning',
   'awaiting-RE': 'warning',
+  'awaiting-VP': 'warning',
   'awaiting-confirmation': 'muted',
 };
 
@@ -34,6 +35,9 @@ const MEANING: Record<StageStatus, string> = {
   'awaiting-operator': 'Parked — waiting on you to enter something.',
   'awaiting-physics': 'Parked — waiting on physics for an XRF background.',
   'awaiting-RE': 'Parked — waiting on the Regulatory Expert.',
+  // Named without "R&D" on purpose: the gate below owns that title, and one screen saying it twice
+  // makes the stage card look like a second signature block.
+  'awaiting-VP': "Parked — waiting on the VP's determination.",
   'awaiting-confirmation': 'Created — awaiting Start Processing.',
 };
 

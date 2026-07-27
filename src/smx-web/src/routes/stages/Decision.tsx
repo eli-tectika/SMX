@@ -1,242 +1,566 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { ProjectSummary } from '../../api/types';
-import { MockBadge } from '../../components/MockBadge';
+import {
+  ApiError,
+  NotFound,
+  getDecision,
+  getDosing,
+  getMsdsRegistry,
+  getVpGate,
+  orderSubstance,
+  recordVpDetermination,
+} from '../../api/client';
+import type {
+  ComponentDecision,
+  DecisionDoc,
+  DosingDoc,
+  MsdsEntry,
+  VpGate as VpGateState,
+} from '../../api/types';
+import { Loading } from '../../components/Loading';
+import { StageStatusCard } from '../../components/StageStatusCard';
+import { Data } from '../../components/ui/Data';
 import { Gate, type Requirement } from '../../components/ui/Gate';
-import { SectionHeader, StatCard } from '../../components/ui/Primitives';
-import decision from '../../mocks/fixtures/decision.json';
-import msds from '../../mocks/fixtures/msds-registry.json';
+import { EmptyState, SectionHeader, StatCard } from '../../components/ui/Primitives';
+import type { ScreenProps } from '../ProjectLayout';
 
-interface Clears {
-  xrf: boolean;
-  compatibility: boolean;
-  regulatory: boolean;
-  availability: boolean;
-}
-interface Row {
-  component: string;
-  code: string;
-  ppm: number;
-  clears: Clears;
-}
-
-const CRITERIA: (keyof Clears)[] = ['xrf', 'compatibility', 'regulatory', 'availability'];
+const CRITERIA = ['regulatory', 'dosing', 'cost'] as const;
+type Criterion = (typeof CRITERIA)[number];
 
 /**
- * Spec §4.7 requires every row be traceable end-to-end. Each criterion is owned by a
- * stage, so "trace" is a link to that stage — not a dead button.
+ * Spec §4.7 requires every row be traceable end-to-end. Each criterion is owned by the stage that
+ * produced it, so "trace" is a link to that stage plus the record id the claim came from.
  */
-const OWNER: Record<keyof Clears, { stage: string; label: string }> = {
-  xrf: { stage: 'background', label: 'Background analysis' },
-  compatibility: { stage: 'matrix', label: 'Compatibility matrix' },
+const OWNER: Record<Criterion, { stage: string; label: string }> = {
   regulatory: { stage: 'regulatory', label: 'Regulatory gate' },
-  availability: { stage: 'cost', label: 'Cost & availability' },
+  dosing: { stage: 'dosing', label: 'Dosing & codes' },
+  cost: { stage: 'cost', label: 'Cost & availability' },
 };
 
 /**
  * The VP R&D gate (spec §4.7) — the final hard gate, and the last screen of the journey.
  *
- * VP approval releases procurement and writes to the Marker Library and Learned Conclusions,
- * so this is the highest-consequence action in the system. It is an operator-signed record
- * with no endpoint, so the control is inert — and the MSDS-before-order precondition (spec §5)
- * is surfaced here, where the order is actually decided.
+ * Approval releases procurement and writes the Marker Library and Learned Conclusions, so this is the
+ * highest-consequence action in the system. Four things it exists to get right:
  *
- * It reads as a DECISION RECORD, not a work surface, and the page order is that argument:
- * provenance, then the state of the record in four tiles, then the evidence, then the
- * signature block last. Signing after the evidence rather than above it is the anti-rubber-
- * stamping law (spec §1.8) expressed as layout — the operator passes THROUGH the four
- * per-component clearances to reach the control. `surface: 'record'` in domain/stages.ts is
- * what strips the agent dock from it; there is no agent to talk to about a human's signature.
+ *  1. **Law 9, as pixels.** `proposedCode` is the agent's offer; `confirmedCode` is the VP's signature
+ *     and arrives as an explicit `null` until signed. They never share a treatment. A proposal wearing
+ *     the confirmed chip IS the agent signing the gate.
+ *  2. **Armability is the server's word.** `GET /gate/vp` runs the same checks the POST enforces —
+ *     including the two the UI cannot see (a stage no longer parked at `awaiting-VP`, a revision in
+ *     flight). Tallying anything browser-side would advertise a pen the POST refuses, and a lying
+ *     affordance is how a gate gets rubber-stamped.
+ *  3. **MSDS is not a gate requirement.** It gates each individual ORDER (§5). The old fixture listed
+ *     it among the gate's requirements, which invented a precondition the server does not enforce.
+ *  4. **Release is eventually consistent.** Procurement flips to `released` by the ORCHESTRATOR
+ *     reacting to the approved gate, not by the signing call. So signing re-reads rather than
+ *     assuming; until the record says released, no order control exists.
+ *
+ * It reads as a DECISION RECORD, not a work surface, and the page order is the argument: provenance,
+ * then the state of the record, then the evidence, then the signature block last. Signing after the
+ * evidence rather than above it is the anti-rubber-stamping law (§1.8) expressed as layout.
  */
-export function Decision({ project }: { project: ProjectSummary }) {
-  const { rows } = decision as { rows: Row[] };
-  const { entries } = msds as { entries: { substance: string; status: string }[] };
+export function Decision({ project, refreshProject }: ScreenProps) {
+  const stage = project.stages.decision;
+  const status = stage?.status;
+
+  const [doc, setDoc] = useState<DecisionDoc | null>(null);
+  const [gate, setGate] = useState<VpGateState | null>(null);
+  const [dosing, setDosing] = useState<DosingDoc | null>(null);
+  const [sheets, setSheets] = useState<MsdsEntry[]>([]);
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'absent' | 'error'>('loading');
+  const [errMsg, setErrMsg] = useState<string>();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [choice, setChoice] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<'sign' | 'reject' | null>(null);
+  const [signError, setSignError] = useState<string | null>(null);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [ordering, setOrdering] = useState<string | null>(null);
 
-  const blocking = rows.filter((r) => CRITERIA.some((c) => !r.clears[c]));
-  const cleared = rows.length - blocking.length;
+  const load = useCallback(
+    async (signal?: { cancelled: boolean }) => {
+      try {
+        const [d, g, dose, ms] = await Promise.all([
+          getDecision(project.projectId),
+          getVpGate(project.projectId),
+          getDosing(project.projectId),
+          getMsdsRegistry(),
+        ]);
+        if (signal?.cancelled) return;
+        setGate(g);
+        setDosing(dose === NotFound ? null : dose);
+        setSheets(ms);
+        if (d === NotFound) {
+          setDoc(null);
+          setPhase('absent');
+        } else {
+          setDoc(d);
+          setPhase('ready');
+        }
+      } catch (err) {
+        if (!signal?.cancelled) {
+          setErrMsg(err instanceof Error ? err.message : String(err));
+          setPhase('error');
+        }
+      }
+    },
+    [project.projectId],
+  );
 
-  // The MSDS-before-order precondition is a hard gate in its own right (spec §5).
-  // Both sources are fixtures, so joining them here is honest.
-  const staleMsds = entries.filter((e) => e.status !== 'current');
+  useEffect(() => {
+    const signal = { cancelled: false };
+    void load(signal);
+    return () => {
+      signal.cancelled = true;
+    };
+  }, [load, status]);
 
+  /** The code each component will be signed with: the agent's proposal until the VP picks another. */
+  const confirmations = useMemo(
+    () =>
+      (doc?.components ?? []).map((c) => ({
+        componentId: c.componentId,
+        code: choice[c.componentId] ?? c.proposedCode?.ratioSignature ?? '',
+      })),
+    [doc, choice],
+  );
+
+  const sign = useCallback(
+    async (note?: string) => {
+      if (!note) return;
+      setBusy('sign');
+      setSignError(null);
+      try {
+        await recordVpDetermination(project.projectId, {
+          determination: 'approved',
+          reason: note,
+          confirmations,
+        });
+        refreshProject();
+        await load();
+      } catch (err) {
+        // The server re-checks and can refuse a button that looked enabled (a concurrent revise, a
+        // stage that left its park). Show its words and re-read the gate for the fresh blockers.
+        setSignError(err instanceof ApiError ? err.message : String(err));
+        await load();
+      } finally {
+        setBusy(null);
+      }
+    },
+    [project.projectId, confirmations, load, refreshProject],
+  );
+
+  const reject = useCallback(
+    async (note: string) => {
+      setBusy('reject');
+      setSignError(null);
+      try {
+        await recordVpDetermination(project.projectId, {
+          determination: 'rejected',
+          reason: note,
+        });
+        refreshProject();
+        await load();
+      } catch (err) {
+        setSignError(err instanceof ApiError ? err.message : String(err));
+        await load();
+      } finally {
+        setBusy(null);
+      }
+    },
+    [project.projectId, load, refreshProject],
+  );
+
+  const order = useCallback(
+    async (cas: string) => {
+      setOrdering(cas);
+      setOrderError(null);
+      try {
+        await orderSubstance(project.projectId, cas);
+        await load();
+      } catch (err) {
+        setOrderError(err instanceof ApiError ? err.message : String(err));
+      } finally {
+        setOrdering(null);
+      }
+    },
+    [project.projectId, load],
+  );
+
+  if (phase === 'loading') return <Loading what="the decision record" />;
+
+  if (phase === 'error') {
+    return (
+      <section className="screen">
+        <div className="banner warn" role="alert">
+          <i className="ti ti-alert-triangle" aria-hidden="true" />
+          <div>
+            <b>The decision record could not be read.</b>
+            <div className="tiny" style={{ marginTop: 3 }}>{errMsg}</div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const components = doc?.components ?? [];
+  const rows = components.flatMap((c) => c.rows);
+  const blocking = rows.filter((r) => CRITERIA.some((k) => !r.cleared[k]));
+  const confirmed = components.filter((c) => c.confirmedCode !== null).length;
+  const released = doc?.procurement.status === 'released';
+
+  /**
+   * The determination has been made — either the gate record says so, or every component carries a
+   * signature (both are written by the same endpoint, and either alone is proof one ran).
+   *
+   * When it has, the pen is withdrawn rather than left on screen disabled. That is rule 2 again from
+   * the other side: once the stage leaves `awaiting-VP` the POST refuses BOTH rulings, and `Gate`
+   * deliberately does not gate its reject button on `armed` — so a gate left mounted here would offer
+   * a live-looking "Reject" the server would 422. A control the API would refuse must not exist.
+   */
+  const determined =
+    gate?.status === 'approved' || (components.length > 0 && confirmed === components.length);
+
+  /**
+   * The gate's requirements are the SERVER's blockers, one per line, plus the one condition this
+   * screen owns: a code chosen for every component (the POST 422s a component with none). Nothing
+   * else is invented here — in particular not MSDS, which gates orders rather than the gate.
+   */
   const requirements: Requirement[] = [
     {
-      id: 'components',
-      label: 'Every component clears every criterion',
-      met: blocking.length === 0,
+      id: 'server',
+      label: 'Every gate condition met',
+      met: Boolean(gate?.armable),
       detail:
-        blocking.length > 0 ? (
-          <>
-            {cleared} of {rows.length} cleared. Blocking:{' '}
-            {blocking
-              .map(
-                (r) =>
-                  `${r.component} (${CRITERIA.filter((c) => !r.clears[c]).join(', ')})`,
-              )
-              .join(' · ')}
-          </>
-        ) : (
-          <>All {rows.length} components cleared.</>
-        ),
-    },
-    {
-      id: 'msds',
-      label: 'A current MSDS exists for every substance to be ordered',
-      met: staleMsds.length === 0,
-      detail:
-        staleMsds.length > 0 ? (
-          <>
-            {staleMsds.map((e) => `${e.substance} (${e.status})`).join(' · ')} — procurement is
-            blocked until these are current.
-          </>
+        gate && gate.blockers.length > 0 ? (
+          <ul style={{ margin: '4px 0 0', paddingLeft: 16 }}>
+            {gate.blockers.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
         ) : undefined,
     },
     {
-      id: 'vp',
-      // Never met, and it must never look met.
-      label: 'VP R&D determination recorded',
-      met: false,
-      detail: <>No endpoint exists to record one. This gate cannot arm.</>,
+      id: 'codes',
+      label: 'A code chosen for every component',
+      met: components.length > 0 && confirmations.every((c) => c.code !== ''),
+      detail:
+        components.length === 0
+          ? 'There is no decision to sign.'
+          : confirmations.filter((c) => c.code === '').length > 0
+            ? `No code available for ${confirmations
+                .filter((c) => c.code === '')
+                .map((c) => c.componentId)
+                .join(', ')}.`
+            : undefined,
     },
   ];
 
   return (
-    /*
-     * The outer element must stay ONE `.screen[data-provenance="mock"]`. Both the hatched
-     * surface (craft.css) and — the load-bearing half — the black rule and the printed
-     * "MOCK DATA — NOT FOR REGULATORY USE" footer (print.css) hang off this attribute. Bands
-     * inside the record nest within it; they must never become siblings of it, or a fabricated
-     * determination prints as cleanly as a real one.
-     */
-    <section className="screen" data-provenance="mock">
+    <section className="screen">
       <div className="cap">
-        <b>VP R&amp;D gate — final determination</b>
-        The last gate in the journey. Approval releases procurement and writes the Marker Library
-        and Learned Conclusions.
+        <b>Final determination — the last hard gate</b>
+        Approval releases procurement and writes the Marker Library and Learned Conclusions.
       </div>
 
-      {/* The caveat comes before the first number, not after the arming meter. On a record, a
-          reader must know what the page is made of before they read anything off it. */}
-      <MockBadge note="No decision agent has run. These codes, ppm values and clearances are illustrative." />
+      <StageStatusCard name="Decision" state={stage} />
 
-      <div className="stat-strip">
-        <StatCard
-          label="Cleared"
-          value={`${cleared}/${rows.length}`}
-          hint="components clearing all four criteria"
+      {phase === 'absent' && (
+        <EmptyState
+          icon="ti-gavel"
+          title="No decision assembled yet."
+          body={
+            <>
+              The Decision stage assembles the matrix from the compliant set once the regulatory gate is
+              signed and dosing has produced codes. There is nothing to sign until it has.
+            </>
+          }
         />
-        <StatCard
-          label="Blocking"
-          value={blocking.length}
-          tone={blocking.length > 0 ? 'danger' : undefined}
-          hint={blocking.length > 0 ? blocking.map((r) => r.component).join(' · ') : 'none'}
-        />
-        <StatCard
-          label="MSDS not current"
-          value={staleMsds.length}
-          tone={staleMsds.length > 0 ? 'warning' : undefined}
-          hint={`of ${entries.length} substances on file`}
-        />
-        {/* `absent` renders the tile the spec demands and no endpoint can fill — a dashed
-            em-dash. The determination's state is therefore known in the first band of the
-            page, without a signature being faked to say it. */}
-        <StatCard label="VP determination" absent hint="no endpoint records one" />
-      </div>
+      )}
 
-      <SectionHeader
-        eyebrow="Evidence"
-        title="Per component"
-        count={rows.length}
-        hint="final code + ppm, and the four criteria each must clear"
-      />
+      {phase === 'ready' && (
+        <>
+          <div className="stat-strip">
+            <StatCard
+              label="Components"
+              value={`${confirmed}/${components.length}`}
+              hint="carrying a signed code"
+            />
+            <StatCard
+              label="Blocking rows"
+              value={blocking.length}
+              tone={blocking.length > 0 ? 'danger' : undefined}
+              hint={blocking.length > 0 ? 'a criterion is not cleared' : 'none'}
+            />
+            <StatCard
+              label="Procurement"
+              value={doc?.procurement.status ?? 'unreleased'}
+              tone={released ? undefined : 'warning'}
+              hint={`${doc?.procurement.orderedCas.length ?? 0} ordered`}
+            />
+            {gate?.status === 'approved' ? (
+              <StatCard label="VP determination" value="approved" hint={gate.approvedAt ?? 'signed'} />
+            ) : determined ? (
+              <StatCard label="VP determination" value="signed" hint="a signature on every component" />
+            ) : (
+              /* `absent` renders an em-dash. An unsigned gate has no determination to report, and a
+                 tile that guessed "pending" would invent a state the record does not hold. */
+              <StatCard label="VP determination" absent hint="not signed" />
+            )}
+          </div>
+
+          {components.map((c) => (
+            <ComponentBand
+              key={c.componentId}
+              component={c}
+              projectId={project.projectId}
+              codes={(dosing?.codes ?? [])
+                .filter((k) => k.componentId === c.componentId)
+                .map((k) => k.ratioSignature)}
+              chosen={choice[c.componentId] ?? c.proposedCode?.ratioSignature ?? ''}
+              onChoose={(code) => setChoice((prev) => ({ ...prev, [c.componentId]: code }))}
+              expanded={expanded}
+              setExpanded={setExpanded}
+            />
+          ))}
+
+          {released && (
+            <Procurement
+              components={components}
+              dosing={dosing}
+              sheets={sheets}
+              ordered={doc?.procurement.orderedCas ?? []}
+              ordering={ordering}
+              error={orderError}
+              onOrder={order}
+            />
+          )}
+
+          <SectionHeader eyebrow="Determination" hint="the last signature in the journey" />
+
+          {signError && (
+            <div className="banner warn" role="alert" style={{ marginBottom: 8 }}>
+              <i className="ti ti-alert-triangle" aria-hidden="true" />
+              <div>
+                <b>The determination was refused.</b>
+                <div className="tiny" style={{ marginTop: 3 }}>{signError}</div>
+              </div>
+            </div>
+          )}
+
+          {determined ? (
+            <div className="banner info" role="status">
+              <i className="ti ti-signature" aria-hidden="true" />
+              <div>
+                <b>The determination is on the record.</b>
+                <div className="tiny" style={{ marginTop: 3 }}>
+                  Each component above carries the code that was signed, and who signed it. There is no
+                  second pen here: a determination is made once, and the endpoint refuses another as soon
+                  as the stage leaves its park.
+                  {!released && (
+                    <>
+                      {' '}
+                      Procurement is still unreleased: the orchestrator releases it by reacting to the
+                      signed gate, not the signing call. Reload in a moment for the order controls — this
+                      screen will not invent them ahead of the record.
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <Gate
+              kind="hard"
+              title="VP R&D gate"
+              records="releases procurement · writes the Marker Library + Learned Conclusions"
+              requirements={requirements}
+              signLabel="Approve & close project"
+              rejectLabel="Reject (requires a reason)"
+              signNote={{ placeholder: 'What was reviewed, and why this determination' }}
+              onSign={sign}
+              onReject={reject}
+              signBusy={busy === 'sign'}
+              rejectBusy={busy === 'reject'}
+            />
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/** One component's decision: the code (proposed or signed), then the rows that justify it. */
+function ComponentBand({
+  component: c,
+  projectId,
+  codes,
+  chosen,
+  onChoose,
+  expanded,
+  setExpanded,
+}: {
+  component: ComponentDecision;
+  projectId: string;
+  codes: string[];
+  chosen: string;
+  onChoose: (code: string) => void;
+  expanded: string | null;
+  setExpanded: (v: string | null) => void;
+}) {
+  const signed = c.confirmedCode !== null;
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <SectionHeader eyebrow={c.componentId} count={c.rows.length} hint="substances in this decision" />
+
+      {/*
+        Law 9 as pixels. Signed: a solid chip, the signer, the reason. Unsigned: the word "Proposed",
+        a muted chip, and a picker — because until a human chooses, this is an offer.
+      */}
+      {signed ? (
+        <div className="card" style={{ marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span className="tiny muted">Confirmed code</span>
+            <span className="chip chip--neutral chip--mono">{c.confirmedCode}</span>
+            {c.confirmedBy && <span className="tiny muted">signed by {c.confirmedBy}</span>}
+          </div>
+          {c.confirmedReason && (
+            <p className="small secondary" style={{ margin: '6px 0 0' }}>
+              {c.confirmedReason}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="card" style={{ marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span className="tiny muted">Proposed by the agent</span>
+            {/*
+              The signature appears ONCE, and where the decision is actually made: inside the picker,
+              whose default is the proposal. Printing it as a chip beside the picker as well would put
+              the same code on screen twice in two treatments, and the read-only one is exactly the
+              shape a signed code takes — which is how a proposal starts looking like a signature.
+              The chip is therefore the FALLBACK, for the case where dosing offers nothing to pick.
+            */}
+            {!c.proposedCode ? (
+              <span className="tiny" style={{ color: 'var(--text-danger)' }}>
+                no proposed code — this component cannot be signed
+              </span>
+            ) : (
+              codes.length === 0 && (
+                <span className="chip chip--mono" style={{ opacity: 0.75 }}>
+                  {c.proposedCode.ratioSignature}
+                </span>
+              )
+            )}
+          </div>
+          {c.proposedCode && (
+            <p className="small secondary" style={{ margin: '6px 0 8px' }}>
+              {c.proposedCode.rationale}
+            </p>
+          )}
+          {codes.length > 0 && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span className="tiny muted">Code to confirm for {c.componentId}</span>
+              <select
+                aria-label={`Code to confirm for ${c.componentId}`}
+                value={chosen}
+                onChange={(e) => onChoose(e.target.value)}
+                style={{ font: 'inherit', fontSize: 'var(--t-small)', padding: '4px 6px' }}
+              >
+                {codes.map((code) => (
+                  <option key={code} value={code}>
+                    {code}
+                    {code === c.proposedCode?.ratioSignature ? " — the agent's proposal" : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+      )}
 
       <table className="mx">
         <thead>
           <tr>
-            <th>Component</th>
-            <th>Final code</th>
+            <th>Substance</th>
+            <th>Determination</th>
             <th>ppm</th>
-            {CRITERIA.map((c) => (
-              <th key={c} style={{ textAlign: 'center', textTransform: 'capitalize' }}>
-                {c}
+            {CRITERIA.map((k) => (
+              <th key={k} style={{ textAlign: 'center', textTransform: 'capitalize' }}>
+                {k}
               </th>
             ))}
             <th style={{ width: 60 }}>Trace</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => {
-            const isOpen = expanded === r.component;
-            const fails = CRITERIA.filter((c) => !r.clears[c]);
+          {c.rows.map((r) => {
+            const key = `${c.componentId}|${r.cas}`;
+            const isOpen = expanded === key;
             return (
-              <Fragment key={r.component}>
+              <Fragment key={key}>
                 <tr style={isOpen ? { background: 'var(--surface-2)' } : undefined}>
-                  <td style={{ fontWeight: 500 }}>{r.component}</td>
                   <td>
-                    {/* A code is not a Conditional verdict — purple here would say so. */}
-                    <span className="chip chip--neutral chip--mono">{r.code}</span>
+                    <span style={{ fontWeight: 500 }}>{r.element}</span>{' '}
+                    <span className="tiny muted">
+                      <Data kind="code">{r.cas}</Data>
+                    </span>
                   </td>
+                  <td className="tiny">{r.determination}</td>
                   <td className="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {r.ppm}
+                    {r.recommendedPpm}
                   </td>
-                  {CRITERIA.map((c) => (
-                    <td key={c} style={{ textAlign: 'center' }}>
+                  {CRITERIA.map((k) => (
+                    <td key={k} style={{ textAlign: 'center' }}>
                       <span
-                        className={`chip ${r.clears[c] ? 'v' : 'x'}`}
-                        title={`${c} — ${r.clears[c] ? 'clear' : 'blocking'} (owned by ${OWNER[c].label})`}
+                        className={`chip ${r.cleared[k] ? 'v' : 'x'}`}
+                        title={`${k} — ${r.cleared[k] ? 'clear' : 'blocking'} (owned by ${OWNER[k].label})`}
                       >
-                        {r.clears[c] ? '✓' : '✕'}
+                        {r.cleared[k] ? '✓' : '✕'}
                       </span>
                     </td>
                   ))}
                   <td>
-                    <button
-                      className="btn"
-                      onClick={() => setExpanded(isOpen ? null : r.component)}
-                      aria-expanded={isOpen}
-                    >
+                    <button className="btn" onClick={() => setExpanded(isOpen ? null : key)} aria-expanded={isOpen}>
                       {isOpen ? 'Hide' : 'View'}
                     </button>
                   </td>
                 </tr>
                 {isOpen && (
                   <tr>
-                    {/* 8 columns: component, code, ppm, the four criteria, trace. */}
-                    <td colSpan={8} style={{ padding: 0, background: 'var(--surface-2)' }}>
-                      <div
-                        style={{ borderLeft: '2px solid var(--text-accent)', padding: 'var(--s3)' }}
-                      >
+                    {/* 7 columns: substance, determination, ppm, three criteria, trace. */}
+                    <td colSpan={7} style={{ padding: 0, background: 'var(--surface-2)' }}>
+                      <div style={{ borderLeft: '2px solid var(--text-accent)', padding: 'var(--s3)' }}>
                         <div className="tiny muted" style={{ marginBottom: 6 }}>
-                          Each criterion is owned by the stage that produced it — follow it to its
-                          source.
+                          Each criterion is owned by the stage that produced it. The record id is what
+                          the claim was read from — the record is the truth, not this copy of it.
                         </div>
-                        {CRITERIA.map((c) => (
-                          <div className="step" key={c}>
+                        {CRITERIA.map((k) => (
+                          <div className="step" key={k}>
                             <i
-                              className={`ti ${r.clears[c] ? 'ti-check' : 'ti-x'}`}
+                              className={`ti ${r.cleared[k] ? 'ti-check' : 'ti-x'}`}
                               aria-hidden="true"
                               style={{
-                                color: r.clears[c] ? 'var(--text-success)' : 'var(--text-danger)',
+                                color: r.cleared[k] ? 'var(--text-success)' : 'var(--text-danger)',
                                 marginTop: 2,
                               }}
                             />
                             <div>
-                              <span style={{ textTransform: 'capitalize' }}>{c}</span> —{' '}
-                              {r.clears[c] ? 'clear' : <b>blocking</b>
-        }{' '}
-                              <Link to={`/p/${project.projectId}/${OWNER[c].stage}`}>
-                                {OWNER[c].label} <i className="ti ti-arrow-right" aria-hidden="true" />
-                              </Link>
+                              <span style={{ textTransform: 'capitalize' }}>{k}</span> —{' '}
+                              {r.cleared[k] ? 'clear' : <b>blocking</b>}{' '}
+                              <Link to={`/p/${projectId}/${OWNER[k].stage}`}>
+                                {OWNER[k].label} <i className="ti ti-arrow-right" aria-hidden="true" />
+                              </Link>{' '}
+                              <Data kind="code">
+                                {k === 'regulatory'
+                                  ? r.traceability.verdict
+                                  : k === 'dosing'
+                                    ? r.traceability.window
+                                    : r.traceability.audit}
+                              </Data>
                             </div>
                           </div>
                         ))}
-                        {fails.length === 0 && (
-                          <div className="tiny muted" style={{ marginTop: 6 }}>
-                            Cleared is not approved — the VP gate is the only thing that releases
-                            procurement.
-                          </div>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -245,53 +569,117 @@ export function Decision({ project }: { project: ProjectSummary }) {
             );
           })}
         </tbody>
-        <tfoot>
-          <tr>
-            <td className="tiny muted" colSpan={3}>
-              per criterion
-            </td>
-            {CRITERIA.map((c) => {
-              const n = rows.filter((r) => r.clears[c]).length;
-              const all = n === rows.length;
-              return (
-                <td
-                  key={c}
-                  className="tiny"
-                  style={{
-                    textAlign: 'center',
-                    color: all ? 'var(--text-muted)' : 'var(--text-danger)',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {n} of {rows.length}
-                </td>
-              );
-            })}
-            <td />
-          </tr>
-        </tfoot>
       </table>
+    </div>
+  );
+}
 
-      <SectionHeader eyebrow="Determination" hint="the last signature in the journey" />
+/**
+ * Procurement — visible only once the record says `released`.
+ *
+ * The orderable set is the markers of CONFIRMED codes, never the decision rows and never a proposal:
+ * "you cannot order what the VP did not sign". Each order is independently gated on a REVIEWED MSDS
+ * (§5), and the button is disabled with the reason rather than hidden — a missing safety sheet is
+ * what blocks an order, and hiding the control would hide the blocker with it.
+ */
+function Procurement({
+  components,
+  dosing,
+  sheets,
+  ordered,
+  ordering,
+  error,
+  onOrder,
+}: {
+  components: ComponentDecision[];
+  dosing: DosingDoc | null;
+  sheets: MsdsEntry[];
+  ordered: string[];
+  ordering: string | null;
+  error: string | null;
+  onOrder: (cas: string) => void;
+}) {
+  const markers = components
+    .filter((c) => c.confirmedCode !== null)
+    .flatMap((c) =>
+      (dosing?.codes ?? [])
+        .filter((k) => k.componentId === c.componentId && k.ratioSignature === c.confirmedCode)
+        .flatMap((k) => k.markers.map((m) => ({ ...m, componentId: c.componentId }))),
+    );
 
-      {/*
-       * The record ends here, and nothing follows the gate.
-       *
-       * The `vp` requirement is permanently unmet, so the meter never fills and the button never
-       * enables. A stall like that invites a well-meaning "let's show what it's waiting for" — and
-       * the tempting shape, a park block, would be fiction: there is no `decision` stage in the
-       * record, no VP park state, and the dispatcher writes exactly three awaiting-* states, none
-       * of them this one. A park means a real record stopped on a named human; an unbuilt gate is
-       * an absent capability. The gate already says which, in words, and that is the whole answer.
-       */}
-      <Gate
-        kind="hard"
-        title="VP R&D gate"
-        records="releases procurement · writes the Marker Library + Learned Conclusions"
-        requirements={requirements}
-        signLabel="Approve & close project"
-        rejectLabel="Reject (requires a reason)"
+  return (
+    <>
+      <SectionHeader
+        eyebrow="Procurement"
+        count={markers.length}
+        hint="the markers of the signed codes — each order gated on a reviewed MSDS"
       />
-    </section>
+
+      {error && (
+        <div className="banner warn" role="alert" style={{ marginBottom: 8 }}>
+          <i className="ti ti-alert-triangle" aria-hidden="true" />
+          <div>
+            <b>The order was refused.</b>
+            <div className="tiny" style={{ marginTop: 3 }}>{error}</div>
+          </div>
+        </div>
+      )}
+
+      <table className="mx">
+        <thead>
+          <tr>
+            <th>Substance</th>
+            <th>Component</th>
+            <th>MSDS</th>
+            <th style={{ width: 90 }} />
+          </tr>
+        </thead>
+        <tbody>
+          {markers.map((m) => {
+            const sheet = sheets.find((s) => s.cas === m.cas);
+            const reviewed = sheet?.reviewStatus === 'reviewed';
+            const isOrdered = ordered.includes(m.cas);
+            return (
+              <tr key={`${m.componentId}|${m.cas}`}>
+                <td>
+                  <span style={{ fontWeight: 500 }}>{m.element}</span>{' '}
+                  <span className="tiny muted">
+                    <Data kind="code">{m.cas}</Data>
+                  </span>
+                </td>
+                <td className="tiny">{m.componentId}</td>
+                <td className="tiny">
+                  {reviewed ? (
+                    <span style={{ color: 'var(--text-success)' }}>reviewed</span>
+                  ) : (
+                    <span style={{ color: 'var(--text-danger)' }}>
+                      {sheet ? sheet.reviewStatus : 'no sheet on file'}
+                    </span>
+                  )}
+                </td>
+                <td>
+                  {isOrdered ? (
+                    <span className="chip chip--neutral">ordered</span>
+                  ) : (
+                    <button
+                      className="btn"
+                      disabled={!reviewed || ordering === m.cas}
+                      onClick={() => onOrder(m.cas)}
+                      title={
+                        reviewed
+                          ? undefined
+                          : 'MSDS-before-order: a reviewed safety sheet is required before this can be ordered'
+                      }
+                    >
+                      Order
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </>
   );
 }
