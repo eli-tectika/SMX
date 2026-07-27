@@ -420,10 +420,33 @@ strong {
   box-shadow: var(--focus-ring);
 }
 
-/* `main` takes focus programmatically on route change; it is not a control and
-   must not draw a focus ring for it. */
-.wrap:focus {
+/* `main` takes focus programmatically on every route change (AppShell) so the new screen is
+   what a keyboard or screen-reader user lands on. It is a CONTAINER, not a control, so it must
+   not draw a focus ring for that.
+
+   `outline: none` alone was not enough and shipped a visible bug: craft.css paints the ring as a
+   BOX-SHADOW on `:where(… , [tabindex]):focus-visible`, and `<main tabindex="-1">` matches that
+   selector. The intake interview triggered it every visit — it redirects /new -> /new/:sessionId,
+   a real route change — so the whole page wore a 4px accent frame that read as an error state. */
+.wrap:focus,
+.wrap:focus-visible {
   outline: none;
+  box-shadow: none;
+}
+
+/* ---- textareas --------------------------------------------------------------
+
+   `textarea` was never given a font, so it fell through to the user-agent default —
+   13.33px monospace. That put the app's PRIMARY input, the intake interview's composer,
+   in a terminal face, while the docked agent's `<input>` beside it rendered correctly in
+   Plex Sans. The mono rule in this app means "machine-readable value"; a sentence the
+   operator is composing is neither. */
+
+textarea {
+  font-family: var(--font-sans);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--text-primary);
 }
 
 /* ---- masthead (full-width top bar, sticky) --------------------------------

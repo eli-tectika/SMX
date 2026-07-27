@@ -231,7 +231,7 @@ export function Interview() {
       )}
 
       {session && (
-        <>
+        <div className="chat">
           {/* sr-only: the visible transcript already shows the landed reply, so this exists purely
               for the screen-reader operator who was just told (via "Agent working…") that a turn
               had STARTED and, without this, would never be told it finished. See the state's
@@ -240,21 +240,18 @@ export function Interview() {
           <span className="sr-only" role="status" aria-live="polite">
             {turnAnnouncement}
           </span>
-          <div
-            className="region convo"
-            style={{ marginBottom: 12 }}
-            ref={scroller.ref}
-            onScroll={scroller.onScroll}
-          >
+          <div className="chat__thread" ref={scroller.ref} onScroll={scroller.onScroll}>
             {session.turns.length === 0 && streaming === null && (
-              <div className="tiny muted">
+              <div className="chat__empty">
                 Start with the client and the job. Drop any file you already have.
               </div>
             )}
 
             {session.turns.map((turn, i) => (
               <div key={i}>
-                <div className={`bub ${turn.role === 'agent' ? 'ba' : 'bu'}`}>{turn.text}</div>
+                <div className={`msg ${turn.role === 'agent' ? 'msg--agent' : 'msg--operator'}`}>
+                  {turn.text}
+                </div>
                 {/* What the agent's tools DID this turn. The dossier is written by tool call, so this
                     is the audit trail of how a recorded answer got there. */}
                 {turn.toolCalls.length > 0 && (
@@ -283,7 +280,7 @@ export function Interview() {
               lands, its own text sits in the transcript, calmly readable rather than shouted
               mid-arrival, and the sr-only beacon further down says, once, that it arrived.
             */}
-            {streaming !== null && <div className="bub ba">{streaming}</div>}
+            {streaming !== null && <div className="msg msg--agent">{streaming}</div>}
 
             {sending && streaming === null && (
               <div className="tiny muted" role="status" aria-live="polite">
@@ -300,11 +297,12 @@ export function Interview() {
             </div>
           )}
 
+          {/* The composer IS the box — the textarea inside it is borderless. It doubles as the
+              drop target, which is why the drag handlers and the hint live here. */}
           <div
-            className="region dropzone"
+            className="composer dropzone"
             data-testid="interview-dropzone"
             data-dragging={dragging ? 'true' : 'false'}
-            style={{ marginBottom: 12 }}
             onDrop={onDrop}
             onDragOver={(e) => e.preventDefault()}
             onDragEnter={onDragEnter}
@@ -327,15 +325,14 @@ export function Interview() {
                   if (canSend) void send(draft);
                 }
               }}
-              placeholder="Talk to the agent… (drop a file here to hand it over)"
+              placeholder="Message the agent…"
               aria-label="Message the interview agent"
-              rows={3}
+              rows={2}
               disabled={sending}
-              style={{ width: '100%', resize: 'vertical' }}
             />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-              <label className="btn" style={{ cursor: 'pointer' }}>
-                <i className="ti ti-paperclip" aria-hidden="true" /> Attach a file
+            <div className="composer__row">
+              <label className="composer__attach">
+                <i className="ti ti-paperclip" aria-hidden="true" /> Attach
                 <input
                   ref={fileInput}
                   type="file"
@@ -351,52 +348,72 @@ export function Interview() {
                 </span>
               )}
               <button
-                className="btn primary"
+                className="composer__send"
                 type="button"
+                aria-label="Send"
                 title="Send (Ctrl/Cmd + Enter)"
-                style={{ marginLeft: 'auto' }}
                 disabled={!canSend}
                 onClick={() => void send(draft)}
               >
-                Send
+                <i className="ti ti-arrow-up" aria-hidden="true" />
               </button>
             </div>
           </div>
 
-          {/* Coverage, as ONE line. The catalogue is never PRESENTED as a checklist: the operator came
-              here to avoid a form, and a visible list of fields is a form with extra steps. It opens
-              only when they ask what is still missing. */}
-          <div className="region" style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span className="tiny muted" role="status" aria-live="polite">
-                {cov.covered} of {cov.total} covered
-              </span>
-              {cov.open.length > 0 && (
-                <button className="btn" type="button" onClick={() => setOpenShown((v) => !v)}>
-                  {openShown ? 'Hide what’s open' : 'See what’s open'}
-                </button>
-              )}
-            </div>
-
-            {openShown && cov.open.length > 0 && (
-              <div style={{ marginTop: 10 }}>
-                {cov.open.map((q) => (
-                  <div className="step" key={q.id}>
-                    <i className="ti ti-help-circle" aria-hidden="true" />
-                    <div>
-                      <b>{q.prompt}</b>
-                      <div className="tiny muted">{q.why}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {/* Coverage, as ONE line, and the create action beside it. The catalogue is never
+              PRESENTED as a checklist: the operator came here to avoid a form, and a visible list
+              of fields is a form with extra steps. It opens only when they ask what is missing. */}
+          <div className="chat__foot">
+            <span className="tiny muted" role="status" aria-live="polite">
+              {cov.covered} of {cov.total} covered
+            </span>
+            {cov.open.length > 0 && (
+              <button className="composer__attach" type="button" onClick={() => setOpenShown((v) => !v)}>
+                {openShown ? 'Hide what’s open' : 'See what’s open'}
+              </button>
             )}
+            {/*
+              This button does NOT post to a create endpoint — it asks the agent, in the
+              conversation, to call its own create_project tool. There is no create_project HTTP
+              endpoint, because creation is the agent's tool and a second path to it would be a way
+              to create a project the gate never saw.
+            */}
+            <button
+              className="btn primary"
+              type="button"
+              style={{ marginLeft: 'auto' }}
+              title="The agent calls its own create_project tool — it needs the summary and the component breakdown first"
+              disabled={blocker !== null || sending}
+              onClick={() => void send('Everything looks right. Please create the project now.')}
+            >
+              Create the project
+            </button>
           </div>
+
+          {blocker && (
+            <div className="tiny" style={{ color: 'var(--text-warning)', marginTop: 6 }}>
+              <i className="ti ti-lock" aria-hidden="true" /> {blocker}
+            </div>
+          )}
+
+          {openShown && cov.open.length > 0 && (
+            <div className="chat__open">
+              {cov.open.map((q) => (
+                <div className="step" key={q.id}>
+                  <i className="ti ti-help-circle" aria-hidden="true" />
+                  <div>
+                    <b>{q.prompt}</b>
+                    <div className="tiny muted">{q.why}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* What the agent has settled on so far — read-only by rule. To change any of it the
               operator tells the agent why (Law 4); there is no field here to edit. */}
           {(session.summary.trim().length > 0 || session.proposedComponents.length > 0) && (
-            <div className="region" style={{ marginBottom: 12 }}>
+            <div className="chat__open">
               {session.summary.trim().length > 0 && (
                 <p className="small prose" style={{ margin: '0 0 8px' }}>
                   {session.summary}
@@ -415,31 +432,7 @@ export function Interview() {
             </div>
           )}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            {/*
-              This button does NOT post to a create endpoint — it asks the agent, in the conversation,
-              to call its own create_project tool. There is no create_project HTTP endpoint, because
-              creation is the agent's tool and a second path to it would be a way to create a project
-              the gate never saw.
-            */}
-            <button
-              className="btn primary"
-              type="button"
-              disabled={blocker !== null || sending}
-              title="Creating the project is the agent's own tool — it needs the summary and the component breakdown before it can call it."
-              onClick={() =>
-                void send('Everything looks right. Please create the project now.')
-              }
-            >
-              Create the project
-            </button>
-            {blocker && (
-              <div className="tiny" style={{ color: 'var(--text-warning)', flexBasis: '100%' }}>
-                <i className="ti ti-lock" aria-hidden="true" /> {blocker}
-              </div>
-            )}
-          </div>
-        </>
+        </div>
       )}
 
       {!session && !error && (
