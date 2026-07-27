@@ -27,7 +27,7 @@ public class DosingRevisionCostTests
     private const string P = "p1";
     private const string SeededCostGeneratedAt = "2020-01-01T00:00:00.0000000+00:00";
 
-    private static (StageDispatcher Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents,
+    private static (PipelineRunner Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents,
                     InMemoryKnowledgeStore Knowledge, FakeCatalogLookup Catalog) Sut()
     {
         var store = new InMemoryRecordStore();
@@ -39,7 +39,7 @@ public class DosingRevisionCostTests
         var conclusions = new LearnedConclusionWriter(
             knowledge, new FakeLearnedConclusionsIndex(), new FakeEmbedder(),
             NullLogger<LearnedConclusionWriter>.Instance);
-        return (new StageDispatcher(store, agents, conclusions, 2, knowledge, catalog), store, agents, knowledge, catalog);
+        return (new PipelineRunner(store, new InMemoryRunStore(), agents, new ThreadEventHub(), conclusions, 2, knowledge: knowledge, catalog: catalog), store, agents, knowledge, catalog);
     }
 
     /// What the change feed actually hands the dispatcher: a FRESH object round-tripped through the real
@@ -205,12 +205,12 @@ public class DosingRevisionCostTests
         agents.Dosing = (c, _, _, _, _) => Task.FromResult(AgentRunResult<DosingDoc>.Ok(DosingAfter()));
 
         // 1) The revision re-runs Dosing, resets Cost to `pending`, and persists the new DosingDoc.
-        await d.OnRecordChangedAsync(Delivered(DosingRevision()), default);
+        await d.OnRevisionAsync(Delivered(DosingRevision()), default);
         Assert.Equal(RevisionStatus.Applied, Assert.Single(await store.GetRevisionsAsync(P)).Status);
         Assert.Equal("pending", Stage(store, Stages.Cost).Status);   // the reset is what re-arms Cost's trigger
 
         // 2) The persisted DosingDoc reaches the change feed — THIS is what re-triggers Cost.
-        await d.OnRecordChangedAsync(Delivered((await store.GetDosingAsync(P))!), default);
+        await d.RunAsync(P, default);
 
         var cost = await store.GetCostAsync(P);
         Assert.NotNull(cost);
@@ -245,7 +245,7 @@ public class DosingRevisionCostTests
         var agentRan = false;
         agents.Dosing = (c, _, _, _, _) => { agentRan = true; return Task.FromResult(AgentRunResult<DosingDoc>.Ok(DosingAfter())); };
 
-        await d.OnRecordChangedAsync(Delivered(DosingRevision()), default);
+        await d.OnRevisionAsync(Delivered(DosingRevision()), default);
 
         // The revision failed, cleanly, naming the unsigned gate — and never reached the agent.
         var failed = Assert.Single(await store.GetRevisionsAsync(P));

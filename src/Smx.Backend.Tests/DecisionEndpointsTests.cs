@@ -212,7 +212,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     public async Task PostDetermination_RefusesWhenTheRegulatorySignatureNoLongerCoversTheAnalysis_422()
     {
         // The gate record carries no binding to the verdicts it was signed over (the TryDoseAsync
-        // rationale, StageDispatcher ~:207-228). A live unreviewed non-pass verdict that appeared AFTER the
+        // rationale, PipelineRunner ~:207-228). A live unreviewed non-pass verdict that appeared AFTER the
         // regulatory approval means the signature no longer covers the analysis the VP would be signing
         // over — the VP gate must block, with the blocker surfaced.
         await SeedAwaitingVpAsync();

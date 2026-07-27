@@ -18,7 +18,7 @@ namespace Smx.Backend.Tests;
 /// substring of no field, so it answered "no matches" to every question anyone could ask it. A seam is not
 /// covered by testing the two things it joins; it is covered by driving one end and observing the other.
 ///
-/// So this test drives the REAL StageDispatcher and the REAL LearnedConclusionWriter on project 1, and then
+/// So this test drives the REAL PipelineRunner and the REAL LearnedConclusionWriter on project 1, and then
 /// asks the REAL AIFunction — the object the agent runtime actually invokes, schema and binding included —
 /// a question on project 2, in an unrelated project's own words. Nothing in between is stubbed. Whatever it
 /// asserts is a claim about production behaviour, and whatever it cannot see, production cannot see either.
@@ -32,7 +32,7 @@ public class RevisionRoundTripTests
     /// Project 1's world, and the ONE index both projects share. The writer is the production
     /// LearnedConclusionWriter — Cosmos upsert, embed the projected content, ensure, push — so the only way
     /// a conclusion reaches `index` is the way a conclusion reaches Azure AI Search in production.
-    private static (StageDispatcher Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents,
+    private static (PipelineRunner Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents,
         InMemoryKnowledgeStore Knowledge, FakeLearnedConclusionsIndex Index) Sut()
     {
         var store = new InMemoryRecordStore();
@@ -41,7 +41,7 @@ public class RevisionRoundTripTests
         var index = new FakeLearnedConclusionsIndex();
         var conclusions = new LearnedConclusionWriter(
             knowledge, index, new FakeEmbedder(), NullLogger<LearnedConclusionWriter>.Instance);
-        return (new StageDispatcher(store, agents, conclusions, 2), store, agents, knowledge, index);
+        return (new PipelineRunner(store, new InMemoryRunStore(), agents, new ThreadEventHub(), conclusions, 2), store, agents, knowledge, index);
     }
 
     /// Project 1 mid-flight: a bottle component in HDPE, and Ba tiered A by Discovery. The operator is about
@@ -93,7 +93,7 @@ public class RevisionRoundTripTests
             Confidence = 0.7,
         }));
 
-        await dispatcher.OnRecordChangedAsync(new RevisionDoc
+        await dispatcher.OnRevisionAsync(new RevisionDoc
         {
             Id = RecordIds.Revision(P1, Stages.Discovery, "rev1"), ProjectId = P1, Stage = Stages.Discovery,
             Target = "Ba tier", Reason = Reason,

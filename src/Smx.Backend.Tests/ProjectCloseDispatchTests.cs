@@ -20,7 +20,7 @@ public class ProjectCloseDispatchTests
 {
     private const string P = "p1";
 
-    private static (StageDispatcher Dispatcher, InMemoryRecordStore Store,
+    private static (PipelineRunner Dispatcher, InMemoryRecordStore Store,
                     InMemoryKnowledgeStore Knowledge, FakeLearnedConclusionsIndex Index)
         Sut(bool withKnowledge = true)
     {
@@ -29,8 +29,8 @@ public class ProjectCloseDispatchTests
         var index = new FakeLearnedConclusionsIndex();
         var conclusions = new LearnedConclusionWriter(
             knowledge, index, new FakeEmbedder(), NullLogger<LearnedConclusionWriter>.Instance);
-        var dispatcher = new StageDispatcher(store, new FakeAgentRuns(), conclusions, 2,
-            withKnowledge ? knowledge : null);
+        var dispatcher = new PipelineRunner(store, new InMemoryRunStore(), new FakeAgentRuns(),
+            new ThreadEventHub(), conclusions, 2, knowledge: withKnowledge ? knowledge : null);
         return (dispatcher, store, knowledge, index);
     }
 
@@ -105,10 +105,10 @@ public class ProjectCloseDispatchTests
     /// then hands the dispatcher a snapshot of it. F3's re-read makes the ON-FILE record load-bearing —
     /// the close trusts the store, not the fed snapshot — so a fixture must never deliver a gate the
     /// store does not hold.
-    private static async Task DeliverSignedGateAsync(StageDispatcher d, InMemoryRecordStore store, string pid)
+    private static async Task DeliverSignedGateAsync(PipelineRunner d, InMemoryRecordStore store, string pid)
     {
         await store.UpsertGateAsync(VpGateDoc(pid));
-        await d.OnRecordChangedAsync(Delivered(VpGateDoc(pid)), default);
+        await d.OnGateAsync(Delivered(VpGateDoc(pid)), default);
     }
 
     // ---- the close -------------------------------------------------------------------------------------
@@ -151,7 +151,7 @@ public class ProjectCloseDispatchTests
         await SeedClosableAsync(store, P);
 
         await DeliverSignedGateAsync(d, store, P);
-        await d.OnRecordChangedAsync(Delivered(VpGateDoc(P)), default);   // redelivery
+        await d.OnGateAsync(Delivered(VpGateDoc(P)), default);   // redelivery
 
         var marker = Assert.Single(await knowledge.QueryMarkersAsync(null));
         Assert.Equal(0, marker.ReuseCount);            // a redelivery is not a reuse
@@ -182,7 +182,7 @@ public class ProjectCloseDispatchTests
         // Redelivering p2's gate must not double-count: p2 is already in the projects-list.
         // (p2's Decision stage is `done` now; the latch alone would absorb this — the projects-list is what
         // keeps the count honest even when the writes re-run.)
-        await d.OnRecordChangedAsync(Delivered(VpGateDoc("p2")), default);
+        await d.OnGateAsync(Delivered(VpGateDoc("p2")), default);
         Assert.Equal(1, (await knowledge.QueryMarkersAsync(null)).Single().ReuseCount);
     }
 
@@ -210,7 +210,7 @@ public class ProjectCloseDispatchTests
         var (d, store, knowledge, index) = Sut();
         await SeedClosableAsync(store, P);
 
-        await d.OnRecordChangedAsync(Delivered(VpGateDoc(P, "locked")), default);
+        await d.OnGateAsync(Delivered(VpGateDoc(P, "locked")), default);
 
         Assert.Empty(await knowledge.QueryMarkersAsync(null));
         Assert.Empty(index.Pushed);
@@ -262,7 +262,7 @@ public class ProjectCloseDispatchTests
         await SeedClosableAsync(store, P);
         await store.UpsertGateAsync(VpGateDoc(P, "locked"));   // the store's CURRENT truth: revoked
 
-        await d.OnRecordChangedAsync(Delivered(VpGateDoc(P)), default);   // the stale approved snapshot
+        await d.OnGateAsync(Delivered(VpGateDoc(P)), default);   // the stale approved snapshot
 
         Assert.Equal("awaiting-VP", DecisionStage(store, P).Status);      // no close: still parked
         Assert.Equal(ProcurementStatus.Unreleased, (await store.GetDecisionAsync(P))!.Procurement.Status);
@@ -284,7 +284,7 @@ public class ProjectCloseDispatchTests
         knowledge.ThrowOnUpsertMarker = new InvalidOperationException("cosmos died mid-write — injected");
 
         await store.UpsertGateAsync(VpGateDoc(P));
-        var escaped = await Record.ExceptionAsync(() => d.OnRecordChangedAsync(Delivered(VpGateDoc(P)), default));
+        var escaped = await Record.ExceptionAsync(() => d.OnGateAsync(Delivered(VpGateDoc(P)), default));
 
         // The exception did NOT escape to the feed...
         Assert.Null(escaped);
@@ -298,7 +298,7 @@ public class ProjectCloseDispatchTests
 
         // The `failed` stamp left `awaiting-VP`, so the latch absorbs redeliveries — the failure is
         // stable and visible, not a retry loop against a dead store.
-        await d.OnRecordChangedAsync(Delivered(VpGateDoc(P)), default);
+        await d.OnGateAsync(Delivered(VpGateDoc(P)), default);
         Assert.Equal("failed", DecisionStage(store, P).Status);
 
         // Every write inside close is idempotent (content-keyed ids, the LinkedProjects pin, the
@@ -308,7 +308,7 @@ public class ProjectCloseDispatchTests
         var project = (await store.GetProjectAsync(P))!;
         project.Stages[Stages.Decision].Status = "awaiting-VP";
         await store.UpsertProjectAsync(project);
-        await d.OnRecordChangedAsync(Delivered(VpGateDoc(P)), default);
+        await d.OnGateAsync(Delivered(VpGateDoc(P)), default);
 
         Assert.Equal("done", DecisionStage(store, P).Status);
         Assert.Single(await knowledge.QueryMarkersAsync(null));

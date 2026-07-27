@@ -7,9 +7,15 @@ using Smx.Backend.Agents;
 
 namespace Smx.Backend.Pipeline;
 
+/// Every stage run takes an <see cref="IRunTrail"/> EXPLICITLY, never ambiently. It is handed to the
+/// MafAgent constructor, and everything downstream (the tool-call capture in the thread adapter, the
+/// rejection steps in ValidatedAgentRunner) reads it from `agent.Trail`. A run whose agent's tool calls
+/// silently went to no trail would look exactly like a run that made none — so forgetting one is a
+/// compile error rather than a hole in an audit trail. Paths that legitimately have no run yet (the
+/// revise-with-reason re-runs) pass NullRunTrail.Instance and say so at the call site.
 public interface IAgentRuns
 {
-    Task<AgentRunResult<ConstraintsDoc>> RunIntakeAsync(ProjectDoc project, CancellationToken ct);
+    Task<AgentRunResult<ConstraintsDoc>> RunIntakeAsync(ProjectDoc project, IRunTrail trail, CancellationToken ct);
 
     /// The need-driven pool proposal (PoolAgent), run BEFORE Discovery from the need alone.
     /// <param name="project">carries the sensitive terms the pool's web-search tool must refuse to send —
@@ -17,7 +23,7 @@ public interface IAgentRuns
     /// <param name="revision">null for an ordinary run; non-null re-proposes applying the operator's
     /// revise-with-reason. Explicit, not an overload, for the usual reason.</param>
     Task<AgentRunResult<PoolDoc>> RunPoolAsync(
-        ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, CancellationToken ct);
+        ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, IRunTrail trail, CancellationToken ct);
 
     /// <param name="project">carries Client / Product / ProjectId — the terms the web-search tool must
     /// refuse to send. Required, not optional: a Discovery run without them is a run that cannot protect the
@@ -26,10 +32,10 @@ public interface IAgentRuns
     /// revise-with-reason. Explicit rather than an overload: forgetting it is a compile error, not an agent
     /// that silently ignores the operator.</param>
     Task<AgentRunResult<CandidatesDoc>> RunDiscoveryAsync(
-        ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, CancellationToken ct);
+        ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, IRunTrail trail, CancellationToken ct);
 
     /// <param name="revision">null for an ordinary run; non-null re-screens the cell applying the revision.</param>
-    Task<AgentRunResult<VerdictDoc>> RunRegulatoryAsync(ConstraintsDoc constraints, CandidateSubstance candidate, RevisionDoc? revision, CancellationToken ct);
+    Task<AgentRunResult<VerdictDoc>> RunRegulatoryAsync(ConstraintsDoc constraints, CandidateSubstance candidate, RevisionDoc? revision, IRunTrail trail, CancellationToken ct);
 
     /// <param name="compliant">the operator-recommended verdicts (CompliantSet.Of) — the ONLY substances
     /// Dosing may dose.</param>
@@ -43,7 +49,7 @@ public interface IAgentRuns
         ConstraintsDoc constraints, IReadOnlyList<VerdictDoc> compliant,
         IReadOnlyDictionary<(string ComponentId, string Element), Floor> floors,
         IReadOnlyDictionary<string, double> loadings,
-        RevisionDoc? revision, CancellationToken ct);
+        RevisionDoc? revision, IRunTrail trail, CancellationToken ct);
 
     /// <param name="assembled">the DETERMINISTIC decision matrix (DecisionAssembler.Assemble) — the agent
     /// only PICKS a code over these rows; it authors none of them.</param>
@@ -53,7 +59,8 @@ public interface IAgentRuns
     /// revise-with-reason. Explicit rather than an overload: forgetting it is a compile error, not an agent
     /// that silently ignores the operator.</param>
     Task<AgentRunResult<DecisionDoc>> RunDecisionAsync(
-        IReadOnlyList<ComponentDecision> assembled, DosingDoc dosing, RevisionDoc? revision, CancellationToken ct);
+        IReadOnlyList<ComponentDecision> assembled, DosingDoc dosing, RevisionDoc? revision, IRunTrail trail,
+        CancellationToken ct);
 
     Task<AgentRunResult<ConclusionOutput>> RunConclusionAsync(RevisionDoc revision, ConstraintsDoc constraints, string stageOutputJson, CancellationToken ct);
 
@@ -76,23 +83,23 @@ public interface IAgentRuns
 
 public sealed class AgentRuns(IChatClient chatClient, ToolBox toolBox) : IAgentRuns
 {
-    public Task<AgentRunResult<ConstraintsDoc>> RunIntakeAsync(ProjectDoc project, CancellationToken ct) =>
+    public Task<AgentRunResult<ConstraintsDoc>> RunIntakeAsync(ProjectDoc project, IRunTrail trail, CancellationToken ct) =>
         IntakeAgent.RunAsync(
-            new MafAgent(chatClient, IntakeAgent.AgentName, IntakeAgent.Instructions, toolBox.IntakeTools()),
+            new MafAgent(chatClient, IntakeAgent.AgentName, IntakeAgent.Instructions, toolBox.IntakeTools(), trail),
             project, ct);
 
     public Task<AgentRunResult<PoolDoc>> RunPoolAsync(
-        ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, CancellationToken ct) =>
+        ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, IRunTrail trail, CancellationToken ct) =>
         PoolAgent.RunAsync(
             new MafAgent(chatClient, PoolAgent.AgentName, PoolAgent.Instructions,
-                toolBox.PoolTools(TermsFor(project))),
+                toolBox.PoolTools(TermsFor(project)), trail),
             constraints, revision, ct);
 
     public Task<AgentRunResult<CandidatesDoc>> RunDiscoveryAsync(
-        ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, CancellationToken ct) =>
+        ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, IRunTrail trail, CancellationToken ct) =>
         DiscoveryAgent.RunAsync(
             new MafAgent(chatClient, DiscoveryAgent.AgentName, DiscoveryAgent.Instructions,
-                toolBox.DiscoveryTools(TermsFor(project))),
+                toolBox.DiscoveryTools(TermsFor(project)), trail),
             constraints, revision, ct);
 
     /// The project's own identifiers. These are exactly the strings that must never reach an external search:
@@ -102,9 +109,9 @@ public sealed class AgentRuns(IChatClient chatClient, ToolBox toolBox) : IAgentR
             .Where(t => !string.IsNullOrWhiteSpace(t))
             .ToList());
 
-    public Task<AgentRunResult<VerdictDoc>> RunRegulatoryAsync(ConstraintsDoc constraints, CandidateSubstance candidate, RevisionDoc? revision, CancellationToken ct) =>
+    public Task<AgentRunResult<VerdictDoc>> RunRegulatoryAsync(ConstraintsDoc constraints, CandidateSubstance candidate, RevisionDoc? revision, IRunTrail trail, CancellationToken ct) =>
         RegulatoryAgent.RunAsync(
-            new MafAgent(chatClient, RegulatoryAgent.AgentName, RegulatoryAgent.Instructions, toolBox.RegulatoryTools()),
+            new MafAgent(chatClient, RegulatoryAgent.AgentName, RegulatoryAgent.Instructions, toolBox.RegulatoryTools(), trail),
             constraints, candidate, revision, ct);
 
     /// The Dosing tools are closed over THIS project's constraints — the same discipline as DiscoveryTools over
@@ -115,18 +122,21 @@ public sealed class AgentRuns(IChatClient chatClient, ToolBox toolBox) : IAgentR
         ConstraintsDoc constraints, IReadOnlyList<VerdictDoc> compliant,
         IReadOnlyDictionary<(string ComponentId, string Element), Floor> floors,
         IReadOnlyDictionary<string, double> loadings,
-        RevisionDoc? revision, CancellationToken ct) =>
+        RevisionDoc? revision, IRunTrail trail, CancellationToken ct) =>
         DosingAgent.RunAsync(
-            new MafAgent(chatClient, DosingAgent.AgentName, DosingAgent.Instructions, toolBox.DosingTools(constraints)),
+            new MafAgent(chatClient, DosingAgent.AgentName, DosingAgent.Instructions,
+                toolBox.DosingTools(constraints), trail),
             constraints, compliant, floors, loadings, revision, ct);
 
     /// Decision reads what Dosing reads (learned conclusions + reference) — the matrix it picks over is
     /// already assembled deterministically, so there is deliberately no tool that could let the model "look
     /// up" a different answer than the record it is proposing over.
     public Task<AgentRunResult<DecisionDoc>> RunDecisionAsync(
-        IReadOnlyList<ComponentDecision> assembled, DosingDoc dosing, RevisionDoc? revision, CancellationToken ct) =>
+        IReadOnlyList<ComponentDecision> assembled, DosingDoc dosing, RevisionDoc? revision, IRunTrail trail,
+        CancellationToken ct) =>
         DecisionAgent.RunAsync(
-            new MafAgent(chatClient, DecisionAgent.AgentName, DecisionAgent.Instructions, toolBox.DecisionReadTools()),
+            new MafAgent(chatClient, DecisionAgent.AgentName, DecisionAgent.Instructions,
+                toolBox.DecisionReadTools(), trail),
             assembled, dosing, revision, ct);
 
     /// No tools: the distiller reasons only over what it is handed (the revision + the stage output it

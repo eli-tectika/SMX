@@ -114,22 +114,23 @@ public sealed class FakeAgentRuns : IAgentRuns
     public int TotalCalls => IntakeCalls + PoolCalls + DiscoveryCalls + RegulatoryCalls + ConclusionCalls + ChatCalls + DosingCalls
         + DecisionCalls + InterviewCalls;
 
-    Task<Smx.Backend.Agents.AgentRunResult<ConstraintsDoc>> IAgentRuns.RunIntakeAsync(ProjectDoc p, CancellationToken ct)
+    Task<Smx.Backend.Agents.AgentRunResult<ConstraintsDoc>> IAgentRuns.RunIntakeAsync(ProjectDoc p, IRunTrail trail, CancellationToken ct)
     { Interlocked.Increment(ref IntakeCalls); return Intake(p); }
-    Task<AgentRunResult<PoolDoc>> IAgentRuns.RunPoolAsync(ProjectDoc project, ConstraintsDoc c, RevisionDoc? revision, CancellationToken ct)
+    Task<AgentRunResult<PoolDoc>> IAgentRuns.RunPoolAsync(ProjectDoc project, ConstraintsDoc c, RevisionDoc? revision, IRunTrail trail, CancellationToken ct)
     { Interlocked.Increment(ref PoolCalls); return Pool(project, c, revision); }
     Task<Smx.Backend.Agents.AgentRunResult<CandidatesDoc>> IAgentRuns.RunDiscoveryAsync(
-        ProjectDoc project, ConstraintsDoc c, RevisionDoc? revision, CancellationToken ct)
+        ProjectDoc project, ConstraintsDoc c, RevisionDoc? revision, IRunTrail trail, CancellationToken ct)
     { Interlocked.Increment(ref DiscoveryCalls); return Discovery(project, c, revision); }
-    Task<Smx.Backend.Agents.AgentRunResult<VerdictDoc>> IAgentRuns.RunRegulatoryAsync(ConstraintsDoc c, CandidateSubstance cand, RevisionDoc? revision, CancellationToken ct)
+    Task<Smx.Backend.Agents.AgentRunResult<VerdictDoc>> IAgentRuns.RunRegulatoryAsync(ConstraintsDoc c, CandidateSubstance cand, RevisionDoc? revision, IRunTrail trail, CancellationToken ct)
     { Interlocked.Increment(ref RegulatoryCalls); return Regulatory(c, cand, revision); }
     Task<AgentRunResult<DosingDoc>> IAgentRuns.RunDosingAsync(
         ConstraintsDoc c, IReadOnlyList<VerdictDoc> compliant,
         IReadOnlyDictionary<(string ComponentId, string Element), Floor> floors,
-        IReadOnlyDictionary<string, double> loadings, RevisionDoc? revision, CancellationToken ct)
+        IReadOnlyDictionary<string, double> loadings, RevisionDoc? revision, IRunTrail trail, CancellationToken ct)
     { Interlocked.Increment(ref DosingCalls); return Dosing(c, compliant, floors, loadings, revision); }
     Task<AgentRunResult<DecisionDoc>> IAgentRuns.RunDecisionAsync(
-        IReadOnlyList<ComponentDecision> assembled, DosingDoc dosing, RevisionDoc? revision, CancellationToken ct)
+        IReadOnlyList<ComponentDecision> assembled, DosingDoc dosing, RevisionDoc? revision, IRunTrail trail,
+        CancellationToken ct)
     { Interlocked.Increment(ref DecisionCalls); return Decision(assembled, dosing, revision); }
     Task<AgentRunResult<ConclusionOutput>> IAgentRuns.RunConclusionAsync(RevisionDoc revision, ConstraintsDoc c, string stageOutputJson, CancellationToken ct)
     { Interlocked.Increment(ref ConclusionCalls); return Conclusion(revision, c, stageOutputJson); }

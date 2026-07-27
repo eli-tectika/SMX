@@ -18,24 +18,23 @@ public class ChatDispatchTests
 {
     private const string P = "p1";
 
-    private static (StageDispatcher Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents) Sut()
+    private static (PipelineRunner Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents) Sut()
     {
         var store = new InMemoryRecordStore();
         var agents = new FakeAgentRuns();
         var conclusions = new LearnedConclusionWriter(
             new InMemoryKnowledgeStore(), new FakeLearnedConclusionsIndex(), new FakeEmbedder(),
             NullLogger<LearnedConclusionWriter>.Instance);
-        return (new StageDispatcher(store, agents, conclusions, 2), store, agents);
+        return (new PipelineRunner(store, new InMemoryRunStore(), agents, new ThreadEventHub(), conclusions, 2), store, agents);
     }
 
     /// A project driven to Discovery: constraints and candidates are in the record, so there IS a stage
     /// output for the operator to ask about — and to revise.
-    private static async Task SeedAsync(StageDispatcher d, InMemoryRecordStore store)
+    private static async Task SeedAsync(PipelineRunner d, InMemoryRecordStore store)
     {
         var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
         await store.UpsertProjectAsync(project);
-        await d.OnRecordChangedAsync(project, default);                                // intake → constraints
-        await d.OnRecordChangedAsync((await store.GetConstraintsAsync(P))!, default);  // discovery → candidates
+        await d.RunAsync(P, default);   // intake → constraints → discovery → candidates → …
     }
 
     private static ChatMessageDoc Message(string stage, string key, string text, string createdAt) => new()
@@ -62,10 +61,10 @@ public class ChatDispatchTests
     /// The real path, and the reason the tests do not just hand a doc to the dispatcher: the backend WRITES
     /// the message, and the change feed then delivers it. A message that was never persisted is one the feed
     /// could never have delivered.
-    private static async Task<ChatMessageDoc> SendAsync(StageDispatcher d, InMemoryRecordStore store, ChatMessageDoc m)
+    private static async Task<ChatMessageDoc> SendAsync(PipelineRunner d, InMemoryRecordStore store, ChatMessageDoc m)
     {
         await store.UpsertChatMessageAsync(m);
-        await d.OnRecordChangedAsync(Delivered(m), default);
+        await d.OnChatMessageAsync(Delivered(m), default);
         return (await store.GetChatMessageAsync(P, m.Id))!;
     }
 
@@ -73,7 +72,7 @@ public class ChatDispatchTests
         store.Documents.OfType<ChatReplyDoc>().SingleOrDefault(r => r.MessageId == m.Id);
 
     [Fact]
-    public async Task Dispatcher_DoesNotRunIntake_ForAnAwaitingConfirmationProject()
+    public async Task TheRunner_DoesNotRunIntake_ForAnAwaitingConfirmationProject()
     {
         // THE safety property of the whole feature: an agent-created project must not start the pipeline.
         var (d, store, agents) = Sut();
@@ -81,7 +80,7 @@ public class ChatDispatchTests
             JsonDocument.Parse("{}").RootElement, intakeStatus: StageStatus.AwaitingConfirmation);
         await store.UpsertProjectAsync(project);
 
-        await d.OnRecordChangedAsync(project, default);
+        await d.RunAsync(P, default);
 
         Assert.Equal(0, agents.IntakeCalls);
         Assert.Equal(StageStatus.AwaitingConfirmation,
@@ -223,7 +222,7 @@ public class ChatDispatchTests
         // claim traces to a cited source for THAT stage.
         var (d, store, agents) = Sut();
         await SeedAsync(d, store);
-        await d.OnRecordChangedAsync((await store.GetCandidatesAsync(P))!, default);   // regulatory → verdicts
+        await d.RunAsync(P, default);   // regulatory → verdicts
 
         // Two stages, each with a conversation of its own. Both are in the same Cosmos partition, so only the
         // stage predicate keeps them apart.
@@ -378,7 +377,7 @@ public class ChatDispatchTests
 
         var m = Message(stage, "aaaa1111", "what did you dose?", "2026-07-15T00:00:00Z");
         await store.UpsertChatMessageAsync(m);
-        await d.OnRecordChangedAsync(Delivered(m), default);
+        await d.OnChatMessageAsync(Delivered(m), default);
 
         Assert.Contains(expected, seen);
         Assert.NotEqual("{}", seen);
@@ -397,13 +396,13 @@ public class ChatDispatchTests
         var m = Message(Stages.Discovery, "m1", "why is Zr tier A here?", "2026-07-14T09:00:00.0000000+00:00");
         var sent = await SendAsync(d, store, m);
 
-        await d.OnRecordChangedAsync(Delivered(sent), default);  // the answered doc, redelivered
+        await d.OnChatMessageAsync(Delivered(sent), default);  // the answered doc, re-sent
         // ...and the ORIGINAL, still-`pending` snapshot, redelivered. This is the delivery that matters: the
         // guard must be read off the CURRENT record, not off whatever the feed happens to be carrying. A
         // dispatcher that trusts the element re-runs the turn here — and the turn may already have queued a
         // revision, so a re-run means a second stage re-run and a second Learned Conclusion from ONE
         // operator instruction.
-        await d.OnRecordChangedAsync(Delivered(m), default);
+        await d.OnChatMessageAsync(Delivered(m), default);
 
         Assert.Equal(1, agents.ChatCalls);
 
@@ -448,7 +447,7 @@ public class ChatDispatchTests
         var m = Message(Stages.Discovery, "m1", "why is Zr tier A here?", "2026-07-14T09:00:00.0000000+00:00");
         await store.UpsertChatMessageAsync(m);
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => d.OnRecordChangedAsync(Delivered(m), cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => d.OnChatMessageAsync(Delivered(m), cts.Token));
 
         var after = (await store.GetChatMessageAsync(P, m.Id))!;
         Assert.Equal(ChatStatus.Pending, after.Status);

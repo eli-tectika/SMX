@@ -17,7 +17,7 @@ public class RevisionDispatchTests
 {
     private const string P = "p1";
 
-    private static (StageDispatcher Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents, InMemoryKnowledgeStore Knowledge) Sut(
+    private static (PipelineRunner Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents, InMemoryKnowledgeStore Knowledge) Sut(
         ILearnedConclusionWriter? conclusions = null)
     {
         var store = new InMemoryRecordStore();
@@ -28,7 +28,7 @@ public class RevisionDispatchTests
         conclusions ??= new LearnedConclusionWriter(
             knowledge, new FakeLearnedConclusionsIndex(), new FakeEmbedder(),
             NullLogger<LearnedConclusionWriter>.Instance);
-        return (new StageDispatcher(store, agents, conclusions, 2), store, agents, knowledge);
+        return (new PipelineRunner(store, new InMemoryRunStore(), agents, new ThreadEventHub(), conclusions, 2), store, agents, knowledge);
     }
 
     /// Every real dependency behind ILearnedConclusionWriter can fail on day one: EnsureIndexAsync needs a
@@ -45,13 +45,11 @@ public class RevisionDispatchTests
     /// ruled on it, and approved the regulatory gate — so the gate is `approved` and the Regulatory stage
     /// has reached `done`. This is precisely the state in which a revision is dangerous, because
     /// TryAssembleAsync will not lower a stage that already reached `done`.
-    private static async Task SeedApprovedAsync(StageDispatcher d, InMemoryRecordStore store)
+    private static async Task SeedApprovedAsync(PipelineRunner d, InMemoryRecordStore store)
     {
         var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
         await store.UpsertProjectAsync(project);
-        await d.OnRecordChangedAsync(project, default);                                  // intake  → constraints
-        await d.OnRecordChangedAsync((await store.GetConstraintsAsync(P))!, default);    // discovery → candidates (Zr/cas-zr/bottle, tier A)
-        await d.OnRecordChangedAsync((await store.GetCandidatesAsync(P))!, default);     // regulatory fan-out → verdict + matrix
+        await d.RunAsync(P, default);   // intake → discovery → regulatory fan-out → matrix
 
         var verdict = (await store.GetVerdictsAsync(P))[0];
         verdict.EvidenceReviewed = true;
@@ -63,7 +61,7 @@ public class RevisionDispatchTests
             Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
             Status = "approved", ApprovedAt = "2026-07-13T09:00:00.0000000+00:00",
         });
-        await d.OnRecordChangedAsync((await store.GetGateAsync(P, GateTypes.Regulatory))!, default);
+        await d.OnGateAsync((await store.GetGateAsync(P, GateTypes.Regulatory))!, default);
 
         Assert.Equal("done", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
     }
@@ -93,7 +91,7 @@ public class RevisionDispatchTests
         var (d, store, _, _) = Sut();
         await SeedApprovedAsync(d, store);
 
-        await d.OnRecordChangedAsync(Revision(Stages.Discovery, "Zr overlaps the Ti K-beta line in this matrix"), default);
+        await d.OnRevisionAsync(Revision(Stages.Discovery, "Zr overlaps the Ti K-beta line in this matrix"), default);
 
         var gate = (await store.GetGateAsync(P, GateTypes.Regulatory))!;
         Assert.Equal("locked", gate.Status);
@@ -117,7 +115,7 @@ public class RevisionDispatchTests
         };
 
         var revision = Revision(Stages.Discovery, "prefer the octoate — the neodecanoate bleeds in HDPE");
-        await d.OnRecordChangedAsync(revision, default);
+        await d.OnRevisionAsync(revision, default);
 
         // The agent is not merely re-run: it is re-run WITH the operator's directive. A re-run that ignored
         // the reason would produce the same output and quietly discard the operator's instruction.
@@ -163,7 +161,7 @@ public class RevisionDispatchTests
 
         var revision = Revision(Stages.Regulatory, "food-contact use was missed — re-screen against the FCM list",
             cas: "cas-zr", componentId: "bottle");
-        await d.OnRecordChangedAsync(revision, default);
+        await d.OnRevisionAsync(revision, default);
 
         Assert.Equal("cas-zr", targeted!.Cas);      // the revision resolved to the candidate it names
         var after = (await store.GetVerdictAsync(P, "cas-zr", "bottle"))!;
@@ -185,7 +183,7 @@ public class RevisionDispatchTests
         await SeedApprovedAsync(d, store);
 
         var revision = Revision(Stages.Discovery, reason);
-        await d.OnRecordChangedAsync(revision, default);
+        await d.OnRevisionAsync(revision, default);
 
         var conclusion = await knowledge.GetLearnedConclusionAsync(KnowledgeKinds.Material, revision.Id);
         Assert.NotNull(conclusion);
@@ -221,7 +219,7 @@ public class RevisionDispatchTests
             AgentRunResult<ConclusionOutput>.NeedsReview("the distiller could not produce a valid conclusion"));
 
         var revision = Revision(Stages.Discovery, reason);
-        await d.OnRecordChangedAsync(revision, default);
+        await d.OnRevisionAsync(revision, default);
 
         var conclusion = await knowledge.GetLearnedConclusionAsync(KnowledgeKinds.Material, revision.Id);
         Assert.NotNull(conclusion);
@@ -245,8 +243,8 @@ public class RevisionDispatchTests
         await SeedApprovedAsync(d, store);
         var discoveryCallsBefore = agents.DiscoveryCalls;
 
-        await d.OnRecordChangedAsync(Revision(Stages.Discovery, "drop the neodecanoate"), default);
-        await d.OnRecordChangedAsync(Assert.Single(await store.GetRevisionsAsync(P)), default);   // redelivery (now `applied`)
+        await d.OnRevisionAsync(Revision(Stages.Discovery, "drop the neodecanoate"), default);
+        await d.OnRevisionAsync(Assert.Single(await store.GetRevisionsAsync(P)), default);   // re-delivered, now `applied`
 
         Assert.Equal(discoveryCallsBefore + 1, agents.DiscoveryCalls);
         Assert.Equal(1, agents.ConclusionCalls);
@@ -260,7 +258,7 @@ public class RevisionDispatchTests
         agents.Discovery = (_, _, _) => Task.FromResult(
             AgentRunResult<CandidatesDoc>.NeedsReview("no catalog hits for the requested form"));
 
-        await d.OnRecordChangedAsync(Revision(Stages.Discovery, "use the octoate instead"), default);
+        await d.OnRevisionAsync(Revision(Stages.Discovery, "use the octoate instead"), default);
 
         var failed = Assert.Single(await store.GetRevisionsAsync(P));
         Assert.Equal(RevisionStatus.Failed, failed.Status);
@@ -297,8 +295,8 @@ public class RevisionDispatchTests
         // The revision drops Zr to tier C: it is no longer a screened candidate, so it must LEAVE the matrix.
         agents.Discovery = (_, _, _) => Task.FromResult(AgentRunResult<CandidatesDoc>.Ok(Candidates(Substance("C"))));
 
-        await d.OnRecordChangedAsync(Revision(Stages.Discovery, "Zr is tier C here — the bottle already contains it"), default);
-        await d.OnRecordChangedAsync((await store.GetCandidatesAsync(P))!, default);   // what the change feed delivers next
+        await d.OnRevisionAsync(Revision(Stages.Discovery, "Zr is tier C here — the bottle already contains it"), default);
+        await d.RunAsync(P, default);   // the next pass re-assembles over the revised candidates
 
         var after = (await store.GetMatrixAsync(P))!;
         Assert.Empty(after.Cells);
@@ -323,7 +321,7 @@ public class RevisionDispatchTests
         await SeedApprovedAsync(d, store);
         agents.Discovery = (_, _, _) => Task.FromResult(AgentRunResult<CandidatesDoc>.Ok(Candidates(Substance("C"))));
 
-        await d.OnRecordChangedAsync(Revision(Stages.Discovery, "Zr overlaps the Ti K-beta line in this matrix"), default);
+        await d.OnRevisionAsync(Revision(Stages.Discovery, "Zr overlaps the Ti K-beta line in this matrix"), default);
 
         var failed = Assert.Single(await store.GetRevisionsAsync(P));
         Assert.Equal(RevisionStatus.Failed, failed.Status);
@@ -345,13 +343,11 @@ public class RevisionDispatchTests
     /// A project screened through Regulatory and SIGNED, but whose stage has not yet been promoted to `done`
     /// — the state POST /regulatory/approve leaves behind between writing the gate and the change feed
     /// delivering it. This is the window in which a fresh verdict can arrive under an existing signature.
-    private static async Task SeedSignedButNotYetPromotedAsync(StageDispatcher d, InMemoryRecordStore store)
+    private static async Task SeedSignedButNotYetPromotedAsync(PipelineRunner d, InMemoryRecordStore store)
     {
         var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
         await store.UpsertProjectAsync(project);
-        await d.OnRecordChangedAsync(project, default);
-        await d.OnRecordChangedAsync((await store.GetConstraintsAsync(P))!, default);
-        await d.OnRecordChangedAsync((await store.GetCandidatesAsync(P))!, default);
+        await d.RunAsync(P, default);
         await store.UpsertGateAsync(new GateDoc
         {
             Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
@@ -382,7 +378,7 @@ public class RevisionDispatchTests
             Dimensions = [new("ElementGate", VerdictStatus.Fail,
                 [new Citation("regulatory", "reach-annex-xvii", "t")], 0.9, "restricted in food contact")],
         });
-        await d.OnRecordChangedAsync((await store.GetVerdictAsync(P, live.Cas, live.ComponentId))!, default);
+        await d.RunAsync(P, default);
 
         Assert.Equal("awaiting-RE", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
     }
@@ -395,7 +391,7 @@ public class RevisionDispatchTests
         var (d, store, _, _) = Sut();
         await SeedSignedButNotYetPromotedAsync(d, store);   // the seeded verdict is a clean Pass ⇒ armable
 
-        await d.OnRecordChangedAsync((await store.GetVerdictsAsync(P))[0], default);
+        await d.RunAsync(P, default);
 
         Assert.Equal("done", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
     }

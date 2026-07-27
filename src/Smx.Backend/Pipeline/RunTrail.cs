@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Smx.Backend.Api;
 using Smx.Domain;
 using Smx.Domain.Records;
 
@@ -56,8 +57,14 @@ public sealed class RunTrail(RunDoc run, IRunStore store, ThreadEventHub hub, IL
     {
         if (_opened) return;
         _opened = true;
+        // RunSummary, never the RunDoc raw. The doc's identifier serializes as `id` and it carries a
+        // `projectId`; §7.1 names the field `runId` and has no `projectId` at all. Publishing the doc would
+        // have the live stream and the GET/replay path disagree on the one field the client keys every run
+        // entry on — and it would fail silently, in a browser, with green tests. ThreadEndpoints.ReplayAsync
+        // emits exactly this shape; the two are one cursor space and must stay byte-identical.
         hub.Publish(run.ProjectId, run.Stage,
-            new ThreadFrame("entry", run.Id, new { seq = 0, at = run.StartedAt, kind = "run", run }));
+            new ThreadFrame("entry", run.Id,
+                new ThreadRunEntry { Seq = 0, At = run.StartedAt, Run = RunSummary.From(run) }));
         await PersistAsync(ct);
     }
 

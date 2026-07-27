@@ -33,7 +33,7 @@ public class AgentRunsTests
             terms => { captured = terms; return new FakeWebSearch(); }, useHostedWebSearch: false);
 
         IAgentRuns runs = new AgentRuns(new FakeChatClient(), toolBox);
-        await runs.RunDiscoveryAsync(project, Constraints(project.ProjectId), null, default);
+        await runs.RunDiscoveryAsync(project, Constraints(project.ProjectId), null, NullRunTrail.Instance, default);
         return captured;
     }
 

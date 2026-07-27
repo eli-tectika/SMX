@@ -10,18 +10,18 @@ using Smx.Backend.Tests.Fakes;
 
 namespace Smx.Backend.Tests;
 
-/// The Dosing dispatch, end to end through the bus. The false pass this file exists to prevent is the hard
-/// regulatory gate being bypassed by the stage right after it: writing a doc IS the dispatch, so the question
-/// of WHICH doc triggers Dosing is a safety question. The answer is the OPERATOR'S SIGNATURE (the approved
-/// GateDoc), never the MatrixDoc — because the matrix assembles on verdict COMPLETENESS, before any signature,
-/// so dosing off it would dose an unsigned gate. Everything else here is the "park, do not guess" discipline:
+/// The Dosing stage, driven through the pipeline runner. The false pass this file exists to prevent is the
+/// hard regulatory gate being bypassed by the stage right after it: Dosing runs only behind the OPERATOR'S
+/// SIGNATURE, and emphatically not off the MatrixDoc — the matrix assembles on verdict COMPLETENESS, before
+/// any signature, so a project can be fully assembled and fully doseable and still unsigned. The runner
+/// reaching Dosing is not permission; the gate record is. Everything else here is "park, do not guess":
 /// a missing measurement or a missing metal loading stops the stage rather than letting the agent improvise a
 /// marker nobody can detect or a batch nobody dosed right.
 public class DosingDispatchTests
 {
     private const string P = "p1";
 
-    private static (StageDispatcher Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents, InMemoryKnowledgeStore Knowledge) Sut()
+    private static (PipelineRunner Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents, InMemoryKnowledgeStore Knowledge) Sut()
     {
         var store = new InMemoryRecordStore();
         var agents = new FakeAgentRuns();
@@ -31,12 +31,10 @@ public class DosingDispatchTests
             NullLogger<LearnedConclusionWriter>.Instance);
         // The REAL knowledge store is passed into the optional trailing param — the production wiring that
         // this task defers (Orchestrator/Program.cs) is exactly this argument.
-        return (new StageDispatcher(store, agents, conclusions, 2, knowledge), store, agents, knowledge);
+        return (new PipelineRunner(store, new InMemoryRunStore(), agents, new ThreadEventHub(), conclusions, 2, knowledge: knowledge), store, agents, knowledge);
     }
 
-    /// What the change feed actually hands the dispatcher: a FRESH object round-tripped through the real
-    /// router, never the instance the test is still holding. Handing the dispatcher your own object hides
-    /// idempotency bugs (a handler that mutates the fed object makes a "stale redelivery" no longer stale).
+    /// A FRESH object round-tripped through the real router, never the instance the test is still holding.
     private static T Delivered<T>(T doc) =>
         (T)RecordDocRouter.Route(JsonSerializer.SerializeToElement(doc, Json.Options))!;
 
@@ -86,7 +84,8 @@ public class DosingDispatchTests
     /// A project screened through Regulatory with a compliant set of exactly one (cas-ok recommended; cas-no
     /// rejected), the floor's inputs on file, and the loading known — i.e. FULLY doseable. Only the gate
     /// status and the two "gap" toggles vary between tests. The project's Dosing stage is left `pending`,
-    /// which is the at-least-once trigger condition TryDoseAsync acts on.
+    /// which is the condition RunDosingAsync acts on (a re-opened park re-enters through exactly the same
+    /// door — see the re-entry test).
     private static async Task SeedAsync(
         InMemoryRecordStore store, InMemoryKnowledgeStore knowledge,
         string gateStatus = "approved", bool withBackground = true, bool withLoading = true,
@@ -95,7 +94,7 @@ public class DosingDispatchTests
         var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
         project.Stages[Stages.Intake].Status = "done";
         project.Stages[Stages.Discovery].Status = "done";
-        project.Stages[Stages.Regulatory].Status = "awaiting-RE"; // an approved-gate delivery flips this to done
+        project.Stages[Stages.Regulatory].Status = "awaiting-RE"; // OnGateAsync flips this to done
         project.Stages[Stages.Matrix].Status = "done";
         // Dosing stays "pending".
         await store.UpsertProjectAsync(project);
@@ -108,25 +107,16 @@ public class DosingDispatchTests
         if (withLoading) await knowledge.UpsertSubstancePropertyAsync(Loading("cas-ok", "Zr"));
     }
 
-    /// The MatrixDoc TryAssembleAsync would have written from this state — it assembles on verdict
-    /// COMPLETENESS, so it exists whether or not the gate is signed. That is the whole point of the
-    /// gate-bypass test below.
-    private static MatrixDoc Matrix() =>
-        MatrixAssembler.Assemble(Candidates(), ["bottle"],
-            [Verdict("cas-ok", "Zr", VerdictStatus.Pass, true, Determinations.Recommended),
-             Verdict("cas-no", "Ba", VerdictStatus.Pass, true, Determinations.Rejected)],
-            "2026-07-15T00:00:00.0000000+00:00");
-
     private static StageState DosingStage(InMemoryRecordStore store) =>
         store.Documents.OfType<ProjectDoc>().Single().Stages[Stages.Dosing];
 
     // ---- the trigger -----------------------------------------------------------------------------------
 
     [Fact]
-    public async Task TheApprovedGate_TriggersDosing_OverTheCompliantSetOnly()
+    public async Task BehindTheApprovedGate_DosingRuns_OverTheCompliantSetOnly()
     {
-        // The signature IS the dispatch. Delivering the approved regulatory GateDoc runs Dosing — and Dosing
-        // is handed ONLY the operator-recommended substance (cas-ok), never the rejected one (cas-no). A
+        // Behind a signed gate the runner reaches Dosing — and Dosing is handed ONLY the
+        // operator-recommended substance (cas-ok), never the rejected one (cas-no). A
         // rejected substance reaching the ppm/code stage would be a chemical the operator refused, dosed into
         // a customer's product past the very gate that refused it.
         var (d, store, agents, knowledge) = Sut();
@@ -142,7 +132,7 @@ public class DosingDispatchTests
             }));
         };
 
-        await d.OnRecordChangedAsync(Delivered(Gate("approved")), default);
+        await d.RunAsync(P, default);
 
         Assert.Equal(1, agents.DosingCalls);
         Assert.NotNull(handed);
@@ -153,17 +143,17 @@ public class DosingDispatchTests
     }
 
     [Fact]
-    public async Task TheMATRIX_DoesNOTTriggerDosing_BecauseItExistsBEFORETheGateIsSigned()
+    public async Task AnAssembledButUNSIGNEDProject_DoesNotDose()
     {
-        // THE GATE-BYPASS GUARD. TryAssembleAsync upserts the MatrixDoc on verdict COMPLETENESS — the operator
-        // has determined a few substances but has NOT signed the regulatory gate yet. If Dosing triggered off
-        // the matrix, those substances would be dosed anyway: the hard regulatory gate bypassed by the stage
-        // right after it. The state below is FULLY doseable (floor inputs present, loading known) except for
-        // the one thing that matters — the signature. Delivering the matrix must do nothing.
+        // THE GATE-BYPASS GUARD. The matrix assembles on verdict COMPLETENESS — the operator has determined a
+        // few substances but has NOT signed the regulatory gate. The runner walks the whole pipeline
+        // regardless, so if reaching Dosing were permission to dose, those substances would be dosed anyway:
+        // the hard regulatory gate bypassed by the stage right after it. The state below is FULLY doseable
+        // (floor inputs present, loading known) except for the one thing that matters — the signature.
         var (d, store, agents, knowledge) = Sut();
         await SeedAsync(store, knowledge, gateStatus: "locked");   // determined, NOT signed
 
-        await d.OnRecordChangedAsync(Delivered(Matrix()), default);
+        await d.RunAsync(P, default);
 
         Assert.Equal(0, agents.DosingCalls);
         Assert.Null(await store.GetDosingAsync(P));
@@ -183,7 +173,7 @@ public class DosingDispatchTests
         await SeedAsync(store, knowledge,
             casNo: Verdict("cas-no", "Ba", VerdictStatus.Fail, reviewed: false, determination: null));
 
-        await d.OnRecordChangedAsync(Delivered(Gate("approved")), default);
+        await d.RunAsync(P, default);
 
         Assert.Equal(0, agents.DosingCalls);
         Assert.Null(await store.GetDosingAsync(P));
@@ -202,7 +192,7 @@ public class DosingDispatchTests
         var (d, store, agents, knowledge) = Sut();
         await SeedAsync(store, knowledge, withBackground: false);
 
-        await d.OnRecordChangedAsync(Delivered(Gate("approved")), default);
+        await d.RunAsync(P, default);
 
         Assert.Equal(0, agents.DosingCalls);
         Assert.Null(await store.GetDosingAsync(P));
@@ -220,7 +210,7 @@ public class DosingDispatchTests
         var (d, store, agents, knowledge) = Sut();
         await SeedAsync(store, knowledge, withLoading: false);
 
-        await d.OnRecordChangedAsync(Delivered(Gate("approved")), default);
+        await d.RunAsync(P, default);
 
         Assert.Equal(0, agents.DosingCalls);
         Assert.Null(await store.GetDosingAsync(P));
@@ -233,15 +223,15 @@ public class DosingDispatchTests
     // ---- idempotency + the write ------------------------------------------------------------------------
 
     [Fact]
-    public async Task Dosing_IsIdempotent_UnderChangeFeedRedelivery()
+    public async Task Dosing_IsIdempotent_UnderASecondPass()
     {
-        // The change feed is at-least-once. A redelivered approved gate must not re-run Dosing: the first run
-        // moved the stage to `done`, and the `pending` guard is what absorbs every later delivery.
+        // A resume re-enters every stage. It must not re-run Dosing: the first run moved the stage to `done`,
+        // and the status guard is what absorbs every later pass.
         var (d, store, agents, knowledge) = Sut();
         await SeedAsync(store, knowledge);
 
-        await d.OnRecordChangedAsync(Delivered(Gate("approved")), default);
-        await d.OnRecordChangedAsync(Delivered(Gate("approved")), default);   // redelivery
+        await d.RunAsync(P, default);
+        await d.RunAsync(P, default);   // a second pass
 
         Assert.Equal(1, agents.DosingCalls);
         Assert.Equal("done", DosingStage(store).Status);
@@ -264,7 +254,7 @@ public class DosingDispatchTests
             GeneratedAt = "2026-07-15T00:00:00Z",
         }));
 
-        await d.OnRecordChangedAsync(Delivered(Gate("approved")), default);
+        await d.RunAsync(P, default);
 
         var dosing = await store.GetDosingAsync(P);
         Assert.NotNull(dosing);
@@ -278,20 +268,23 @@ public class DosingDispatchTests
     // ---- re-entry --------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task AProjectUpsert_ReEntersDosing_WhenTheStageWasReOpened()
+    public async Task ReOpeningTheStage_ReEntersDosing_OnTheNextPass()
     {
-        // POST /dosing/loading (Task 13) records a loading and re-opens Dosing to `pending`, which upserts the
-        // ProjectDoc — and THAT is the only change the feed delivers. OnProjectAsync must therefore ALSO drive
-        // TryDoseAsync, not just intake; without this the loading the operator just entered reaches nothing.
-        // Here the gate is already signed in the store but was NEVER delivered as an event, so the ONLY thing
-        // that can start Dosing is the project upsert.
+        // POST /dosing/loading records a loading and re-opens Dosing to `pending`. That re-open is the ONLY
+        // thing that lets a parked (or completed) Dosing stage run again — the skip is keyed on the STATUS
+        // precisely so this door exists. Without it the loading the operator just entered reaches nothing.
         var (d, store, agents, knowledge) = Sut();
-        await SeedAsync(store, knowledge);   // gate approved (in store), Dosing pending
+        await SeedAsync(store, knowledge);
+        await d.RunAsync(P, default);
+        Assert.Equal(1, agents.DosingCalls);
 
         var project = (await store.GetProjectAsync(P))!;
-        await d.OnRecordChangedAsync(Delivered(project), default);
+        project.Stages[Stages.Dosing].Status = "pending";   // what POST /dosing/loading writes
+        await store.UpsertProjectAsync(project);
 
-        Assert.Equal(1, agents.DosingCalls);
+        await d.RunAsync(P, default);
+
+        Assert.Equal(2, agents.DosingCalls);
         Assert.Equal("done", DosingStage(store).Status);
     }
 }

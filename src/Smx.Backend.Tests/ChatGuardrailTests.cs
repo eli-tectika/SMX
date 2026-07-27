@@ -41,14 +41,14 @@ public class ChatGuardrailTests
 
     // ------------------------------------------------------------------ the real rig (see ChatDispatchTests)
 
-    private static (StageDispatcher Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents) Sut()
+    private static (PipelineRunner Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents) Sut()
     {
         var store = new InMemoryRecordStore();
         var agents = new FakeAgentRuns();
         var conclusions = new LearnedConclusionWriter(
             new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore(), new FakeLearnedConclusionsIndex(), new FakeEmbedder(),
             NullLogger<LearnedConclusionWriter>.Instance);
-        return (new StageDispatcher(store, agents, conclusions, 2), store, agents);
+        return (new PipelineRunner(store, new InMemoryRunStore(), agents, new ThreadEventHub(), conclusions, 2), store, agents);
     }
 
     /// What the change feed actually hands the dispatcher: a FRESH object, deserialized from the feed's
@@ -61,7 +61,7 @@ public class ChatGuardrailTests
     /// The real path: the backend WRITES the message and the change feed delivers it. A message that was
     /// never persisted is one the feed could never have delivered — and OnChatMessageAsync point-reads it.
     private static async Task<ChatMessageDoc> SendAsync(
-        StageDispatcher d, InMemoryRecordStore store, string stage, string text)
+        PipelineRunner d, InMemoryRecordStore store, string stage, string text)
     {
         var m = new ChatMessageDoc
         {
@@ -69,7 +69,7 @@ public class ChatGuardrailTests
             Text = text, CreatedAt = "2026-07-14T09:00:00.0000000+00:00",
         };
         await store.UpsertChatMessageAsync(m);
-        await d.OnRecordChangedAsync(Delivered(m), default);
+        await d.OnChatMessageAsync(Delivered(m), default);
         return (await store.GetChatMessageAsync(P, m.Id))!;
     }
 
@@ -87,12 +87,10 @@ public class ChatGuardrailTests
 
     /// Drives the project through Intake → Discovery → Regulatory → Matrix with the REAL dispatcher, so the
     /// record is the one a real project would have by the time anyone talks about signing a gate.
-    private static async Task SeedThroughRegulatoryAsync(StageDispatcher d, InMemoryRecordStore store)
+    private static async Task SeedThroughRegulatoryAsync(PipelineRunner d, InMemoryRecordStore store)
     {
         await store.UpsertProjectAsync(ProjectDoc.Create(P, "Acme", "Bottle", Payload));
-        await d.OnRecordChangedAsync(Delivered((await store.GetProjectAsync(P))!), default);      // → constraints
-        await d.OnRecordChangedAsync(Delivered((await store.GetConstraintsAsync(P))!), default);  // → candidates
-        await d.OnRecordChangedAsync(Delivered((await store.GetCandidatesAsync(P))!), default);   // → verdicts, matrix
+        await d.RunAsync(P, default);   // intake → discovery → regulatory → matrix
     }
 
     /// THE state this system exists to protect: a verdict that FAILS and that nobody has opened. The gate
@@ -114,7 +112,7 @@ public class ChatGuardrailTests
     /// Stands in for POST /projects/{id}/regulatory/approve — the ONLY writer of an approved GateDoc. Written
     /// straight to the store and then DELIVERED, because that is exactly what the endpoint does: it writes the
     /// doc and the change feed carries it to OnGateAsync, which marks Regulatory `done`.
-    private static async Task<GateDoc> OperatorSignsTheGateAsync(StageDispatcher d, InMemoryRecordStore store)
+    private static async Task<GateDoc> OperatorSignsTheGateAsync(PipelineRunner d, InMemoryRecordStore store)
     {
         var gate = new GateDoc
         {
@@ -122,7 +120,7 @@ public class ChatGuardrailTests
             Status = "approved", ApprovedAt = "2026-07-13T09:00:00.0000000+00:00",
         };
         await store.UpsertGateAsync(gate);
-        await d.OnRecordChangedAsync(Delivered(gate), default);
+        await d.OnGateAsync(Delivered(gate), default);
         return gate;
     }
 
@@ -306,7 +304,7 @@ public class ChatGuardrailTests
         // applies it. Asserting this here is what makes the next line mean something.
         Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
 
-        await d.OnRecordChangedAsync(Delivered(queued), default);   // the feed delivers the revision
+        await d.OnRevisionAsync(Delivered(queued), default);
 
         var gate = (await store.GetGateAsync(P, GateTypes.Regulatory))!;
         Assert.Equal("locked", gate.Status);          // the signature is VOID
@@ -427,7 +425,7 @@ public class ChatGuardrailTests
         Assert.Equal(RevisionStatus.Pending, queued.Status);
         Assert.Equal("it overlaps the Ti K-beta line", queued.Reason);
 
-        await d.OnRecordChangedAsync(Delivered(queued), default);
+        await d.OnRevisionAsync(Delivered(queued), default);
         Assert.Equal("locked", (await store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
     }
 }

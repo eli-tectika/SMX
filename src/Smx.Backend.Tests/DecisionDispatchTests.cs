@@ -10,10 +10,9 @@ using Smx.Backend.Tests.Fakes;
 
 namespace Smx.Backend.Tests;
 
-/// The Decision dispatch, end to end through the bus. The CostDoc landing on the change feed IS the
-/// Decision trigger: assembly is deterministic domain code (DecisionAssembler), only the final-code PICK is
-/// an agent, and the stage then PARKS at `awaiting-VP` — never `done`, because a proposal is not a
-/// signature and only the VP gate (Task 9) completes the stage.
+/// The Decision stage, driven through the pipeline runner: assembly is deterministic domain code
+/// (DecisionAssembler), only the final-code PICK is an agent, and the stage then PARKS at `awaiting-VP` —
+/// never `done`, because a proposal is not a signature and only the VP gate completes the stage.
 ///
 /// The false pass this file exists to prevent is a Decision that LOOKS complete without the VP's word:
 /// a stage that went `done` off the agent's own pick would be the agent signing the hard gate (Law 9).
@@ -21,19 +20,19 @@ public class DecisionDispatchTests
 {
     private const string P = "p1";
 
-    private static (StageDispatcher Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents) Sut()
+    private static (PipelineRunner Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents) Sut()
     {
         var store = new InMemoryRecordStore();
         var agents = new FakeAgentRuns();
         var conclusions = new LearnedConclusionWriter(
             new InMemoryKnowledgeStore(), new FakeLearnedConclusionsIndex(), new FakeEmbedder(),
             NullLogger<LearnedConclusionWriter>.Instance);
-        return (new StageDispatcher(store, agents, conclusions, 2), store, agents);
+        return (new PipelineRunner(store, new InMemoryRunStore(), agents, new ThreadEventHub(), conclusions, 2), store, agents);
     }
 
-    /// What the change feed actually hands the dispatcher: a FRESH object round-tripped through the real
-    /// router, never the instance the test is still holding. A handler that mutated the fed object would make
-    /// a "stale redelivery" no longer stale, hiding an idempotency bug.
+    /// A FRESH object round-tripped through the real router, never the instance the test is still holding —
+    /// the round trip has caught real serialization bugs here, and a stage that mutated the doc it was
+    /// handed would otherwise look correct against an object the test still owns.
     private static T Delivered<T>(T doc) =>
         (T)RecordDocRouter.Route(JsonSerializer.SerializeToElement(doc, Json.Options))!;
 
@@ -58,6 +57,19 @@ public class DecisionDispatchTests
     {
         Id = RecordIds.Constraints(P), ProjectId = P,
         Components = [new("bottle", "HDPE", "packaging", ["EU"], "brand")],
+    };
+
+    /// The candidate set the verdicts below belong to. Seeded because the runner walks EVERY stage: a
+    /// project carrying dosing and cost but no candidates is not a state the journey can produce, and
+    /// leaving it out would have Pool and Discovery run inside a Decision test.
+    private static CandidatesDoc Candidates() => new()
+    {
+        Id = RecordIds.Candidates(P), ProjectId = P,
+        Substances =
+        [
+            new("bottle", "Zr", "f", "cas-zr", null, null, true, "A", "ok", [new Citation("catalog", "x", "t")]),
+            new("bottle", "Y", "f", "cas-y", null, null, true, "A", "ok", [new Citation("catalog", "x", "t")]),
+        ],
     };
 
     private static VerdictDoc Verdict(string cas, string element) => new()
@@ -105,6 +117,7 @@ public class DecisionDispatchTests
     {
         await store.UpsertProjectAsync(Project(decisionStatus));
         await store.UpsertConstraintsAsync(Constraints());
+        await store.UpsertCandidatesAsync(Candidates());
         await store.UpsertVerdictAsync(Verdict("cas-zr", "Zr"));
         await store.UpsertVerdictAsync(Verdict("cas-y", "Y"));
         await store.UpsertDosingAsync(dosing ?? Dosing());
@@ -117,12 +130,12 @@ public class DecisionDispatchTests
     // ---- the trigger -----------------------------------------------------------------------------------
 
     [Fact]
-    public async Task ACostDocLanding_RunsDecision_AssemblyPlusPick()
+    public async Task ThePipelineReachingDecision_RunsAssemblyPlusPick()
     {
         var (d, store, agents) = Sut();
         await SeedAsync(store);
 
-        await d.OnRecordChangedAsync(Delivered(Cost()), default);
+        await d.RunAsync(P, default);
 
         var decision = await store.GetDecisionAsync(P);
         Assert.NotNull(decision);
@@ -148,35 +161,34 @@ public class DecisionDispatchTests
     // ---- idempotency ------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task Redelivery_IsIdempotent()
+    public async Task ASecondPass_IsIdempotent()
     {
-        // The change feed is at-least-once. A redelivered CostDoc must not re-run the pick: the first run
-        // parked the stage at `awaiting-VP`, and the `pending` guard absorbs every later delivery — the
-        // STAGE STATUS, the OnDosingAsync lesson.
+        // A resume re-enters every stage. It must not re-run the pick: the first run parked the stage at
+        // `awaiting-VP`, and the STAGE STATUS guard absorbs every later pass.
         var (d, store, agents) = Sut();
         await SeedAsync(store);
 
-        await d.OnRecordChangedAsync(Delivered(Cost()), default);
-        await d.OnRecordChangedAsync(Delivered(Cost()), default);   // redelivery
+        await d.RunAsync(P, default);
+        await d.RunAsync(P, default);   // a second pass
 
         Assert.Equal(1, agents.DecisionCalls);
         Assert.Single(store.Documents.OfType<DecisionDoc>());
         var stage = DecisionStage(store);
         Assert.Equal("awaiting-VP", stage.Status);
-        Assert.Equal(1, stage.Attempts);   // the second delivery never even entered the run
+        Assert.Equal(1, stage.Attempts);   // the second pass never even entered the run
     }
 
     [Fact]
     public async Task Decision_GuardsOnStageStatus_NotWhetherADecisionDocExists()
     {
         // The stage says `awaiting-VP` but no DecisionDoc is on file — the one state where a status guard
-        // and a doc-existence guard DIVERGE. A dispatcher guarding on "does a DecisionDoc exist" would find
+        // and a doc-existence guard DIVERGE. A runner guarding on "does a DecisionDoc exist" would find
         // none and RE-RUN, re-proposing over a stage already parked at the VP's door. Only the status guard
         // skips. (Mirror of Cost_GuardsOnStageStatus_NotWhetherACostDocExists — the same lesson.)
         var (d, store, agents) = Sut();
         await SeedAsync(store, decisionStatus: "awaiting-VP");
 
-        await d.OnRecordChangedAsync(Delivered(Cost()), default);
+        await d.RunAsync(P, default);
 
         Assert.Null(await store.GetDecisionAsync(P));   // Decision did NOT run — the status alone stopped it
         Assert.Equal(0, agents.TotalCalls);
@@ -193,16 +205,16 @@ public class DecisionDispatchTests
         agents.Decision = (_, _, _) =>
             Task.FromResult(AgentRunResult<DecisionDoc>.NeedsReview("no valid code"));
 
-        await d.OnRecordChangedAsync(Delivered(Cost()), default);
+        await d.RunAsync(P, default);
 
         var stage = DecisionStage(store);
         Assert.Equal("needs-review", stage.Status);
         Assert.Equal("no valid code", stage.Error);
         Assert.Null(await store.GetDecisionAsync(P));   // nothing persisted — no doc that LOOKS decided
 
-        // And the redelivery does not re-run the failed pick: `needs-review` is not `pending`. (A
+        // And a second pass does not re-run the failed pick: `needs-review` is not `pending`. (A
         // doc-existence guard would re-run here — no DecisionDoc was ever written.)
-        await d.OnRecordChangedAsync(Delivered(Cost()), default);
+        await d.RunAsync(P, default);
         Assert.Equal(1, agents.DecisionCalls);
     }
 
@@ -213,16 +225,17 @@ public class DecisionDispatchTests
     public async Task Decision_RequiresItsInputs(string missing)
     {
         // Resolve-all-inputs-first, the TryDoseAsync discipline: a missing upstream doc runs NOTHING and
-        // parks NOTHING — the stage stays `pending` so the at-least-once feed redelivers once it lands.
+        // parks NOTHING — the stage stays `pending`, so the next pass runs it once the input lands.
         var (d, store, agents) = Sut();
         await store.UpsertProjectAsync(Project());
         if (missing != "constraints") await store.UpsertConstraintsAsync(Constraints());
+        await store.UpsertCandidatesAsync(Candidates());
         if (missing != "dosing") await store.UpsertDosingAsync(Dosing());
         if (missing != "cost") await store.UpsertCostAsync(Cost());
         await store.UpsertVerdictAsync(Verdict("cas-zr", "Zr"));
         await store.UpsertVerdictAsync(Verdict("cas-y", "Y"));
 
-        await d.OnRecordChangedAsync(Delivered(Cost()), default);
+        await d.RunAsync(P, default);
 
         Assert.Equal("pending", DecisionStage(store).Status);
         Assert.Equal(0, agents.TotalCalls);
@@ -235,15 +248,15 @@ public class DecisionDispatchTests
         // AMENDMENT (Tasks-3-5 review). DosingAgent now refuses a duplicate (component, cas) window at the
         // boundary, but a DosingDoc persisted BEFORE that invariant can still carry one — and
         // DecisionAssembler.Assemble's ToDictionary throws ArgumentException on it. If Assemble ran OUTSIDE
-        // the stage try/catch, that throw would escape into the change-feed processor as a poison
-        // redelivery loop: stage stuck `pending`, no visible error, redelivered forever. INSIDE it, the
-        // stage lands `failed` with the error surfaced — §11's "nothing dies silently".
+        // the stage's own error handling it would escape the runner and halt the pipeline with nothing on
+        // the record: stage stuck `pending`, no visible error. INSIDE it, the stage lands `failed` with the
+        // error surfaced — §11's "nothing dies silently".
         var (d, store, agents) = Sut();
         var poisoned = Dosing();
         poisoned.Windows.Add(poisoned.Windows[0]);   // the pre-invariant persisted duplicate (bottle, cas-zr)
         await SeedAsync(store, dosing: poisoned);
 
-        await d.OnRecordChangedAsync(Delivered(Cost()), default);
+        await d.RunAsync(P, default);
 
         var stage = DecisionStage(store);
         Assert.Equal("failed", stage.Status);
@@ -251,8 +264,8 @@ public class DecisionDispatchTests
         Assert.Equal(0, agents.DecisionCalls);       // the assembly threw before any agent ran
         Assert.Null(await store.GetDecisionAsync(P));
 
-        // NO poison loop: the second delivery is a no-op because the status is no longer `pending`.
-        await d.OnRecordChangedAsync(Delivered(Cost()), default);
+        // NO poison loop: the second pass is a no-op because the status is no longer `pending`.
+        await d.RunAsync(P, default);
         Assert.Equal("failed", DecisionStage(store).Status);
         Assert.Equal(1, DecisionStage(store).Attempts);
         Assert.Equal(0, agents.TotalCalls);

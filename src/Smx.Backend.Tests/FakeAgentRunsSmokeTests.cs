@@ -13,7 +13,7 @@ public class FakeAgentRunsSmokeTests
         var c = new ConstraintsDoc { Id = RecordIds.Constraints("p1"), ProjectId = "p1",
             Components = [new("bottle", "HDPE", "packaging", ["EU"], "brand")],
             ElementPools = [new("bottle", "Zr", "Kα", "V", null)] };
-        var result = await ((Smx.Backend.Pipeline.IAgentRuns)fake).RunDiscoveryAsync(p, c, null, default);
+        var result = await ((Smx.Backend.Pipeline.IAgentRuns)fake).RunDiscoveryAsync(p, c, null, Smx.Backend.Pipeline.NullRunTrail.Instance, default);
         Assert.True(result.Succeeded);
         Assert.Single(result.Output!.Substances);
     }
@@ -39,7 +39,7 @@ public class FakeAgentRunsSmokeTests
                 new ClearedCriteria(true, true, true), new TraceRefs("v", "w", "a"))], ProposedCode: null),
         };
 
-        var result = await ((Smx.Backend.Pipeline.IAgentRuns)fake).RunDecisionAsync(assembled, dosing, null, default);
+        var result = await ((Smx.Backend.Pipeline.IAgentRuns)fake).RunDecisionAsync(assembled, dosing, null, Smx.Backend.Pipeline.NullRunTrail.Instance, default);
 
         Assert.True(result.Succeeded);
         Assert.Equal(RecordIds.Decision("p1"), result.Output!.Id);

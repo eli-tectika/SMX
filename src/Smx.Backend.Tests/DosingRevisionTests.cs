@@ -22,7 +22,7 @@ public class DosingRevisionTests
     private const string P = "p1";
     private const string SeededGeneratedAt = "2020-01-01T00:00:00.0000000+00:00";
 
-    private static (StageDispatcher Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents, InMemoryKnowledgeStore Knowledge) Sut()
+    private static (PipelineRunner Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents, InMemoryKnowledgeStore Knowledge) Sut()
     {
         var store = new InMemoryRecordStore();
         var agents = new FakeAgentRuns();
@@ -33,7 +33,7 @@ public class DosingRevisionTests
         var conclusions = new LearnedConclusionWriter(
             knowledge, new FakeLearnedConclusionsIndex(), new FakeEmbedder(),
             NullLogger<LearnedConclusionWriter>.Instance);
-        return (new StageDispatcher(store, agents, conclusions, 2, knowledge), store, agents, knowledge);
+        return (new PipelineRunner(store, new InMemoryRunStore(), agents, new ThreadEventHub(), conclusions, 2, knowledge: knowledge), store, agents, knowledge);
     }
 
     /// What the change feed actually hands the dispatcher: a FRESH object round-tripped through the real
@@ -157,7 +157,7 @@ public class DosingRevisionTests
         };
 
         var revision = DosingRevision(reason);
-        await d.OnRecordChangedAsync(Delivered(revision), default);
+        await d.OnRevisionAsync(Delivered(revision), default);
 
         // The agent saw the directive.
         Assert.Equal(1, agents.DosingCalls);
@@ -192,7 +192,7 @@ public class DosingRevisionTests
         var (d, store, _, knowledge) = Sut();
         await SeedDosedAsync(store, knowledge);
 
-        await d.OnRecordChangedAsync(Delivered(DosingRevision("the line reader struggles below 35 ppm")), default);
+        await d.OnRevisionAsync(Delivered(DosingRevision("the line reader struggles below 35 ppm")), default);
 
         var gate = (await store.GetGateAsync(P, GateTypes.Regulatory))!;
         Assert.Equal("approved", gate.Status);                 // NOT locked
@@ -213,7 +213,7 @@ public class DosingRevisionTests
         agents.Dosing = (_, _, _, _, _) => Task.FromResult(
             AgentRunResult<DosingDoc>.NeedsReview("'cas-rejected' is not in the compliant set"));
 
-        await d.OnRecordChangedAsync(Delivered(DosingRevision("dose cas-rejected instead — I trust it")), default);
+        await d.OnRevisionAsync(Delivered(DosingRevision("dose cas-rejected instead — I trust it")), default);
 
         var failed = Assert.Single(await store.GetRevisionsAsync(P));
         Assert.Equal(RevisionStatus.Failed, failed.Status);

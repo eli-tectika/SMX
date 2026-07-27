@@ -13,7 +13,7 @@ namespace Smx.Backend.Tests;
 
 /// The host's DI graph, actually built. `dotnet build` cannot catch a missing registration — the agent half
 /// of this container is resolved only when a stage or an interview turn actually runs, so an unregistered
-/// dependency is a production-only crash. (It was one: StageDispatcher took an ILearnedConclusionWriter that
+/// dependency is a production-only crash. (It was one: PipelineRunner took an ILearnedConclusionWriter that
 /// nothing registered, and every test stayed green.) These tests resolve the graph the way the running host
 /// does. It is now ONE host: the agents live in the backend, so this is the backend's graph.
 public class BackendHostWiringTests
@@ -77,9 +77,9 @@ public class BackendHostWiringTests
     {
         using var sp = Build(Config());
 
-        // StageDispatcher is the one the host actually resolves at change-feed time — and the one that was
+        // PipelineRunner is the one the host actually resolves at change-feed time — and the one that was
         // unresolvable until ILearnedConclusionWriter got registered.
-        Assert.NotNull(sp.GetRequiredService<StageDispatcher>());
+        Assert.NotNull(sp.GetRequiredService<PipelineRunner>());
         Assert.NotNull(sp.GetRequiredService<ILearnedConclusionsSearch>());
         Assert.NotNull(sp.GetRequiredService<ILearnedConclusionsIndex>());
         Assert.NotNull(sp.GetRequiredService<ILearnedConclusionWriter>());
@@ -92,8 +92,8 @@ public class BackendHostWiringTests
     /// The chat turn, built from the REAL container — the exact path that runs when the change feed hands the
     /// orchestrator its first ChatMessageDoc in Azure.
     ///
-    /// Resolving StageDispatcher above proves the DISPATCH graph; it does not prove this one. A chat turn
-    /// reaches further: StageDispatcher constructs a ChatTools, and AgentRuns.RunChatAsync pairs the stage's
+    /// Resolving PipelineRunner above proves the DISPATCH graph; it does not prove this one. A chat turn
+    /// reaches further: PipelineRunner constructs a ChatTools, and AgentRuns.RunChatAsync pairs the stage's
     /// READ tools (ToolBox, seven injected dependencies of its own) with that turn's MUTATING tools. A read
     /// tool whose dependency nobody registered is a container that builds, a host that starts, an intake that
     /// runs — and a crash on the first thing the operator ever says. That failure is invisible to every test
@@ -107,7 +107,7 @@ public class BackendHostWiringTests
 
         foreach (var stage in Stages.All)
         {
-            // Exactly what StageDispatcher.OnChatMessageAsync constructs: bound to one project, one stage, and
+            // Exactly what PipelineRunner.OnChatMessageAsync constructs: bound to one project, one stage, and
             // the key of the message being answered.
             var chatTools = new ChatTools(store, "p1", stage, "abcd1234");
             var readTools = toolBox.ReadToolsFor(stage);

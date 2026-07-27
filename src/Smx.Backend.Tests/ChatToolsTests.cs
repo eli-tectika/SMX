@@ -532,7 +532,7 @@ public class ChatToolsTests
     }
 
     /// Setting Intake back to `pending` IS the re-trigger: the upsert is a change-feed event, and
-    /// StageDispatcher.OnProjectAsync runs Intake exactly when the stage is `pending` AND no constraints
+    /// PipelineRunner.OnProjectAsync runs Intake exactly when the stage is `pending` AND no constraints
     /// exist — both of which hold here (the constraints check above is what guarantees the second).
     [Fact]
     public async Task RecordAnswer_PatchesThePayload_AndReopensIntakeSoTheAgentReRuns()

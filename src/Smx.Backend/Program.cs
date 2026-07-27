@@ -330,7 +330,7 @@ public static class BackendHost
         // ChatTools IS DELIBERATELY NOT REGISTERED HERE, and that absence is a safety property — do not
         // "tidy" it into the container.
         //
-        // StageDispatcher.OnChatMessageAsync constructs one PER TURN, closed over the (projectId, stage,
+        // PipelineRunner.OnChatMessageAsync constructs one PER TURN, closed over the (projectId, stage,
         // chatKey) of the chat-message it is answering. That closure is the cross-project write guard:
         // because the project is captured rather than passed, the model's tool schema offers no parameter
         // with which to NAME a project — so it can only act on the one it is talking about. A singleton
@@ -343,14 +343,21 @@ public static class BackendHost
         // chat turn reads with. So there is genuinely nothing else for chat to register — see
         // BackendHostWiringTests.AChatTurnsTools_BuildFromTheRealGraph_ForEveryChattableStage, which
         // builds a real turn's tool list out of this container rather than taking that on trust.)
+        // The in-process fan-out from the runner to whoever is watching the thread stream. A singleton
+        // because the runner and the SSE endpoint are the SAME process now — that is the whole point of
+        // the service merge.
+        services.AddSingleton<ThreadEventHub>();
+
         // The two OPTIONAL trailing params are wired here deliberately — this is the "deferred production
-        // wiring" the StageDispatcher XML docs point at. Without the IKnowledgeStore every metal loading
+        // wiring" the PipelineRunner XML docs point at. Without the IKnowledgeStore every metal loading
         // reads as unknown and Dosing parks in `awaiting-operator` forever; without the ICatalogLookup the
-        // Cost stage never prices (it degrades safely to `pending`). Both are the singletons registered
-        // above; the E2E (DosingCostEndToEndTests) proves the logic, this line turns it on.
-        services.AddSingleton(sp => new StageDispatcher(
-            sp.GetRequiredService<IRecordStore>(), sp.GetRequiredService<IAgentRuns>(),
+        // Cost stage never prices (it skips, degrading safely). Both are the singletons registered above;
+        // the E2E (DosingCostEndToEndTests) proves the logic, this line turns it on.
+        services.AddSingleton(sp => new PipelineRunner(
+            sp.GetRequiredService<IRecordStore>(), sp.GetRequiredService<IRunStore>(),
+            sp.GetRequiredService<IAgentRuns>(), sp.GetRequiredService<ThreadEventHub>(),
             sp.GetRequiredService<ILearnedConclusionWriter>(), opts.RegulatoryParallelism,
+            sp.GetRequiredService<ILogger<PipelineRunner>>(),
             sp.GetRequiredService<IKnowledgeStore>(), sp.GetRequiredService<ICatalogLookup>()));
     }
 }

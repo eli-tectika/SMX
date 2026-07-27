@@ -10,19 +10,20 @@ using Smx.Backend.Tests.Fakes;
 
 namespace Smx.Backend.Tests;
 
-/// The Cost dispatch, end to end through the bus. Cost is DETERMINISTIC — no agent (§3.4): when Dosing
-/// finishes, the finalized codes name the substances that will actually be ORDERED, and Cost audits exactly
-/// those against the ref-catalog. The DosingDoc landing on the change feed IS the trigger.
+/// The Cost stage, driven through the pipeline runner. Cost is DETERMINISTIC — no agent (§3.4): the
+/// finalized codes name the substances that will actually be ORDERED, and Cost audits exactly those
+/// against the ref-catalog.
 ///
 /// The false pass this file exists to prevent is the SOFT code-finalization checkpoint (POST /dosing/review)
-/// silently re-pricing the whole project. That checkpoint upserts the SAME DosingDoc to record a review note,
-/// which re-delivers here — so the guard MUST be the Cost STAGE STATUS ("has Cost run?"), never the mere
-/// existence of the DosingDoc. `ASoftReviewNote_DoesNotReRunCost` is the pin for that.
+/// silently re-pricing the whole project. That checkpoint upserts the SAME DosingDoc to record a review
+/// note — so the guard MUST be the Cost STAGE STATUS ("has Cost run?"), never the mere existence of a
+/// DosingDoc or a CostDoc. `ASoftReviewNote_DoesNotReRunCost` and
+/// `Cost_GuardsOnStageStatus_NotWhetherACostDocExists` are the pins for that.
 public class CostDispatchTests
 {
     private const string P = "p1";
 
-    private static (StageDispatcher Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents, FakeCatalogLookup Catalog) Sut()
+    private static (PipelineRunner Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents, FakeCatalogLookup Catalog) Sut()
     {
         var store = new InMemoryRecordStore();
         var agents = new FakeAgentRuns();
@@ -32,12 +33,12 @@ public class CostDispatchTests
             NullLogger<LearnedConclusionWriter>.Instance);
         // The FakeCatalogLookup is passed into the OPTIONAL trailing param — the production wiring this task
         // defers (Orchestrator/Program.cs must pass the real ICatalogLookup as the 6th arg) is exactly this.
-        return (new StageDispatcher(store, agents, conclusions, 2, catalog: catalog), store, agents, catalog);
+        return (new PipelineRunner(store, new InMemoryRunStore(), agents, new ThreadEventHub(), conclusions, 2, catalog: catalog), store, agents, catalog);
     }
 
-    /// What the change feed actually hands the dispatcher: a FRESH object round-tripped through the real
-    /// router, never the instance the test is still holding. A handler that mutated the fed object would make
-    /// a "stale redelivery" no longer stale, hiding an idempotency bug.
+    /// A FRESH object round-tripped through the real router, never the instance the test is still holding —
+    /// the round trip has caught real serialization bugs in this codebase, and a stage that mutated the doc
+    /// it was handed would otherwise look correct against an object the test still owns.
     private static T Delivered<T>(T doc) =>
         (T)RecordDocRouter.Route(JsonSerializer.SerializeToElement(doc, Json.Options))!;
 
@@ -98,7 +99,8 @@ public class CostDispatchTests
         PricedCatalog(catalog);
         await store.UpsertProjectAsync(Project());
 
-        await d.OnRecordChangedAsync(Delivered(Dosing()), default);
+        await store.UpsertDosingAsync(Delivered(Dosing()));
+        await d.RunAsync(P, default);
 
         var cost = await store.GetCostAsync(P);
         Assert.NotNull(cost);
@@ -126,7 +128,8 @@ public class CostDispatchTests
         PricedCatalog(catalog);
         await store.UpsertProjectAsync(Project());
 
-        await d.OnRecordChangedAsync(Delivered(Dosing()), default);
+        await store.UpsertDosingAsync(Delivered(Dosing()));
+        await d.RunAsync(P, default);
 
         Assert.Equal(0, agents.TotalCalls);
         Assert.Equal(0, agents.IntakeCalls);
@@ -141,20 +144,22 @@ public class CostDispatchTests
     // ---- idempotency ------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task Cost_IsIdempotent_UnderChangeFeedRedelivery()
+    public async Task Cost_IsIdempotent_UnderASecondPass()
     {
-        // The change feed is at-least-once. A redelivered DosingDoc must not re-run Cost: the first run moved
-        // the stage to `done`, and the `pending` guard is what absorbs every later delivery. Proven by a
-        // GeneratedAt that does NOT advance and a catalog that is NOT read a second time.
+        // A resume re-enters every stage. Cost must not re-run: the first run moved the stage to `done`,
+        // and the status guard is what absorbs every later pass. Proven by a GeneratedAt that does NOT
+        // advance and a catalog that is NOT read a second time.
         var (d, store, _, catalog) = Sut();
         PricedCatalog(catalog);
         await store.UpsertProjectAsync(Project());
 
-        await d.OnRecordChangedAsync(Delivered(Dosing()), default);
+        await store.UpsertDosingAsync(Delivered(Dosing()));
+        await d.RunAsync(P, default);
         var t0 = (await store.GetCostAsync(P))!.GeneratedAt;
         var callsAfterFirst = catalog.Calls.Count;
 
-        await d.OnRecordChangedAsync(Delivered(Dosing()), default);   // redelivery
+        await store.UpsertDosingAsync(Delivered(Dosing()));
+        await d.RunAsync(P, default);   // a second pass
 
         Assert.Equal(t0, (await store.GetCostAsync(P))!.GeneratedAt);  // not re-stamped
         Assert.Equal(callsAfterFirst, catalog.Calls.Count);           // not re-priced
@@ -185,7 +190,8 @@ public class CostDispatchTests
             GeneratedAt = T0,
         });
 
-        await d.OnRecordChangedAsync(Delivered(Dosing(reviewNote: "PL + VP reviewed the codes 2026-07-15")), default);
+        await store.UpsertDosingAsync(Delivered(Dosing(reviewNote: "PL + VP reviewed the codes 2026-07-15")));
+        await d.RunAsync(P, default);
 
         var cost = await store.GetCostAsync(P);
         Assert.NotNull(cost);
@@ -200,7 +206,7 @@ public class CostDispatchTests
         // The guard that decides whether to run Cost is the Cost STAGE STATUS — "has this stage run?" — never
         // the presence of a CostDoc. Those two usually AGREE (a completed run writes the doc and marks the
         // stage in one handler), so the review-note test above cannot tell them apart. They DIVERGE only here:
-        // the stage says `done` yet no CostDoc is on file. A dispatcher that guarded on "does a CostDoc exist"
+        // the stage says `done` yet no CostDoc is on file. A runner that guarded on "does a CostDoc exist"
         // would find none and RE-RUN — re-pricing a stage the machine already marked complete, off a possibly
         // superseded set of codes. Only a status guard skips. This is the pin that makes swapping the guard for
         // `store.GetCostAsync(...) is not null` fail loudly.
@@ -208,7 +214,8 @@ public class CostDispatchTests
         PricedCatalog(catalog);
         await store.UpsertProjectAsync(Project(costStatus: "done"));   // stage done, but NO CostDoc on file
 
-        await d.OnRecordChangedAsync(Delivered(Dosing()), default);
+        await store.UpsertDosingAsync(Delivered(Dosing()));
+        await d.RunAsync(P, default);
 
         Assert.Null(await store.GetCostAsync(P));      // Cost did NOT run — the stage status alone stopped it
         Assert.Empty(catalog.Calls);

@@ -34,7 +34,7 @@ public class DecisionRevisionTests
     private static string StaleRatio => DosingBefore().Codes.Single().RatioSignature;
     private static string RevisedRatio => DosingAfter().Codes.Single().RatioSignature;
 
-    private static (StageDispatcher Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents,
+    private static (PipelineRunner Dispatcher, InMemoryRecordStore Store, FakeAgentRuns Agents,
                     InMemoryKnowledgeStore Knowledge, FakeCatalogLookup Catalog) Sut()
     {
         var store = new InMemoryRecordStore();
@@ -44,7 +44,7 @@ public class DecisionRevisionTests
         var conclusions = new LearnedConclusionWriter(
             knowledge, new FakeLearnedConclusionsIndex(), new FakeEmbedder(),
             NullLogger<LearnedConclusionWriter>.Instance);
-        return (new StageDispatcher(store, agents, conclusions, 2, knowledge, catalog), store, agents, knowledge, catalog);
+        return (new PipelineRunner(store, new InMemoryRunStore(), agents, new ThreadEventHub(), conclusions, 2, knowledge: knowledge, catalog: catalog), store, agents, knowledge, catalog);
     }
 
     /// What the change feed actually hands the dispatcher: a FRESH object round-tripped through the real
@@ -281,7 +281,7 @@ public class DecisionRevisionTests
         };
 
         var revision = DecisionRevision(reason);
-        await d.OnRecordChangedAsync(Delivered(revision), default);
+        await d.OnRevisionAsync(Delivered(revision), default);
 
         // The agent saw the directive — the revision rode into the prompt, not just a bare re-run.
         Assert.Equal(1, agents.DecisionCalls);
@@ -308,7 +308,7 @@ public class DecisionRevisionTests
         await SeedAwaitingVpAsync(store, knowledge);
 
         var revision = DecisionRevision(reason);
-        await d.OnRecordChangedAsync(Delivered(revision), default);
+        await d.OnRevisionAsync(Delivered(revision), default);
 
         Assert.Equal(1, agents.ConclusionCalls);
         var conclusion = await knowledge.GetLearnedConclusionAsync(KnowledgeKinds.Decision, revision.Id);
@@ -333,7 +333,7 @@ public class DecisionRevisionTests
         await SeedAwaitingVpAsync(store, knowledge);
         await store.UpsertGateAsync(Vp("locked"));
 
-        await d.OnRecordChangedAsync(Delivered(DecisionRevision("pick a code the VP has not already refused")), default);
+        await d.OnRevisionAsync(Delivered(DecisionRevision("pick a code the VP has not already refused")), default);
 
         Assert.Equal(RevisionStatus.Applied, Assert.Single(await store.GetRevisionsAsync(P)).Status);
 
@@ -364,7 +364,7 @@ public class DecisionRevisionTests
         var (d, store, agents, knowledge, _) = Sut();
         await SeedClosedAsync(store, knowledge);
 
-        await d.OnRecordChangedAsync(Delivered(DecisionRevision("actually, swap the code")), default);
+        await d.OnRevisionAsync(Delivered(DecisionRevision("actually, swap the code")), default);
 
         var refused = Assert.Single(await store.GetRevisionsAsync(P));
         Assert.Equal(RevisionStatus.Failed, refused.Status);
@@ -406,7 +406,7 @@ public class DecisionRevisionTests
 
         // 1) The revision re-runs Dosing — and resets BOTH downstream stages: Cost re-arms its trigger,
         //    Decision re-arms its own, with the park error cleared.
-        await d.OnRecordChangedAsync(Delivered(DosingRevision("swap Zr for Fe — the client's colorant now carries Zr")), default);
+        await d.OnRevisionAsync(Delivered(DosingRevision("swap Zr for Fe — the client's colorant now carries Zr")), default);
         Assert.Equal(RevisionStatus.Applied, Assert.Single(await store.GetRevisionsAsync(P)).Status);
         Assert.Equal("pending", Stage(store, Stages.Cost).Status);
         var decisionStage = Stage(store, Stages.Decision);
@@ -414,12 +414,12 @@ public class DecisionRevisionTests
         Assert.Null(decisionStage.Error);
 
         // 2) The persisted DosingDoc reaches the change feed — Cost re-prices the NEW substance set.
-        await d.OnRecordChangedAsync(Delivered((await store.GetDosingAsync(P))!), default);
+        await d.RunAsync(P, default);
         Assert.Equal("done", Stage(store, Stages.Cost).Status);
 
         // 3) The fresh CostDoc reaches the change feed — and THIS time Decision is `pending`, so the pick
         //    re-runs over the NEW dosing: the proposal names the (cas-y, cas-fe) code, not the stale one.
-        await d.OnRecordChangedAsync(Delivered((await store.GetCostAsync(P))!), default);
+        await d.RunAsync(P, default);
 
         Assert.Equal(1, agents.DecisionCalls);
         var decision = (await store.GetDecisionAsync(P))!;
@@ -443,7 +443,7 @@ public class DecisionRevisionTests
         var (d, store, agents, knowledge, catalog) = Sut();
         await SeedClosedAsync(store, knowledge);
 
-        await d.OnRecordChangedAsync(Delivered(DosingRevision("swap Zr for Fe")), default);
+        await d.OnRevisionAsync(Delivered(DosingRevision("swap Zr for Fe")), default);
 
         var refused = Assert.Single(await store.GetRevisionsAsync(P));
         Assert.Equal(RevisionStatus.Failed, refused.Status);
@@ -480,7 +480,7 @@ public class DecisionRevisionTests
         var (d, store, agents, knowledge, _) = Sut();
         await SeedClosedAsync(store, knowledge);
 
-        await d.OnRecordChangedAsync(Delivered(DiscoveryRevision("try lanthanides instead")), default);
+        await d.OnRevisionAsync(Delivered(DiscoveryRevision("try lanthanides instead")), default);
 
         var refused = Assert.Single(await store.GetRevisionsAsync(P));
         Assert.Equal(RevisionStatus.Failed, refused.Status);
@@ -514,7 +514,7 @@ public class DecisionRevisionTests
         var (d, store, agents, knowledge, _) = Sut();
         await SeedClosedAsync(store, knowledge);
 
-        await d.OnRecordChangedAsync(Delivered(RegulatoryRevision("re-screen cas-zr against the new annex")), default);
+        await d.OnRevisionAsync(Delivered(RegulatoryRevision("re-screen cas-zr against the new annex")), default);
 
         var refused = Assert.Single(await store.GetRevisionsAsync(P));
         Assert.Equal(RevisionStatus.Failed, refused.Status);
@@ -577,7 +577,7 @@ public class DecisionRevisionTests
             });
         };
 
-        await d.OnRecordChangedAsync(Delivered(DecisionRevision("re-pick — racing the pen")), default);
+        await d.OnRevisionAsync(Delivered(DecisionRevision("re-pick — racing the pen")), default);
 
         // The revision lands honest FAILED — the persist re-check saw the signature and refused to write.
         var refused = Assert.Single(await store.GetRevisionsAsync(P));
@@ -597,7 +597,7 @@ public class DecisionRevisionTests
 
         // ...so when the already-written approved gate now delivers, the close proceeds over the SIGNED
         // doc — confirmations intact, procurement released over a real conclusion, never over nothing.
-        await d.OnRecordChangedAsync(Delivered((await store.GetGateAsync(P, GateTypes.Vp))!), default);
+        await d.OnGateAsync(Delivered((await store.GetGateAsync(P, GateTypes.Vp))!), default);
         Assert.Equal("done", Stage(store, Stages.Decision).Status);
         Assert.Equal(ProcurementStatus.Released, (await store.GetDecisionAsync(P))!.Procurement.Status);
         Assert.Equal(StaleRatio, Assert.Single((await store.GetDecisionAsync(P))!.Components).ConfirmedCode);
@@ -624,7 +624,7 @@ public class DecisionRevisionTests
             return AgentRunResult<DosingDoc>.Ok(DosingAfter());
         };
 
-        await d.OnRecordChangedAsync(Delivered(DosingRevision("swap Zr for Fe — racing the pen")), default);
+        await d.OnRevisionAsync(Delivered(DosingRevision("swap Zr for Fe — racing the pen")), default);
 
         var refused = Assert.Single(await store.GetRevisionsAsync(P));
         Assert.Equal(RevisionStatus.Failed, refused.Status);
@@ -662,7 +662,7 @@ public class DecisionRevisionTests
             });
         };
 
-        await d.OnRecordChangedAsync(Delivered(DecisionRevision("re-pick")), default);
+        await d.OnRevisionAsync(Delivered(DecisionRevision("re-pick")), default);
 
         var refused = Assert.Single(await store.GetRevisionsAsync(P));
         Assert.Equal(RevisionStatus.Failed, refused.Status);
