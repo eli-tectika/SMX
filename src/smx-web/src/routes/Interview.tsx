@@ -30,6 +30,13 @@ export function Interview() {
   const [draft, setDraft] = useState('');
   const [streaming, setStreaming] = useState<string | null>(null); // the agent turn being received
   const [sending, setSending] = useState(false);
+  // A one-shot completion beacon (sr-only — see the render below). "Agent working…" announces that
+  // a turn STARTED; on its own that is half the feature, because the streaming bubble is
+  // deliberately silent (see the comment above it) and the finished reply just sits in the
+  // transcript without announcing itself. This is cleared at the top of every `send()` and set once
+  // the reply lands at the bottom of it, so it always changes value exactly twice per turn — never
+  // holds still and never re-announces the reply's own words, only the fact that it arrived.
+  const [turnAnnouncement, setTurnAnnouncement] = useState('');
   const [uploading, setUploading] = useState(false);
   const [openShown, setOpenShown] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -42,7 +49,7 @@ export function Interview() {
   // batches `setSending(true)` with the optimistic operator turn, so `turns.length` has usually
   // already moved in that commit — but it is the ONLY dep that changes on the empty-reply failure
   // path: the stream produces no text, so no turn is ever appended, and the sole visible change is
-  // `sending` flipping back to false as the "Working…" line disappears. Without it here,
+  // `sending` flipping back to false as the "Agent working…" line disappears. Without it here,
   // that commit shrinks the transcript with nothing re-measuring the scroll position.
   const scroller = useStickToBottom<HTMLDivElement>([session?.turns.length, streaming, sending]);
 
@@ -107,6 +114,10 @@ export function Interview() {
     if (!sessionId || !text.trim() || sending) return;
     setSending(true);
     setDraft('');
+    // Clear the PREVIOUS turn's beacon before this one starts. An aria-live region that holds the
+    // same text across two turns does not re-announce on the second — without this, back-to-back
+    // replies would go silent after the first "Reply received."
+    setTurnAnnouncement('');
     // The operator's own words go on screen IMMEDIATELY. The server persists them before the model
     // runs for the same reason: losing what they said to a slow or failed model call would be the
     // worst possible failure of Law 6.
@@ -130,7 +141,13 @@ export function Interview() {
     } finally {
       // The streamed text becomes a turn in the same breath as the streaming line disappears, so the
       // reply never blinks out between the last chunk and the re-read.
-      if (reply) setSession((s) => s && { ...s, turns: [...s.turns, agentTurn(reply)] });
+      if (reply) {
+        setSession((s) => s && { ...s, turns: [...s.turns, agentTurn(reply)] });
+        // Announce that the turn landed — not what it said. The reply's own words are already
+        // sitting in the transcript bubble above; duplicating them into a live region is exactly
+        // the "re-read a growing body" failure mode the streaming bubble was rejected for.
+        setTurnAnnouncement('Reply received.');
+      }
       setStreaming(null);
       setSending(false);
     }
@@ -216,6 +233,14 @@ export function Interview() {
 
       {session && (
         <>
+          {/* sr-only: the visible transcript already shows the landed reply, so this exists purely
+              for the screen-reader operator who was just told (via "Agent working…") that a turn
+              had STARTED and, without this, would never be told it finished. See the state's
+              declaration above for why it is safe from both the ticker problem and the
+              re-announce-the-body problem. */}
+          <span className="sr-only" role="status" aria-live="polite">
+            {turnAnnouncement}
+          </span>
           <div
             className="region convo"
             style={{ marginBottom: 12 }}
@@ -256,14 +281,15 @@ export function Interview() {
               every single token, which is far worse than the silence it would replace: not just
               noisy but actually unable to keep up, so the operator would hear a stale partial
               sentence restart over and over rather than ever hearing the finished one. The
-              "Working…" status below is the live announcement for this state; once the turn lands,
-              its own text sits in the transcript, calmly readable rather than shouted mid-arrival.
+              "Agent working…" status below is the live announcement for this state; once the turn
+              lands, its own text sits in the transcript, calmly readable rather than shouted
+              mid-arrival, and the sr-only beacon further down says, once, that it arrived.
             */}
             {streaming !== null && <div className="bub ba">{streaming}</div>}
 
             {sending && streaming === null && (
               <div className="tiny muted" role="status" aria-live="polite">
-                <i className="ti ti-loader" data-running="" aria-hidden="true" /> Working…
+                <i className="ti ti-loader" data-running="" aria-hidden="true" /> Agent working…
               </div>
             )}
           </div>
@@ -323,7 +349,7 @@ export function Interview() {
               </label>
               {uploading && (
                 <span className="tiny muted" role="status" aria-live="polite">
-                  Reading the file…
+                  Storing and reading the file…
                 </span>
               )}
               <button

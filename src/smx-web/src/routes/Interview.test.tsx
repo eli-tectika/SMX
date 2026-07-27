@@ -206,13 +206,33 @@ describe('Interview live regions', () => {
     // own permanent `role="status"` region on this screen, so a singular query would throw on
     // "multiple elements" the moment both are on screen at once — which, per the task's own warning,
     // is a reason to scope the query, not a reason to strip the role from either node.
-    const status = await screen.findByText(/^working…$/i);
+    const status = await screen.findByText(/^agent working…$/i);
     expect(status).toHaveAttribute('role', 'status');
     expect(status).toHaveAttribute('aria-live', 'polite');
+  });
 
-    // This is the only test in the file that leaves `sendInterviewMessage` permanently pending —
-    // restore the `beforeEach` default so a test added after this one does not inherit a promise
-    // that never settles.
-    vi.mocked(api.sendInterviewMessage).mockResolvedValue(undefined);
+  /**
+   * "Agent working…" says a turn started; on its own that is half the feature, because the
+   * streaming bubble is deliberately silent (see the comment above it in Interview.tsx) and the
+   * finished reply just sits in the transcript without announcing itself. This proves the other
+   * half — a one-shot "it landed" beacon — while pinning down that the beacon carries only the
+   * FACT of arrival, never the reply's own words.
+   */
+  it('announces once the reply has landed, without repeating its text', async () => {
+    vi.mocked(api.sendInterviewMessage).mockImplementation(async (_id, _text, onEvent) => {
+      onEvent({ event: 'chunk', data: JSON.stringify({ text: 'Good — next question.' }) });
+      onEvent({ event: 'done', data: JSON.stringify({ createdProjectId: null, toolCalls: [] }) });
+    });
+
+    const user = userEvent.setup();
+    renderAt();
+    const box = await screen.findByLabelText(/message the interview agent/i);
+    await user.type(box, 'the client is Acme');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+
+    const status = await screen.findByText(/^reply received\.$/i);
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(status).not.toHaveTextContent(/good/i);
   });
 });

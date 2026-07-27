@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ChatTurn } from '../api/types';
 import { AgentPanel } from './AgentPanel';
 
 vi.mock('../api/client', () => ({
@@ -39,5 +40,48 @@ describe('AgentPanel', () => {
     const status = await screen.findByText(/working/i);
     expect(status).toHaveAttribute('role', 'status');
     expect(status).toHaveAttribute('aria-live', 'polite');
+  });
+
+  /**
+   * "Agent working…" announces that a turn started; on its own that is half the feature, since
+   * the pending line simply vanishing when the poll finds the answer is not something most screen
+   * readers announce at all. This proves the other half — a one-shot "it landed" beacon — without
+   * asserting on the reply's own text, which stays out of the live region on purpose (the same
+   * re-announce-the-body reasoning that kept the streamed Interview bubble non-live).
+   */
+  it('announces once a pending turn resolves, and only after it resolves', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const pending: ChatTurn = {
+      id: 'turn-1',
+      role: 'operator',
+      text: 'What did discovery find?',
+      createdAt: '2026-07-27T10:00:00Z',
+      toolCalls: [],
+      status: 'pending',
+    };
+    const answered: ChatTurn = { ...pending, status: 'answered' };
+    vi.mocked(api.getChatThread).mockResolvedValueOnce([pending]).mockResolvedValueOnce([answered]);
+
+    render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
+    await screen.findByText(/agent working/i);
+    // Nothing has resolved yet — the completion beacon must still be empty, or this test would
+    // pass even with the effect firing on mount rather than on the pending→answered transition.
+    expect(screen.queryByText(/reply received/i)).not.toBeInTheDocument();
+
+    // usePolling's own interval, not a magic number: it re-fetches on a plain setTimeout, so the
+    // next tick has to actually elapse before the "answered" thread is read. Wrapped in `act`
+    // because the fake-timer tick drives a state update (the new poll result) outside of any
+    // Testing Library event helper, which is the one case RTL cannot auto-wrap for you.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    const status = await screen.findByText(/reply received/i);
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 });

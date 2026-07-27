@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ApiError, NotFound, getChatThread, sendChatMessage } from '../api/client';
 import type { ChatTurn } from '../api/types';
 import { backendStage, canChat } from '../domain/stages';
@@ -12,7 +12,7 @@ import { useStickToBottom } from '../hooks/useStickToBottom';
  * backend exposes no chat endpoint". It does: POST/GET /projects/{id}/stages/{stage}/chat. So the panel
  * now reads the real thread and the composer is live — but only where the backend actually has an agent
  * for the stage. On a stage with no agent it stays closed with an honest statement, not a mock badge:
- * "no agent for this stage" is a true fact about the record, not fabricated content.
+ * "no agent on this stage" is a true fact about the record, not fabricated content.
  */
 export function AgentPanel({
   projectId,
@@ -50,11 +50,15 @@ function ClosedPanel({ stageLabel }: { stageLabel: string }) {
     <PanelFrame stageLabel={stageLabel}>
       <div className="tiny muted" style={{ marginTop: 'auto', marginBottom: 'auto', textAlign: 'center', padding: 12 }}>
         <i className="ti ti-message-off" aria-hidden="true" style={{ fontSize: 20, display: 'block', marginBottom: 6 }} />
-        {/* The enumeration of which stages DO have agents used to live here too, but the stage spine
-            already shows that at a glance, and it cost this panel three lines of its whole height to
-            say a second time. The fact that matters here — this stage has no agent — is preserved;
-            only the redundant explanation is gone. */}
-        No agent on this stage.
+        {/* This used to also enumerate which stages DO have an agent, on the theory that the stage
+            spine already shows it — it does not. The spine's dashed/solid pill (`isMocked`) states
+            DATA PROVENANCE (is this stage backed by a real backend stage), not chat availability, and
+            `domain/stages.ts` deliberately keeps `backedBy` and `canChat` as two separate, only-
+            coincidentally-aligned facts — a background agent could land without this screen's copy
+            changing. So this sentence is the ONLY place in the app that says where a conversation
+            exists at all: a navigational fact, not an explanation, and the copy rule keeps facts,
+            trimming only the explanation around them. */}
+        No agent on this stage — one runs on intake, discovery, regulatory, matrix, dosing and cost.
       </div>
     </PanelFrame>
   );
@@ -77,10 +81,28 @@ function LiveChat({ projectId, stage, stageLabel }: { projectId: string; stage: 
   const turns = state.kind === 'ready' ? state.data : [];
   const pending = turns.some((t) => t.status === 'pending');
 
-  // `turns.length` follows a landed reply; `pending` follows the "the agent is working…" line
-  // that appears the instant a message is sent, before any poll has found the answer — without
-  // it, sending a message wouldn't move the viewport until the reply actually arrived.
+  // `turns.length` follows a landed reply; `pending` follows the "Agent working…" line that
+  // appears the instant a message is sent, before any poll has found the answer — without it,
+  // sending a message wouldn't move the viewport until the reply actually arrived.
   const scroller = useStickToBottom<HTMLDivElement>([turns.length, pending]);
+
+  // A one-shot completion beacon, sr-only (see the render below): "Agent working…" tells a
+  // screen-reader operator a turn STARTED, but on its own that is half the feature — the pending
+  // line simply disappears when the poll finds the answer, which most screen readers announce as
+  // nothing at all, and unlike Interview.tsx there is no streamed bubble here to arrive audibly
+  // either. This effect fires exactly once per turn: it watches `pending` FALL (a real answer just
+  // landed, not a poll re-confirming the same pending state) and writes a short, fixed sentence —
+  // never the reply's own text, so it can't fall into the same "re-announce a growing body" trap
+  // the streaming bubble was rejected for. It also clears the beacon the instant `pending` RISES
+  // again, because an unchanged aria-live text does not re-announce — without the reset, a second
+  // reply landing with the identical words "Reply received." would mutate nothing and go silent.
+  const wasPending = useRef(false);
+  const [turnAnnouncement, setTurnAnnouncement] = useState('');
+  useEffect(() => {
+    if (wasPending.current && !pending) setTurnAnnouncement('Reply received.');
+    else if (pending) setTurnAnnouncement('');
+    wasPending.current = pending;
+  }, [pending]);
 
   async function send(e: FormEvent) {
     e.preventDefault();
@@ -162,10 +184,17 @@ function LiveChat({ projectId, stage, stageLabel }: { projectId: string; stage: 
 
         {pending && (
           <div className="tiny muted" role="status" aria-live="polite">
-            <i className="ti ti-loader" data-running="" aria-hidden="true" /> Working…
+            <i className="ti ti-loader" data-running="" aria-hidden="true" /> Agent working…
           </div>
         )}
       </div>
+
+      {/* sr-only: see the effect above. Visually silent — the landed reply already speaks for
+          itself in the transcript above — but a screen reader needs the one-shot "it's done" this
+          carries, since the pending line just vanishing announces nothing on its own. */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {turnAnnouncement}
+      </span>
 
       {error && (
         <div className="tiny" style={{ color: 'var(--text-danger)', margin: '4px 0' }} role="alert">

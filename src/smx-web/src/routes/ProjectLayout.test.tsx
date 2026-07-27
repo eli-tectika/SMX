@@ -74,6 +74,6 @@ describe('ProjectLayout — which stages get an agent dock', () => {
     await atStage('decision');
     expect(document.querySelector('.dock')).not.toBeInTheDocument();
     expect(document.querySelector('.recordframe')).toBeInTheDocument();
-    expect(screen.queryByText(/No agent for this stage/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No agent on this stage/i)).not.toBeInTheDocument();
   });
 });
