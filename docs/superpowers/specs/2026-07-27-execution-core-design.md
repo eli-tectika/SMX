@@ -316,9 +316,25 @@ interface RunStep {
 
 | event | `data` | `id` |
 |---|---|---|
-| `entry` | a `ThreadEntry` (message landed, or run opened) | `e{seq}` |
-| `step` | `{ runId, step: RunStep }` | `e{entrySeq}.s{stepSeq}` |
-| `run` | `{ runId, endedAt, outcome, error }` — a run reached a terminal state | `e{entrySeq}.r` |
+| `entry` | a `ThreadEntry` (message landed, or run opened) | `{runId}` |
+| `step` | `{ runId, step: RunStep }` | `{runId}.s{stepSeq}` |
+| `run` | `{ runId, endedAt, outcome, error }` — a run reached a terminal state | `{runId}.r` |
+
+**Frame ids are opaque to the client** — echo the last one back as `?since=`, never parse it. They are
+keyed on the **run id**, not the thread `seq`, because the publisher (`RunTrail`) knows which run it is
+writing and does not know the thread's dense `seq` — that is assigned by the read endpoint when it merges
+runs with the chat half. An earlier draft of this table specified `e{seq}`-style ids; it was never
+implementable for that reason.
+
+**`RunSummary` is not `RunDoc` on the wire.** The record's `Id` serializes as `id` and it carries a
+`projectId` (its Cosmos partition key); §7.1 declares `runId` and no `projectId`. Publishing the doc raw
+gives the client `runId === undefined` on every entry, silently. Both the live and replay paths must go
+through the same projection.
+
+**Nullable fields must be emitted, not omitted.** `Json.Options` sets
+`DefaultIgnoreCondition = WhenWritingNull`, so `agent`, `subject`, `parentRunId`, `endedAt` and `error`
+would vanish from the payload when null. `agent === null` is how the client tells a deterministic stage
+from an agent run, so these carry `[JsonIgnore(Condition = Never)]`.
 
 `?since=` takes the last `id` the client saw; the server replays everything after it. A `:` heartbeat every
 15s keeps App Gateway from reaping an idle connection during a long tool call.
