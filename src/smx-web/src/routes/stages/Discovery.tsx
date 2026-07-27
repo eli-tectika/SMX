@@ -128,7 +128,13 @@ export function Discovery({ project }: ScreenProps) {
 
       {phase === 'ready' &&
         components.map((component) => {
-          const forComponent = substances.filter((s) => s.componentId === component);
+          // Stable sort: within a tier the agent's own order is a ranking it chose, and the UI
+          // must not re-rank it. Only the tier bucket (A before B before C) is imposed here, so the
+          // ribbon above (drawn A/B/C left to right) and the card list below are never out of step.
+          const forComponent = substances
+            .filter((s) => s.componentId === component)
+            .slice()
+            .sort((a, b) => TIERS.indexOf(a.tier) - TIERS.indexOf(b.tier));
           return (
             <div key={component} style={{ marginBottom: 18 }}>
               <SectionHeader
