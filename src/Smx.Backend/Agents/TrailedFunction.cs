@@ -74,10 +74,27 @@ internal sealed class TrailedFunction(AIFunction inner, IRunTrail trail, Semapho
     }
 
     /// The first STRING argument, which is the query on every tool in ToolBox that takes one. Not
-    /// looked up by name ("query") because the parameter names differ across tools, and not the whole
-    /// argument bag because this is a display sentence, not a payload dump.
-    private static string? FirstStringArgument(AIFunctionArguments arguments) =>
-        arguments.Values.OfType<string>().FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+    /// looked up by name ("query") because the parameter names differ across tools (element,
+    /// substrate, …), and not the whole argument bag because this is a display sentence, not a
+    /// payload dump.
+    ///
+    /// JsonElement is unwrapped, and that is not defensive coding: the SDK hands arguments through as
+    /// deserialized JSON, so a plain `OfType&lt;string&gt;()` matches NOTHING and every row silently
+    /// reads "Called search_catalog." with no query. That is what shipped before this line existed.
+    private static string? FirstStringArgument(AIFunctionArguments arguments)
+    {
+        foreach (var value in arguments.Values)
+        {
+            var text = value switch
+            {
+                string s => s,
+                JsonElement { ValueKind: JsonValueKind.String } e => e.GetString(),
+                _ => null,
+            };
+            if (!string.IsNullOrWhiteSpace(text)) return text;
+        }
+        return null;
+    }
 
     internal static string Describe(string tool, string? query, int? resultCount)
     {
@@ -101,13 +118,22 @@ internal sealed class TrailedFunction(AIFunction inner, IRunTrail trail, Semapho
         _ => CountJsonArray(result.ToString()),
     };
 
+    /// A bare JSON array, or ToolBox's `{ "results": [...] }` envelope — which is what every
+    /// searching tool actually returns, so counting only bare arrays reported nothing at all.
+    /// Anything else yields null rather than a number nobody counted.
     private static int? CountJsonArray(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
         try
         {
             using var doc = JsonDocument.Parse(raw);
-            return doc.RootElement.ValueKind == JsonValueKind.Array ? doc.RootElement.GetArrayLength() : null;
+            var root = doc.RootElement;
+            if (root.ValueKind == JsonValueKind.Array) return root.GetArrayLength();
+            if (root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("results", out var results)
+                && results.ValueKind == JsonValueKind.Array)
+                return results.GetArrayLength();
+            return null;
         }
         catch (JsonException) { return null; }
     }

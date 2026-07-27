@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Smx.Backend.Agents;
 using Smx.Backend.Pipeline;
@@ -59,12 +60,41 @@ public class TrailedFunctionTests
         Assert.Equal(3, detail.ResultCount);
     }
 
+    /// The two shapes that actually reach this code in production, both of which the first version
+    /// got wrong and reported as "no query, no count" on every single row.
+    [Fact]
+    public async Task Reads_a_query_the_SDK_handed_over_as_a_JsonElement()
+    {
+        var trail = new RecordingTrail();
+        var wrapped = (AIFunction)TrailedFunction.Wrap([Tool("search_catalog", _ => "[]")], trail)[0];
+
+        // The SDK deserializes arguments before invoking, so they arrive as JsonElement rather than
+        // string. A plain OfType<string>() matches nothing here.
+        using var doc = JsonDocument.Parse("\"zirconium\"");
+        await wrapped.InvokeAsync(new AIFunctionArguments { ["query"] = doc.RootElement.Clone() });
+
+        Assert.Equal("zirconium", Assert.Single(trail.Steps).Detail!.Query);
+    }
+
+    /// Every searching tool in ToolBox returns `{ "results": [...] }`, not a bare array.
+    [Fact]
+    public async Task Counts_the_results_envelope_the_tools_actually_return()
+    {
+        var trail = new RecordingTrail();
+        var wrapped = (AIFunction)TrailedFunction.Wrap(
+            [Tool("search_catalog", _ => "{\"results\":[{},{},{},{}]}")], trail)[0];
+
+        await wrapped.InvokeAsync(new AIFunctionArguments { ["query"] = "Zr" });
+
+        Assert.Equal(4, Assert.Single(trail.Steps).Detail!.ResultCount);
+    }
+
     /// A count that was inferred rather than counted is a fabricated number in an audit trail.
     [Fact]
     public async Task Reports_no_count_when_the_result_is_not_a_countable_shape()
     {
         var trail = new RecordingTrail();
-        var wrapped = TrailedFunction.Wrap([Tool("lookup_compatibility", _ => "{\"verdict\":\"ok\"}")], trail);
+        var wrapped = TrailedFunction.Wrap([Tool("lookup_compatibility", _ => "{\"tabulated\":true}")], trail);
 
         await ((AIFunction)wrapped[0]).InvokeAsync(new AIFunctionArguments { ["query"] = "Zr in PET" });
 
