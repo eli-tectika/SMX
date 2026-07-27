@@ -7,9 +7,9 @@ import { STAGES, backendStages, foldStatus } from '../../domain/stages';
  * Gates render as diamonds so a gate is distinguishable from a stage at 9px without
  * spending a colour on the difference.
  *
- * Stages with no backend render hollow and dashed. The record cannot report a park
- * state for them, so the card must never imply one — an instrument with an
- * unpopulated channel, not an instrument reading zero.
+ * Every stage is backed by the record now, so there is no hollow "no backend" variant. A node with
+ * no status is the no-project case only — the empty state renders this rail with no `stages` at all,
+ * to teach the journey without fabricating one.
  *
  * Nodes and labels share one grid so a label always sits under its own node.
  */
@@ -32,7 +32,6 @@ export function MiniSpine({
       <div className="mini-spine">
         {STAGES.map((stage, i) => {
           const status = statusOf(i);
-          const backed = Boolean(stage.backedBy);
           return (
             <div
               key={stage.slug}
@@ -43,12 +42,7 @@ export function MiniSpine({
                 className="mini-spine__node"
                 data-status={status}
                 data-gate={stage.gate ? 'true' : undefined}
-                data-backed={backed ? 'true' : 'false'}
-                title={
-                  backed
-                    ? `${stage.label} — ${status ?? 'unknown'}`
-                    : `${stage.label} — no backend stage; cannot report a park state`
-                }
+                title={`${stage.label} — ${status ?? 'not started'}`}
               />
             </div>
           );

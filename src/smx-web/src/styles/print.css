@@ -103,32 +103,11 @@
   .ribbon__seg,
   .banner,
   .gatebox,
-  [class*='hatch-'],
-  .screen[data-provenance='mock']::before {
+  [class*='hatch-'] {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  /* Provenance survives the printer.
-
-     On paper there is no hover, no tooltip, no disabled state — every signal that said
-     "this was not produced by an agent" is gone except these two. So they get louder, not
-     quieter, and they get a black rule so they survive a greyscale printer. */
-  .screen[data-provenance='mock'] {
-    border-left: 4px solid #000 !important;
-  }
-
-  .screen[data-provenance='mock']::after {
-    content: 'MOCK DATA — NOT AGENT-PRODUCED, NOT TRACEABLE TO A SOURCE. NOT FOR REGULATORY USE.';
-    display: block;
-    margin-top: 6mm;
-    padding-top: 2mm;
-    border-top: 1px solid #000;
-    font-size: 8pt;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    color: #000;
-  }
 
   .banner.warn {
     border: 1px solid #000;

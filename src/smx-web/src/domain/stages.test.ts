@@ -10,8 +10,14 @@ import {
   isChatStage,
 } from './stages';
 
-/** The two the backend genuinely has no agent for. Everything else is backed now. */
-const AGENTLESS = ['background', 'decision'];
+/**
+ * `background` is the ONLY agentless slug left. It is a real tracked stage — the record reports its
+ * status — but RecordIds.cs deliberately keeps it out of `Stages.All`, because the XRF filter is a
+ * pass-through and a thread on it would be a conversation with nobody. `decision` moved the other
+ * way: it IS in Stages.All and is chattable; its screen keeps no dock for an unrelated reason
+ * (a signature is not a conversation).
+ */
+const AGENTLESS = ['background'];
 
 const s = (status: StageState['status']): StageState => ({ status, attempts: 1 });
 
@@ -53,10 +59,11 @@ describe('backendStages — the spine slug → backend stage keys map', () => {
     }
   });
 
-  it('is empty only for the slugs the backend has no agent for', () => {
-    for (const slug of AGENTLESS) {
-      expect(backendStages(slug)).toEqual([]);
-      expect(backendStage(slug)).toBeUndefined();
+  /** Every spine entry is backed now — that is what removed `isMocked` and the dashed pill. */
+  it('is never empty: no screen invents its own pill state', () => {
+    for (const stage of STAGES) {
+      expect(backendStages(stage.slug).length).toBeGreaterThan(0);
+      expect(backendStage(stage.slug)).toBeDefined();
     }
   });
 
@@ -75,7 +82,9 @@ describe('backendStages — the spine slug → backend stage keys map', () => {
     const backed = STAGES.flatMap((x) => x.backedBy ?? []);
     expect(backed).not.toContain('screening');
     expect([...backed].sort()).toEqual([
+      'background',
       'cost',
+      'decision',
       'discovery',
       'dosing',
       'intake',
@@ -110,10 +119,16 @@ describe('canChat — chat is available on every backed slug', () => {
       expect(canChat(slug)).toBe(true);
     }
   });
-  it('is false where the backend has no agent', () => {
+  it('is false only for background — the one stage with no agent', () => {
     for (const slug of AGENTLESS) {
       expect(canChat(slug)).toBe(false);
     }
+  });
+
+  /** The VP gate has an agent and keeps no dock. Those are two separate facts; do not fuse them. */
+  it('is true for decision, whose screen still takes no dock', () => {
+    expect(canChat('decision')).toBe(true);
+    expect(STAGES.find((s) => s.slug === 'decision')?.surface).toBe('record');
   });
 });
 

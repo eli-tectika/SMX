@@ -4,35 +4,39 @@ import type { StageState, StageStatus } from '../api/types';
 /**
  * The 8-stage journey from project_files/SMX_Marker_System_UX_Spec.md §4.
  *
- * The backend's ProjectDoc.Stages tracks EIGHT real stages — intake, pool, background, discovery,
- * regulatory, matrix, dosing, cost (Stages in src/Smx.Domain/Records/RecordIds.cs). `pool` used to be
- * hidden from this spine entirely, which left the pool agent as the one stage whose work the operator
- * could not see happen. It is now folded into the intake pill: intake transcribes the need and the pool
- * turns it into a hypothesis, and the operator supplies nothing between them, so they are ONE step from
- * their side. `background` (the XRF filter, still a passthrough) is shown only as the XRF-entry screen,
- * unbacked in the spine; `decision` (the VP gate) is the other unbacked screen.
+ * The backend's ProjectDoc.Stages tracks NINE real stages — intake, pool, background, discovery,
+ * regulatory, matrix, dosing, cost, decision (Stages in src/Smx.Domain/Records/RecordIds.cs). EVERY
+ * spine entry is now backed by at least one of them, which is why there is no longer an `isMocked`:
+ * there is no screen whose pill state is invented.
+ *
+ * `pool` used to be hidden from this spine entirely, which left the pool agent as the one stage whose
+ * work the operator could not see happen. It is now folded into the intake pill: intake transcribes
+ * the need and the pool turns it into a hypothesis, and the operator supplies nothing between them,
+ * so they are ONE step from their side.
  *
  * `backedBy` names the ProjectDoc stage keys whose real status drives the pill. `gate` marks a
- * hard gate; regulatory is BOTH a backed stage and a gate. The decision/VP gate has no backend.
+ * hard gate; regulatory is BOTH a backed stage and a gate.
  *
  * `surface: 'record'` marks a screen that is a SIGNING SURFACE rather than a work surface: no agent
- * dock, a document measure, the gate as its terminus (ProjectLayout). Only `decision` is one.
+ * dock, a document measure, the gate as its terminus (ProjectLayout). Only `decision` is one — and
+ * note that this is now INDEPENDENT of whether the stage has an agent. `decision` is in Stages.All
+ * and is perfectly chattable; it keeps no dock anyway, because what is permanent about the VP gate is
+ * not that the backend lacks something, it is that a human signature is not a conversation.
  *
- * It is DECLARED here rather than derived, because both things you would derive it from are wrong.
- * `canChat` is false for `background` too, and it states a TRANSIENT fact about the backend ("no chat
- * endpoint yet") — a background agent landing later would silently restyle that page. `gate` is true
- * for `regulatory`, which is a gate WITH an agent and rightly keeps its dock. What is permanent about
- * the VP gate is not that the backend lacks something: it is that a human signature is not a
- * conversation. That survives a Decision agent ever being built.
+ * `background` is the mirror case: a real tracked stage that is DELIBERATELY absent from Stages.All
+ * (RecordIds.cs says so — the XRF filter is a pass-through with no agent, so a thread on it could
+ * only be a conversation with nobody). So it takes a real pill and an honestly closed dock.
  */
 export type BackendStage =
   | 'intake'
   | 'pool'
+  | 'background'
   | 'discovery'
   | 'regulatory'
   | 'matrix'
   | 'dosing'
-  | 'cost';
+  | 'cost'
+  | 'decision';
 
 export interface StageDef {
   slug: string;
@@ -49,16 +53,14 @@ export interface StageDef {
 
 export const STAGES: readonly StageDef[] = [
   { slug: 'intake', label: 'Intake & pool', backedBy: ['intake', 'pool'] },
-  { slug: 'background', label: 'Background' },
+  { slug: 'background', label: 'Background', backedBy: ['background'] },
   { slug: 'discovery', label: 'Discovery', backedBy: ['discovery'] },
   { slug: 'regulatory', label: 'Reg gate', backedBy: ['regulatory'], gate: true },
   { slug: 'dosing', label: 'Dosing', backedBy: ['dosing'] },
   { slug: 'cost', label: 'Cost', backedBy: ['cost'] },
   { slug: 'matrix', label: 'Matrix', backedBy: ['matrix'] },
-  { slug: 'decision', label: 'VP gate', gate: true, surface: 'record' },
+  { slug: 'decision', label: 'VP gate', backedBy: ['decision'], gate: true, surface: 'record' },
 ];
-
-export const isMocked = (stage: StageDef) => stage.backedBy === undefined;
 
 /** Every backend stage a spine slug covers, in pipeline order. Empty for an unbacked screen. */
 export function backendStages(slug: string): BackendStage[] {
@@ -81,6 +83,11 @@ export function backendStage(slug: string): BackendStage | undefined {
   return stages[stages.length - 1];
 }
 
+/**
+ * Mirrors `Stages.All` (RecordIds.cs) exactly, and the one omission is the point: `background` is a
+ * real tracked stage with NO agent, so a thread on it would be a conversation with nobody. `decision`
+ * IS here — it has an agent — even though its screen keeps no dock for an unrelated reason.
+ */
 const CHAT_STAGES: readonly BackendStage[] = [
   'intake',
   'pool',
@@ -89,6 +96,7 @@ const CHAT_STAGES: readonly BackendStage[] = [
   'matrix',
   'dosing',
   'cost',
+  'decision',
 ];
 const REVISE_STAGES: readonly BackendStage[] = ['discovery', 'regulatory', 'dosing'];
 

@@ -126,34 +126,6 @@
   border-radius: var(--r-pill);
 }
 
-/* ---- provenance texture ------------------------------------------------------
-   Mockness becomes a property of the SURFACE, not a badge that scrolls out of
-   view. The MockBadge stays as well — this is additional enforcement, not a
-   replacement. A fabricated verdict must never be able to pass for a real one. */
-
-.screen[data-provenance='mock'] {
-  border-left: 3px solid var(--border-warning);
-  position: relative;
-  overflow: hidden;
-}
-
-.screen[data-provenance='mock']::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: repeating-linear-gradient(
-    45deg,
-    transparent 0 10px,
-    color-mix(in srgb, var(--text-warning) 4%, transparent) 10px 11px
-  );
-}
-
-/* Content must sit above the hatch. */
-.screen[data-provenance='mock'] > * {
-  position: relative;
-}
-
 /* An uncited verdict is the worst artifact this system can produce. It should
    look like it — not like a line of grey text. */
 .hatch-danger {

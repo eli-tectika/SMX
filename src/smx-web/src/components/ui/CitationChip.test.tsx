@@ -9,10 +9,10 @@ describe('CitationChip', () => {
   /**
    * Design D8, and the reason this test exists at all.
    *
-   * Discovery, Dosing, Cost and Decision render FIXTURES behind a MockBadge. If their chips
-   * linked into a real document viewer, fabricated citations would borrow the authority of
-   * real ones — exactly what the badge exists to prevent. A chip with no documentId must stay
-   * inert, and it must keep looking identical, so nothing about the mock screens changes.
+   * No screen renders fixtures any more, but the inert path is still load-bearing: `Citation`
+   * (ConstraintsDoc.cs) carries no documentId, only a free-text `reference` the agent wrote.
+   * Deriving an id by parsing it would produce links that are usually right, and a chip that opens
+   * the WRONG regulation is worse than one that opens nothing.
    */
   it('renders inert text when no documentId is given', () => {
     const { container } = render(<CitationChip {...base} />, { wrapper: MemoryRouter });

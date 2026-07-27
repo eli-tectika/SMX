@@ -348,14 +348,6 @@
   background: var(--surface-0);
 }
 
-/* A stage with no backend cannot report a park state, so the card never claims
-   one: the node stays hollow and dashed. */
-.mini-spine__node[data-backed='false'] {
-  border-style: dashed;
-  border-color: var(--border);
-  background: transparent;
-}
-
 /* Same grid as the nodes above — this is what keeps a label under its node. */
 .mini-spine__labels {
   display: grid;

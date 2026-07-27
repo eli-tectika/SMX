@@ -1,44 +1,32 @@
 import { NavLink } from 'react-router-dom';
 import type { ProjectSummary } from '../api/types';
-import { STAGES, backendStages, foldStatus, isMocked, pillClass, stageIcon } from '../domain/stages';
+import { STAGES, backendStages, foldStatus, pillClass, stageIcon } from '../domain/stages';
 
 /**
  * The horizontal stage spine from mockups_1 screen 4.
  *
- * Backed stages take their pill state from the real ProjectDoc.stages record — folded across every
- * stage the pill covers, since Intake & pool covers two. The fold is attention-first (domain/stages
+ * Every pill takes its state from the real ProjectDoc.stages record — folded across every stage the
+ * pill covers, since Intake & pool covers two. The fold is attention-first (domain/stages
  * `foldStatus`): a failed pool behind a done intake reads as failed.
  *
- * Mocked stages get a dotted pill and a "mock" marker so the operator can tell at
- * a glance which parts of the journey the system actually knows something about.
+ * There is no longer a dashed "mock" variant, because there is no longer a stage whose state is
+ * invented. `foldStatus` returns `pending` for a stage the record has not written yet, which is the
+ * honest reading — the pipeline has not reached it — and is a different claim from the one the
+ * dashed pill used to make ("this screen shows fabricated data").
  */
 export function StageSpine({ project }: { project: ProjectSummary }) {
   return (
     <nav className="spine" aria-label="Project stages">
       {STAGES.map((stage) => {
-        const keys = backendStages(stage.slug);
-        // `undefined`, not a fold, for an unbacked screen: it has no status to report, which is a
-        // different thing from having a pending one.
-        const status = keys.length > 0 ? foldStatus(keys.map((k) => project.stages[k])) : undefined;
-        const mocked = isMocked(stage);
+        const status = foldStatus(backendStages(stage.slug).map((k) => project.stages[k]));
         return (
           <NavLink
             key={stage.slug}
             to={`/p/${project.projectId}/${stage.slug}`}
-            title={
-              mocked
-                ? `${stage.label} — mock data, no backend stage`
-                : `${stage.label} — ${status ?? 'unknown'}`
-            }
+            title={`${stage.label} — ${status}`}
             className={({ isActive }) =>
-              [
-                pillClass(stage, status),
-                mocked ? 'mut' : '',
-                isActive ? 'on' : '',
-                'stage-link',
-              ].join(' ')
+              [pillClass(stage, status), isActive ? 'on' : '', 'stage-link'].join(' ')
             }
-            style={mocked ? { borderStyle: 'dashed' } : undefined}
           >
             <i
               className={`ti ${stageIcon(status, stage.gate)}`}
@@ -47,9 +35,6 @@ export function StageSpine({ project }: { project: ProjectSummary }) {
               data-running={status === 'running' ? '' : undefined}
             />
             {stage.label}
-            {mocked && (
-              <span className="sr-only"> (mock data — no backend stage)</span>
-            )}
           </NavLink>
         );
       })}

@@ -166,9 +166,8 @@ export function CitationChip({
   /**
    * Present ONLY where the citation is real. The fixture-backed screens pass nothing and the
    * chip stays inert — linking a fabricated citation into a real document viewer would let
-   * mock data borrow the authority of an agent-produced one, which is what MockBadge exists
-   * to prevent. `entryId` alone changes nothing: an anchor with no document to anchor into
-   * points at the wrong thing.
+   * a citation borrow authority it has not earned. `entryId` alone changes nothing: an anchor
+   * with no document to anchor into points at the wrong thing.
    */
   documentId?: string;
   entryId?: string;

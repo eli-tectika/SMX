@@ -65,15 +65,13 @@ function ClosedPanel({ stageLabel }: { stageLabel: string }) {
     <PanelFrame stageLabel={stageLabel}>
       <div className="tiny muted" style={{ marginTop: 'auto', marginBottom: 'auto', textAlign: 'center', padding: 12 }}>
         <i className="ti ti-message-off" aria-hidden="true" style={{ fontSize: 20, display: 'block', marginBottom: 6 }} />
-        {/* This used to also enumerate which stages DO have an agent, on the theory that the stage
-            spine already shows it — it does not. The spine's dashed/solid pill (`isMocked`) states
-            DATA PROVENANCE (is this stage backed by a real backend stage), not chat availability, and
-            `domain/stages.ts` deliberately keeps `backedBy` and `canChat` as two separate, only-
-            coincidentally-aligned facts — a background agent could land without this screen's copy
-            changing. So this sentence is the ONLY place in the app that says where a conversation
-            exists at all: a navigational fact, not an explanation, and the copy rule keeps facts,
-            trimming only the explanation around them. */}
-        No agent on this stage — one runs on intake, discovery, regulatory, matrix, dosing and cost.
+        {/* Background is the ONLY stage without an agent now, so this names the exception rather
+            than enumerating the eight that have one. The spine cannot carry this fact: every pill is
+            backed by the record, and none of them encodes chat availability. `backedBy` and
+            `isChatStage` stay two separate facts in domain/stages.ts precisely so that an XRF agent
+            landing later changes this sentence and nothing else. */}
+        No agent on this stage — the XRF background filter is a deterministic pass-through. Every
+        other stage has one.
       </div>
     </PanelFrame>
   );
