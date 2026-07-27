@@ -8,6 +8,7 @@ import { Data } from '../../components/ui/Data';
 import { SectionHeader } from '../../components/ui/Primitives';
 import library from '../../mocks/fixtures/marker-library.json';
 import type { ScreenProps } from '../ProjectLayout';
+import { ProposedPool } from './ProposedPool';
 
 interface LibraryEntry {
   code: string;
@@ -262,6 +263,10 @@ export function Intake({ project, refreshProject }: ScreenProps) {
                 </table>
               </>
             )}
+
+            {/* The pool agent's proposal, immediately after the physicist's pools it will be sieved
+                against. Real data — the stage this screen now covers is Intake AND pool. */}
+            <ProposedPool projectId={project.projectId} />
 
             {payload.clientRestrictedList.length > 0 && (
               <div className="region" style={{ marginBottom: 14 }}>

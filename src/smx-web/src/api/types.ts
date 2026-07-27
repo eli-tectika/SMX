@@ -168,6 +168,32 @@ export interface XrfConfirmed {
   device?: string | null;
 }
 
+/**
+ * PoolSuggestion — src/Smx.Domain/Records/PoolDoc.cs.
+ *
+ * One proposed marker for one component: an ELEMENT and a FORM-CLASS, never a CAS — the exact form
+ * and its check-digit-guarded CAS are Discovery's job. `formClass` is a closed enum the pool agent is
+ * validated against (PoolAgent.FormClasses), which is why it is a union here and not a string.
+ *
+ * It is a HYPOTHESIS, corroborated or dropped downstream — the pool agent is allowed to draw on model
+ * knowledge, unlike Discovery, so a suggestion may legitimately rest on no retrieved source at all.
+ */
+export interface PoolSuggestion {
+  component: string;
+  element: string;
+  formClass: 'metal' | 'compound' | 'organocomplex';
+  rationale: string;
+  citations: Citation[];
+  /** Set when the suggestion rests on model knowledge alone (execution-core-design §9). */
+  uncited?: boolean;
+}
+
+/** PoolDoc — the proposed candidate pool, produced from the need alone before any XRF filter. */
+export interface PoolDoc {
+  projectId: string;
+  suggestions: PoolSuggestion[];
+}
+
 /** Citation — src/Smx.Domain/Records/ConstraintsDoc.cs */
 export interface Citation {
   source: string;

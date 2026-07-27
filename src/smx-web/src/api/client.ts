@@ -23,6 +23,7 @@ import type {
   MatrixDoc,
   MsdsEntry,
   MsdsReviewReceipt,
+  PoolDoc,
   ProjectListItem,
   ProjectSummary,
   RegulatoryGate,
@@ -608,4 +609,17 @@ export async function reviewDosing(
   if (res.status === 404) return NotFound;
   if (!res.ok) throw await failure(res);
   return (await res.json()) as { reviewed: true };
+}
+
+/**
+ * GET /projects/{id}/pool — the need-driven pool the pool agent proposed (ProjectEndpoints.cs:186).
+ *
+ * 404 before that agent has run, which is a STATE and not an error: a project sitting at
+ * awaiting-confirmation has no pool yet and never should.
+ */
+export async function getPool(projectId: string): Promise<PoolDoc | NotFound> {
+  const res = await authorizedFetch(`${p(projectId)}/pool`);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as PoolDoc;
 }
