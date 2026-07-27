@@ -51,4 +51,50 @@ describe('AgentPanel', () => {
     render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
     expect(screen.getByText(/not live/i)).toBeInTheDocument();
   });
+
+  /**
+   * A run landing must announce ITS OWN outcome. Keying on "stopped running" alone would announce
+   * success over a failure — in an app whose premise is that confident wrongness causes harm, that
+   * is worse than the silence it replaces.
+   */
+  it('announces a landed run by its own outcome', async () => {
+    const base = {
+      runId: 'r1',
+      stage: 'discovery',
+      agent: 'discovery',
+      subject: null,
+      parentRunId: null,
+      trigger: 'pipeline' as const,
+      startedAt: 'x',
+      error: null,
+      steps: [],
+    };
+    vi.mocked(useThread).mockReturnValue({
+      entries: [{ seq: 1, at: 'x', kind: 'run', run: { ...base, endedAt: null, outcome: 'running' } }],
+      live: true,
+      loading: false,
+      error: null,
+    } as ReturnType<typeof useThread>);
+
+    const { rerender } = render(
+      <AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />,
+    );
+
+    vi.mocked(useThread).mockReturnValue({
+      entries: [
+        {
+          seq: 1,
+          at: 'x',
+          kind: 'run',
+          run: { ...base, endedAt: 'y', outcome: 'failed', error: 'timed out' },
+        },
+      ],
+      live: true,
+      loading: false,
+      error: null,
+    } as ReturnType<typeof useThread>);
+    rerender(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
+
+    await waitFor(() => expect(screen.getByText('The discovery agent failed.')).toBeInTheDocument());
+  });
 });

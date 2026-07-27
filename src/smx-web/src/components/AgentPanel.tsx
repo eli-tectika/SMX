@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ThreadError, cancelRun, rerunStage, sendMessage } from '../api/thread';
 import { backendStage, canChat } from '../domain/stages';
 import { useStickToBottom } from '../hooks/useStickToBottom';
@@ -107,6 +107,28 @@ function LiveChat({
   const onRerun = (target: string) =>
     void rerunStage(projectId, target).catch((err) => setSendError(String(err)));
 
+  // A one-shot sr-only beacon. A run's group simply collapsing announces nothing to a screen
+  // reader, so the landing is stated once — by the run's OWN outcome, never by the mere fact that
+  // it stopped running. Cleared when something goes running again: an unchanged aria-live string
+  // does not re-announce, so two identical landings would silence the second without a reset.
+  const wasRunning = useRef<Set<string>>(new Set());
+  const [announcement, setAnnouncement] = useState('');
+  useEffect(() => {
+    const runs = entries.flatMap((e) => (e.kind === 'run' ? [e.run] : []));
+    const running = new Set(runs.filter((r) => r.outcome === 'running').map((r) => r.runId));
+    const landed = runs.filter((r) => wasRunning.current.has(r.runId) && r.outcome !== 'running');
+
+    if (landed.length > 0) {
+      const failed = landed.find((r) => r.outcome !== 'done');
+      const subject = failed ?? landed[0];
+      const name = subject.agent ? `${subject.agent} agent` : subject.stage;
+      setAnnouncement(failed ? `The ${name} ${failed.outcome}.` : `The ${name} finished.`);
+    } else if (running.size > 0) {
+      setAnnouncement('');
+    }
+    wasRunning.current = running;
+  }, [entries]);
+
   return (
     <PanelFrame stageLabel={stageLabel}>
       <div
@@ -132,6 +154,13 @@ function LiveChat({
         )}
         <Timeline entries={entries} onCancel={onCancel} onRerun={onRerun} />
       </div>
+
+      {/* sr-only: see the effect above. Visually silent — the collapsed group and its outcome
+          already speak for themselves — but a screen reader needs the one-shot "it landed, and
+          here is whether it worked" this carries. */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {announcement}
+      </span>
 
       {!live && !loading && (
         <div className="tiny muted" style={{ margin: '4px 0' }}>
