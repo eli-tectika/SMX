@@ -77,9 +77,9 @@ public class RunDocTests
     [Fact]
     public void Append_assigns_monotonic_seq_from_one()
     {
-        var run = new RunDoc { Id = "r", ProjectId = "p", Stage = Stages.Pool };
-        run.Append(RunStepKind.Started, "Started.");
-        run.Append(RunStepKind.ToolCall, "Searched.");
+        var run = new RunDoc { Id = "r", ProjectId = "p", Stage = Stages.Pool, StartedAt = "2026-07-27T10:00:00.0000000+00:00" };
+        run.Append(RunStepKind.Started, "Started.", "2026-07-27T10:00:01.0000000+00:00");
+        run.Append(RunStepKind.ToolCall, "Searched.", "2026-07-27T10:00:02.0000000+00:00");
         Assert.Equal(new[] { 1, 2 }, run.Steps.Select(s => s.Seq));
     }
 
@@ -102,11 +102,9 @@ Expected: FAIL — `RunIds` and `RunDoc` do not exist.
 
 ```csharp
 // src/Smx.Domain/Records/RunDoc.cs
-using System.Text.Json.Serialization;
-
 namespace Smx.Domain.Records;
 
-/// The terminal states a run can reach. `Interrupted` is not a failure the agent caused — it means the
+/// The states a run can be in; all but `Running` are terminal. `Interrupted` is not a failure the agent caused — it means the
 /// process holding the run died, and it exists so the trail shows the gap rather than hiding it.
 public static class RunOutcome
 {
@@ -171,7 +169,7 @@ public sealed class RunStep
 /// never appear in a query that reads project state.
 public sealed class RunDoc
 {
-    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    public string Id { get; set; } = "";
     public string ProjectId { get; set; } = "";
     public string Stage { get; set; } = "";
     /// null ⇒ a deterministic stage. The UI must not imply a model was involved.
@@ -181,18 +179,24 @@ public sealed class RunDoc
     /// Set on regulatory children, so the UI groups them explicitly rather than inferring from timing.
     public string? ParentRunId { get; set; }
     public string Trigger { get; set; } = RunTriggers.Pipeline;
-    public string StartedAt { get; set; } = DateTimeOffset.UtcNow.ToString("O");
+    /// ISO-8601, ALWAYS via DateTimeOffset...ToString("O") — caller-supplied; the domain has no
+    /// clock (the RevisionDoc.CreatedAt rule). A UtcNow default would mean a doc deserialized
+    /// without the field silently acquires a fabricated start time.
+    public required string StartedAt { get; set; }
     public string? EndedAt { get; set; }
     public string Outcome { get; set; } = RunOutcome.Running;
     public string? Error { get; set; }
-    public List<RunStep> Steps { get; set; } = [];
+    /// Append-only, and get-only so it cannot be REPLACED: the SSE resume cursor is (runId, seq),
+    /// and a wholesale swap would break the monotonicity that makes a replayed frame recognisable.
+    /// `Append` is the sanctioned mutator.
+    public List<RunStep> Steps { get; } = [];
 
-    public RunStep Append(string kind, string text, RunStepDetail? detail = null)
+    public RunStep Append(string kind, string text, string at, RunStepDetail? detail = null)
     {
         var step = new RunStep
         {
             Seq = Steps.Count + 1,
-            At = DateTimeOffset.UtcNow.ToString("O"),
+            At = at,
             Kind = kind,
             Text = text,
             Detail = detail,
@@ -469,11 +473,15 @@ namespace Smx.Backend.Tests;
 
 public class RunTrailTests
 {
+    /// Fixed, because the domain has no clock (RevisionDoc.CreatedAt rule) and a test that stamped
+    /// its own would assert against a value it cannot predict.
+    private const string Now = "2026-07-27T10:00:00.0000000+00:00";
+
     private static (RunTrail Trail, InMemoryRunStore Store, ThreadEventHub Hub) Make()
     {
         var store = new InMemoryRunStore();
         var hub = new ThreadEventHub();
-        var run = new RunDoc { Id = "r1", ProjectId = "p1", Stage = Stages.Pool, Agent = "pool" };
+        var run = new RunDoc { Id = "r1", ProjectId = "p1", Stage = Stages.Pool, Agent = "pool", StartedAt = Now };
         return (new RunTrail(run, store, hub), store, hub);
     }
 
@@ -495,7 +503,7 @@ public class RunTrailTests
     [Fact]
     public async Task A_store_failure_does_not_throw()
     {
-        var run = new RunDoc { Id = "r1", ProjectId = "p1", Stage = Stages.Pool };
+        var run = new RunDoc { Id = "r1", ProjectId = "p1", Stage = Stages.Pool, StartedAt = Now };
         var trail = new RunTrail(run, new ThrowingRunStore(), new ThreadEventHub());
         await trail.StepAsync(RunStepKind.ToolCall, "Searched.", ct: default); // must not throw
         Assert.Single(run.Steps); // the in-memory run still records it
@@ -623,7 +631,8 @@ public sealed class RunTrail(RunDoc run, IRunStore store, ThreadEventHub hub, IL
     public async Task StepAsync(string kind, string text, RunStepDetail? detail = null, CancellationToken ct = default)
     {
         await OpenAsync(ct); // lazy — see OpenAsync
-        var step = run.Append(kind, text, detail);
+        // The clock lives HERE, not in the record (RevisionDoc.CreatedAt rule): the domain has none.
+        var step = run.Append(kind, text, DateTimeOffset.UtcNow.ToString("O"), detail);
         hub.Publish(run.ProjectId, run.Stage,
             new ThreadFrame("step", $"{run.Id}.s{step.Seq}", new { runId = run.Id, step }));
         await PersistAsync(ct);
@@ -1135,6 +1144,7 @@ public sealed class PipelineRunner(
             Id = RunIds.Run(projectId, stage, ordinal),
             ProjectId = projectId,
             Stage = stage,
+            StartedAt = DateTimeOffset.UtcNow.ToString("O"),
         };
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(hostToken);
@@ -1402,6 +1412,7 @@ Expected: FAIL — one run, no children.
                     Id = $"{parentId}|{candidate.Cas}|{candidate.ComponentId}",
                     ProjectId = projectId,
                     Stage = Stages.Regulatory,
+                    StartedAt = DateTimeOffset.UtcNow.ToString("O"),
                     Agent = RegulatoryAgent.AgentName,
                     Subject = $"{candidate.Cas}|{candidate.ComponentId}",
                     ParentRunId = parentId,
@@ -1495,6 +1506,7 @@ public class PipelineSupervisorTests
         {
             Id = RunIds.Run("p1", Stages.Discovery, 1), ProjectId = "p1",
             Stage = Stages.Discovery, Outcome = RunOutcome.Running,
+            StartedAt = DateTimeOffset.UtcNow.ToString("O"),
         }, default);
 
         await supervisor.ResumeAllAsync(default);
