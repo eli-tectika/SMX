@@ -412,7 +412,7 @@ public class PipelineRunnerTests
         await d.RunAsync("p1", default);
 
         var regulatory = (await runs.ListAsync("p1", Stages.Regulatory, default)).ToList();
-        var parent = Assert.Single(regulatory.Where(r => r.ParentRunId is null));
+        var parent = Assert.Single(regulatory, r => r.ParentRunId is null);
         var children = regulatory.Where(r => r.ParentRunId == parent.Id).ToList();
         Assert.Equal(3, children.Count);
         Assert.All(children, c => Assert.NotNull(c.Subject));
@@ -439,10 +439,54 @@ public class PipelineRunnerTests
         await d.RunAsync("p1", default);
 
         var child = Assert.Single(
-            (await runs.ListAsync("p1", Stages.Regulatory, default)).Where(r => r.ParentRunId is not null));
+            await runs.ListAsync("p1", Stages.Regulatory, default), r => r.ParentRunId is not null);
         Assert.Equal(RunOutcome.NeedsReview, child.Outcome);
         Assert.Equal("no retrieval", child.Error);
         Assert.Equal(VerdictStatus.NeedsReview, Assert.Single(await store.GetVerdictsAsync("p1")).Overall);
+    }
+
+    /// A child that THROWS (not one that returns needs-review) must still be closed. Task.WhenAll carries
+    /// the throw up to the parent, but nothing else would ever complete this child, and a run doc stuck at
+    /// `running` is exactly the silent stall the trail exists to remove.
+    [Fact]
+    public async Task AThrowingChild_IsStillClosed_AndFailsTheParent()
+    {
+        var (d, store, agents, runs) = Sut();
+        agents.Regulatory = (_, _, _) => throw new InvalidOperationException("foundry 503");
+        await Seed(store);
+
+        await d.RunAsync("p1", default);
+
+        var regulatory = (await runs.ListAsync("p1", Stages.Regulatory, default)).ToList();
+        Assert.DoesNotContain(regulatory, r => r.Outcome == RunOutcome.Running);
+        var child = Assert.Single(regulatory, r => r.ParentRunId is not null);
+        Assert.Equal(RunOutcome.Failed, child.Outcome);
+        Assert.Contains("foundry 503", child.Error);
+        var parent = Assert.Single(regulatory, r => r.ParentRunId is null);
+        Assert.Equal(RunOutcome.Failed, parent.Outcome);
+        Assert.Equal("failed", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+    }
+
+    /// A stage's run ordinal counts PARENT runs. Counting the fan-out's children would make the second
+    /// attempt at a three-substance screen `…|regulatory|5`, a number nobody can predict or reason about.
+    [Fact]
+    public async Task ASecondRegulatoryAttempt_TakesTheNextPARENTOrdinal()
+    {
+        var (d, store, agents, runs) = Sut();
+        await Seed(store);
+        await d.RunAsync("p1", default);
+
+        // A new candidate with no verdict is what gives Regulatory work again.
+        var candidates = (await store.GetCandidatesAsync("p1"))!;
+        candidates.Substances.Add(new CandidateSubstance("bottle", "Y", "oxide", "cas-y", null, null, true,
+            "A", "ok", [new Citation("catalog", "ref-catalog/x", "t")]));
+        await store.UpsertCandidatesAsync(candidates);
+
+        await d.RunAsync("p1", default);
+
+        var parents = (await runs.ListAsync("p1", Stages.Regulatory, default))
+            .Where(r => r.ParentRunId is null).Select(r => r.Id).ToList();
+        Assert.Equal([RunIds.Run("p1", Stages.Regulatory, 1), RunIds.Run("p1", Stages.Regulatory, 2)], parents);
     }
 
     [Fact]

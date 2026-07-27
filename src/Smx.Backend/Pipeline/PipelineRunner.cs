@@ -103,7 +103,10 @@ public sealed class PipelineRunner(
     private async Task<string> ExecuteAsync(
         string projectId, string stage, StageBody body, CancellationToken hostToken)
     {
-        var ordinal = (await runs.ListAsync(projectId, stage, hostToken)).Count + 1;
+        // PARENT runs only. Regulatory's children live in the same (project, stage) list, so counting them
+        // would make the second attempt at a fourteen-substance screen `…|15` — and, worse, would make the
+        // ordinal a number nobody can reason about when the next id has to be predicted.
+        var ordinal = (await runs.ListAsync(projectId, stage, hostToken)).Count(r => r.ParentRunId is null) + 1;
         var doc = new RunDoc
         {
             Id = RunIds.Run(projectId, stage, ordinal),
@@ -398,30 +401,46 @@ public sealed class PipelineRunner(
                     ParentRunId = parentId,
                 };
                 var childTrail = new RunTrail(child, runs, hub, logger);
-                await childTrail.StepAsync(RunStepKind.Started,
-                    $"Screening {candidate.Element}/{candidate.Form} (CAS {candidate.Cas}) for {candidate.ComponentId}.",
-                    ct: ct);
-
-                var result = await agents.RunRegulatoryAsync(constraints, candidate, null, childTrail, ct);
-                // The needs-review VerdictDoc the dispatcher synthesised on failure is kept verbatim: an
-                // absent verdict and a verdict that says "no cited verdict could be produced" are very
-                // different things downstream, and only the second one blocks the gate honestly.
-                var verdict = result.Succeeded ? result.Output! : new VerdictDoc
+                try
                 {
-                    Id = RecordIds.Verdict(projectId, candidate.Cas, candidate.ComponentId),
-                    ProjectId = projectId, Cas = candidate.Cas, ComponentId = candidate.ComponentId,
-                    Element = candidate.Element, Form = candidate.Form,
-                    Dimensions = [new("ElementGate", VerdictStatus.NeedsReview, [], 0,
-                        $"agent could not produce a valid cited verdict: {result.Error}")],
-                };
-                if (!result.Succeeded) Interlocked.Increment(ref flagged);
-                await store.UpsertVerdictAsync(verdict, ct);
+                    await childTrail.StepAsync(RunStepKind.Started,
+                        $"Screening {candidate.Element}/{candidate.Form} (CAS {candidate.Cas}) for {candidate.ComponentId}.",
+                        ct: ct);
 
-                await childTrail.StepAsync(RunStepKind.Output,
-                    $"Verdict for {candidate.Cas} — {verdict.Dimensions[0].Status}.",
-                    new RunStepDetail { RecordId = verdict.Id }, ct);
-                await childTrail.CompleteAsync(
-                    result.Succeeded ? RunOutcome.Done : RunOutcome.NeedsReview, result.Error, ct);
+                    var result = await agents.RunRegulatoryAsync(constraints, candidate, null, childTrail, ct);
+                    // The needs-review VerdictDoc the dispatcher synthesised on failure is kept verbatim: an
+                    // absent verdict and a verdict that says "no cited verdict could be produced" are very
+                    // different things downstream, and only the second one blocks the gate honestly.
+                    var verdict = result.Succeeded ? result.Output! : new VerdictDoc
+                    {
+                        Id = RecordIds.Verdict(projectId, candidate.Cas, candidate.ComponentId),
+                        ProjectId = projectId, Cas = candidate.Cas, ComponentId = candidate.ComponentId,
+                        Element = candidate.Element, Form = candidate.Form,
+                        Dimensions = [new("ElementGate", VerdictStatus.NeedsReview, [], 0,
+                            $"agent could not produce a valid cited verdict: {result.Error}")],
+                    };
+                    if (!result.Succeeded) Interlocked.Increment(ref flagged);
+                    await store.UpsertVerdictAsync(verdict, ct);
+
+                    await childTrail.StepAsync(RunStepKind.Output,
+                        $"Verdict for {candidate.Cas} — {verdict.Dimensions[0].Status}.",
+                        new RunStepDetail { RecordId = verdict.Id }, ct);
+                    await childTrail.CompleteAsync(
+                        result.Succeeded ? RunOutcome.Done : RunOutcome.NeedsReview, result.Error, ct);
+                }
+                catch (Exception e)
+                {
+                    // A child that throws must not be left `running` forever. Task.WhenAll surfaces the
+                    // throw to ExecuteAsync, which fails the PARENT — but nothing else would ever close this
+                    // child, and a run doc stuck at `running` is exactly the silent stall the whole design
+                    // exists to remove. CancellationToken.None: we are unwinding, possibly BECAUSE the token
+                    // was cancelled, and the closing write must still land. Then rethrow — the failure is
+                    // the stage's, not just this substance's.
+                    await childTrail.CompleteAsync(
+                        e is OperationCanceledException ? RunOutcome.Cancelled : RunOutcome.Failed,
+                        e.Message, CancellationToken.None);
+                    throw;
+                }
             }
             finally { gate.Release(); }
         }));
