@@ -19,7 +19,7 @@ const KEYS: { keys: string; what: string; where?: string }[] = [
   { keys: '⌘↵ / Ctrl ↵', what: 'Send the message', where: 'the interview' },
   { keys: 'F', what: 'Jump to the next flagged cell', where: 'the matrix' },
   { keys: '↑ ↓ ← →', what: 'Move between cells', where: 'the matrix' },
-  { keys: '↵', what: 'Open the evidence for a cell', where: 'the matrix' },
+  { keys: '↵ / Space', what: 'Open the evidence for a cell', where: 'the matrix' },
   { keys: 'Esc', what: 'Close this, the finder, or a document viewer', where: 'anywhere' },
   { keys: '?', what: 'Show this list', where: 'anywhere' },
 ];
@@ -47,6 +47,28 @@ function isTyping(target: EventTarget | null): boolean {
  * opts into, for the same reason the finder is: the list is only useful if it is truly always
  * one keystroke away, and a binding that only works on some screens is worse than no binding,
  * because the operator cannot predict which is which.
+ *
+ * Two things this deliberately does NOT do, recorded here so they are a decision on file
+ * rather than something the next person rediscovers by hitting them:
+ *
+ * 1. No focus trap. `role="dialog"` + `aria-modal="true"` say this is modal, but nothing stops
+ *    Tab from walking out of the panel and back into the page behind it. Neither
+ *    FileViewerOverlay nor Finder traps focus either, so fixing it only here would still leave
+ *    two of the app's three overlays doing the same thing wrong — it would look fixed on this
+ *    one dialog and be just as broken everywhere else. The real fix is one shared
+ *    `useFocusTrap` all three overlays call, which is out of scope for this task.
+ *
+ * 2. The finder can end up open UNDERNEATH this sheet, invisibly. Reproduction: open the
+ *    finder (⌘K), press Tab so real DOM focus leaves the search input and lands on a
+ *    `finder__hit` result button, then press `?`. `isTyping()` sees a `<button>`, not an input,
+ *    so it does not block the keystroke — the sheet opens, and because `.finder__scrim` is
+ *    z-index 100 against this sheet's 65, the finder stays visually on top while the sheet
+ *    silently steals DOM focus into a dialog the operator cannot see. It is narrower than it
+ *    sounds (it needs a deliberate Tab away from the search field, which the finder's own
+ *    keyboard handling does not encourage), and the honest fix is the two overlays coordinating
+ *    — e.g. this sheet checking whether a higher-priority overlay already owns focus before
+ *    taking it — not a one-off patch inside either file. Leaving the repro steps here for
+ *    whoever adds that coordination.
  */
 export function ShortcutSheet() {
   const [open, setOpen] = useState(false);

@@ -949,18 +949,24 @@ select:focus {
 /* ---- shortcut sheet ----------------------------------------------------------
    A true overlay, so it is one of the few things in this app allowed a shadow.
 
-   z-index 60 ties it with the document viewer (.fv-overlay, primitives.css) and sits under
-   the finder (.finder__scrim, 100). That ordering is a deliberate call, not an oversight:
-   the finder is a search the operator is mid-keystroke in, so it should stay on top of a
-   reference sheet that only exists to be glanced at and dismissed; the tie with the document
-   viewer resolves by DOM order (this sheet is the last child AppShell renders), so if the
-   operator presses `?` while a document is open the sheet paints above it, which is right —
-   `?` was just pressed on purpose, so whatever it opens should be the thing in front. */
+   The intended stacking order, high to low: finder scrim 100 > this sheet 65 > document
+   viewer 60 > masthead 25. That ordering is a deliberate call, not an oversight: the finder
+   is a search the operator is mid-keystroke in, so it must stay on top of a reference sheet
+   that only exists to be glanced at and dismissed; the sheet in turn sits above the document
+   viewer, so if the operator presses `?` while a document is open the sheet paints in front of
+   it, which is right — `?` was just pressed on purpose, so whatever it opens should be the
+   thing in view.
+
+   65 is given explicitly rather than left tied with .fv-overlay's 60 and resolved by DOM
+   order (this sheet being AppShell's last child). A same-value tie only holds as long as
+   nothing between <Outlet> and the document root ever gains a `transform`, `opacity` or
+   `filter` — any of which opens a new stacking context and can silently invert a DOM-order
+   tie-break. An explicit gap does not depend on that staying true. */
 
 .sheet {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 65;
   display: flex;
   align-items: center;
   justify-content: center;
