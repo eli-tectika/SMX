@@ -14,12 +14,17 @@ namespace Smx.Backend.Tests;
 public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly InMemoryRecordStore _store = new();
+    private readonly InMemoryRunStore _runs = new();
     private readonly HttpClient _client;
 
     public ProjectsListEndpointsTests(WebApplicationFactory<Program> factory)
     {
         _client = factory.WithWebHostBuilder(b =>
-            b.ConfigureServices(s => s.AddSingleton<IRecordStore>(_store))).CreateClient();
+            b.ConfigureServices(s =>
+            {
+                s.AddSingleton<IRecordStore>(_store);
+                s.AddSingleton<IRunStore>(_runs);
+            })).CreateClient();
     }
 
     private static ProjectDoc Project(string id, string client, string product, string createdAt)
@@ -393,5 +398,71 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
     {
         var resp = await _client.GetAsync("/projects/proj-never-created/dashboard");
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    /// The card's live line. `activeRun` must be ABSENT-as-null rather than missing when a project is
+    /// idle — the client renders the line only when it is non-null, and a project that is parked or
+    /// settled is the common case this must stay quiet for.
+    [Fact]
+    public async Task GetProjects_ReportsNoActiveRun_WhenNothingIsRunning()
+    {
+        await _store.UpsertProjectAsync(Project("proj-idle", "Acme", "Bottle", "2026-07-16T09:00:00.0000000+00:00"));
+
+        var list = await _client.GetFromJsonAsync<JsonElement>("/projects");
+
+        Assert.Equal(JsonValueKind.Null, list[0].GetProperty("activeRun").ValueKind);
+    }
+
+    /// Regulatory fans out per substance. A card naming one of N children would be picking an
+    /// arbitrary one and implying it was the whole job, so the PARENT wins.
+    [Fact]
+    public async Task GetProjects_PrefersTheParentRun_OverAFannedOutChild()
+    {
+        var p = Project("proj-busy", "Acme", "Bottle", "2026-07-16T09:00:00.0000000+00:00");
+        p.Stages[Stages.Regulatory].Status = StageStatus.Running;
+        await _store.UpsertProjectAsync(p);
+
+        await _runs.UpsertAsync(new RunDoc
+        {
+            Id = "run|proj-busy|regulatory|1", ProjectId = "proj-busy", Stage = Stages.Regulatory,
+            Agent = "regulatory", Outcome = RunOutcome.Running, StartedAt = "2026-07-16T09:00:00.0000000+00:00",
+            Steps = [new RunStep { Seq = 1, Kind = RunStepKind.Started, Text = "Screening 4 substances." }],
+        });
+        await _runs.UpsertAsync(new RunDoc
+        {
+            Id = "run|proj-busy|regulatory|2", ProjectId = "proj-busy", Stage = Stages.Regulatory,
+            Agent = "regulatory", ParentRunId = "run|proj-busy|regulatory|1", Subject = "1314-23-4|bottle",
+            Outcome = RunOutcome.Running, StartedAt = "2026-07-16T09:00:05.0000000+00:00",
+            Steps = [new RunStep { Seq = 1, Kind = RunStepKind.Started, Text = "Screening 1314-23-4." }],
+        });
+
+        var list = await _client.GetFromJsonAsync<JsonElement>("/projects");
+        var active = list[0].GetProperty("activeRun");
+
+        Assert.Equal("regulatory", active.GetProperty("stage").GetString());
+        Assert.Equal("regulatory", active.GetProperty("agent").GetString());
+        Assert.Equal("Screening 4 substances.", active.GetProperty("lastStep").GetString());
+    }
+
+    /// `agent: null` means "a deterministic stage, do not imply a model". Json.Options drops null
+    /// properties globally, so an absent key here would read as undefined and the card would happily
+    /// print nothing where it must print the stage name instead.
+    [Fact]
+    public async Task GetProjects_CarriesANullAgent_RatherThanOmittingIt()
+    {
+        var p = Project("proj-det", "Acme", "Bottle", "2026-07-16T09:00:00.0000000+00:00");
+        p.Stages[Stages.Matrix].Status = StageStatus.Running;
+        await _store.UpsertProjectAsync(p);
+        await _runs.UpsertAsync(new RunDoc
+        {
+            Id = "run|proj-det|matrix|1", ProjectId = "proj-det", Stage = Stages.Matrix,
+            Agent = null, Outcome = RunOutcome.Running, StartedAt = "2026-07-16T09:00:00.0000000+00:00",
+        });
+
+        var list = await _client.GetFromJsonAsync<JsonElement>("/projects");
+        var active = list[0].GetProperty("activeRun");
+
+        Assert.Equal(JsonValueKind.Null, active.GetProperty("agent").ValueKind);
+        Assert.Equal(JsonValueKind.Null, active.GetProperty("lastStep").ValueKind);
     }
 }

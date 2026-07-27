@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Smx.Domain;
 using Smx.Domain.Records;
@@ -13,7 +14,13 @@ public static class ProjectsListEndpoints
     {
         // [FromServices] is required, not decorative — same reason as ProjectEndpoints: a test host that
         // never registers IRecordStore would otherwise fail to build this route, breaking routing app-wide.
-        app.MapGet("/projects", async ([FromServices] IRecordStore store, CancellationToken ct) =>
+        // IRunStore is NULLABLE here, unlike everywhere else it appears. It is only registered on a host
+        // with Cosmos configured, and the live line is an enhancement over a list that must keep working:
+        // the estate list is how the operator finds anything at all, so it must not 500 because run
+        // telemetry happens to be unavailable. A nullable minimal-API service parameter resolves through
+        // GetService rather than GetRequiredService, so this degrades to "no live line" instead of a 500.
+        app.MapGet("/projects", async (
+            [FromServices] IRecordStore store, [FromServices] IRunStore? runs, CancellationToken ct) =>
         {
             var projects = await store.GetProjectsAsync(ct: ct);
             var list = new List<object>(projects.Count);
@@ -21,14 +28,16 @@ public static class ProjectsListEndpoints
             {
                 var regulatory = await store.GetGateAsync(p.ProjectId, GateTypes.Regulatory, ct);
                 var vp = await store.GetGateAsync(p.ProjectId, GateTypes.Vp, ct);
-                list.Add(new
+                list.Add(new ProjectListRow
                 {
-                    p.ProjectId, p.Client, p.Product, p.CreatedAt, p.Stages,
+                    ProjectId = p.ProjectId, Client = p.Client, Product = p.Product,
+                    CreatedAt = p.CreatedAt, Stages = p.Stages,
+                    ActiveRun = await ActiveRunAsync(p, runs, ct),
                     // A Dictionary, not an anonymous object: Json.Options drops null PROPERTIES
                     // (WhenWritingNull), but an absent gate must serialize as an EXPLICIT null —
                     // "no gate yet" is a value the frontend reads, not a field it has to infer —
                     // and dictionary entries are exempt from the ignore condition.
-                    gates = new Dictionary<string, string?>
+                    Gates = new Dictionary<string, string?>
                     {
                         [GateTypes.Regulatory] = regulatory?.Status,
                         [GateTypes.Vp] = vp?.Status,
@@ -142,4 +151,66 @@ public static class ProjectsListEndpoints
             return Results.Json(new { projectId, blocked, readyToContinue, needsSigning }, Json.Options);
         });
     }
+
+    /// What this project is doing RIGHT NOW, in words — the card's live line. Null when nothing runs.
+    ///
+    /// Gated on the project's own stage statuses before touching IRunStore, and that is the whole
+    /// design: the list page renders every project in the estate, and a runs query per row would make
+    /// the landing screen pay for telemetry it usually has nothing to say about. A project that is
+    /// parked, settled or not started — the common case — costs zero extra reads.
+    ///
+    /// The TOP-LEVEL run is preferred over a child. Regulatory fans out per substance, and a card
+    /// that named one of fourteen would be picking an arbitrary one and implying it was the work;
+    /// the parent is the honest answer to "what stage is busy". `agent: null` is carried, not hidden,
+    /// so the card can decline to imply a model on a deterministic stage.
+    private static async Task<ActiveRun?> ActiveRunAsync(ProjectDoc p, IRunStore? runs, CancellationToken ct)
+    {
+        if (runs is null) return null;
+        var stage = p.Stages.FirstOrDefault(s => s.Value.Status == StageStatus.Running).Key;
+        if (stage is null) return null;
+
+        var forStage = await runs.ListAsync(p.ProjectId, stage, ct);
+        var running = forStage.Where(r => r.Outcome == RunOutcome.Running).ToList();
+        if (running.Count == 0) return null;
+
+        // ListAsync is oldest-first, so LastOrDefault is the newest of each candidate set.
+        var run = running.LastOrDefault(r => r.ParentRunId is null) ?? running[^1];
+        return new ActiveRun
+        {
+            Stage = run.Stage,
+            Agent = run.Agent,
+            LastStep = run.Steps.Count == 0 ? null : run.Steps[^1].Text,
+        };
+    }
+}
+
+/// One row of GET /projects.
+///
+/// Declared rather than anonymous for the same reason <see cref="ActiveRun"/> is: `activeRun` is null
+/// on every idle project, and `Json.Options` sets `DefaultIgnoreCondition = WhenWritingNull`, which
+/// would drop the key entirely on exactly the rows that most need to say "nothing is happening here".
+/// Absent and null are not the same claim, and the row should make the one it means.
+public sealed record ProjectListRow
+{
+    public required string ProjectId { get; init; }
+    public required string Client { get; init; }
+    public required string Product { get; init; }
+    public required string CreatedAt { get; init; }
+    public required Dictionary<string, StageState> Stages { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public ActiveRun? ActiveRun { get; init; }
+    public required Dictionary<string, string?> Gates { get; init; }
+}
+
+/// The live line on a project card.
+///
+/// A declared type rather than an anonymous object for one reason: <see cref="Json.Options"/> sets
+/// `DefaultIgnoreCondition = WhenWritingNull`, which would silently drop exactly the two fields whose
+/// null the client reads. `agent === null` means "a deterministic stage, do not imply a model"; an
+/// ABSENT `agent` is indistinguishable from that in JS only by accident, and a run with no steps yet
+/// must say so rather than vanish. Present-and-null is the contract.
+public sealed record ActiveRun
+{
+    public required string Stage { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public string? Agent { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public string? LastStep { get; init; }
 }
