@@ -143,7 +143,7 @@ describe('the interview screen', () => {
 });
 
 describe('Interview composer', () => {
-  it('sends on Ctrl+Enter and inserts a newline on plain Enter', async () => {
+  it('breaks the line on Ctrl+Enter and sends on plain Enter', async () => {
     const user = userEvent.setup();
     renderAt();
     const box = await screen.findByLabelText(/message the interview agent/i);
@@ -153,16 +153,17 @@ describe('Interview composer', () => {
     vi.mocked(api.sendInterviewMessage).mockClear();
 
     await user.click(box);
-    await user.keyboard('first line{Enter}second line');
-    expect(box).toHaveValue('first line\nsecond line');
-
+    await user.keyboard('first line');
+    // Ctrl+Enter is inert in a real textarea, so the handler splices the newline in itself. That
+    // makes this a real assertion here: with the splice deleted the box would still read one line.
     await user.keyboard('{Control>}{Enter}{/Control}');
-    // Sending clears the draft — that is the observable fact, independent of transport. This also
-    // checks that the FULL two-line draft went out, which would fail if Ctrl+Enter's own keystroke
-    // leaked an extra newline into the text sent. It does NOT prove `preventDefault()` fired on the
-    // Ctrl+Enter keydown specifically — jsdom/user-event does not insert a newline for a held-Ctrl
-    // Enter in the first place, so a test asserting the box's value alone would pass even with
-    // `preventDefault()` deleted from the handler.
+    await user.keyboard('second line');
+    expect(box).toHaveValue('first line\nsecond line');
+    expect(api.sendInterviewMessage).not.toHaveBeenCalled();
+
+    await user.keyboard('{Enter}');
+    // Sending clears the draft — that is the observable fact, independent of transport. The full
+    // two-line draft going out also proves the Enter that sent it did not leak its own newline.
     await waitFor(() => expect(box).toHaveValue(''));
     expect(api.sendInterviewMessage).toHaveBeenCalledTimes(1);
     expect(api.sendInterviewMessage).toHaveBeenCalledWith(
@@ -170,6 +171,18 @@ describe('Interview composer', () => {
       'first line\nsecond line',
       expect.any(Function),
     );
+  });
+
+  it('leaves Shift+Enter to the browser as a newline', async () => {
+    const user = userEvent.setup();
+    renderAt();
+    const box = await screen.findByLabelText(/message the interview agent/i);
+    vi.mocked(api.sendInterviewMessage).mockClear();
+
+    await user.click(box);
+    await user.keyboard('one{Shift>}{Enter}{/Shift}two');
+    expect(box).toHaveValue('one\ntwo');
+    expect(api.sendInterviewMessage).not.toHaveBeenCalled();
   });
 
   it('shows a drop target while a file is over the composer', async () => {

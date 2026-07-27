@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   NotFound,
@@ -41,6 +41,17 @@ export function Interview() {
   const [openShown, setOpenShown] = useState(false);
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
+  // Where the caret must land after a Ctrl+Enter line break. Setting `draft` re-renders the
+  // controlled textarea, which parks the caret at the end of the value; this puts it back. It has
+  // to be restored in a LAYOUT effect, not a rAF — a rAF lands after the operator's next few
+  // keystrokes have already gone in at the wrong offset.
+  const caret = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (caret.current === null) return;
+    composer.current?.setSelectionRange(caret.current, caret.current);
+    caret.current = null;
+  });
   // `dragenter`/`dragleave` fire for every child the pointer crosses, so the depth is counted
   // rather than toggled — otherwise the highlight flickers off as the cursor passes the textarea.
   const dragDepth = useRef(0);
@@ -314,16 +325,25 @@ export function Interview() {
               </div>
             )}
             <textarea
+              ref={composer}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
-                // Cmd/Ctrl+Enter sends; plain Enter is a newline. The operator is writing a brief
-                // here, not a chat line — paragraphs are normal, and a bare Enter that fired off a
-                // half-written thought would be the worse default.
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                if (e.key !== 'Enter') return;
+                // Enter sends; Cmd/Ctrl+Enter (and Shift+Enter) break the line. This is the chat
+                // convention, and the box reads as a chat.
+                if (e.shiftKey) return; // the browser's own newline
+                if (e.metaKey || e.ctrlKey) {
+                  // A modified Enter is inert in a textarea — no newline is inserted for us — so
+                  // splice one in at the caret and put the caret after it.
                   e.preventDefault();
-                  if (canSend) void send(draft);
+                  const at = e.currentTarget.selectionStart;
+                  setDraft(`${draft.slice(0, at)}\n${draft.slice(e.currentTarget.selectionEnd)}`);
+                  caret.current = at + 1;
+                  return;
                 }
+                e.preventDefault();
+                if (canSend) void send(draft);
               }}
               placeholder="Message the agent…"
               aria-label="Message the interview agent"
@@ -351,7 +371,7 @@ export function Interview() {
                 className="composer__send"
                 type="button"
                 aria-label="Send"
-                title="Send (Ctrl/Cmd + Enter)"
+                title="Send (Enter) — Ctrl/Cmd or Shift + Enter for a new line"
                 disabled={!canSend}
                 onClick={() => void send(draft)}
               >

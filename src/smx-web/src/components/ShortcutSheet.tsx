@@ -16,7 +16,8 @@ import { useEffect, useRef, useState } from 'react';
 const KEYS: { keys: string; what: string; where?: string }[] = [
   { keys: '⌘K / Ctrl K', what: 'Open the finder', where: 'anywhere' },
   { keys: '⌘\\ / Ctrl \\', what: 'Show or hide the agent dock', where: 'a project stage' },
-  { keys: '⌘↵ / Ctrl ↵', what: 'Send the message', where: 'the interview' },
+  { keys: '↵', what: 'Send the message', where: 'the interview' },
+  { keys: '⌘↵ / Ctrl ↵ / ⇧↵', what: 'Start a new line', where: 'the interview' },
   { keys: 'F', what: 'Jump to the next flagged cell', where: 'the matrix' },
   { keys: '↑ ↓ ← →', what: 'Move between cells', where: 'the matrix' },
   { keys: '↵ / Space', what: 'Open the evidence for a cell', where: 'the matrix' },
