@@ -56,14 +56,16 @@ export function Gate({
   signBusy?: boolean;
   /**
    * Ask for a mandatory note as part of signing. Dosing's soft checkpoint needs one — the note IS the
-   * record of what was reviewed, and the backend 422s a blank one. Signing stays disabled until it is
-   * non-blank, so the note cannot be skipped by clicking fast.
+   * record of whichever ruling is made, and the backend 422s a blank one. Signing stays disabled until
+   * it is non-blank, so the note cannot be skipped by clicking fast. Rejection always needs a reason
+   * regardless of this prop — see `onReject`.
    */
   signNote?: { placeholder: string };
   /**
    * When provided, the reject button is LIVE. Deliberately NOT gated on `armed`: a gate that will not
    * let the VP say no until every blocker clears traps a bad decision open. It IS gated on the note —
-   * a rejection is a ruling and needs its reason exactly as much as an approval does.
+   * a rejection is a ruling and needs its reason exactly as much as an approval does — so the note
+   * field renders whenever `onReject` is wired, whether or not the caller also set `signNote`.
    */
   onReject?: (note: string) => void;
   rejectBusy?: boolean;
@@ -137,15 +139,15 @@ export function Gate({
         ))}
       </div>
 
-      {/* The note is part of signing, not an afterthought beside it: it IS what was reviewed. */}
-      {signNote && (onSign || onReject) && (
+      {/* The note is the record of whichever ruling is made — approval or rejection — not an afterthought beside it. */}
+      {(onReject || (signNote && onSign)) && (
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder={signNote.placeholder}
+          placeholder={signNote?.placeholder ?? 'The reason for this determination'}
           rows={2}
-          aria-label={`${signLabel} — note`}
-          disabled={signBusy}
+          aria-label={`${title} — note`}
+          disabled={signBusy || rejectBusy}
           style={{
             width: '100%',
             font: 'inherit',
@@ -198,7 +200,9 @@ export function Gate({
           {!onSign
             ? 'No endpoint to sign this gate — this control is inert.'
             : !armed
-              ? 'Locked until every requirement above is met.'
+              ? canReject
+                ? 'Cannot be approved yet — every requirement above must be met. It can be rejected with the reason given.'
+                : 'Locked until every requirement above is met.'
               : !noteReady
                 ? 'A note is required — it records what was reviewed.'
                 : kind === 'soft'

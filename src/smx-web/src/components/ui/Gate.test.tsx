@@ -177,4 +177,64 @@ describe('Gate — rejection', () => {
     await userEvent.click(reject);
     expect(onReject).toHaveBeenCalledWith('not going ahead');
   });
+
+  /** While a rejection is in flight, the button must not be clickable again, and must say so visually. */
+  it('disables reject and shows the loader icon while rejectBusy', async () => {
+    const onReject = vi.fn();
+    render(
+      <Gate
+        kind="hard"
+        title="VP gate"
+        records="nothing"
+        requirements={armed}
+        signLabel="Approve"
+        rejectLabel="Reject"
+        onReject={onReject}
+        signNote={{ placeholder: 'why' }}
+        rejectBusy
+      />,
+    );
+    await userEvent.type(screen.getByLabelText(/note/i), 'not going ahead');
+    const reject = screen.getByRole('button', { name: 'Reject' });
+    expect(reject).toBeDisabled();
+    expect(reject.querySelector('.ti-loader')).toBeInTheDocument();
+  });
+
+  /**
+   * `canReject` also checks `!signBusy` — a signature in flight must not let a rejection race it,
+   * even though a note is present. That term has no other coverage. The note is typed BEFORE
+   * `signBusy` flips on: the textarea is itself disabled once a sign is in flight, so it could not
+   * be typed into afterward — this proves the button, not the field, is what still blocks the click.
+   */
+  it('keeps reject disabled while signBusy is true, even with a note present', async () => {
+    const onReject = vi.fn();
+    const { rerender } = render(
+      <Gate
+        kind="hard"
+        title="VP gate"
+        records="nothing"
+        requirements={armed}
+        signLabel="Approve"
+        rejectLabel="Reject"
+        onReject={onReject}
+        signNote={{ placeholder: 'why' }}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText(/note/i), 'not going ahead');
+
+    rerender(
+      <Gate
+        kind="hard"
+        title="VP gate"
+        records="nothing"
+        requirements={armed}
+        signLabel="Approve"
+        rejectLabel="Reject"
+        onReject={onReject}
+        signNote={{ placeholder: 'why' }}
+        signBusy
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeDisabled();
+  });
 });
