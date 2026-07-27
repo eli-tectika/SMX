@@ -84,6 +84,9 @@ public class BackendHostWiringTests
         Assert.NotNull(sp.GetRequiredService<ILearnedConclusionsIndex>());
         Assert.NotNull(sp.GetRequiredService<ILearnedConclusionWriter>());
         Assert.NotNull(sp.GetRequiredService<IEmbedder>());
+        // The run trail. Nothing writes to it yet (the pipeline runner does), so nothing else would
+        // notice it being unregistered until the first run tried to record itself — in production.
+        Assert.NotNull(sp.GetRequiredService<IRunStore>());
     }
 
     /// The chat turn, built from the REAL container — the exact path that runs when the change feed hands the

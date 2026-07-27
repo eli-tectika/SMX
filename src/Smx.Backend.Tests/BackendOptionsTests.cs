@@ -20,6 +20,9 @@ public class BackendOptionsTests
         Assert.Equal("claude-opus-4-7", o.ClaudeDeployment);           // default
         Assert.Equal("smx", o.CosmosDatabase);                          // default
         Assert.Equal("record", o.RecordContainer);                      // default
+        // The run trail's OWN container. Must match what infra deploys, or every run write 404s and the
+        // trail is silently empty — the one surface that would explain a stage that did nothing.
+        Assert.Equal("runs", o.RunContainer);                           // default
         Assert.Equal("sds-index", o.SdsIndex);                          // default
         Assert.Equal("smx-reference", o.ReferenceIndex);                // default
         // Must match RegOptions.SearchIndex — the reg-sync pipeline creates 'regulatory-corpus' and nothing
