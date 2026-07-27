@@ -6,6 +6,7 @@ import { ReviseForm, RevisionTrail } from '../../components/RevisionControls';
 import { StageStatusCard } from '../../components/StageStatusCard';
 import { Data } from '../../components/ui/Data';
 import { CitationChip, EmptyState, SectionHeader } from '../../components/ui/Primitives';
+import { byComponent } from '../../domain/dosing';
 import type { ScreenProps } from '../ProjectLayout';
 
 /** Tier IS a severity ordering — strong / needs-validation / excluded — so the verdict palette fits. */
@@ -78,7 +79,6 @@ export function Discovery({ project }: ScreenProps) {
   if (phase === 'loading') return <Loading what="the candidate pool" />;
 
   const substances = doc?.substances ?? [];
-  const components = [...new Set(substances.map((s) => s.componentId))];
   const total = substances.length;
 
   return (
@@ -127,14 +127,13 @@ export function Discovery({ project }: ScreenProps) {
       )}
 
       {phase === 'ready' &&
-        components.map((component) => {
+        byComponent(substances).map(([component, rows]) => {
           // Stable sort: within a tier the agent's own order is a ranking it chose, and the UI
           // must not re-rank it. Only the tier bucket (A before B before C) is imposed here, so the
           // ribbon above (drawn A/B/C left to right) and the card list below are never out of step.
-          const forComponent = substances
-            .filter((s) => s.componentId === component)
-            .slice()
-            .sort((a, b) => TIERS.indexOf(a.tier) - TIERS.indexOf(b.tier));
+          // `.slice()` first — byComponent hands back the arrays it built internally, and sorting
+          // one in place would mutate its return value.
+          const forComponent = rows.slice().sort((a, b) => TIERS.indexOf(a.tier) - TIERS.indexOf(b.tier));
           return (
             <div key={component} style={{ marginBottom: 18 }}>
               <SectionHeader
