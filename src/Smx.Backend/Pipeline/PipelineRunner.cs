@@ -21,7 +21,16 @@ namespace Smx.Backend.Pipeline;
 /// What is NOT the pipeline, and lives here only because it is the same body of logic: the three
 /// operator-triggered entry points — <see cref="OnGateAsync"/> (a signature), <see cref="OnRevisionAsync"/>
 /// (revise-with-reason) and <see cref="OnChatMessageAsync"/> (a chat turn). They are called by endpoints,
-/// not by <see cref="RunAsync"/>.
+/// not by <see cref="RunAsync"/>. NAME THE DOOR when you add one, and pin it with a test that drives that
+/// door: under the change feed a record write triggered these, and when the feed went away three of them
+/// were ported here with no caller at all — a silent, months-deep outage that every existing test missed,
+/// because every existing test calls these methods directly. Today:
+///   OnGateAsync              ← POST /projects/{id}/regulatory/approve, POST /projects/{id}/decision/determination
+///   CloseProjectAsync        ← OnGateAsync, on an approved VP gate
+///   OnRevisionAsync          ← POST /projects/{id}/stages/{stage}/revise, via PipelineSupervisor.TryRun
+///   OnChatMessageAsync       ← POST /projects/{id}/stages/{stage}/chat, via PipelineSupervisor.RunDetached
+///   DrainRevisionsAsync      ← PipelineSupervisor.RunAsync, at the end of every slot-holding piece of work
+/// (OperatorEntryPointWiringTests is the tripwire for all four — it drives the doors, never these methods.)
 ///
 /// <paramref name="knowledge"/> is an OPTIONAL trailing parameter deliberately: it is read only by the
 /// Dosing path (metal loadings live in the cross-project knowledge layer, not on the per-project bus).
@@ -1148,6 +1157,57 @@ public sealed class PipelineRunner(
         };
         await conclusions.WriteAsync(doc, ct);
         return doc.Id;
+    }
+
+    /// How many times <see cref="DrainRevisionsAsync"/> will go round before it stops applying and starts
+    /// failing. The loop exists because applying a revision can PRODUCE work — the re-run resets downstream
+    /// stages, and a chat turn inside that pass can queue another revision — so one pass is not enough. The
+    /// bound exists because "can produce work" is also how a loop becomes infinite: a revision whose
+    /// application queues its own successor would spin here forever, burning model calls, holding the
+    /// project's slot and never telling anybody. Five is generous for the real case (a revision, its
+    /// re-run, and anything that lands while it is running) and short enough that the failure is prompt.
+    private const int MaxDrainPasses = 5;
+
+    /// THE INVARIANT: a pending revision is always eventually applied or explicitly failed.
+    ///
+    /// A RevisionDoc is durable the moment it is written, and until it leaves `pending` it holds the VP gate
+    /// shut (VpGate.PendingRevisionBlocker). Under the change feed the doc's write was its own dispatch, so
+    /// "who applies it" was never a question. It is one now: `POST …/revise` applies its own, but the CHAT
+    /// agent's `apply_revision` writes one from inside a turn that holds no project slot, and an operator
+    /// told "queued — the stage will re-run" while nothing ever re-runs it is the agent lying about work,
+    /// which is worse than the invisibility this whole branch exists to fix.
+    ///
+    /// So the drain runs where the slot IS held: at the end of every piece of project-exclusive work (see
+    /// PipelineSupervisor.RunAsync's finally), plus opportunistically right after a chat turn. Neither path
+    /// has to know about the other — both converge on "nothing is pending".
+    ///
+    /// The pipeline re-entry inside the loop is not optional: a revision RESETS what it invalidated (Matrix,
+    /// and for a Dosing revision, Cost and Decision) to `pending`, and without the pass those stages hold a
+    /// reset that nothing recomputes.
+    public async Task DrainRevisionsAsync(string projectId, CancellationToken ct)
+    {
+        for (var pass = 1; ; pass++)
+        {
+            var pending = (await store.GetRevisionsAsync(projectId, ct))
+                .Where(r => r.Status == RevisionStatus.Pending).ToList();
+            if (pending.Count == 0) return;
+
+            if (pass > MaxDrainPasses)
+            {
+                // FAIL, never spin. The operator's reason is preserved on the doc either way, so re-issuing
+                // is cheap; a silent loop is not recoverable at all. The message names the bound because the
+                // operator's next question is "why did mine not run when the others did".
+                foreach (var r in pending)
+                    await FailAsync(r,
+                        $"still queued after {MaxDrainPasses} drain passes — applying revisions on this " +
+                        "project kept producing more of them, so this one was stopped rather than looped. " +
+                        "Re-issue it once the project is settled.", ct);
+                return;
+            }
+
+            foreach (var r in pending) await OnRevisionAsync(r, ct);
+            await RunAsync(projectId, ct);
+        }
     }
 
     private async Task FailAsync(RevisionDoc r, string error, CancellationToken ct)

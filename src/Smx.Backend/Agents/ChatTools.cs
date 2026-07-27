@@ -193,9 +193,10 @@ public sealed class ChatTools(IRecordStore store, string projectId, string stage
         // in no corpus.
         Trail.Add(new ChatToolCall("apply_revision", $"{target} — {reason}", revisionId));
 
-        // QUEUED, not applied. Record-as-bus: writing the doc IS the dispatch, and the orchestrator re-runs
-        // the stage from the change feed some time later. If this said "done", the model would tell the
-        // operator it was done and the operator would believe a change that has not happened.
+        // QUEUED, not applied — and now that is the whole truth rather than half of it. The doc is durable
+        // here; PipelineRunner.DrainRevisionsAsync applies it once the project's slot is free (this turn
+        // holds no slot, so it cannot apply its own). If this said "done", the model would tell the operator
+        // it was done and the operator would believe a change that has not happened yet.
         return JsonSerializer.Serialize(new
         {
             queued = true,
@@ -228,9 +229,13 @@ public sealed class ChatTools(IRecordStore store, string projectId, string stage
         if (error is not null) return Error(error);
 
         project.Payload = patched!.Value;
-        // Setting Intake back to `pending` IS the re-trigger: this upsert is a change-feed event, and
-        // OnProjectAsync runs Intake exactly when the stage is `pending` and no constraints exist yet — the
-        // second condition being the one the guard above has already established.
+        // Intake is left `pending` — not as a re-trigger, but because that is the truthful status of a stage
+        // that has not produced constraints yet, and it is the status POST /projects/{id}/start requires in
+        // order to run intake at all. The operator's Start Processing is what runs it; this tool does not,
+        // and MUST NOT SAY IT DOES. Re-running intake is not a small act — it re-derives the regulatory
+        // scope every downstream stage was screened against, which is precisely why `intake` is excluded
+        // from RevisionEffects.IsRevisable. The gap-fill guard above means this only ever runs BEFORE
+        // constraints exist, so there is nothing yet to invalidate.
         //
         // Replay-safe by construction, unlike apply_revision: the patch SETS one field to one value, so
         // re-applying it is a no-op, and re-`pending`ing an already-pending stage changes nothing.
@@ -239,10 +244,15 @@ public sealed class ChatTools(IRecordStore store, string projectId, string stage
         await store.UpsertProjectAsync(project, ct);
         Trail.Add(new ChatToolCall("record_answer", $"{field} = {value}", project.Id));
 
+        // States ONLY what happened. The old note promised "intake will re-run with this answer" and nothing
+        // re-ran it, so the model told the operator about work that was never going to happen — the same
+        // class of harm as a fabricated verdict, just about the system rather than the chemistry.
         return JsonSerializer.Serialize(new
         {
             recorded = true,
-            note = "intake will re-run with this answer",
+            note = "the answer is recorded on the project. Intake has not run yet and this does not start " +
+                   "it — the operator starts the analysis themselves. Confirm what you recorded; do not say " +
+                   "anything will re-run.",
         }, Json.Options);
     }
 

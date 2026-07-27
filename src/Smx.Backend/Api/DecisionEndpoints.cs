@@ -1,14 +1,15 @@
 using Microsoft.AspNetCore.Mvc;
+using Smx.Backend.Pipeline;
 using Smx.Domain;
 using Smx.Domain.Records;
 
 namespace Smx.Backend.Api;
 
 /// The VP hard gate (spec §4): the VP's determination is an OPERATOR-SIGNED RECORD, and this endpoint is
-/// the ONLY writer of an approved VP GateDoc — the dispatcher's close handler trusts that, the same
-/// contract as the regulatory gate (see the note on PipelineRunner.OnGateAsync). Mirrors
+/// the ONLY writer of an approved VP GateDoc — PipelineRunner.CloseProjectAsync trusts that and re-checks
+/// nothing, the same contract as the regulatory gate (see the note on PipelineRunner.OnGateAsync). Mirrors
 /// POST /regulatory/approve's discipline: arm on the LIVE records, 422 with named blockers, idempotent
-/// approved-timestamp.
+/// approved-timestamp — and, like it, records the signature and then makes it mean something.
 public static class DecisionEndpoints
 {
     public static void MapDecisionEndpoints(this IEndpointRouteBuilder app)
@@ -17,7 +18,8 @@ public static class DecisionEndpoints
         // ProjectEndpoints: minimal APIs infer service-vs-body params app-wide at endpoint-build time, so a
         // missing attribute breaks routing for the WHOLE app.
         app.MapPost("/projects/{projectId}/decision/determination", async (string projectId,
-            VpDeterminationRequest req, [FromServices] IRecordStore store, CancellationToken ct) =>
+            VpDeterminationRequest req, [FromServices] IRecordStore store,
+            [FromServices] PipelineRunner? runner, CancellationToken ct) =>
         {
             if (req.Determination is not ("approved" or "rejected"))
                 return Results.UnprocessableEntity(new { error = "determination must be 'approved' or 'rejected'" });
@@ -109,12 +111,35 @@ public static class DecisionEndpoints
             await store.UpsertDecisionAsync(decision, ct);
 
             var existing = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
-            await store.UpsertGateAsync(new GateDoc
+            var gate = new GateDoc
             {
                 Id = RecordIds.Gate(projectId, GateTypes.Vp), ProjectId = projectId,
                 GateType = GateTypes.Vp, Status = "approved",
                 ApprovedAt = existing?.Status == "approved" ? existing.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
-            }, ct);
+            };
+            await store.UpsertGateAsync(gate, ct);
+
+            // AND NOW THE PROJECT ACTUALLY CLOSES. The same two-act shape as POST /regulatory/approve —
+            // record the signature, then make it mean something — except that here the second act is NOT a
+            // pipeline pass: Decision is the last stage and the journey ends at this signature. OnGateAsync
+            // routes an approved VP gate to CloseProjectAsync, which releases procurement, writes the Marker
+            // Library entry and files the close conclusion. Until this line the signature wrote a gate
+            // document and nothing else: procurement stayed `pending`, the library never learned the code,
+            // and Decision sat at `awaiting-VP` under a signature that already existed, waiting for a change
+            // feed that no longer runs.
+            //
+            // INLINE, on the caller's thread, and that is a considered choice rather than the easy one:
+            //   * No agent runs. The close is store writes plus one embed-and-push for the conclusion —
+            //     seconds, not the minutes in Foundry that the runner's agent-bearing paths cost.
+            //   * Nothing else would ever retry it. The supervisor's boot resume re-enters projects holding
+            //     a `running` stage; a project parked at `awaiting-VP` is not one, so a close dispatched to
+            //     the background and lost would be lost permanently, with a signed gate as its only trace.
+            //   * The response must not say "approved" over an unreleased procurement. The operator's very
+            //     next click is POST /orders/{cas}, which 422s until Procurement.Status is Released.
+            // Re-entrant either way: CloseProjectAsync latches on the awaiting-VP → done transition and
+            // every write inside it is keyed deterministically, so a double-POST — or a re-POST after a
+            // failure — converges instead of double-writing.
+            if (runner is not null) await runner.OnGateAsync(gate, ct);
             return Results.Ok(new { status = "approved" });
         });
 

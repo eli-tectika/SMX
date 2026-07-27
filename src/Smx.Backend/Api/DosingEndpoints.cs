@@ -1,12 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
+using Smx.Backend.Pipeline;
 using Smx.Domain;
 using Smx.Domain.Records;
 
 namespace Smx.Backend.Api;
 
 /// The operator entering the one number that lives in no catalog (the metal loading), and the SOFT
-/// code-finalization checkpoint. Neither is a gate: the loading write RE-OPENS Dosing (the ProjectDoc
-/// upsert is the change-feed re-trigger), and the review is a note that blocks nothing (DosingDoc XML doc).
+/// code-finalization checkpoint. Neither is a gate: the loading write RE-OPENS Dosing (it resets the stage
+/// to `pending` and re-enters the pipeline), and the review is a note that blocks nothing (DosingDoc XML doc).
 public static class DosingEndpoints
 {
     public static void MapDosingEndpoints(this IEndpointRouteBuilder app)
@@ -16,7 +17,8 @@ public static class DosingEndpoints
         // breaks routing for the WHOLE app.
         app.MapPost("/projects/{projectId}/dosing/loading",
             async (string projectId, LoadingRequest req,
-                   [FromServices] IRecordStore store, [FromServices] IKnowledgeStore knowledge, CancellationToken ct) =>
+                   [FromServices] IRecordStore store, [FromServices] IKnowledgeStore knowledge,
+                   [FromServices] PipelineSupervisor? supervisor, CancellationToken ct) =>
         {
             // Early, friendly-error guard. The hard safety net is OrderAmount.Compute (a bad loading on a
             // purchase order is the real harm); SubstancePropertyDoc.MetalLoading is deliberately unvalidated,
@@ -45,10 +47,17 @@ public static class DosingEndpoints
                 EnteredAt = DateTimeOffset.UtcNow.ToString("O"),
             }, ct);
 
-            // Re-trigger Dosing. The upsert IS the change-feed re-trigger — production's change feed re-runs
-            // Dosing off this write; we do NOT run it here.
+            // Re-trigger Dosing. This is the operator answering an `awaiting-operator` park — the pause/
+            // resume loop the whole product is built around — so the flip alone is not enough: the runner
+            // re-enters a stage only from `pending` or `running`, and nothing watches the record for the
+            // flip any more. Before the re-entry below, entering the loading the agent asked for left
+            // Dosing sitting at `pending` forever, looking like it was about to run.
+            //
+            // Same shape as POST /regulatory/approve: the flip is the operator's input and is meaningful on
+            // its own, so the supervisor is OPTIONAL and a store-only test host still exercises the door.
             project.Stages[Stages.Dosing].Status = "pending";
             await store.UpsertProjectAsync(project, ct);
+            supervisor?.TryStart(projectId);
             return Results.Accepted($"/projects/{projectId}/dosing", new { status = "pending" });
         });
 

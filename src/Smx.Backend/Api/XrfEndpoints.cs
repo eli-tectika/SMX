@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Smx.Backend.Pipeline;
 using Smx.Backend.Xrf;
 using Smx.Domain;
 using Smx.Domain.Records;
@@ -66,7 +67,8 @@ public static class XrfEndpoints
 
         app.MapPost("/projects/{projectId}/xrf/confirm", async (
             string projectId, XrfConfirmRequest req,
-            [FromServices] IRecordStore store, CancellationToken ct) =>
+            [FromServices] IRecordStore store, [FromServices] PipelineSupervisor? supervisor,
+            CancellationToken ct) =>
         {
             if (await store.GetConstraintsAsync(projectId, ct) is not { } constraints)
                 return Results.NotFound();
@@ -90,10 +92,17 @@ public static class XrfEndpoints
             constraints.MeasuredBackgrounds = [.. built.MeasuredBackgrounds];
             if (built.Device is not null) constraints.Device = built.Device;
 
-            // This write IS the dispatch. The change feed picks up the constraints document and the
-            // orchestrator runs Discovery — which, until this moment, was parked precisely because
-            // there were no pools to screen against.
+            // The write used to BE the dispatch: the change feed picked up the constraints document and the
+            // orchestrator ran Discovery — which, until this moment, was parked precisely because there
+            // were no pools to screen against. Nothing watches the record now, so the write is only half of
+            // it; the re-entry below is what actually un-parks Discovery. Without it, the physicist's
+            // measurement landed in the record and the project stayed exactly where it was.
+            //
+            // The supervisor is OPTIONAL for the same reason it is on POST /regulatory/approve: the
+            // confirmed measurement is the operator's own act and is meaningful on its own, and a test host
+            // that registers only an IRecordStore still exercises the door it cares about.
             await store.UpsertConstraintsAsync(constraints, ct);
+            supervisor?.TryStart(projectId);
 
             return Results.Accepted($"/projects/{projectId}", new
             {
