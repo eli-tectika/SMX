@@ -177,23 +177,26 @@ The first application code now lives under `src/` (this is no longer a pure-infr
     sits at intake status `awaiting-confirmation` until the operator presses **Start Processing** on
     `/p/{id}/intake` — the agent may create, only the operator may start. See the four
     `docs/superpowers/plans/2026-07-2*-conversational-intake-*` plans.
-  - Most screens now read real endpoints: the projects list, the interview, the intake brief, XRF
-    entry on Background, the stage spine, the compatibility matrix, the Regulatory stage (including
-    its citations panel), all three cross-project surfaces (Marker Library, Learned Conclusions,
-    MSDS Registry) and the document library + reader (`/docs`, `/docs/:id`). What is still **fixture
-    data behind a `MockBadge`**: the Discovery, Dosing, Cost and Decision stages, and the
-    reuse-candidates half of Intake. That badge is load-bearing, not decoration: a fabricated verdict
-    must never be able to pass for an agent-produced one. Do not remove it from a screen until that
-    screen reads from a real endpoint. For the same reason the gate controls and the agent composer
-    are disabled — gates are operator-signed records and no endpoint exists to sign one.
+  - **Every screen reads a real endpoint. There are no fixtures, no MSW, and no demo project** —
+    `src/mocks/` is deleted, along with `MockBadge`, `isMocked`, the dashed spine pill and the
+    hatched `[data-provenance='mock']` surface. A screen with no data now says so instead of showing
+    invented data: a fabricated verdict must never be able to pass for an agent-produced one, and
+    not shipping the fabrication is a stronger guarantee than a badge asking the operator to keep
+    track of which is which. **If a screen needs data the backend does not serve, add the endpoint —
+    do not add a fixture.**
+  - Every spine stage is backed by `ProjectDoc.Stages`, including `background` and `decision`.
+    `backedBy` (does the record report this stage) and `isChatStage` (does it have an agent) are
+    deliberately separate: `background` is tracked but absent from `Stages.All` — the XRF filter is
+    a pass-through, so a thread on it would be a conversation with nobody — while `decision` has an
+    agent and still takes no dock, because a signature is not a conversation.
   - **Citation chips do not link yet, deliberately.** `CitationChip` opens a document only when it
     is handed a `documentId`, and `Citation` (`ConstraintsDoc.cs`) carries none — `reference` is a
     free-text label the agent wrote. Deriving an id by parsing it would produce links that are
     usually right, and a chip that opens the *wrong* regulation is worse than one that opens
     nothing. The fix is a real `documentId` on the Citation record; until then the chips stay inert.
   - **File viewer** (`/docs`, `/docs/:id`) — the document library and reader over the SDS PDFs and
-    regulatory source documents already in Bronze. Both read real endpoints; neither carries a
-    `MockBadge`. Reachable from the header nav, from MSDS Registry rows, and from the ⌘K finder
+    regulatory source documents already in Bronze. Both read real endpoints. Reachable from the
+    header nav, from MSDS Registry rows, and from the ⌘K finder
     (a `document` hit opens the file itself). The library lists the **gaps** too (a substance whose
     sheet was never obtained) as first-class, unlinked rows — a missing MSDS is what blocks an order,
     and a list of only the files that exist would let absence read as coverage. Design + plans:
