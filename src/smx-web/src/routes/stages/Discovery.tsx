@@ -4,6 +4,7 @@ import type { CandidateSubstance, CandidatesDoc } from '../../api/types';
 import { Loading } from '../../components/Loading';
 import { ReviseForm, RevisionTrail } from '../../components/RevisionControls';
 import { StageStatusCard } from '../../components/StageStatusCard';
+import { ProposedPool } from './ProposedPool';
 import { Data } from '../../components/ui/Data';
 import { CitationChip, EmptyState, SectionHeader } from '../../components/ui/Primitives';
 import { byComponent } from '../../domain/dosing';
@@ -89,6 +90,14 @@ export function Discovery({ project }: ScreenProps) {
       </div>
 
       <StageStatusCard name="Discovery agent" state={stage} />
+
+      {/* The pool is Discovery's INPUT, and Discovery takes minutes. Without this the operator
+          watches an empty candidate list for the whole run with no way to see what is being
+          screened — the pool is the one real thing there is to show in that window. */}
+      <ProposedPool
+        projectId={project.projectId}
+        hint="what Discovery is corroborating against the catalog"
+      />
 
       {phase === 'error' && (
         <div className="banner warn" role="alert">

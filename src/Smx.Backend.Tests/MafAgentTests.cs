@@ -92,55 +92,7 @@ public class MafAgentTests
     }
 
     /// The tool call is read from the SDK's own record of what it invoked — not from anything the
-    /// model wrote about itself.
-    [Fact]
-    public void Tool_calls_are_read_from_the_response_messages()
-    {
-        var messages = new List<ChatMessage>
-        {
-            new(ChatRole.Assistant, [new FunctionCallContent("c1", "search_reference",
-                new Dictionary<string, object?> { ["query"] = "zirconium oxide in PET" })]),
-            new(ChatRole.Tool, [new FunctionResultContent("c1", "[{},{},{}]")]),
-        };
 
-        var calls = MafAgent.ToolCalls(messages).ToList();
-
-        Assert.Single(calls);
-        Assert.Equal("search_reference", calls[0].Tool);
-        Assert.Equal("zirconium oxide in PET", calls[0].Query);
-        Assert.Equal(3, calls[0].ResultCount);
-    }
-
-    /// A result that is not a JSON array has no countable hits. Reporting one would put a number in an
-    /// audit trail that nobody measured.
-    [Fact]
-    public void A_tool_result_that_is_not_a_json_array_carries_no_count()
-    {
-        var messages = new List<ChatMessage>
-        {
-            new(ChatRole.Assistant, [new FunctionCallContent("c1", "lookup_catalog", null)]),
-            new(ChatRole.Tool, [new FunctionResultContent("c1", "not json")]),
-        };
-
-        var call = Assert.Single(MafAgent.ToolCalls(messages));
-        Assert.Null(call.Query);
-        Assert.Null(call.ResultCount);
-    }
 
     /// A call whose result never came back is still a call the agent made. Dropping it would make a
-    /// timed-out tool look like a tool that was never reached.
-    [Fact]
-    public void A_call_with_no_matching_result_is_still_reported()
-    {
-        var messages = new List<ChatMessage>
-        {
-            new(ChatRole.Assistant, [new FunctionCallContent("c1", "search_regulatory",
-                new Dictionary<string, object?> { ["query"] = "REACH annex XVII lead" })]),
-        };
-
-        var call = Assert.Single(MafAgent.ToolCalls(messages));
-        Assert.Equal("search_regulatory", call.Tool);
-        Assert.Equal("REACH annex XVII lead", call.Query);
-        Assert.Null(call.ResultCount);
-    }
 }

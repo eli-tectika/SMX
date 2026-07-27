@@ -10,6 +10,9 @@ vi.mock('../../api/client', () => ({
   parseXrf: vi.fn(),
   confirmXrf: vi.fn(),
   xrfTemplateUrl: '/api/xrf-template.csv',
+  // Both screens now show the proposed pool. These cases are about their own data, so it
+  // resolves to the not-yet-run state and renders one honest waiting line.
+  getPool: vi.fn().mockResolvedValue(Symbol.for('NotFound')),
 }));
 import * as api from '../../api/client';
 

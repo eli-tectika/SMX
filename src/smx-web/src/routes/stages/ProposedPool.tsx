@@ -1,43 +1,45 @@
-import { useEffect, useState } from 'react';
 import { NotFound, getPool } from '../../api/client';
-import type { PoolDoc } from '../../api/types';
+import { usePolling } from '../../hooks/usePolling';
 import { CitationChip, SectionHeader } from '../../components/ui/Primitives';
 
 /**
- * The pool agent's output — the first agent to run on a need-only project, and until now the only
- * stage whose result had nowhere to land. Real data from GET /projects/{id}/pool: no MockBadge.
+ * The pool agent's output. Real data from GET /projects/{id}/pool.
  *
  * It is a HYPOTHESIS, and the copy says so: everything downstream (the XRF filter, Discovery's
  * catalog corroboration, the regulatory screen) is a sieve over it. Presenting it as a finding
  * would invite the operator to trust the least-sieved artifact in the system.
+ *
+ * POLLED, not read once. The pool takes about a minute to produce, so an operator watching any of
+ * the screens this appears on is usually watching it from BEFORE it exists — and a single read
+ * would 404, print "not proposed yet", and leave that sentence up permanently while the pool sat
+ * finished on the server. The loop stops the moment the doc lands, so a settled project pays
+ * nothing.
+ *
+ * `hint` lets each host say why the pool matters THERE: it is the element list Background measures
+ * against, and the hypothesis Discovery is corroborating.
  */
-export function ProposedPool({ projectId }: { projectId: string }) {
-  const [pool, setPool] = useState<PoolDoc | typeof NotFound | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export function ProposedPool({ projectId, hint }: { projectId: string; hint?: string }) {
+  const state = usePolling(
+    () => getPool(projectId),
+    (p) => p !== NotFound,
+    [projectId],
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    getPool(projectId)
-      .then((p) => {
-        if (!cancelled) setPool(p);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
-
-  if (error)
+  if (state.kind === 'error')
     return (
       <div className="tiny" style={{ color: 'var(--text-danger)' }} role="alert">
-        <i className="ti ti-alert-triangle" aria-hidden="true" /> {error}
+        <i className="ti ti-alert-triangle" aria-hidden="true" /> {state.message}
       </div>
     );
-  if (pool === null) return <div className="tiny muted">Loading the proposed pool…</div>;
+  if (state.kind === 'loading') return <div className="tiny muted">Loading the proposed pool…</div>;
+  const pool = state.data;
   if (pool === NotFound)
-    return <div className="tiny muted">The pool agent has not proposed a pool yet.</div>;
+    return (
+      <div className="tiny muted">
+        <i className="ti ti-loader" data-running="" aria-hidden="true" /> The pool agent has not
+        proposed a pool yet — this fills in as soon as it does.
+      </div>
+    );
 
   const components = [...new Set(pool.suggestions.map((s) => s.component))];
 
@@ -45,7 +47,7 @@ export function ProposedPool({ projectId }: { projectId: string }) {
     <section>
       <SectionHeader
         eyebrow="Proposed pool"
-        hint="a starting hypothesis — everything downstream sieves it"
+        hint={hint ?? 'a starting hypothesis — everything downstream sieves it'}
       />
       {components.map((component) => (
         <div key={component} style={{ marginBottom: 12 }}>

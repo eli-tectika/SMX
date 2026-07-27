@@ -9,6 +9,9 @@ vi.mock('../../api/client', () => ({
   getCandidates: vi.fn(),
   getRevisions: vi.fn().mockResolvedValue([]),
   reviseStage: vi.fn(),
+  // Both screens now show the proposed pool. These cases are about their own data, so it
+  // resolves to the not-yet-run state and renders one honest waiting line.
+  getPool: vi.fn().mockResolvedValue(Symbol.for('NotFound')),
 }));
 import * as api from '../../api/client';
 

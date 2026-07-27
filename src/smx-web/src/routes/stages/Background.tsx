@@ -3,6 +3,7 @@ import { NotFound, getMatrix, getXrfState } from '../../api/client';
 import type { MatrixDoc, XrfState } from '../../api/types';
 import { Data } from '../../components/ui/Data';
 import { EmptyState, SectionHeader } from '../../components/ui/Primitives';
+import { ProposedPool } from './ProposedPool';
 import { XrfEntry } from '../../components/xrf/XrfEntry';
 import type { ScreenProps } from '../ProjectLayout';
 
@@ -171,6 +172,14 @@ export function Background({ project, refreshProject }: ScreenProps) {
           <b>Background analysis</b>
           spec §4.2 — the physicist's measurement, read back per component
         </div>
+
+        {/* Which elements a background is measured FOR. This stage is the sieve over the pool, so
+            the pool is its subject, not a cross-reference — without it the screen asks for XRF
+            numbers while never naming the elements they are for. */}
+        <ProposedPool
+          projectId={project.projectId}
+          hint="the elements this measurement is filtering"
+        />
 
         {phase === 'error' && (
           <div className="banner warn" role="alert">
