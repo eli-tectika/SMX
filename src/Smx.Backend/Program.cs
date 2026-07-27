@@ -107,6 +107,8 @@ app.MapProjectEndpoints();
 app.MapProjectsListEndpoints();
 app.MapRevisionEndpoints();
 app.MapChatEndpoints();
+// The unified per-stage thread and its control surface (design §7): read, stream, message, cancel, rerun.
+app.MapThreadEndpoints();
 app.MapKnowledgeEndpoints();
 app.MapDocumentEndpoints();
 app.MapDosingEndpoints();
@@ -359,5 +361,19 @@ public static class BackendHost
             sp.GetRequiredService<ILearnedConclusionWriter>(), opts.RegulatoryParallelism,
             sp.GetRequiredService<ILogger<PipelineRunner>>(),
             sp.GetRequiredService<IKnowledgeStore>(), sp.GetRequiredService<ICatalogLookup>()));
+
+        // ONE supervisor, resolved twice. The hosted-service registration MUST go through the container
+        // rather than construct its own — `AddHostedService<PipelineSupervisor>()` would build a SECOND
+        // instance, and then the endpoints' registry and the running pipelines would live in different
+        // objects: every start would 202 over a pipeline no cancel could ever reach, and the boot resume
+        // would run in an instance nothing else can see. BackendHostWiringTests asserts the identity.
+        //
+        // It lives here, not at the top of Program.cs, for the same reason PipelineRunner does: it depends
+        // on the runner, which needs the whole agent graph and a configured estate. A test host that
+        // registers an IRecordStore and nothing else has no supervisor — POST /start degrades to the status
+        // flip there (see the note on that endpoint), and §7.3's three control endpoints 500 rather than
+        // pretend.
+        services.AddSingleton<PipelineSupervisor>();
+        services.AddHostedService(sp => sp.GetRequiredService<PipelineSupervisor>());
     }
 }

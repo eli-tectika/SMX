@@ -88,8 +88,10 @@ public sealed record ThreadMessageEntry : ThreadEntry
 /// deletes the merge; the SHAPE does not change, which is precisely what lets the web track integrate now
 /// rather than after A2.
 ///
-/// This file is READ AND STREAM ONLY. `POST …/messages`, `POST …/runs/{runId}/cancel` and
-/// `POST …/stages/{stage}/rerun` (§7.3) need PipelineSupervisor and land with it.
+/// §7.3's control half lives here too: the message door, cancel, and rerun. All three take the
+/// PipelineSupervisor as a REQUIRED service — none of them has a meaningful answer without it, and a host
+/// that forgot the registration should say so loudly rather than return 202 over a pipeline nobody started.
+/// (POST /projects/{id}/start takes it optionally, for the opposite reason — see the note there.)
 public static class ThreadEndpoints
 {
     public static void MapThreadEndpoints(this IEndpointRouteBuilder app)
@@ -170,6 +172,128 @@ public static class ThreadEndpoints
             }
             catch (OperationCanceledException) { /* the client navigated away */ }
             finally { heartbeat.Dispose(); }
+        });
+
+        // §7.3 — the operator's message. A1 has no mailbox (design §5; that is A2), so this RECORDS the turn
+        // and does not run it: `queued` is the truthful status, and the endpoint says so in the response.
+        // What it must never do is answer inline — a POST that spends minutes in Foundry on the caller's
+        // thread is the shape this design exists to remove.
+        app.MapPost("/projects/{projectId}/stages/{stage}/messages", async (
+            string projectId, string stage, ChatRequest req,
+            [FromServices] IRecordStore store, [FromServices] IRunStore runs,
+            [FromServices] PipelineSupervisor supervisor, CancellationToken ct) =>
+        {
+            if (!Stages.All.Contains(stage))
+                return Results.UnprocessableEntity(new
+                {
+                    error = $"unknown stage '{stage}' — one of: {string.Join(", ", Stages.All)}",
+                });
+            // Blank text before any store lookup, as the chat door does: an empty turn is always a 422, never
+            // a 404 — and it must not reach the record, because nothing downstream re-checks it.
+            if (string.IsNullOrWhiteSpace(req.Text))
+                return Results.UnprocessableEntity(new { error = "a message cannot be blank" });
+            if (await store.GetProjectAsync(projectId, ct) is null) return Results.NotFound();
+
+            // The suffix must be an ID-SAFE token — a cross-service contract, not a style choice. See the
+            // long note in ChatEndpoints: the key is concatenated into further Cosmos ids downstream, and
+            // Cosmos rejects '/', '\', '?' and '#' with a 400 no in-memory test store can produce.
+            var messageId = RecordIds.ChatMessage(projectId, stage, Guid.NewGuid().ToString("N")[..8]);
+            var createdAt = DateTimeOffset.UtcNow.ToString("O");
+            await store.UpsertChatMessageAsync(new ChatMessageDoc
+            {
+                Id = messageId, ProjectId = projectId, Stage = stage, Text = req.Text,
+                Status = ChatStatus.Pending,
+                // ALWAYS "O". This is the thread's SORT KEY, compared lexicographically, and it is only
+                // chronological while every writer uses the same fixed-width format.
+                CreatedAt = createdAt,
+            }, ct);
+
+            // The seq is the message's POSITION IN THE MERGED THREAD, read back after the write — not a count
+            // of messages. The client dedupes the thread it already holds against this number, so a seq that
+            // ignored the runs would file the new message above entries that came before it.
+            var thread = await BuildThreadAsync(projectId, stage, runs, store, ct);
+            var seq = thread.OfType<ThreadMessageEntry>()
+                .LastOrDefault(m => m.At == createdAt && m.Text == req.Text)?.Seq ?? thread.Count;
+
+            // NOT PUBLISHED TO THE HUB, deliberately. Every frame id in the stream lives in the {runId} cursor
+            // space that ReplayAsync rebuilds; a message has no run and no replayable id, so a client that
+            // echoed one back as `?since=` would fall through to "unrecognised cursor" and replay the whole
+            // trail. The message reaches the client on this response and on the next §7.1 read. A2's unified
+            // thread gives message entries a real id, and this becomes a live frame then.
+            return Results.Accepted($"/projects/{projectId}/stages/{stage}/thread", new
+            {
+                messageId,
+                seq,
+                // true ⇒ a run is in flight, so the UI can say the agent will get to this rather than
+                // implying an answer is imminent.
+                queued = supervisor.IsRunning(projectId),
+            });
+        });
+
+        app.MapPost("/projects/{projectId}/runs/{runId}/cancel", async (
+            string projectId, string runId,
+            [FromServices] IRunStore runs, [FromServices] PipelineSupervisor supervisor,
+            CancellationToken ct) =>
+        {
+            if (await runs.GetAsync(projectId, runId, ct) is not { } run) return Results.NotFound();
+            if (run.Outcome != RunOutcome.Running)
+                return Results.Conflict(new { error = $"that run is already {run.Outcome}" });
+            // Cancelling one substance of fourteen leaves a candidate set that LOOKS screened and is not. The
+            // parent is the only granularity at which this is honest.
+            if (run.ParentRunId is not null)
+                return Results.UnprocessableEntity(new
+                {
+                    error = "cancel the regulatory stage's parent run — cancelling one substance would " +
+                            "leave a partially screened candidate set that reads as complete",
+                });
+            // `running` in the store but held by no process: the trail of a dead process. There is nothing to
+            // cancel, and a 202 that did nothing would be worse than saying so.
+            return supervisor.CancelRun(runId)
+                ? Results.Accepted()
+                : Results.Conflict(new { error = "that run is not live — no process is holding it" });
+        });
+
+        app.MapPost("/projects/{projectId}/stages/{stage}/rerun", async (
+            string projectId, string stage,
+            [FromServices] IRecordStore store, [FromServices] PipelineSupervisor supervisor,
+            CancellationToken ct) =>
+        {
+            if (!Stages.All.Contains(stage))
+                return Results.UnprocessableEntity(new
+                {
+                    error = $"unknown stage '{stage}' — one of: {string.Join(", ", Stages.All)}",
+                });
+            if (await store.GetProjectAsync(projectId, ct) is not { } project) return Results.NotFound();
+            if (!project.Stages.TryGetValue(stage, out var state))
+                return Results.UnprocessableEntity(new { error = $"this project has no '{stage}' stage" });
+
+            // `done` is refused deliberately, and so is every park. Re-running a landed stage replaces
+            // analysis a gate may have been signed over, and revise-with-reason is the path that does that
+            // WITH the operator's reason recorded. Rerun must not become the backdoor around it.
+            if (state.Status is not ("failed" or "needs-review" or "cancelled"))
+                return Results.UnprocessableEntity(new
+                {
+                    error = $"the {stage} stage is '{state.Status}' — only a failed, needs-review or " +
+                            "cancelled stage can be re-run. To change a landed result, tell the agent why, " +
+                            "so the reason is recorded.",
+                });
+
+            // Checked BEFORE the reset: writing `pending` under a live pipeline is a write racing the runner
+            // over the same stage state, and the answer is the same 409 a second start gets anyway.
+            if (supervisor.IsRunning(projectId))
+                return Results.Conflict(new { error = "a pipeline is already running for this project" });
+
+            // The reset is what makes rerun mean anything. The runner re-enters a stage only from `pending`
+            // or `running` — `failed` and `needs-review` are states it deliberately never picks up on its own
+            // pass, so without this the pipeline would walk straight past the stage the operator just asked
+            // for and land back where it started, having reported 202.
+            state.Status = StageStatus.Pending;
+            state.Error = null;
+            await store.UpsertProjectAsync(project, ct);
+
+            return supervisor.TryStart(projectId)
+                ? Results.Accepted()
+                : Results.Conflict(new { error = "a pipeline is already running for this project" });
         });
     }
 

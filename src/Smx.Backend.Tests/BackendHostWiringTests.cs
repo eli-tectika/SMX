@@ -89,6 +89,24 @@ public class BackendHostWiringTests
         Assert.NotNull(sp.GetRequiredService<IRunStore>());
     }
 
+    /// THE registration that cannot be verified by reading it. `AddHostedService(sp => sp.GetRequiredService
+    /// <PipelineSupervisor>())` and `AddHostedService<PipelineSupervisor>()` are one character apart in
+    /// intent and worlds apart in effect: the second builds a SECOND supervisor, with its own empty registry.
+    /// The endpoints would then resolve one instance while the pipelines ran in another — every cancel a
+    /// silent no-op, every start a 202 over something nothing can reach, and the boot resume happening where
+    /// nobody can see it. Nothing else in the suite would notice.
+    [Fact]
+    public void TheHostedSupervisor_IsTheSameSingletonTheEndpointsResolve()
+    {
+        using var sp = Build(Config());
+
+        var supervisor = sp.GetRequiredService<PipelineSupervisor>();
+        var hosted = sp.GetServices<Microsoft.Extensions.Hosting.IHostedService>()
+            .OfType<PipelineSupervisor>().Single();
+
+        Assert.Same(supervisor, hosted);
+    }
+
     /// The chat turn, built from the REAL container — the exact path that runs when the change feed hands the
     /// orchestrator its first ChatMessageDoc in Azure.
     ///

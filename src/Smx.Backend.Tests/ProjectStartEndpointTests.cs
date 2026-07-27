@@ -3,6 +3,11 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Smx.Backend.Agents;
+using Smx.Backend.Knowledge;
+using Smx.Backend.Pipeline;
+using Smx.Backend.Tests.Fakes;
 using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
@@ -122,5 +127,52 @@ public class ProjectStartEndpointTests : IClassFixture<WebApplicationFactory<Pro
         using var app = NewApp(new InMemoryRecordStore());
         Assert.Equal(HttpStatusCode.NotFound,
             (await app.CreateClient().PostAsync("/projects/nope/start", null)).StatusCode);
+    }
+
+    /// The endpoint used to be a status flip and nothing else, because a change feed was watching the record.
+    /// Nothing watches it now — so a start that still stopped at `pending` would leave the project looking
+    /// started, forever, with no agent ever having run. This is the assertion that says it launches.
+    [Fact]
+    public async Task Start_LaunchesTheRunner_AndRefusesASecondWhileItIsLive()
+    {
+        var store = new InMemoryRecordStore();
+        await store.UpsertProjectAsync(ProjectDoc.Create("proj-1", "Acme", "MUFE",
+            Payload(OneGoodComponent()), intakeStatus: StageStatus.AwaitingConfirmation));
+        var runs = new InMemoryRunStore();
+        var agents = new FakeAgentRuns();
+        var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Held inside intake on the run's OWN token, so "the pipeline is live" is a state this test controls
+        // and the cancel below is one the fake actually observes.
+        agents.Intake = async _ =>
+        {
+            reached.TrySetResult();
+            await Task.Delay(Timeout.Infinite, agents.LastIntakeToken);
+            return AgentRunResult<ConstraintsDoc>.NeedsReview("unreachable");
+        };
+        var runner = new PipelineRunner(store, runs, agents, new ThreadEventHub(),
+            new LearnedConclusionWriter(new InMemoryKnowledgeStore(), new FakeLearnedConclusionsIndex(),
+                new FakeEmbedder(), NullLogger<LearnedConclusionWriter>.Instance), 2);
+        var supervisor = new PipelineSupervisor(store, runs, runner, NullLogger<PipelineSupervisor>.Instance);
+        using var app = _factory.WithWebHostBuilder(b => b.ConfigureServices(s =>
+        {
+            s.AddSingleton<IRecordStore>(store);
+            s.AddSingleton<IRunStore>(runs);
+            s.AddSingleton(supervisor);
+        }));
+        var client = app.CreateClient();
+
+        var first = await client.PostAsync("/projects/proj-1/start", null);
+
+        Assert.Equal(HttpStatusCode.Accepted, first.StatusCode);
+        await reached.Task;                                  // the runner really entered intake
+        Assert.True(supervisor.IsRunning("proj-1"));
+
+        // One pipeline per project. The second press is a 409 — NOT the idempotent 202, which would read as
+        // "already fine" when what it means is "something is running you did not just start".
+        var second = await client.PostAsync("/projects/proj-1/start", null);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+
+        Assert.True(supervisor.CancelRun(RunIds.Run("proj-1", Stages.Intake, 1)));
+        await supervisor.Completion("proj-1");
     }
 }
