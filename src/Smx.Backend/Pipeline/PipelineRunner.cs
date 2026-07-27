@@ -48,6 +48,11 @@ public sealed class PipelineRunner(
     public bool CancelRun(string runId) =>
         _live.TryGetValue(runId, out var cts) && Try(() => cts.Cancel());
 
+    /// Is THIS process still executing that run? Registered before the run doc is ever written (see
+    /// ExecuteAsync), so a persisted `running` run that is not live here is one no process is holding —
+    /// which is what lets the supervisor's boot resume tell an orphan from a run that is simply going.
+    public bool IsLive(string runId) => _live.ContainsKey(runId);
+
     private static bool Try(Action act) { act(); return true; }
 
     public async Task RunAsync(string projectId, CancellationToken hostToken)

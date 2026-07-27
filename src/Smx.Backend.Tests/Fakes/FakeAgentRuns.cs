@@ -114,8 +114,13 @@ public sealed class FakeAgentRuns : IAgentRuns
     public int TotalCalls => IntakeCalls + PoolCalls + DiscoveryCalls + RegulatoryCalls + ConclusionCalls + ChatCalls + DosingCalls
         + DecisionCalls + InterviewCalls;
 
+    /// The token the runner handed the last intake run. Captured because the scripted delegates take no
+    /// CancellationToken, and a test about SHUTDOWN has to be able to wait on the real one — the pipeline's
+    /// own token — rather than one it invented (PipelineSupervisorTests).
+    public CancellationToken LastIntakeToken;
+
     Task<Smx.Backend.Agents.AgentRunResult<ConstraintsDoc>> IAgentRuns.RunIntakeAsync(ProjectDoc p, IRunTrail trail, CancellationToken ct)
-    { Interlocked.Increment(ref IntakeCalls); return Intake(p); }
+    { Interlocked.Increment(ref IntakeCalls); LastIntakeToken = ct; return Intake(p); }
     Task<AgentRunResult<PoolDoc>> IAgentRuns.RunPoolAsync(ProjectDoc project, ConstraintsDoc c, RevisionDoc? revision, IRunTrail trail, CancellationToken ct)
     { Interlocked.Increment(ref PoolCalls); return Pool(project, c, revision); }
     Task<Smx.Backend.Agents.AgentRunResult<CandidatesDoc>> IAgentRuns.RunDiscoveryAsync(
