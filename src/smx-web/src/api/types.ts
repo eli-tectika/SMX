@@ -344,6 +344,20 @@ export interface ProjectListItem {
   product: string;
   stages: Record<string, StageState>;
   createdAt: string;
+  /** The run in flight, if any — the list endpoint projects the newest running run. */
+  activeRun?: ActiveRun | null;
+}
+
+/**
+ * What is happening right now, in words. The stage pill says WHERE the project is; this says what
+ * is being done there — the cheap answer to "where should I even look".
+ *
+ * `agent: null` means a deterministic stage, and the card must not imply a model was involved.
+ */
+export interface ActiveRun {
+  stage: string;
+  agent: string | null;
+  lastStep: string | null;
 }
 
 /**

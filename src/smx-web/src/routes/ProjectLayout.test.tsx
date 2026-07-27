@@ -11,12 +11,15 @@ const PROJECT: ProjectSummary = {
   stages: { discovery: { status: 'done', attempts: 1 } },
 };
 
-/** GET /projects/{id} feeds the layout; the chat thread keeps the docked panel quiet. */
+/** GET /projects/{id} feeds the layout; an empty thread keeps the docked panel quiet. */
 function stubApi() {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: RequestInfo | URL) => {
-      const body = String(url).endsWith('/chat') ? [] : PROJECT;
+      const path = String(url);
+      // The thread reads and the pool read are both list/absent-shaped; only the project read
+      // returns the projection. A stream request gets an empty body, so the hook degrades quietly.
+      const body = path.includes('/thread') || path.endsWith('/pool') ? [] : PROJECT;
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -75,5 +78,15 @@ describe('ProjectLayout — which stages get an agent dock', () => {
     expect(document.querySelector('.dock')).not.toBeInTheDocument();
     expect(document.querySelector('.recordframe')).toBeInTheDocument();
     expect(screen.queryByText(/No agent on this stage/i)).not.toBeInTheDocument();
+  });
+
+  /**
+   * A Decision agent does run, and how it picked must be visible. But `surface: 'record'` exists
+   * because a signature is not a conversation — so: trail, no composer.
+   */
+  it('shows the decision trail with no composer on the signing surface', async () => {
+    await atStage('decision');
+    expect(await screen.findByLabelText(/decision trail/i)).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 });
