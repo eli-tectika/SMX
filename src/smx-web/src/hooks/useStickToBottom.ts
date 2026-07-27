@@ -38,7 +38,10 @@ export function useStickToBottom<T extends HTMLElement>(deps: React.DependencyLi
     // `onScroll` is the only thing that ever clears `pinned`: it is the one signal that fires on
     // a real, reader-initiated scroll and never on content merely growing below the fold.
     if (pinned.current) {
-      self.current = true; // this scroll is ours, not the reader's — see onScroll
+      // Arm the guard only when the assignment below will actually move the element. A no-op
+      // assignment fires no scroll event, so an unconditionally-armed flag would survive the frame
+      // and swallow the reader's next real scroll instead of our own.
+      self.current = el.scrollTop < el.scrollHeight - el.clientHeight;
       el.scrollTop = el.scrollHeight;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

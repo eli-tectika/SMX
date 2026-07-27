@@ -46,6 +46,27 @@ export function Interview() {
   // that commit shrinks the transcript with nothing re-measuring the scroll position.
   const scroller = useStickToBottom<HTMLDivElement>([session?.turns.length, streaming, sending]);
 
+  // Safety net for the drag counter above. Crossing between elements INSIDE the page nets to zero
+  // correctly via dragenter/dragleave, but the counter never sees a final dragleave when the drag
+  // ends outside the page entirely — the operator drags off the browser window, or cancels with
+  // Escape — because several browsers don't reliably fire one at the document boundary. Without
+  // this, `dragDepth` would stay positive and the "Drop to hand it over" overlay would sit over the
+  // textarea, inert, for the rest of the session. `blur` catches "left the window"; `dragend` on the
+  // document catches the drag session ending (cancel or drop) by any means the per-element handlers
+  // below might have missed.
+  useEffect(() => {
+    const reset = () => {
+      dragDepth.current = 0;
+      setDragging(false);
+    };
+    window.addEventListener('blur', reset);
+    document.addEventListener('dragend', reset);
+    return () => {
+      window.removeEventListener('blur', reset);
+      document.removeEventListener('dragend', reset);
+    };
+  }, []);
+
   // No sessionId in the URL: mint one and put it there. The id lives in the URL, not in component
   // state, precisely so a reload, a bookmark or a closed tab all resume the SAME interview — Law 6.
   // `replace` so Back does not walk into a /new that mints a second session.
@@ -166,6 +187,9 @@ export function Interview() {
     if (dragDepth.current === 0) setDragging(false);
   }
 
+  // One guard for both the Send button and the Ctrl+Enter shortcut, so the two ways to send a
+  // message can't drift into disagreeing about when sending is allowed.
+  const canSend = draft.trim().length > 0 && !sending;
   const cov = coverage(session?.dossier ?? [], questions);
   const blocker = session ? createBlocker(session, questions) : 'the interview has not loaded yet.';
 
@@ -264,7 +288,7 @@ export function Interview() {
                 // half-written thought would be the worse default.
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
-                  if (draft.trim() && !sending) void send(draft);
+                  if (canSend) void send(draft);
                 }
               }}
               placeholder="Talk to the agent… (drop a file here to hand it over)"
@@ -291,7 +315,7 @@ export function Interview() {
                 type="button"
                 title="Send (Ctrl/Cmd + Enter)"
                 style={{ marginLeft: 'auto' }}
-                disabled={sending || !draft.trim()}
+                disabled={!canSend}
                 onClick={() => void send(draft)}
               >
                 Send

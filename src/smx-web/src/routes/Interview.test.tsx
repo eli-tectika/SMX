@@ -40,6 +40,11 @@ function renderAt(sessionId = 'isx-1') {
 beforeEach(() => {
   vi.mocked(api.getIntakeQuestions).mockResolvedValue(QUESTIONS);
   vi.mocked(api.getIntakeSession).mockResolvedValue(session());
+  // Vitest mocks are NOT reset between tests (`vite.config.ts` sets neither `resetMocks` nor
+  // `clearMocks`), so a test that installs a rejecting implementation — to exercise the error
+  // banner — would otherwise leak that rejection into every test that runs after it. Re-priming
+  // a harmless default here keeps each test's mock behaviour scoped to what IT sets up.
+  vi.mocked(api.sendInterviewMessage).mockResolvedValue(undefined);
 });
 
 describe('the interview screen', () => {
@@ -142,14 +147,29 @@ describe('Interview composer', () => {
     const user = userEvent.setup();
     renderAt();
     const box = await screen.findByLabelText(/message the interview agent/i);
+    // Vitest mocks are not reset between tests in this file, so a prior test's turn(s) would
+    // otherwise still be sitting in `mock.calls` when we assert below. This test only cares about
+    // what OUR interaction sends, so start from a clean slate rather than depending on run order.
+    vi.mocked(api.sendInterviewMessage).mockClear();
 
     await user.click(box);
     await user.keyboard('first line{Enter}second line');
     expect(box).toHaveValue('first line\nsecond line');
 
     await user.keyboard('{Control>}{Enter}{/Control}');
-    // Sending clears the draft — that is the observable fact, independent of transport.
+    // Sending clears the draft — that is the observable fact, independent of transport. This also
+    // checks that the FULL two-line draft went out, which would fail if Ctrl+Enter's own keystroke
+    // leaked an extra newline into the text sent. It does NOT prove `preventDefault()` fired on the
+    // Ctrl+Enter keydown specifically — jsdom/user-event does not insert a newline for a held-Ctrl
+    // Enter in the first place, so a test asserting the box's value alone would pass even with
+    // `preventDefault()` deleted from the handler.
     await waitFor(() => expect(box).toHaveValue(''));
+    expect(api.sendInterviewMessage).toHaveBeenCalledTimes(1);
+    expect(api.sendInterviewMessage).toHaveBeenCalledWith(
+      'isx-1',
+      'first line\nsecond line',
+      expect.any(Function),
+    );
   });
 
   it('shows a drop target while a file is over the composer', async () => {
