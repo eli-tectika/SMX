@@ -186,10 +186,16 @@ public sealed class RunDoc
     public string? EndedAt { get; set; }
     public string Outcome { get; set; } = RunOutcome.Running;
     public string? Error { get; set; }
-    /// Append-only, and get-only so it cannot be REPLACED: the SSE resume cursor is (runId, seq),
-    /// and a wholesale swap would break the monotonicity that makes a replayed frame recognisable.
-    /// `Append` is the sanctioned mutator.
-    public List<RunStep> Steps { get; } = [];
+    /// Append-only by discipline, NOT by type. `Append` is the sanctioned mutator.
+    ///
+    /// It is `{ get; set; }` for a verified reason, not an oversight: get-only was tried and the
+    /// round-trip test below caught it deserializing to an EMPTY list. STJ defaults to
+    /// JsonObjectCreationHandling.Replace and cannot populate a collection through a missing
+    /// setter, so the constructor-initialized list survives and every persisted step is silently
+    /// lost. The per-property Populate attribute that would fix it is .NET 9+, and this project is
+    /// net8.0. A silently empty trail is far worse than a replaceable list, so the wire shape wins
+    /// and RunDoc_round_trips_through_the_pinned_wire_shape stands guard over it.
+    public List<RunStep> Steps { get; set; } = [];
 
     public RunStep Append(string kind, string text, string at, RunStepDetail? detail = null)
     {
