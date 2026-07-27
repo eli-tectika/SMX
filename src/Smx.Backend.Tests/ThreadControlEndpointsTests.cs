@@ -171,6 +171,40 @@ public class ThreadControlEndpointsTests : IClassFixture<WebApplicationFactory<P
         Assert.Equal(HttpStatusCode.Accepted, (await PostMessage("p1", Stages.Pool, "why no Hf?")).StatusCode);
     }
 
+    // ---- GET …/runs ---------------------------------------------------------------------------------
+
+    /// §7.3's replay/audit read. It crosses the whole project, and it goes out through the SAME projection
+    /// the thread does — a raw RunDoc would put `runId === undefined` in front of a client coding against §7.
+    [Fact]
+    public async Task Runs_lists_every_run_oldest_first_and_filters_by_stage()
+    {
+        await SeedProjectAsync();
+        await _runs.UpsertAsync(new RunDoc
+        {
+            Id = RunIds.Run("p1", Stages.Intake, 1), ProjectId = "p1", Stage = Stages.Intake,
+            Agent = "intake", StartedAt = At(1), Outcome = RunOutcome.Done, EndedAt = At(2),
+        });
+        await _runs.UpsertAsync(new RunDoc
+        {
+            Id = RunIds.Run("p1", Stages.Discovery, 1), ProjectId = "p1", Stage = Stages.Discovery,
+            StartedAt = At(3),
+        });
+
+        var all = await _client.GetFromJsonAsync<JsonElement[]>("/projects/p1/runs");
+        Assert.Equal(
+            [RunIds.Run("p1", Stages.Intake, 1), RunIds.Run("p1", Stages.Discovery, 1)],
+            all!.Select(r => r.GetProperty("runId").GetString()));
+        Assert.False(all[0].TryGetProperty("projectId", out _));
+        // `agent: null` is how the client tells a deterministic stage from an agent run — present, not absent.
+        Assert.Equal(JsonValueKind.Null, all[1].GetProperty("agent").ValueKind);
+
+        var discovery = await _client.GetFromJsonAsync<JsonElement[]>("/projects/p1/runs?stage=discovery");
+        Assert.Equal(Stages.Discovery, Assert.Single(discovery!).GetProperty("stage").GetString());
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity,
+            (await _client.GetAsync("/projects/p1/runs?stage=screening")).StatusCode);
+    }
+
     // ---- POST …/runs/{runId}/cancel -----------------------------------------------------------------
 
     private async Task<RunDoc> SeedRunAsync(string id, string outcome, string? parentRunId = null)

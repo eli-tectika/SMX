@@ -174,6 +174,24 @@ public static class ThreadEndpoints
             finally { heartbeat.Dispose(); }
         });
 
+        // §7.3's replay/audit read: every run for the project, or for one stage, oldest first. Distinct from
+        // the thread above, which is per-stage and merges the conversation in — this one crosses the whole
+        // project and carries runs only.
+        //
+        // Through RunSummary, like every other run on the wire: the doc calls the identifier `id` and carries
+        // the partition key, and a client coding against §7 would read `runId === undefined` on every row.
+        app.MapGet("/projects/{projectId}/runs", async (
+            string projectId, string? stage, [FromServices] IRunStore runs, CancellationToken ct) =>
+        {
+            if (stage is { Length: > 0 } && !Stages.All.Contains(stage))
+                return Results.UnprocessableEntity(new
+                {
+                    error = $"unknown stage '{stage}' — one of: {string.Join(", ", Stages.All)}",
+                });
+            var docs = await runs.ListAsync(projectId, string.IsNullOrEmpty(stage) ? null : stage, ct);
+            return Results.Json(docs.Select(RunSummary.From).ToList(), Json.Options);
+        });
+
         // §7.3 — the operator's message. A1 has no mailbox (design §5; that is A2), so this RECORDS the turn
         // and does not run it: `queued` is the truthful status, and the endpoint says so in the response.
         // What it must never do is answer inline — a POST that spends minutes in Foundry on the caller's
