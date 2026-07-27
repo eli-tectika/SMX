@@ -73,14 +73,17 @@ public static class ProjectsListEndpoints
                     blocked.Add(new { stage, on = owner, detail = state.Error });
             }
 
-            // Ready to continue: a pending stage whose upstream neighbour is done. Stages.All IS the
-            // pipeline order, and the first stage has no upstream — a fresh project's next action is intake.
+            // Ready to continue: a pending stage whose upstream neighbour is done. Stages.SPINE, not
+            // Stages.All: the spine is the operator-facing order, and the first stage has no upstream — a
+            // fresh project's next action is intake. Pool is in `All` (it is chattable) but not here, because
+            // it legitimately SKIPS without ever being stamped — walking it would park this list on `pool`
+            // forever on every project that provided its own candidates.
             var readyToContinue = new List<string>();
-            for (var i = 0; i < Stages.All.Length; i++)
+            for (var i = 0; i < Stages.Spine.Length; i++)
             {
-                if (project.Stages.GetValueOrDefault(Stages.All[i])?.Status != "pending") continue;
-                if (i == 0 || project.Stages.GetValueOrDefault(Stages.All[i - 1])?.Status == "done")
-                    readyToContinue.Add(Stages.All[i]);
+                if (project.Stages.GetValueOrDefault(Stages.Spine[i])?.Status != "pending") continue;
+                if (i == 0 || project.Stages.GetValueOrDefault(Stages.Spine[i - 1])?.Status == "done")
+                    readyToContinue.Add(Stages.Spine[i]);
             }
 
             // Needs signing: each UNAPPROVED gate (a signed gate needs nothing), with armability from the

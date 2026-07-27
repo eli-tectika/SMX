@@ -77,13 +77,22 @@ public sealed class ToolBox(
     /// Discovery's to mint. The web tool is the same anonymizing egress Discovery uses (hosted or proxy).
     public IList<AITool> PoolTools(SensitiveTerms terms) =>
     [
+        .. PoolReadTools(),
+        useHostedWebSearch ? HostedWebSearch() : PoolProxyWebSearch(terms),
+    ];
+
+    /// The Pool retrieval tools MINUS search_web — the read surface with no egress, exactly as
+    /// DiscoveryReadTools is to DiscoveryTools. A CHAT turn on the Pool stage gets this: the operator can
+    /// have the proposal justified against the reference corpus, the prior conclusions and the marker
+    /// library, but talking about a pool is not a second trigger for external egress.
+    public IList<AITool> PoolReadTools() =>
+    [
         AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
             "Search SMX reference prose: solubility, XRF cleanliness, marker forms, form/physical-state fit. Use to justify which form-class suits the substrate."),
         AIFunctionFactory.Create(SearchLearnedConclusionsAsync, "search_learned_conclusions",
             "Search accumulated Learned Conclusions relevant to proposing markers for this material/application. Treat them as prior evidence, not fact; do not fabricate a prior finding if the tool returns nothing."),
         AIFunctionFactory.Create(SearchMarkerLibraryAsync, "search_marker_library",
             "Search the cross-project Marker Library for a previously approved code to reuse. Pass application, material, and/or objective as SEPARATE arguments (omit a dimension to leave it unconstrained). A prior approved code for this material/application is a strong reuse signal."),
-        useHostedWebSearch ? HostedWebSearch() : PoolProxyWebSearch(terms),
     ];
 
     /// The pool stage's web egress — the SAME anonymizing proxy Discovery uses (k-anonymity cover queries,
@@ -188,6 +197,7 @@ public sealed class ToolBox(
     public IList<AITool> ReadToolsFor(string stage) => stage switch
     {
         Stages.Intake => IntakeTools(),
+        Stages.Pool => PoolReadTools(),
         Stages.Discovery => DiscoveryReadTools(),
         Stages.Regulatory => RegulatoryTools(),
         Stages.Dosing => DosingReadTools(),

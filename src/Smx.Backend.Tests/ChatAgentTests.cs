@@ -55,6 +55,10 @@ public class ChatAgentTests
         Assert.DoesNotContain("search_web", Names(box.ReadToolsFor(Stages.Discovery)));
         Assert.Equal(Names(box.RegulatoryTools()), Names(box.ReadToolsFor(Stages.Regulatory)));
         Assert.Equal(Names(box.DosingReadTools()), Names(box.ReadToolsFor(Stages.Dosing)));
+        // Pool became chattable when it entered Stages.All. Same rule as Discovery: the READ surface, with
+        // search_web excluded — the operator arguing about a proposal must not be a second egress trigger.
+        Assert.Equal(Names(box.PoolReadTools()), Names(box.ReadToolsFor(Stages.Pool)));
+        Assert.DoesNotContain("search_web", Names(box.ReadToolsFor(Stages.Pool)));
     }
 
     // Pinned literally, not derived: this is the whole capability surface a chat turn's READ half offers the
@@ -80,6 +84,11 @@ public class ChatAgentTests
         Assert.Equal(
             ["search_learned_conclusions", "search_reference"],
             box.ReadToolsFor(Stages.Dosing).Select(t => t.Name).OrderBy(x => x));
+        // Pool: the reference corpus, prior conclusions and the marker library — no catalog (the pool reaches
+        // beyond it and mints no CAS) and no egress. Nothing here writes, approves or signs either.
+        Assert.Equal(
+            ["search_learned_conclusions", "search_marker_library", "search_reference"],
+            box.ReadToolsFor(Stages.Pool).Select(t => t.Name).OrderBy(x => x));
     }
 
     // Matrix and Cost retrieve nothing. Matrix's output is derived from the record it is handed; Cost's is a

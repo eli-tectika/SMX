@@ -261,11 +261,11 @@ public class ChatEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
             .Select(f => (string)f.GetRawConstantValue()!)
             .ToArray();
 
-        // Pool and Background are DELIBERATELY hidden, non-chattable pipeline stages (see the Stages
-        // doc-comment): backend-only phases between Intake and Discovery, absent from the UI spine and from
-        // the chat surface. Every OTHER stage constant must appear in `All`, so the guard still catches a
-        // new *chattable* stage that someone forgets to list.
-        var hidden = new[] { Stages.Pool, Stages.Background };
+        // Background is the one DELIBERATELY hidden, non-chattable stage (see the Stages doc-comment): a
+        // pass-through with no agent behind it, so a thread on it could only be a conversation with nobody.
+        // Pool is chattable — it is an agent, and the operator argues with its proposal. Every OTHER stage
+        // constant must appear in `All`, so the guard still catches a new *chattable* stage someone forgets.
+        var hidden = new[] { Stages.Background };
         Assert.NotEmpty(declared);
         Assert.Equal([.. declared.Except(hidden).Order()], [.. Stages.All.Order()]);
     }

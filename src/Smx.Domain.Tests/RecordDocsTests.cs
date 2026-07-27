@@ -62,10 +62,10 @@ public class RecordDocsTests
     {
         var doc = ProjectDoc.Create("p1", "Acme", "Shampoo bottle", JsonDocument.Parse("{}").RootElement);
         // Every Stages.All (chattable) member must be seeded, or SetStageAsync throws KeyNotFoundException on a
-        // stage the product says exists. Pool and Background are seeded too — they are real backend stages the
-        // dispatcher writes, just deliberately absent from Stages.All (hidden, non-chattable). Assert the exact
-        // set so a forgotten seed still fails, in both directions.
-        string[] expected = [.. Stages.All, Stages.Pool, Stages.Background];
+        // stage the product says exists. Background is seeded too — a real backend stage the runner stamps,
+        // just deliberately absent from Stages.All (no agent, so nothing to talk to). Assert the exact set so
+        // a forgotten seed still fails, in both directions.
+        string[] expected = [.. Stages.All, Stages.Background];
         Assert.Equal([.. expected.Order()], [.. doc.Stages.Keys.Order()]);
     }
 

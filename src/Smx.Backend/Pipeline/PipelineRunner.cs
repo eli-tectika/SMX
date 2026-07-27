@@ -1247,6 +1247,10 @@ public sealed class PipelineRunner(
     private async Task<string> StageInputsJsonAsync(string projectId, string stage, CancellationToken ct) => stage switch
     {
         Stages.Intake => JsonSerializer.Serialize(await store.GetProjectAsync(projectId, ct), Json.Options),
+        // Pool became chattable when it entered Stages.All. Without this arm the turn would fall through to
+        // "{}" and the agent would discuss a proposal it cannot see — the exact "confident conversation about
+        // nothing" the chat door's own comment warns about.
+        Stages.Pool => JsonSerializer.Serialize(await store.GetPoolAsync(projectId, ct), Json.Options),
         Stages.Discovery => JsonSerializer.Serialize(await store.GetCandidatesAsync(projectId, ct), Json.Options),
         Stages.Regulatory => JsonSerializer.Serialize(await store.GetVerdictsAsync(projectId, ct), Json.Options),
         Stages.Matrix => JsonSerializer.Serialize(await store.GetMatrixAsync(projectId, ct), Json.Options),
