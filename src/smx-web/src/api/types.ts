@@ -233,6 +233,38 @@ export interface MatrixDoc {
   generatedAt: string;
 }
 
+/**
+ * CandidateSubstance — src/Smx.Domain/Records/ConstraintsDoc.cs.
+ *
+ * One proposed marker for ONE component. Candidates are per-component tracks: there is no
+ * product-wide marker, and a UI that flattens these into one pool contradicts the architecture.
+ *
+ * `tier` is a severity ordering — A strong, B needs-validation, C excluded. `preferred` is the
+ * agent's pick within a component. A web-only candidate is capped at tier B and can never be
+ * `preferred` (DiscoveryAgent.Validate), so a preferred tier-A row is a claim about corpus
+ * evidence, not a formatting flourish.
+ */
+export interface CandidateSubstance {
+  componentId: string;
+  element: string;
+  form: string;
+  cas: string;
+  particleSize?: string | null;
+  solvent?: string | null;
+  preferred: boolean;
+  tier: 'A' | 'B' | 'C';
+  rationale: string;
+  citations: Citation[];
+}
+
+/** CandidatesDoc — src/Smx.Domain/Records/CandidatesDoc.cs. 404s until Discovery has run. */
+export interface CandidatesDoc {
+  id: string;
+  projectId: string;
+  type: string;
+  substances: CandidateSubstance[];
+}
+
 /** StageState — src/Smx.Domain/Records/ProjectDoc.cs */
 export interface StageState {
   status: StageStatus;

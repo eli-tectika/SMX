@@ -1,4 +1,5 @@
 import type {
+  CandidatesDoc,
   ChatAccepted,
   ChatTurn,
   CostDoc,
@@ -553,6 +554,20 @@ export async function getDocumentText(id: string): Promise<DocumentChunk[]> {
   if (res.status === 404 || res.status === 409) return [];
   if (!res.ok) throw await failure(res);
   return (await res.json()) as DocumentChunk[];
+}
+
+/**
+ * The Discovery agent's ranked candidate pool.
+ *
+ * 404 before Discovery has run — the normal pre-run state, hence the sentinel. The doc is READ-ONLY:
+ * the operator never re-tiers a candidate by hand (spec §1.4). To change one they tell the agent why,
+ * through POST /stages/discovery/revise, and the reason is recorded as a Learned Conclusion.
+ */
+export async function getCandidates(projectId: string): Promise<CandidatesDoc | NotFound> {
+  const res = await authorizedFetch(`${p(projectId)}/candidates`);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as CandidatesDoc;
 }
 
 /* ---------------------------------------------------------------------------
