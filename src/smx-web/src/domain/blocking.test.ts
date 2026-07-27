@@ -189,6 +189,19 @@ describe('bucket', () => {
   it('settles only when everything is done and nothing is flagged', () => {
     expect(bucket(project('done', 'done', 'done', 'done'), summary(), 0)).toBe('settled');
   });
+
+  /**
+   * A project parked at the VP gate is stopped on a human and is one signature from closing — and
+   * that signature releases procurement and writes the cross-project library. Bucketed `settled` it
+   * would be filed with the finished work and never looked at again, which is the one direction a
+   * mis-bucketing must not go. `awaiting-VP` is not in AWAITING_STATES (it carries no dispatcher
+   * instruction to surface), so `bucket` names it itself — this is the test that keeps it named.
+   */
+  it('treats a project parked at the VP gate as needing you, never as settled', () => {
+    const p = project('done', 'done', 'done', 'done', {});
+    p.stages.decision = st('awaiting-VP', 1);
+    expect(bucket(p, summary(), 0)).toBe('needs-you');
+  });
 });
 
 describe('a created-but-not-started project', () => {

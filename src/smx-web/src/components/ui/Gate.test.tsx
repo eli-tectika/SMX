@@ -150,11 +150,18 @@ describe('Gate — rejection', () => {
   });
 
   /**
-   * A rejection is a ruling, not an escape hatch. It needs its reason exactly as much as an approval
-   * does — the backend 422s a blank one either way — but it must NOT need the gate to be armed:
-   * refusing to let the VP say no until every blocker clears would trap a bad decision open.
+   * The one that used to encode a falsehood.
+   *
+   * It asserted that an unarmed gate could still be rejected, on the reasoning that refusing to let
+   * the VP say no would trap a bad decision open. The server disagrees: POST …/decision/determination
+   * runs the park check, the pending-revision check and both armability checks BEFORE it branches on
+   * `determination`, so an unarmed rejection 422s exactly as an unarmed approval does. A button
+   * enabled there is a lying affordance — the failure `armable` is computed server-side to prevent.
+   *
+   * Making a blocked project rejectable is a legitimate product wish, but it is a BACKEND change to
+   * the guard order. This test exists so nobody re-implements it in the UI instead.
    */
-  it('allows rejecting a gate that is not armed, but never without a reason', async () => {
+  it('keeps reject disabled on an unarmed gate even with a reason typed', async () => {
     const onReject = vi.fn();
     render(
       <Gate
@@ -173,9 +180,34 @@ describe('Gate — rejection', () => {
     expect(reject).toBeDisabled();
 
     await userEvent.type(screen.getByLabelText(/note/i), 'not going ahead');
+    expect(reject).toBeDisabled();
+    expect(reject).toHaveAttribute('title', expect.stringMatching(/every requirement above is met/i));
+    expect(onReject).not.toHaveBeenCalled();
+  });
+
+  /** Arming is necessary, not sufficient: an armed gate still refuses a rejection with no reason. */
+  it('still requires a reason to reject once the gate IS armed', async () => {
+    const onReject = vi.fn();
+    render(
+      <Gate
+        kind="hard"
+        title="VP gate"
+        records="nothing"
+        requirements={armed}
+        signLabel="Approve"
+        rejectLabel="Reject"
+        onReject={onReject}
+        signNote={{ placeholder: 'why' }}
+      />,
+    );
+    const reject = screen.getByRole('button', { name: 'Reject' });
+    expect(reject).toBeDisabled();
+    expect(reject).toHaveAttribute('title', expect.stringMatching(/a reason is required/i));
+
+    await userEvent.type(screen.getByLabelText(/note/i), 'the ppm window is wrong');
     expect(reject).toBeEnabled();
     await userEvent.click(reject);
-    expect(onReject).toHaveBeenCalledWith('not going ahead');
+    expect(onReject).toHaveBeenCalledWith('the ppm window is wrong');
   });
 
   /** While a rejection is in flight, the button must not be clickable again, and must say so visually. */

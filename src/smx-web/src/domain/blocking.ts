@@ -223,8 +223,16 @@ export function bucket(
 
   // A park is "needs you" whoever it names: either you enter something, or you go and get it from the
   // person who owes it. Either way the project is stopped and will not move on its own.
+  //
+  // `awaiting-VP` is named explicitly rather than folded into AWAITING_STATES: that constant is about
+  // surfacing a dispatcher-written instruction, and the Decision park carries none. But it is a park
+  // all the same — the record is stopped on the VP, and the gate is signable the moment their answer
+  // comes back. Left out, it fell through to `settled`, which is wrong in the direction that HIDES
+  // work: the last and highest-consequence signature in the journey would sit filed as finished.
   if (
-    states.some((s) => s.status === 'failed' || s.status === 'needs-review' || isAwaiting(s.status)) ||
+    states.some(
+      (s) => s.status === 'failed' || s.status === 'needs-review' || isAwaiting(s.status) || s.status === 'awaiting-VP',
+    ) ||
     (matrix && (matrix.inconsistent > 0 || matrix.uncited > 0)) ||
     unopenedFlagged > 0
   ) {

@@ -221,10 +221,22 @@ export function Decision({ project, refreshProject }: ScreenProps) {
   const determined =
     gate?.status === 'approved' || (components.length > 0 && confirmed === components.length);
 
+  /** The codes dosing actually finalized for a component — the only signable set (POST 422s any other). */
+  const finalized = (componentId: string) =>
+    (dosing?.codes ?? []).filter((k) => k.componentId === componentId).map((k) => k.ratioSignature);
+
+  /**
+   * The components whose chosen code the POST would reject: none chosen (`''`), or one that is not in
+   * the DosingDoc. This mirrors the endpoint's own membership check rather than guessing at armability
+   * — and it can only ever WITHHOLD the pen, never grant it, because arming still requires
+   * `gate.armable` from the server.
+   */
+  const unsignable = confirmations.filter((c) => !finalized(c.componentId).includes(c.code));
+
   /**
    * The gate's requirements are the SERVER's blockers, one per line, plus the one condition this
-   * screen owns: a code chosen for every component (the POST 422s a component with none). Nothing
-   * else is invented here — in particular not MSDS, which gates orders rather than the gate.
+   * screen owns: a finalized code chosen for every component. Nothing else is invented here — in
+   * particular not MSDS, which gates orders rather than the gate.
    */
   const requirements: Requirement[] = [
     {
@@ -242,16 +254,19 @@ export function Decision({ project, refreshProject }: ScreenProps) {
     },
     {
       id: 'codes',
-      label: 'A code chosen for every component',
-      met: components.length > 0 && confirmations.every((c) => c.code !== ''),
+      label: 'A finalized code chosen for every component',
+      met: components.length > 0 && unsignable.length === 0,
       detail:
         components.length === 0
           ? 'There is no decision to sign.'
-          : confirmations.filter((c) => c.code === '').length > 0
-            ? `No code available for ${confirmations
-                .filter((c) => c.code === '')
-                .map((c) => c.componentId)
-                .join(', ')}.`
+          : unsignable.length > 0
+            ? unsignable
+                .map((c) =>
+                  c.code === ''
+                    ? `${c.componentId}: no code proposed`
+                    : `${c.componentId}: '${c.code}' is not one of dosing's finalized codes`,
+                )
+                .join(' · ')
             : undefined,
     },
   ];

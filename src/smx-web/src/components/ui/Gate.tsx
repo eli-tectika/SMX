@@ -62,10 +62,22 @@ export function Gate({
    */
   signNote?: { placeholder: string };
   /**
-   * When provided, the reject button is LIVE. Deliberately NOT gated on `armed`: a gate that will not
-   * let the VP say no until every blocker clears traps a bad decision open. It IS gated on the note —
-   * a rejection is a ruling and needs its reason exactly as much as an approval does — so the note
-   * field renders whenever `onReject` is wired, whether or not the caller also set `signNote`.
+   * When provided, the reject button is LIVE — gated on `armed` exactly as signing is, and on the note.
+   *
+   * The arming half is not a UI opinion, it is the server's contract. `POST …/decision/determination`
+   * runs its guards — the park check, the pending-revision check, `VpGate.Armable`, the regulatory
+   * coverage re-check — BEFORE it branches on `determination`, so a rejection on an unarmed gate is
+   * refused with the same 422 an approval would get. A reject button enabled over blockers would be a
+   * lying affordance, which is the precise failure `armable` is computed server-side to prevent.
+   *
+   * (An earlier version of this comment argued the opposite — that refusing to let the VP say no until
+   * every blocker clears traps a bad decision open. That describes a system we do not have. If the
+   * product ever wants a blocked project to be rejectable, the fix is a BACKEND change to the guard
+   * order, moving the `rejected` branch ahead of the armability checks. The UI may not fake it.)
+   *
+   * The note half is unconditional: a rejection is a ruling and needs its reason exactly as much as an
+   * approval does, so the note field renders whenever `onReject` is wired, whether or not the caller
+   * also set `signNote`.
    */
   onReject?: (note: string) => void;
   rejectBusy?: boolean;
@@ -76,7 +88,8 @@ export function Gate({
   const armed = met === total;
   const noteReady = !signNote || note.trim().length > 0;
   const canSign = Boolean(onSign) && armed && !signBusy && noteReady;
-  const canReject = Boolean(onReject) && !rejectBusy && !signBusy && note.trim().length > 0;
+  const canReject =
+    Boolean(onReject) && armed && !rejectBusy && !signBusy && note.trim().length > 0;
 
   return (
     <section className="gatebox" data-kind={kind} aria-label={title}>
@@ -186,9 +199,11 @@ export function Gate({
             onClick={() => onReject?.(note.trim())}
             title={
               onReject
-                ? note.trim().length > 0
-                  ? undefined
-                  : 'A reason is required — a rejection is a ruling, not a dismissal'
+                ? !armed
+                  ? 'Locked until every requirement above is met — the endpoint refuses a rejection on an unarmed gate too'
+                  : note.trim().length > 0
+                    ? undefined
+                    : 'A reason is required — a rejection is a ruling, not a dismissal'
                 : 'Disabled — no gate endpoint'
             }
           >
@@ -206,9 +221,9 @@ export function Gate({
           {!onSign
             ? 'No endpoint to sign this gate — this control is inert.'
             : !armed
-              ? canReject
-                ? 'Cannot be approved yet — every requirement above must be met. It can be rejected with the reason given.'
-                : 'Locked until every requirement above is met.'
+              ? // Both rulings, not just approval: the endpoint runs its armability guards before it
+                // looks at which determination was asked for, so neither can be recorded from here yet.
+                'Locked until every requirement above is met — no determination can be recorded until then.'
               : !noteReady
                 ? 'A note is required — it records what was reviewed.'
                 : kind === 'soft'
