@@ -81,6 +81,41 @@ describe('AgentPanel', () => {
     expect(status).toHaveAttribute('aria-live', 'polite');
   });
 
+  /**
+   * `'failed'` flips `pending` to false exactly the way `'answered'` does, so a naive edge-only
+   * effect would announce "Reply received." over a turn that just failed — telling a screen-reader
+   * operator the opposite of the truth in an app whose whole premise is that confident wrongness is
+   * the harm. The beacon must read the resolved turn's OWN status, not just the fact that pending
+   * fell, and say something distinct and accurate instead.
+   */
+  it('announces failure, not success, when the turn resolves to failed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const pending: ChatTurn = {
+      id: 'turn-1',
+      role: 'operator',
+      text: 'What did discovery find?',
+      createdAt: '2026-07-27T10:00:00Z',
+      toolCalls: [],
+      status: 'pending',
+    };
+    const failed: ChatTurn = { ...pending, status: 'failed', error: 'the model call timed out' };
+    vi.mocked(api.getChatThread).mockResolvedValueOnce([pending]).mockResolvedValueOnce([failed]);
+
+    render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
+    await screen.findByText(/agent working/i);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    const status = await screen.findByText(/reply failed/i);
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    // Never "Reply received." for this turn — that would be the exact false-positive this test
+    // exists to catch.
+    expect(screen.queryByText(/reply received/i)).not.toBeInTheDocument();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });

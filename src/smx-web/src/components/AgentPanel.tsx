@@ -90,19 +90,35 @@ function LiveChat({ projectId, stage, stageLabel }: { projectId: string; stage: 
   // screen-reader operator a turn STARTED, but on its own that is half the feature — the pending
   // line simply disappears when the poll finds the answer, which most screen readers announce as
   // nothing at all, and unlike Interview.tsx there is no streamed bubble here to arrive audibly
-  // either. This effect fires exactly once per turn: it watches `pending` FALL (a real answer just
-  // landed, not a poll re-confirming the same pending state) and writes a short, fixed sentence —
-  // never the reply's own text, so it can't fall into the same "re-announce a growing body" trap
-  // the streaming bubble was rejected for. It also clears the beacon the instant `pending` RISES
-  // again, because an unchanged aria-live text does not re-announce — without the reset, a second
-  // reply landing with the identical words "Reply received." would mutate nothing and go silent.
-  const wasPending = useRef(false);
+  // either.
+  //
+  // This is keyed on the RESOLVED TURN'S OWN STATUS, not merely on the pending→!pending edge —
+  // `'failed'` is a real, declared ChatTurn status (api/types.ts) and it flips `pending` to false
+  // exactly the same way `'answered'` does. An earlier version of this effect keyed off that edge
+  // alone and would cheerfully announce "Reply received." over a turn that just failed: a sighted
+  // operator sees the red banner below and knows better, but a screen-reader operator would be told
+  // the opposite of the truth, which in an app whose whole premise is that confident wrongness
+  // causes harm is worse than the silence it replaced. So the ids that were pending are tracked
+  // across polls, and when they all resolve, THEIR OWN status (not the reply's text — that stays
+  // out of the beacon exactly as `Interview.tsx`'s streaming bubble does) decides which fixed
+  // sentence to announce. Clearing the beacon back to '' the moment a new turn goes pending is
+  // still required for the same reason as before: an unchanged aria-live text does not re-announce,
+  // so two turns landing with the identical words would go silent on the second one without a reset
+  // in between.
+  const previouslyPendingIds = useRef<Set<string>>(new Set());
   const [turnAnnouncement, setTurnAnnouncement] = useState('');
   useEffect(() => {
-    if (wasPending.current && !pending) setTurnAnnouncement('Reply received.');
-    else if (pending) setTurnAnnouncement('');
-    wasPending.current = pending;
-  }, [pending]);
+    const stillPendingIds = new Set(turns.filter((t) => t.status === 'pending').map((t) => t.id));
+    if (previouslyPendingIds.current.size > 0 && stillPendingIds.size === 0) {
+      const aTurnFailed = turns.some(
+        (t) => previouslyPendingIds.current.has(t.id) && t.status === 'failed',
+      );
+      setTurnAnnouncement(aTurnFailed ? 'Reply failed.' : 'Reply received.');
+    } else if (stillPendingIds.size > 0) {
+      setTurnAnnouncement('');
+    }
+    previouslyPendingIds.current = stillPendingIds;
+  }, [turns]);
 
   async function send(e: FormEvent) {
     e.preventDefault();
@@ -173,6 +189,16 @@ function LiveChat({ projectId, stage, stageLabel }: { projectId: string; stage: 
               </div>
             )}
 
+            {/* Deliberately not `role="alert"`, for a turn that just failed and for one scrolled
+                back into history alike. A turn scrolled back into history is a permanent fact of
+                the transcript, not a fresh event — alerting it every time the thread mounts (a page
+                reload, navigating back to the stage) would misrepresent an old failure as one that
+                just happened. The turn that failed THIS session is a real event, but it already has
+                its one-shot announcement: the sr-only beacon below says "Reply failed." exactly
+                once, on the transition. Alerting this node too would be a second, competing
+                announcement for the same event — and since `role="alert"` is assertive where the
+                beacon is polite, the two could race or talk over each other. One accurate
+                announcement beats two that might collide. */}
             {turn.status === 'failed' && (
               <div className="tiny" style={{ color: 'var(--text-danger)', margin: '0 0 8px' }}>
                 <i className="ti ti-alert-triangle" aria-hidden="true" /> The agent turn failed
@@ -189,9 +215,10 @@ function LiveChat({ projectId, stage, stageLabel }: { projectId: string; stage: 
         )}
       </div>
 
-      {/* sr-only: see the effect above. Visually silent — the landed reply already speaks for
-          itself in the transcript above — but a screen reader needs the one-shot "it's done" this
-          carries, since the pending line just vanishing announces nothing on its own. */}
+      {/* sr-only: see the effect above. Visually silent — the landed reply (or the red failure
+          banner) already speaks for itself in the transcript above — but a screen reader needs the
+          one-shot "it's done, and here's whether it worked" this carries, since the pending line
+          just vanishing announces nothing on its own either way. */}
       <span className="sr-only" role="status" aria-live="polite">
         {turnAnnouncement}
       </span>
