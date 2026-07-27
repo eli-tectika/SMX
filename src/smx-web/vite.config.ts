@@ -7,6 +7,24 @@ import react from '@vitejs/plugin-react';
 // mockServiceWorker.js) is disabled. Must agree with DEMO_ENABLED in src/mocks/demo.ts.
 const demoBuild = process.env.VITE_ENABLE_DEMO === 'true';
 
+/**
+ * Where `/api` goes in dev. Defaults to the local backend; set VITE_API_TARGET to point the real UI
+ * at a DEPLOYED backend and skip building and shipping a frontend image altogether — the frontend is
+ * static files, so a container round-trip is the slow way to see a web change (a full deploy is ~11
+ * minutes, of which ~8.5 is Cosmos reconciling to a no-op).
+ *
+ *   VITE_API_TARGET=http://20.91.142.32 npm run dev
+ *
+ * The prefix handling is the trap. A bare local backend (`dotnet run`) serves `/projects`, so `/api`
+ * is stripped. A deployed one serves `/api/projects` — PATH_BASE=/api, and App Gateway forwards
+ * `/api/*` unstripped — so stripping there would ask the gateway for `/projects`, which matches no
+ * API rule and falls through to the FRONTEND. The symptom is every API call returning index.html
+ * with a 200, which reads as a JSON parse bug rather than a routing mistake. Hence: strip for
+ * localhost, preserve for anything else.
+ */
+const apiTarget = process.env.VITE_API_TARGET ?? 'http://localhost:5169';
+const isLocalApi = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(apiTarget);
+
 export default defineConfig(({ command }) => ({
   plugins: [react()],
 
@@ -15,16 +33,14 @@ export default defineConfig(({ command }) => ({
 
   // The backend has no CORS policy. In dev this proxy makes the API same-origin;
   // in prod the App Gateway routes /api/* to the backend, also same-origin.
-  // The prefix is stripped here because the local backend serves /projects, not
-  // /api/projects (in Azure the gateway forwards /api/* intact and the backend
-  // re-mounts itself under PATH_BASE).
+  // See the apiTarget note above for why the prefix is stripped only for a local target.
   server: {
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5169',
+        target: apiTarget,
         changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/api/, ''),
+        ...(isLocalApi ? { rewrite: (p: string) => p.replace(/^\/api/, '') } : {}),
       },
     },
   },
