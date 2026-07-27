@@ -6,10 +6,10 @@ namespace Smx.Domain;
 /// on purpose: nothing that reads project state should ever page through telemetry.
 public interface IRunStore
 {
-    Task UpsertAsync(RunDoc run, CancellationToken ct);
+    Task UpsertAsync(RunDoc run, CancellationToken ct = default);
 
     /// Every run for the project, oldest first. `stage` null ⇒ all stages.
-    Task<IReadOnlyList<RunDoc>> ListAsync(string projectId, string? stage, CancellationToken ct);
+    Task<IReadOnlyList<RunDoc>> ListAsync(string projectId, string? stage, CancellationToken ct = default);
 
-    Task<RunDoc?> GetAsync(string projectId, string runId, CancellationToken ct);
+    Task<RunDoc?> GetAsync(string projectId, string runId, CancellationToken ct = default);
 }

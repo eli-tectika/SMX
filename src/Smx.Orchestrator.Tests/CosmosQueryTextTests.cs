@@ -303,4 +303,59 @@ public sealed class CosmosQueryTextTests
             Assert.Contains($"root[\"{wireName}\"]", sql);
         }
     }
+
+    // ---- CosmosRunStore.ListAsync ------------------------------------------------------------------
+
+    /// CosmosRunStore.ListAsync is the newest query in this codebase and the first one built on
+    /// GetItemLinqQueryable from the start rather than a hand-written SQL string specifically BECAUSE of
+    /// the trap this file exists to catch — see CosmosRunStore's doc comment. This is that choice's own
+    /// guard: a PascalCase `root["Stage"]` or `root["StartedAt"]` would not throw, it would silently
+    /// return an empty run trail for the stage filter the operator asked for, or leave the trail an
+    /// unordered SSE stream once the run endpoints replay it.
+    ///
+    /// Uses the container's partition-scoped Query&lt;T&gt;() like every other per-project list here — the
+    /// "smx"/"record" database/container names it hardcodes are inert (see the class doc: this
+    /// CosmosClient never leaves the process), so the fact that runs actually live in a separate `runs`
+    /// container makes no difference to the SQL text asserted below.
+    [Fact]
+    public void ListRuns_query_uses_wire_property_names()
+    {
+        var sql = Query<RunDoc>()
+            .Where(d => d.Stage == Stages.Discovery)
+            .OrderBy(d => d.StartedAt)
+            .ToQueryDefinition().QueryText;
+
+        AssertWireName(sql, "stage");
+        AssertWireName(sql, "startedAt");
+    }
+
+    /// The loop-closer for the run trail: whatever keys the production serializer writes for a RunDoc
+    /// are the keys ListAsync's query must address.
+    [Fact]
+    public void ListRuns_query_property_names_match_the_keys_the_serializer_actually_writes()
+    {
+        var serializer = new SystemTextJsonCosmosSerializer(Json.Options);
+        var doc = new RunDoc
+        {
+            Id = RunIds.Run("p1", Stages.Discovery, 1), ProjectId = "p1", Stage = Stages.Discovery,
+            StartedAt = "2026-07-27T10:00:00.0000000Z",
+        };
+
+        using var stream = serializer.ToStream(doc);
+        var onDisk = JsonDocument.Parse(stream).RootElement;
+
+        var sql = Query<RunDoc>()
+            .Where(d => d.Stage == Stages.Discovery)
+            .OrderBy(d => d.StartedAt)
+            .ToQueryDefinition().QueryText;
+
+        foreach (var member in new[] { nameof(RunDoc.Stage), nameof(RunDoc.StartedAt) })
+        {
+            var wireName = Json.Options.PropertyNamingPolicy!.ConvertName(member);
+            Assert.True(onDisk.TryGetProperty(wireName, out _),
+                $"serializer did not write a '{wireName}' key; document keys: " +
+                string.Join(", ", onDisk.EnumerateObject().Select(p => p.Name)));
+            Assert.Contains($"root[\"{wireName}\"]", sql);
+        }
+    }
 }

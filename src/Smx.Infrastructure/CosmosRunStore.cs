@@ -8,7 +8,7 @@ namespace Smx.Infrastructure;
 /// The `runs` container, partitioned by /projectId.
 public sealed class CosmosRunStore(Container container) : IRunStore
 {
-    public Task UpsertAsync(RunDoc run, CancellationToken ct) =>
+    public Task UpsertAsync(RunDoc run, CancellationToken ct = default) =>
         container.UpsertItemAsync(run, new PartitionKey(run.ProjectId), cancellationToken: ct);
 
     /// Oldest first, ordered on the STRING: RunDoc.StartedAt is always a fixed-width "O"-format
@@ -20,7 +20,7 @@ public sealed class CosmosRunStore(Container container) : IRunStore
     /// the same camelCase wire names Json.Options writes, so `d.Stage` here already becomes
     /// `root["stage"]`. A raw `QueryDefinition("... r.stage ...")` string would bypass that translation
     /// entirely and reintroduce the exact silent-empty-result trap CosmosQueryTextTests exists to catch.
-    public async Task<IReadOnlyList<RunDoc>> ListAsync(string projectId, string? stage, CancellationToken ct)
+    public async Task<IReadOnlyList<RunDoc>> ListAsync(string projectId, string? stage, CancellationToken ct = default)
     {
         IQueryable<RunDoc> queryable = container.GetItemLinqQueryable<RunDoc>(
             requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(projectId) });
@@ -34,7 +34,7 @@ public sealed class CosmosRunStore(Container container) : IRunStore
         return results;
     }
 
-    public async Task<RunDoc?> GetAsync(string projectId, string runId, CancellationToken ct)
+    public async Task<RunDoc?> GetAsync(string projectId, string runId, CancellationToken ct = default)
     {
         try
         {
