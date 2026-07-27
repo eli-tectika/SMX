@@ -3,6 +3,20 @@ import { Data } from './ui/Data';
 import { SectionHeader } from './ui/Primitives';
 
 /**
+ * How much this screen actually knows about the MSDS registry.
+ *
+ * A boolean could not express it, and the missing third state was a real fabrication: `Decision.load`
+ * reaches `phase = 'ready'` on the three project reads and only THEN awaits the registry, so for the
+ * whole of that cross-project round trip the sheet list is empty and no failure has occurred. A
+ * two-state flag rendered that window as `no sheet on file` for every substance — the exact sentence
+ * `Cost.tsx` calls a fabricated claim about an absence, printed on the screen that places the order.
+ *
+ * `'unread'` and `'failed'` both withhold the order; only they differ in what they SAY, and only
+ * `'failed'` is an incident worth a banner.
+ */
+export type SheetsState = 'unread' | 'ok' | 'failed';
+
+/**
  * Procurement — the Decision screen's post-close half, visible only once the record says `released`.
  *
  * The orderable set is the markers of CONFIRMED codes, never the decision rows and never a proposal:
@@ -10,19 +24,17 @@ import { SectionHeader } from './ui/Primitives';
  * (§5), and the button is disabled with the reason rather than hidden — a missing safety sheet is
  * what blocks an order, and hiding the control would hide the blocker with it.
  *
- * `sheetsUnknown` is the third state, and the reason this component takes a flag rather than just an
- * empty list: the MSDS registry is a CROSS-PROJECT read that can fail on its own (see `Decision.load`).
- * "We could not check" is not "there is no sheet", and printing the second when the first is true is a
- * fabricated claim about an absence — on the control that actually places the order. So an unknown
- * sheet says so, and the order is WITHHELD. Note this is the opposite of `Cost.tsx`, which treats an
- * unknown sheet as orderable: Cost only *describes* the rule, this button *executes* it, and the
- * safe default flips with the consequence.
+ * `sheetsState` is why this takes a state rather than just a list: an empty list means "no sheets" and
+ * nothing else, and the two ways of not knowing — not read yet, could not be read — are not that. Only
+ * a sheet we actually read may be described. Note the polarity is the OPPOSITE of `Cost.tsx`, which
+ * treats an unknown sheet as orderable: Cost only *describes* MSDS-before-order, this button
+ * *executes* it, and the safe default flips with the consequence.
  */
 export function Procurement({
   components,
   dosing,
   sheets,
-  sheetsUnknown,
+  sheetsState,
   ordered,
   ordering,
   error,
@@ -31,13 +43,14 @@ export function Procurement({
   components: ComponentDecision[];
   dosing: DosingDoc | null;
   sheets: MsdsEntry[];
-  /** The MSDS registry read failed — say nothing about any substance's sheet, and order nothing. */
-  sheetsUnknown: boolean;
+  /** Whether `sheets` may be believed at all — see `SheetsState`. */
+  sheetsState: SheetsState;
   ordered: string[];
   ordering: string | null;
   error: string | null;
   onOrder: (cas: string) => void;
 }) {
+  const known = sheetsState === 'ok';
   const markers = components
     .filter((c) => c.confirmedCode !== null)
     .flatMap((c) =>
@@ -64,7 +77,9 @@ export function Procurement({
         </div>
       )}
 
-      {sheetsUnknown && (
+      {/* Scoped to 'failed' alone. A banner during 'unread' would announce an incident that has not
+          happened — the loading state's own false claim, in the opposite direction. */}
+      {sheetsState === 'failed' && (
         <div className="banner warn" role="alert" style={{ marginBottom: 8 }}>
           <i className="ti ti-file-alert" aria-hidden="true" />
           <div>
@@ -93,8 +108,8 @@ export function Procurement({
         </thead>
         <tbody>
           {markers.map((m) => {
-            const sheet = sheetsUnknown ? undefined : sheets.find((s) => s.cas === m.cas);
-            const reviewed = !sheetsUnknown && sheet?.reviewStatus === 'reviewed';
+            const sheet = known ? sheets.find((s) => s.cas === m.cas) : undefined;
+            const reviewed = known && sheet?.reviewStatus === 'reviewed';
             const isOrdered = ordered.includes(m.cas);
             return (
               <tr key={`${m.componentId}|${m.cas}`}>
@@ -106,7 +121,9 @@ export function Procurement({
                 </td>
                 <td className="tiny">{m.componentId}</td>
                 <td className="tiny">
-                  {sheetsUnknown ? (
+                  {sheetsState === 'unread' ? (
+                    <span className="muted">checking…</span>
+                  ) : sheetsState === 'failed' ? (
                     <span style={{ color: 'var(--text-warning)' }}>
                       unknown — the registry did not load
                     </span>
@@ -127,11 +144,13 @@ export function Procurement({
                       disabled={!reviewed || ordering === m.cas}
                       onClick={() => onOrder(m.cas)}
                       title={
-                        sheetsUnknown
-                          ? 'The MSDS registry did not load — MSDS-before-order cannot be verified, so this order is withheld'
-                          : reviewed
-                            ? undefined
-                            : 'MSDS-before-order: a reviewed safety sheet is required before this can be ordered'
+                        sheetsState === 'unread'
+                          ? 'The MSDS registry has not come back yet — MSDS-before-order cannot be verified until it does'
+                          : sheetsState === 'failed'
+                            ? 'The MSDS registry did not load — MSDS-before-order cannot be verified, so this order is withheld'
+                            : reviewed
+                              ? undefined
+                              : 'MSDS-before-order: a reviewed safety sheet is required before this can be ordered'
                       }
                     >
                       Order

@@ -258,6 +258,42 @@ describe('Decision', () => {
   });
 
   /**
+   * The same fabrication one state earlier. `phase` reaches `ready` on the three PROJECT reads and the
+   * registry is still in flight behind it, so an empty sheet list during that window is "not read yet",
+   * not "no sheet on file" — and on a slow cross-project read that window is the whole round trip, on
+   * first load of every released project. It must not print an absence it has not established.
+   */
+  it('says nothing about a sheet while the registry read is still in flight', async () => {
+    let land: (entries: MsdsEntry[]) => void = () => {};
+    vi.mocked(api.getMsdsRegistry).mockReturnValue(
+      new Promise<MsdsEntry[]>((resolve) => {
+        land = resolve;
+      }),
+    );
+    vi.mocked(api.getDecision).mockResolvedValue(
+      decision({
+        components: [component({ confirmedCode: 'Y:Zr = 1.00:0.50', confirmedBy: 'VP R&D' })],
+        procurement: { status: 'released', orderedCas: [] },
+      }),
+    );
+    view();
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^order$/i }).length).toBe(2));
+
+    // In flight: no claim of absence, no claim of failure, and nothing orderable.
+    expect(screen.queryByText(/no sheet on file/)).toBeNull();
+    expect(screen.queryByText(/the registry did not load/)).toBeNull();
+    expect(screen.getAllByText(/checking/i).length).toBe(2);
+    for (const b of screen.getAllByRole('button', { name: /^order$/i })) expect(b).toBeDisabled();
+
+    // ...and once it lands the record speaks: Y has a reviewed sheet, Zr genuinely has none.
+    land([msds('reviewed')]);
+    await waitFor(() => expect(screen.getByText(/no sheet on file/)).toBeInTheDocument());
+    const buttons = screen.getAllByRole('button', { name: /^order$/i });
+    expect(buttons[0]).toBeEnabled();
+    expect(buttons[1]).toBeDisabled();
+  });
+
+  /**
    * The gate must read the server's armability, never a browser-side tally — and the server's
    * blockers are plain English meant to be shown verbatim.
    */
@@ -328,6 +364,70 @@ describe('Decision', () => {
         reason: 'The cost audit is stale.',
       }),
     );
+  });
+
+  /**
+   * ...and the operator is told it happened. Nothing observable moves after a rejection — the gate
+   * comes back "locked" (the same status an unsigned gate has), the stage stays parked, no
+   * `confirmedCode` appears — so without this the screen shows a successful ruling as a no-op while
+   * still offering "Approve & close project". This test is the only thing holding the acknowledgment
+   * in place; asserting the POST payload alone would let it be deleted with the suite still green.
+   */
+  it('acknowledges a recorded rejection instead of showing nothing happened', async () => {
+    vi.mocked(api.recordVpDetermination).mockResolvedValue({ status: 'rejected' });
+    view();
+    await waitFor(() => expect(screen.getByText(/proposed/i)).toBeInTheDocument());
+    expect(screen.queryByText(/the rejection was recorded/i)).toBeNull();
+
+    await userEvent.type(screen.getByLabelText(/note/i), 'The cost audit is stale.');
+    await userEvent.click(screen.getByRole('button', { name: /reject/i }));
+
+    const banner = await screen.findByText(/the rejection was recorded with your reason/i);
+    expect(banner.closest('[role="status"]')).not.toBeNull();
+    // The gate stays live on purpose — the endpoint permits a re-determination — so the banner must
+    // say what a still-armed "Approve & close project" beside it would otherwise mean.
+    expect(screen.getByLabelText('VP R&D gate')).toBeInTheDocument();
+    expect(screen.getByText(/would supersede it/i)).toBeInTheDocument();
+  });
+
+  /**
+   * A per-component override is a pick against a SPECIFIC decision. When the decision is regenerated
+   * underneath it (a revise, a re-pick), a surviving pick is a choice nobody made about the rows now
+   * on screen — and it is still submittable. The invalidation is two lines and a ref, its failure mode
+   * is silent, so it is exactly the sort of thing a later "simplification" removes.
+   */
+  it('drops a stale code override when the decision is regenerated underneath it', async () => {
+    const overridden = 'Y:Zr = 1.00:0.33';
+    vi.mocked(api.getDecision)
+      .mockResolvedValueOnce(decision())
+      .mockResolvedValue(decision({ generatedAt: '2026-07-21T09:00:00Z' }));
+    const { rerender } = render(
+      <MemoryRouter>
+        <Decision project={project} refreshProject={() => {}} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText(/proposed/i)).toBeInTheDocument());
+
+    const picker = () => screen.getByLabelText(/code to confirm for bottle/i) as HTMLSelectElement;
+    await userEvent.selectOptions(picker(), overridden);
+    expect(picker().value).toBe(overridden);
+
+    // A stage-status change is what refires the read — the same path a revise takes through this
+    // screen (park → the revise runs → park again, against a newly generated decision).
+    rerender(
+      <MemoryRouter>
+        <Decision
+          project={{
+            ...project,
+            stages: { ...project.stages, decision: { status: 'running', attempts: 1 } },
+          }}
+          refreshProject={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(vi.mocked(api.getDecision)).toHaveBeenCalledTimes(2));
+    // Back to the new decision's own proposal, not the pick made against the old one.
+    await waitFor(() => expect(picker().value).toBe('Y:Zr = 1.00:0.50'));
   });
 
   /** You cannot order what the VP did not sign, and not before the orchestrator releases procurement. */

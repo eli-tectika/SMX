@@ -18,7 +18,7 @@ import type {
   VpGate as VpGateState,
 } from '../../api/types';
 import { Loading } from '../../components/Loading';
-import { Procurement } from '../../components/Procurement';
+import { Procurement, type SheetsState } from '../../components/Procurement';
 import { StageStatusCard } from '../../components/StageStatusCard';
 import { Data } from '../../components/ui/Data';
 import { Gate, type Requirement } from '../../components/ui/Gate';
@@ -70,10 +70,14 @@ export function Decision({ project, refreshProject }: ScreenProps) {
   const [dosing, setDosing] = useState<DosingDoc | null>(null);
   const [sheets, setSheets] = useState<MsdsEntry[]>([]);
   /**
-   * Whether the MSDS read itself failed — which is NOT "no sheet on file", and here the difference is
-   * load-bearing twice over: this is the screen that PLACES the order. See `Procurement`.
+   * How far the MSDS read has got — NOT a boolean, and not derivable from `sheets` being empty.
+   *
+   * `phase` reaches `ready` on the three project reads while this one is still in flight (see `load`),
+   * so `[]` covers three different situations: not read yet, read and empty, could not be read. Only
+   * the middle one may be described as "no sheet on file", and this is the screen that PLACES the
+   * order. See `SheetsState`.
    */
-  const [sheetsUnknown, setSheetsUnknown] = useState(false);
+  const [sheetsState, setSheetsState] = useState<SheetsState>('unread');
   const [phase, setPhase] = useState<'loading' | 'ready' | 'absent' | 'error'>('loading');
   const [errMsg, setErrMsg] = useState<string>();
   /** A post-action re-read failed: the record on screen is the last good one and may be stale. */
@@ -167,7 +171,9 @@ export function Decision({ project, refreshProject }: ScreenProps) {
       const ms = await sheetsRead;
       if (signal?.cancelled) return;
       setSheets(ms.entries);
-      setSheetsUnknown(!ms.ok);
+      // Deliberately never reset to 'unread' on a RE-read: sheets already read stay believable while
+      // the next read is in flight. Only the first load has genuinely nothing to say.
+      setSheetsState(ms.ok ? 'ok' : 'failed');
     },
     [project.projectId],
   );
@@ -335,7 +341,9 @@ export function Decision({ project, refreshProject }: ScreenProps) {
     },
     {
       id: 'codes',
-      label: 'A finalized code chosen for every component',
+      // "(approval only)" is in the LABEL, not just the caption below: the operator reading an unmet
+      // row needs to know there, in the row, that it does not stand between them and a rejection.
+      label: 'A finalized code chosen for every component (approval only)',
       /*
        * APPROVE-ONLY, and verified against the endpoint rather than assumed: DecisionEndpoints.cs
        * returns from its `rejected` branch (writing the locked gate + reason) BEFORE it reads dosing
@@ -445,7 +453,7 @@ export function Decision({ project, refreshProject }: ScreenProps) {
               components={components}
               dosing={dosing}
               sheets={sheets}
-              sheetsUnknown={sheetsUnknown}
+              sheetsState={sheetsState}
               ordered={doc?.procurement.orderedCas ?? []}
               ordering={ordering}
               error={orderError}
