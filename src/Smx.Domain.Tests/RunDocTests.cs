@@ -53,7 +53,7 @@ public class RunDocTests
         Assert.Null(run.EndedAt);
     }
 
-    // Pinned wire contract (design doc §7): a parallel frontend track codes against these exact property
+    // Pinned wire contract (design doc §6.1 (RunDoc) and §7.1 (RunStep)): a parallel frontend track codes against these exact property
     // names. A silent rename here would break them with no local failure — this test is that failure.
     [Fact]
     public void RunDoc_round_trips_through_the_pinned_wire_shape()
