@@ -1,122 +1,54 @@
-import { act, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ChatTurn } from '../api/types';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../hooks/useThread', () => ({ useThread: vi.fn() }));
+vi.mock('../api/thread', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/thread')>()),
+  sendMessage: vi.fn().mockResolvedValue({ messageId: 'm1', seq: 2, queued: true }),
+  cancelRun: vi.fn().mockResolvedValue(undefined),
+  rerunStage: vi.fn().mockResolvedValue(undefined),
+}));
+import type { ThreadEntry } from '../api/thread';
+import * as api from '../api/thread';
+import { useThread } from '../hooks/useThread';
 import { AgentPanel } from './AgentPanel';
 
-vi.mock('../api/client', () => ({
-  NotFound: Symbol.for('NotFound'),
-  ApiError: class ApiError extends Error {},
-  getChatThread: vi.fn(),
-  sendChatMessage: vi.fn(),
-}));
-import * as api from '../api/client';
+const ready = (entries: ThreadEntry[] = []): ReturnType<typeof useThread> => ({
+  entries,
+  live: true,
+  loading: false,
+  error: null,
+});
 
 describe('AgentPanel', () => {
-  /** A stage with no backend agent states the fact plainly — it is not mocked, so it is not badged. */
   it('says plainly when a stage has no agent', () => {
-    render(<AgentPanel projectId="proj-test" stageSlug="decision" stageLabel="Decision" />);
+    vi.mocked(useThread).mockReturnValue(ready());
+    render(<AgentPanel projectId="proj-test" stageSlug="background" stageLabel="Background" />);
     expect(screen.getByText(/no agent on this stage/i)).toBeInTheDocument();
   });
 
-  /**
-   * The pending turn is a genuine state change ("the agent is now working on what you just sent"),
-   * not a ticking value — so unlike the poll-freshness ticker it gets a live region, once, not on
-   * every poll tick that still finds the same turn pending.
-   */
-  it('announces a pending turn as a polite live region', async () => {
-    vi.mocked(api.getChatThread).mockResolvedValue([
-      {
-        id: 'turn-1',
-        role: 'operator',
-        text: 'What did discovery find?',
-        createdAt: '2026-07-27T10:00:00Z',
-        toolCalls: [],
-        status: 'pending',
-      },
-    ]);
-
+  it('sends a message and clears the composer', async () => {
+    vi.mocked(useThread).mockReturnValue(ready());
     render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
-
-    const status = await screen.findByText(/working/i);
-    expect(status).toHaveAttribute('role', 'status');
-    expect(status).toHaveAttribute('aria-live', 'polite');
+    const box = screen.getByLabelText(/message the discovery agent/i);
+    await userEvent.type(box, 'why Zr?');
+    await userEvent.click(screen.getByRole('button', { name: /send/i }));
+    await waitFor(() =>
+      expect(api.sendMessage).toHaveBeenCalledWith('proj-test', 'discovery', 'why Zr?'),
+    );
+    expect(box).toHaveValue('');
   });
 
-  /**
-   * "Agent working…" announces that a turn started; on its own that is half the feature, since
-   * the pending line simply vanishing when the poll finds the answer is not something most screen
-   * readers announce at all. This proves the other half — a one-shot "it landed" beacon — without
-   * asserting on the reply's own text, which stays out of the live region on purpose (the same
-   * re-announce-the-body reasoning that kept the streamed Interview bubble non-live).
-   */
-  it('announces once a pending turn resolves, and only after it resolves', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const pending: ChatTurn = {
-      id: 'turn-1',
-      role: 'operator',
-      text: 'What did discovery find?',
-      createdAt: '2026-07-27T10:00:00Z',
-      toolCalls: [],
-      status: 'pending',
-    };
-    const answered: ChatTurn = { ...pending, status: 'answered' };
-    vi.mocked(api.getChatThread).mockResolvedValueOnce([pending]).mockResolvedValueOnce([answered]);
-
-    render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
-    await screen.findByText(/agent working/i);
-    // Nothing has resolved yet — the completion beacon must still be empty, or this test would
-    // pass even with the effect firing on mount rather than on the pending→answered transition.
-    expect(screen.queryByText(/reply received/i)).not.toBeInTheDocument();
-
-    // usePolling's own interval, not a magic number: it re-fetches on a plain setTimeout, so the
-    // next tick has to actually elapse before the "answered" thread is read. Wrapped in `act`
-    // because the fake-timer tick drives a state update (the new poll result) outside of any
-    // Testing Library event helper, which is the one case RTL cannot auto-wrap for you.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3000);
+  /** "Nothing is happening" and "I am not being told what is happening" must be distinguishable. */
+  it('says when it is not receiving live updates', () => {
+    vi.mocked(useThread).mockReturnValue({
+      entries: [],
+      live: false,
+      loading: false,
+      error: null,
     });
-
-    const status = await screen.findByText(/reply received/i);
-    expect(status).toHaveAttribute('role', 'status');
-    expect(status).toHaveAttribute('aria-live', 'polite');
-  });
-
-  /**
-   * `'failed'` flips `pending` to false exactly the way `'answered'` does, so a naive edge-only
-   * effect would announce "Reply received." over a turn that just failed — telling a screen-reader
-   * operator the opposite of the truth in an app whose whole premise is that confident wrongness is
-   * the harm. The beacon must read the resolved turn's OWN status, not just the fact that pending
-   * fell, and say something distinct and accurate instead.
-   */
-  it('announces failure, not success, when the turn resolves to failed', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const pending: ChatTurn = {
-      id: 'turn-1',
-      role: 'operator',
-      text: 'What did discovery find?',
-      createdAt: '2026-07-27T10:00:00Z',
-      toolCalls: [],
-      status: 'pending',
-    };
-    const failed: ChatTurn = { ...pending, status: 'failed', error: 'the model call timed out' };
-    vi.mocked(api.getChatThread).mockResolvedValueOnce([pending]).mockResolvedValueOnce([failed]);
-
     render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
-    await screen.findByText(/agent working/i);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3000);
-    });
-
-    const status = await screen.findByText(/reply failed/i);
-    expect(status).toHaveAttribute('role', 'status');
-    expect(status).toHaveAttribute('aria-live', 'polite');
-    // Never "Reply received." for this turn — that would be the exact false-positive this test
-    // exists to catch.
-    expect(screen.queryByText(/reply received/i)).not.toBeInTheDocument();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
+    expect(screen.getByText(/not live/i)).toBeInTheDocument();
   });
 });

@@ -1,18 +1,18 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ApiError, NotFound, getChatThread, sendChatMessage } from '../api/client';
-import type { ChatTurn } from '../api/types';
+import { useState, type FormEvent } from 'react';
+import { ThreadError, cancelRun, rerunStage, sendMessage } from '../api/thread';
 import { backendStage, canChat } from '../domain/stages';
-import { usePolling } from '../hooks/usePolling';
 import { useStickToBottom } from '../hooks/useStickToBottom';
+import { useThread } from '../hooks/useThread';
+import { Timeline } from './timeline/Timeline';
 
 /**
- * The docked agent panel — a real, per-stage conversation (spec §3).
+ * The docked agent panel — one merged timeline over the unified per-stage thread (§7.1).
  *
- * This used to render a fixture transcript with a disabled composer, on the stated grounds that "the
- * backend exposes no chat endpoint". It does: POST/GET /projects/{id}/stages/{stage}/chat. So the panel
- * now reads the real thread and the composer is live — but only where the backend actually has an agent
- * for the stage. On a stage with no agent it stays closed with an honest statement, not a mock badge:
- * "no agent on this stage" is a true fact about the record, not fabricated content.
+ * The agent and the conversation share one thread server-side, so this panel does not stitch a
+ * transcript to a run trail: the thread IS the timeline. Runs render as collapsible groups showing
+ * every step the server watched happen; messages render as bubbles between them. On a stage with no
+ * agent it stays closed with an honest statement, not a mock badge: "no agent on this stage" is a
+ * true fact about the record, not fabricated content.
  */
 export function AgentPanel({
   projectId,
@@ -64,168 +64,85 @@ function ClosedPanel({ stageLabel }: { stageLabel: string }) {
   );
 }
 
-function LiveChat({ projectId, stage, stageLabel }: { projectId: string; stage: string; stageLabel: string }) {
-  const [nonce, setNonce] = useState(0);
+
+function LiveChat({
+  projectId,
+  stage,
+  stageLabel,
+}: {
+  projectId: string;
+  stage: string;
+  stageLabel: string;
+}) {
+  const { entries, live, loading, error } = useThread(projectId, stage);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
 
-  // Poll while any turn is pending (an operator message the agent has not answered). A settled thread
-  // stops polling; sending bumps `nonce`, which restarts it to watch the new message resolve.
-  const state = usePolling<ChatTurn[]>(
-    () => getChatThread(projectId, stage),
-    (turns) => !turns.some((t) => t.status === 'pending'),
-    [projectId, stage, nonce],
-  );
-
-  const turns = state.kind === 'ready' ? state.data : [];
-  const pending = turns.some((t) => t.status === 'pending');
-
-  // `turns.length` follows a landed reply; `pending` follows the "Agent working…" line that
-  // appears the instant a message is sent, before any poll has found the answer — without it,
-  // sending a message wouldn't move the viewport until the reply actually arrived.
-  const scroller = useStickToBottom<HTMLDivElement>([turns.length, pending]);
-
-  // A one-shot completion beacon, sr-only (see the render below): "Agent working…" tells a
-  // screen-reader operator a turn STARTED, but on its own that is half the feature — the pending
-  // line simply disappears when the poll finds the answer, which most screen readers announce as
-  // nothing at all, and unlike Interview.tsx there is no streamed bubble here to arrive audibly
-  // either.
-  //
-  // This is keyed on the RESOLVED TURN'S OWN STATUS, not merely on the pending→!pending edge —
-  // `'failed'` is a real, declared ChatTurn status (api/types.ts) and it flips `pending` to false
-  // exactly the same way `'answered'` does. An earlier version of this effect keyed off that edge
-  // alone and would cheerfully announce "Reply received." over a turn that just failed: a sighted
-  // operator sees the red banner below and knows better, but a screen-reader operator would be told
-  // the opposite of the truth, which in an app whose whole premise is that confident wrongness
-  // causes harm is worse than the silence it replaced. So the ids that were pending are tracked
-  // across polls, and when they all resolve, THEIR OWN status (not the reply's text — that stays
-  // out of the beacon exactly as `Interview.tsx`'s streaming bubble does) decides which fixed
-  // sentence to announce. Clearing the beacon back to '' the moment a new turn goes pending is
-  // still required for the same reason as before: an unchanged aria-live text does not re-announce,
-  // so two turns landing with the identical words would go silent on the second one without a reset
-  // in between.
-  const previouslyPendingIds = useRef<Set<string>>(new Set());
-  const [turnAnnouncement, setTurnAnnouncement] = useState('');
-  useEffect(() => {
-    const stillPendingIds = new Set(turns.filter((t) => t.status === 'pending').map((t) => t.id));
-    if (previouslyPendingIds.current.size > 0 && stillPendingIds.size === 0) {
-      const aTurnFailed = turns.some(
-        (t) => previouslyPendingIds.current.has(t.id) && t.status === 'failed',
-      );
-      setTurnAnnouncement(aTurnFailed ? 'Reply failed.' : 'Reply received.');
-    } else if (stillPendingIds.size > 0) {
-      setTurnAnnouncement('');
-    }
-    previouslyPendingIds.current = stillPendingIds;
-  }, [turns]);
+  // Follows both the entry count and the total step count: a run streaming steps into an already-
+  // present group grows the scroll height without adding an entry.
+  const steps = entries.reduce((n, e) => n + (e.kind === 'run' ? e.run.steps.length : 0), 0);
+  const scroller = useStickToBottom<HTMLDivElement>([entries.length, steps]);
 
   async function send(e: FormEvent) {
     e.preventDefault();
     const message = text.trim();
     if (!message || busy) return;
     setBusy(true);
-    setError(null);
+    setSendError(null);
     try {
-      const res = await sendChatMessage(projectId, stage, message);
-      if (res === NotFound) {
-        setError('Project not found.');
-        return;
-      }
+      await sendMessage(projectId, stage, message);
       setText('');
-      setNonce((n) => n + 1); // wake the poll loop to watch the pending message land
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
+      setSendError(err instanceof ThreadError ? err.message : String(err));
     } finally {
       setBusy(false);
     }
   }
 
+  // Controls post and let the stream deliver the truth — no optimistic state. A control that
+  // faked a cancel the server refused would be a lie about a running agent.
+  const onCancel = (runId: string) =>
+    void cancelRun(projectId, runId).catch((err) => setSendError(String(err)));
+  const onRerun = (target: string) =>
+    void rerunStage(projectId, target).catch((err) => setSendError(String(err)));
+
   return (
     <PanelFrame stageLabel={stageLabel}>
-      <div ref={scroller.ref} onScroll={scroller.onScroll} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        {state.kind === 'loading' && (
+      <div
+        ref={scroller.ref}
+        onScroll={scroller.onScroll}
+        style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}
+      >
+        {loading && (
           <div className="tiny muted" role="status" aria-live="polite">
             <i className="ti ti-loader" data-running="" aria-hidden="true" /> Loading…
           </div>
         )}
-        {state.kind === 'error' && (
+        {error && (
           <div className="tiny" style={{ color: 'var(--text-danger)' }} role="alert">
-            <i className="ti ti-alert-triangle" aria-hidden="true" /> {state.message}
+            <i className="ti ti-alert-triangle" aria-hidden="true" /> {error}
           </div>
         )}
-        {state.kind === 'ready' && turns.length === 0 && (
+        {!loading && entries.length === 0 && (
           <div className="tiny muted">
-            No messages yet. Ask the {stageLabel.toLowerCase()} agent about its work on this project.
+            Nothing yet. This is where the {stageLabel.toLowerCase()} agent works, and where you can
+            talk to it.
           </div>
         )}
-
-        {turns.map((turn) => (
-          <div key={turn.id}>
-            <div className={`bub ${turn.role === 'agent' ? 'ba' : 'bu'}`}>{turn.text}</div>
-
-            {/* An agent turn's tool calls are its cited research trail; a recordId marks a call that
-                wrote to the record — the audit link from a sentence to the change it made. */}
-            {turn.role === 'agent' && turn.toolCalls.length > 0 && (
-              <div
-                style={{ borderLeft: '2px solid var(--border)', paddingLeft: 12, margin: '2px 0 8px' }}
-              >
-                {turn.toolCalls.map((tc, i) => (
-                  <div className="step" key={i}>
-                    <i className="ti ti-tool" aria-hidden="true" />
-                    <div>
-                      {tc.summary}
-                      <div>
-                        <span className="src">{tc.tool}</span>
-                        {tc.recordId && (
-                          <span className="src data" title="the record this call wrote">
-                            <i className="ti ti-writing-sign" aria-hidden="true" /> {tc.recordId}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Deliberately not `role="alert"`, for a turn that just failed and for one scrolled
-                back into history alike. A turn scrolled back into history is a permanent fact of
-                the transcript, not a fresh event — alerting it every time the thread mounts (a page
-                reload, navigating back to the stage) would misrepresent an old failure as one that
-                just happened. The turn that failed THIS session is a real event, but it already has
-                its one-shot announcement: the sr-only beacon below says "Reply failed." exactly
-                once, on the transition. Alerting this node too would be a second, competing
-                announcement for the same event — and since `role="alert"` is assertive where the
-                beacon is polite, the two could race or talk over each other. One accurate
-                announcement beats two that might collide. */}
-            {turn.status === 'failed' && (
-              <div className="tiny" style={{ color: 'var(--text-danger)', margin: '0 0 8px' }}>
-                <i className="ti ti-alert-triangle" aria-hidden="true" /> The agent turn failed
-                {turn.error ? `: ${turn.error}` : '.'}
-              </div>
-            )}
-          </div>
-        ))}
-
-        {pending && (
-          <div className="tiny muted" role="status" aria-live="polite">
-            <i className="ti ti-loader" data-running="" aria-hidden="true" /> Agent working…
-          </div>
-        )}
+        <Timeline entries={entries} onCancel={onCancel} onRerun={onRerun} />
       </div>
 
-      {/* sr-only: see the effect above. Visually silent — the landed reply (or the red failure
-          banner) already speaks for itself in the transcript above — but a screen reader needs the
-          one-shot "it's done, and here's whether it worked" this carries, since the pending line
-          just vanishing announces nothing on its own either way. */}
-      <span className="sr-only" role="status" aria-live="polite">
-        {turnAnnouncement}
-      </span>
+      {!live && !loading && (
+        <div className="tiny muted" style={{ margin: '4px 0' }}>
+          <i className="ti ti-plug-connected-x" aria-hidden="true" /> Not live — refreshing
+          periodically.
+        </div>
+      )}
 
-      {error && (
+      {sendError && (
         <div className="tiny" style={{ color: 'var(--text-danger)', margin: '4px 0' }} role="alert">
-          <i className="ti ti-alert-triangle" aria-hidden="true" /> {error}
+          <i className="ti ti-alert-triangle" aria-hidden="true" /> {sendError}
         </div>
       )}
 
