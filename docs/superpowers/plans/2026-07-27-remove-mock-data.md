@@ -595,7 +595,7 @@ anywhere in the record."
 
 - [ ] **Step 1: Add the types**
 
-Append to `src/api/types.ts`, after the `CandidatesDoc` interface added in Task 1:
+Append to `src/api/types.ts` **after the `COST` section and before the `Documents` section** — the file's banner order tracks stage order, and Decision is the last stage. (Do not put it after `CandidatesDoc`: that places it ahead of the regulatory, dosing and cost types it refers to, and contradicts where the mirrored section goes in `client.ts`.)
 
 ```typescript
 /* ---------------------------------------------------------------------------
