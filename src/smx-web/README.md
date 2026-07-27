@@ -42,19 +42,14 @@ than authors, and it is deliberately rendered *below* the evidence, in the agent
 operator's signature line separate and empty until they sign. A UI that collapses those two fields
 into one is the agent signing the gate. See `src/domain/proposal.ts`.
 
-## MSW
+## No fixtures, no interceptor
 
-`src/mocks/` serves the reserved project id `proj-demo` from fixtures so the matrix can be
-demonstrated while the Claude Foundry deployment stays param-gated off (`deployClaude=false`) and no
-real project can produce one. **Real project ids pass straight through to the backend** — a mock must
-never stand between the operator and a real verdict.
+There is no `src/mocks/`, no MSW, and no demo project. Every screen reads a real endpoint, and a
+screen with no data says so rather than showing invented data — a fabricated verdict must never be
+able to pass for an agent-produced one, and a badge asking the operator to remember which is which is
+a weaker guarantee than not shipping the fabrication at all.
 
-MSW is started only under `import.meta.env.DEV`, and `publicDir` is disabled for production builds so
-`mockServiceWorker.js` cannot ship. `handlers.ts` and `fixtures/demoMatrix.ts` are tree-shaken from
-`dist/`.
-
-When the backend grows an endpoint for a mocked stage, replace that screen's fixture import with a
-real client call and delete the fixture — do not add a handler.
+If a screen needs data the backend does not serve yet, add the endpoint. Do not add a fixture.
 
 ## CORS
 

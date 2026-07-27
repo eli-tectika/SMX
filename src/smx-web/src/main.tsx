@@ -24,22 +24,8 @@ import './styles/primitives.css';
 import './styles/print.css';
 import { App } from './App';
 import { ensureAuthenticated } from './auth/msal';
-import { DEMO_ENABLED } from './mocks/demo';
 
-/**
- * MSW starts only when the demo is enabled for this build (DEMO_ENABLED): always in
- * local dev, and in a deployed build only when it was made with VITE_ENABLE_DEMO=true
- * for a stakeholder demo origin. In a normal production build the flag folds to false,
- * so this dynamic import is dead code the bundler drops — no mock handler can intercept
- * a real request. Even when live, the handlers pass every real project id straight
- * through to the backend and answer only the reserved proj-demo id.
- */
 async function start() {
-  if (DEMO_ENABLED) {
-    const { worker } = await import('./mocks/browser');
-    await worker.start({ onUnhandledRequest: 'bypass' });
-  }
-
   const ready = await ensureAuthenticated();
   if (!ready) return; // redirecting to sign-in
 

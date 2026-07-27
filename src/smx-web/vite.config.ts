@@ -1,12 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
-// A build made with VITE_ENABLE_DEMO=true is the stakeholder-demo artifact: it ships
-// the MSW worker so the fixture proj-demo can be shown. Any other build must not carry
-// the interceptor into a deployed environment, so publicDir (which holds only
-// mockServiceWorker.js) is disabled. Must agree with DEMO_ENABLED in src/mocks/demo.ts.
-const demoBuild = process.env.VITE_ENABLE_DEMO === 'true';
-
 /**
  * Where `/api` goes in dev. Defaults to the local backend; set VITE_API_TARGET to point the real UI
  * at a DEPLOYED backend and skip building and shipping a frontend image altogether — the frontend is
@@ -25,11 +19,13 @@ const demoBuild = process.env.VITE_ENABLE_DEMO === 'true';
 const apiTarget = process.env.VITE_API_TARGET ?? 'http://localhost:5169';
 const isLocalApi = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(apiTarget);
 
-export default defineConfig(({ command }) => ({
+export default defineConfig({
   plugins: [react()],
 
-  // Served in dev, and emitted into dist/ only for a demo build — never for real prod.
-  publicDir: command === 'serve' || demoBuild ? 'public' : false,
+  // Nothing to serve statically. `public/` existed only to hold MSW's service worker, and
+  // shipping an interceptor into a deployed origin is precisely what must not happen — so the
+  // directory is gone and this stays off rather than becoming a place for one to reappear.
+  publicDir: false,
 
   // The backend has no CORS policy. In dev this proxy makes the API same-origin;
   // in prod the App Gateway routes /api/* to the backend, also same-origin.
@@ -66,4 +62,4 @@ export default defineConfig(({ command }) => ({
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     setupFiles: ['src/test/setup.ts'],
   },
-}));
+});

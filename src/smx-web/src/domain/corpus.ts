@@ -8,7 +8,7 @@
  *
  * **But no endpoint reports it.** The sync runs in `src/Smx.Functions` (the regsync
  * Function App); the backend API exposes nothing that says when it last completed. The
- * only sync date in this frontend lives in `mocks/fixtures/regulatory.json`, and it is
+ * only sync date in this frontend comes from the regulatory record itself, and it is
  * fixture data.
  *
  * So the masthead does NOT print that date. Laundering a fixture value into the app

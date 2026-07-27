@@ -3,7 +3,6 @@ import { NotFound, getMatrix, listProjects } from '../api/client';
 import type { ProjectListItem } from '../api/types';
 import { summarize, type MatrixSummary } from '../domain/matrixSummary';
 import { readReviewed, reviewProgress } from '../domain/review';
-import { DEMO_ENABLED, demoListItem, isDemoLoaded } from '../mocks/demo';
 
 export interface ProjectCard {
   project: ProjectListItem;
@@ -38,9 +37,8 @@ async function mapWithLimit<T, R>(
  *
  * GET /projects is the source of truth, so the dashboard shows what EXISTS rather than what this
  * browser happens to remember — a project is reachable from any machine, and an id can no longer
- * be lost by clearing site data. Everything here is real; that is why the screen carries no
- * MockBadge. The one exception is the opt-in demo fixture, which is merged in behind `isDemo()`
- * and badged wherever it renders.
+ * be lost by clearing site data. Everything here is real, and there is no longer any exception:
+ * the opt-in demo fixture that used to be merged in here is gone with the rest of `src/mocks`.
  *
  * The list already carries each project's stages, so there is no per-card GET /projects/{id} —
  * only the matrix is fetched per project, and only once its stage reports done.
@@ -67,13 +65,6 @@ export function useProjectsOverview() {
       setCards([]);
       setLoading(false);
       return;
-    }
-
-    // Appended, not prepended: the list is newest-first and the demo's fixture date is old, so this
-    // is where it would sort anyway.
-    if (DEMO_ENABLED && isDemoLoaded()) {
-      const demo = await demoListItem();
-      if (demo) projects = [...projects, demo];
     }
 
     const next = await mapWithLimit(projects, CONCURRENCY, async (project): Promise<ProjectCard> => {

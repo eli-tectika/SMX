@@ -6,7 +6,6 @@ import { Card, EmptyState, SectionHeader, Skeleton, StatCard } from '../componen
 import { VerdictRibbon } from '../components/ui/VerdictRibbon';
 import { BUCKET_LABEL, bucket, bucketTone, whatsBlocking, type Bucket } from '../domain/blocking';
 import { useProjectsOverview, type ProjectCard } from '../hooks/useProjectsOverview';
-import { DEMO_ENABLED, forgetDemoProject, isDemo, loadDemoProject } from '../mocks/demo';
 
 /**
  * The re-entry surface (spec §2).
@@ -16,7 +15,7 @@ import { DEMO_ENABLED, forgetDemoProject, isDemo, loadDemoProject } from '../moc
  *
  * Everything here is REAL — the cards come from GET /projects, so this is what the
  * record holds rather than what this browser remembers. That is why the screen carries
- * no MockBadge; the opt-in demo fixture is the one exception and badges itself.
+ * no MockBadge, and no longer any exception: the demo fixture is gone.
  */
 export function Projects() {
   const { cards, loading, error, refresh } = useProjectsOverview();
@@ -34,7 +33,7 @@ export function Projects() {
 
   if (loading && cards.length === 0) return <ProjectsLoading />;
   if (error) return <ProjectsError message={error} onRetry={refresh} />;
-  if (cards.length === 0) return <ProjectsEmpty onLoadDemo={refresh} />;
+  if (cards.length === 0) return <ProjectsEmpty />;
 
   return (
     <>
@@ -99,14 +98,7 @@ export function Projects() {
             <SectionHeader eyebrow={BUCKET_LABEL[b]} count={groups[b].length} />
             <div className="card-list">
               {groups[b].map((c) => (
-                <ProjectRow
-                  key={c.project.projectId}
-                  card={c}
-                  onForgetDemo={() => {
-                    forgetDemoProject();
-                    refresh();
-                  }}
-                />
+                <ProjectRow key={c.project.projectId} card={c} />
               ))}
             </div>
           </section>
@@ -116,12 +108,11 @@ export function Projects() {
   );
 }
 
-function ProjectRow({ card, onForgetDemo }: { card: ProjectCard; onForgetDemo: () => void }) {
+function ProjectRow({ card }: { card: ProjectCard }) {
   const { project, matrix, unopenedFlagged } = card;
   const blocking = whatsBlocking(project, matrix, unopenedFlagged);
   const b = bucket(project, matrix, unopenedFlagged);
   const tone = bucketTone(b, blocking);
-  const demo = isDemo(project.projectId);
 
   return (
     <Card tone={tone} className="card--link-wrap">
@@ -136,18 +127,6 @@ function ProjectRow({ card, onForgetDemo }: { card: ProjectCard; onForgetDemo: (
         }}
       >
         <CardHead project={project} />
-
-        {/* The dashboard is otherwise entirely real data. The demo project is the one
-            exception, so it must announce itself — a fabricated card must never be
-            able to pass for a real one. */}
-        {demo && (
-          <div className="banner warn" style={{ margin: '10px 0 0' }}>
-            <i className="ti ti-flask" aria-hidden="true" />
-            <div>
-              <b>Demo data</b> — a fixture project, not a real record.
-            </div>
-          </div>
-        )}
 
         <div style={{ margin: '14px 0 10px' }}>
           <MiniSpine stages={project.stages} showLabels />
@@ -231,7 +210,7 @@ function ProjectRow({ card, onForgetDemo }: { card: ProjectCard; onForgetDemo: (
       {/* Outside the link: a link must not wrap another interactive control. There is no Forget for
           a real project — it lives in the record, and a button that only cleared it from this
           browser would be undone by the next refresh. */}
-      {(matrix || demo) && (
+      {matrix && (
         <div
           style={{
             marginTop: 10,
@@ -245,11 +224,6 @@ function ProjectRow({ card, onForgetDemo }: { card: ProjectCard; onForgetDemo: (
             <a className="btn" href={matrixXlsxUrl(project.projectId)} download>
               <i className="ti ti-download" aria-hidden="true" /> Matrix .xlsx
             </a>
-          )}
-          {demo && (
-            <button className="btn" style={{ marginLeft: 'auto' }} onClick={onForgetDemo}>
-              <i className="ti ti-x" aria-hidden="true" /> Forget demo
-            </button>
           )}
         </div>
       )}
@@ -331,7 +305,7 @@ function ProjectsError({ message, onRetry }: { message: string; onRetry: () => v
   );
 }
 
-function ProjectsEmpty({ onLoadDemo }: { onLoadDemo: () => void }) {
+function ProjectsEmpty() {
   return (
     <>
       <SectionHeader
@@ -351,18 +325,6 @@ function ProjectsEmpty({ onLoadDemo }: { onLoadDemo: () => void }) {
             <Link className="btn primary" to="/new" state={{ from: { label: 'projects' } }}>
               <i className="ti ti-plus" aria-hidden="true" /> New project
             </Link>
-            {DEMO_ENABLED && (
-              <button
-                className="btn"
-                onClick={() => {
-                  loadDemoProject();
-                  onLoadDemo();
-                }}
-                title="Adds a fixture project so the populated dashboard can be seen without creating a real one"
-              >
-                <i className="ti ti-flask" aria-hidden="true" /> Load demo data
-              </button>
-            )}
           </>
         }
       >
