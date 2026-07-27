@@ -812,7 +812,7 @@ crossing the wire, and the type has to preserve it."
 
 **Files:**
 - Modify: `src/components/ui/Gate.tsx`
-- Create: `src/components/ui/Gate.test.tsx`
+- Modify: `src/components/ui/Gate.test.tsx` (it already exists with 6 tests — **append** a new `describe` block, never overwrite)
 
 Today the reject button is hard-disabled with a literal `title="Disabled — no gate endpoint"`. That is true for the regulatory gate, which has no reject endpoint, and false for the VP gate, which accepts `determination: 'rejected'` with a reason.
 
@@ -970,8 +970,7 @@ Expected: PASS, 3 tests.
 
 - [ ] **Step 5: Verify the regulatory gate is unchanged**
 
-Run: `npx vitest run src/routes/stages/Regulatory.test.tsx`
-Expected: PASS — `Regulatory.tsx` passes no `onReject`, so its button keeps the honest disabled state.
+There is no `Regulatory.test.tsx`. Verify by reading `src/routes/stages/Regulatory.tsx` instead: it passes `onSign` but **no `rejectLabel`**, so it renders no reject button at all and this change cannot touch it.
 
 - [ ] **Step 6: Commit**
 
