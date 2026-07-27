@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { Gate, type Requirement } from './Gate';
 
@@ -105,5 +106,75 @@ describe('Gate — the anti-rubber-stamping component', () => {
       />,
     );
     expect(document.querySelector('.gatebox')).toHaveAttribute('data-kind', 'soft');
+  });
+});
+
+const armed: Requirement[] = [{ id: 'a', label: 'Everything cleared', met: true }];
+const blocked: Requirement[] = [{ id: 'a', label: 'Something outstanding', met: false }];
+
+describe('Gate — rejection', () => {
+  /** A gate with no reject endpoint must keep saying so, rather than offering a dead button. */
+  it('leaves reject disabled and honest when no onReject is given', () => {
+    render(
+      <Gate
+        kind="hard"
+        title="Regulatory gate"
+        records="nothing"
+        requirements={armed}
+        signLabel="Approve"
+        rejectLabel="Reject"
+      />,
+    );
+    const reject = screen.getByRole('button', { name: 'Reject' });
+    expect(reject).toBeDisabled();
+    expect(reject).toHaveAttribute('title', expect.stringMatching(/no gate endpoint/i));
+  });
+
+  it('enables reject and calls onReject with the note when one is given', async () => {
+    const onReject = vi.fn();
+    render(
+      <Gate
+        kind="hard"
+        title="VP gate"
+        records="nothing"
+        requirements={armed}
+        signLabel="Approve"
+        rejectLabel="Reject"
+        onReject={onReject}
+        signNote={{ placeholder: 'why' }}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText(/note/i), 'the ppm window is wrong');
+    await userEvent.click(screen.getByRole('button', { name: 'Reject' }));
+    expect(onReject).toHaveBeenCalledWith('the ppm window is wrong');
+  });
+
+  /**
+   * A rejection is a ruling, not an escape hatch. It needs its reason exactly as much as an approval
+   * does — the backend 422s a blank one either way — but it must NOT need the gate to be armed:
+   * refusing to let the VP say no until every blocker clears would trap a bad decision open.
+   */
+  it('allows rejecting a gate that is not armed, but never without a reason', async () => {
+    const onReject = vi.fn();
+    render(
+      <Gate
+        kind="hard"
+        title="VP gate"
+        records="nothing"
+        requirements={blocked}
+        signLabel="Approve"
+        rejectLabel="Reject"
+        onReject={onReject}
+        signNote={{ placeholder: 'why' }}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled();
+    const reject = screen.getByRole('button', { name: 'Reject' });
+    expect(reject).toBeDisabled();
+
+    await userEvent.type(screen.getByLabelText(/note/i), 'not going ahead');
+    expect(reject).toBeEnabled();
+    await userEvent.click(reject);
+    expect(onReject).toHaveBeenCalledWith('not going ahead');
   });
 });

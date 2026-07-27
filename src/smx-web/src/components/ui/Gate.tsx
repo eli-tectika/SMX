@@ -34,6 +34,8 @@ export function Gate({
   onSign,
   signBusy,
   signNote,
+  onReject,
+  rejectBusy,
 }: {
   kind: 'hard' | 'soft';
   title: string;
@@ -58,6 +60,13 @@ export function Gate({
    * non-blank, so the note cannot be skipped by clicking fast.
    */
   signNote?: { placeholder: string };
+  /**
+   * When provided, the reject button is LIVE. Deliberately NOT gated on `armed`: a gate that will not
+   * let the VP say no until every blocker clears traps a bad decision open. It IS gated on the note —
+   * a rejection is a ruling and needs its reason exactly as much as an approval does.
+   */
+  onReject?: (note: string) => void;
+  rejectBusy?: boolean;
 }) {
   const [note, setNote] = useState('');
   const met = requirements.filter((r) => r.met).length;
@@ -65,6 +74,7 @@ export function Gate({
   const armed = met === total;
   const noteReady = !signNote || note.trim().length > 0;
   const canSign = Boolean(onSign) && armed && !signBusy && noteReady;
+  const canReject = Boolean(onReject) && !rejectBusy && !signBusy && note.trim().length > 0;
 
   return (
     <section className="gatebox" data-kind={kind} aria-label={title}>
@@ -128,7 +138,7 @@ export function Gate({
       </div>
 
       {/* The note is part of signing, not an afterthought beside it: it IS what was reviewed. */}
-      {signNote && onSign && (
+      {signNote && (onSign || onReject) && (
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -168,7 +178,19 @@ export function Gate({
           {signLabel}
         </button>
         {rejectLabel && (
-          <button className="btn" disabled title="Disabled — no gate endpoint">
+          <button
+            className="btn"
+            disabled={!canReject}
+            onClick={() => onReject?.(note.trim())}
+            title={
+              onReject
+                ? note.trim().length > 0
+                  ? undefined
+                  : 'A reason is required — a rejection is a ruling, not a dismissal'
+                : 'Disabled — no gate endpoint'
+            }
+          >
+            <i className={`ti ${rejectBusy ? 'ti-loader' : 'ti-ban'}`} aria-hidden="true" />{' '}
             {rejectLabel}
           </button>
         )}
