@@ -1070,3 +1070,148 @@ select:focus {
   border-radius: var(--r1);
   padding: 1px 6px;
 }
+
+/* ---- the intake interview: a conversation, not a form ------------------------
+
+   This screen is the app's primary entry surface, and it read as a form with a large text
+   field — which is exactly what the design forbids. It was three stacked `.region` boxes
+   (hint, composer, coverage) inside the page frame: four nested rectangles and no thread.
+
+   It is now one column. The thread scrolls, the composer sits at its foot, and nothing else
+   draws a border. Brand chrome is untouched — the rail, the lockup and the serif title keep
+   the colours the client signed off; what changed is layout, nesting and weight. */
+
+.chat {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  /* Fill the space under the masthead so the composer sits at the foot of the column instead
+     of floating directly under a two-line thread with 400px of dead page beneath it. */
+  min-height: calc(100vh - var(--masthead-h) - 140px);
+}
+
+.chat__thread {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 140px;
+  padding: var(--s2) 0 var(--s4);
+}
+
+.chat__empty {
+  padding: var(--s7) 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--t-body);
+}
+
+/* The agent speaks as plain prose; only the operator's own words get a container. Two tinted
+   bubbles facing each other is the busier convention and doubles the rectangles on screen —
+   and the agent is the one whose text is long, so it is the one that wants a full measure. */
+.msg {
+  margin: 0 0 var(--s4);
+  font-size: var(--t-body);
+  line-height: var(--lh-prose);
+  white-space: pre-wrap;
+}
+.msg--agent {
+  color: var(--text-primary);
+}
+.msg--operator {
+  width: fit-content;
+  max-width: 78%;
+  margin-left: auto;
+  padding: 9px 13px;
+  border-radius: 14px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+/* The composer. ONE rounded container: the textarea inside it is borderless, so the box IS
+   the control rather than a box wrapping another box. */
+.composer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: var(--hair) solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--surface-0);
+  transition: border-color var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease-out);
+}
+.composer:focus-within {
+  border-color: var(--border-accent);
+}
+.composer textarea {
+  width: 100%;
+  min-height: 44px;
+  max-height: 190px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  resize: none;
+}
+.composer textarea:focus,
+.composer textarea:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.composer__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+/* A round send button carrying the brand navy. The pill radius is allowed here for the same
+   reason it is allowed on a meter end-cap: this is a circular icon target, not a text button. */
+.composer__send {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--brand-navy);
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+}
+.composer__send:disabled {
+  background: var(--surface-3);
+  color: var(--text-muted);
+  cursor: default;
+}
+.composer__attach {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--r2);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--t-small);
+  cursor: pointer;
+}
+.composer__attach:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+/* Coverage and the create action are quiet lines under the composer, not panels. */
+.chat__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  margin-top: var(--s3);
+  font-size: var(--t-small);
+}
+.chat__open {
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: var(--hair) solid var(--border);
+}
