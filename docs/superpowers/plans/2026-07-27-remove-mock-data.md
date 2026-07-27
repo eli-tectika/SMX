@@ -915,9 +915,14 @@ Add to the props type, after the `signNote` field:
 
 ```tsx
   /**
-   * When provided, the reject button is LIVE. Deliberately NOT gated on `armed`: a gate that will not
-   * let the VP say no until every blocker clears traps a bad decision open. It IS gated on the note —
-   * a rejection is a ruling and needs its reason exactly as much as an approval does.
+   * When provided, the reject button is LIVE — gated on `armed` AND on a non-blank note.
+   *
+   * Gating on `armed` is not symmetry for its own sake: POST …/decision/determination runs
+   * ParkBlocker → PendingRevisionBlocker → VpGate.Armable → RegulatoryGate.Armable BEFORE it reaches
+   * the `rejected` branch, so the server refuses an unarmed rejection exactly as it refuses an
+   * unarmed approval. Offering the button anyway would be a lying affordance. If the product ever
+   * wants a blocked project to be rejectable, that is a change to the BACKEND's guard order — never
+   * something this component fakes.
    */
   onReject?: (note: string) => void;
   rejectBusy?: boolean;
@@ -926,7 +931,7 @@ Add to the props type, after the `signNote` field:
 Add below the existing `canSign` line:
 
 ```tsx
-  const canReject = Boolean(onReject) && !rejectBusy && !signBusy && note.trim().length > 0;
+  const canReject = Boolean(onReject) && armed && !rejectBusy && !signBusy && note.trim().length > 0;
 ```
 
 Replace the reject button block:
