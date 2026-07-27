@@ -249,8 +249,8 @@ export interface CandidateSubstance {
   element: string;
   form: string;
   cas: string;
-  particleSize?: string | null;
-  solvent?: string | null;
+  particleSize?: string;
+  solvent?: string;
   preferred: boolean;
   tier: 'A' | 'B' | 'C';
   rationale: string;

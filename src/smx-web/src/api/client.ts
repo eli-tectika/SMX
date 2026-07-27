@@ -561,7 +561,7 @@ export async function getDocumentText(id: string): Promise<DocumentChunk[]> {
  *
  * 404 before Discovery has run — the normal pre-run state, hence the sentinel. The doc is READ-ONLY:
  * the operator never re-tiers a candidate by hand (spec §1.4). To change one they tell the agent why,
- * through POST /stages/discovery/revise, and the reason is recorded as a Learned Conclusion.
+ * through POST /projects/{id}/stages/discovery/revise, and the reason is recorded as a Learned Conclusion.
  */
 export async function getCandidates(projectId: string): Promise<CandidatesDoc | NotFound> {
   const res = await authorizedFetch(`${p(projectId)}/candidates`);

@@ -4,6 +4,7 @@ import {
   NotFound,
   approveRegulatory,
   createProject,
+  getCandidates,
   getChatThread,
   getCost,
   getDosing,
@@ -146,6 +147,37 @@ describe('getMatrix', () => {
     const doc = { id: 'p1|matrix', projectId: 'p1', type: 'matrix', rows: [], columns: [], cells: [], generatedAt: '' };
     stubFetch(() => json(doc));
     await expect(getMatrix('p1')).resolves.toEqual(doc);
+  });
+});
+
+describe('getCandidates', () => {
+  // 404 is the normal pre-run state — Discovery has not produced a candidate pool yet. The screen
+  // renders an empty state for it, so it must never arrive as a thrown error.
+  it('returns the NotFound sentinel before Discovery has run', async () => {
+    stubFetch(() => new Response('', { status: 404 }));
+    await expect(getCandidates('p1')).resolves.toBe(NotFound);
+  });
+
+  it('returns the parsed CandidatesDoc on 200', async () => {
+    const doc = {
+      id: 'p1|candidates',
+      projectId: 'p1',
+      type: 'candidates',
+      substances: [
+        {
+          componentId: 'bottle',
+          element: 'Y',
+          form: 'oxide',
+          cas: '1314-36-9',
+          preferred: true,
+          tier: 'A',
+          rationale: 'corpus match',
+          citations: [],
+        },
+      ],
+    };
+    stubFetch(() => json(doc));
+    await expect(getCandidates('p1')).resolves.toEqual(doc);
   });
 });
 
