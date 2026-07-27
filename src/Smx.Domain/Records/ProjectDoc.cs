@@ -13,7 +13,7 @@ public static class StageStatus
     public const string NeedsReview = "needs-review";
     public const string Done = "done";
 
-    /// The spec's PARK states, written by StageDispatcher: the record is stopped on a named human, which
+    /// The spec's PARK states, written by PipelineRunner: the record is stopped on a named human, which
     /// is NOT the same as `pending` (the agent has not started). `awaiting-RE` on Regulatory,
     /// `awaiting-physics` and `awaiting-operator` on Dosing.
     public const string AwaitingRe = "awaiting-RE";

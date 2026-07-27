@@ -38,7 +38,7 @@ namespace Smx.Infrastructure;
 /// The failure mode is the nastiest kind: <b>silent</b>. No exception — the queries just return an empty
 /// list, forever, in Azure. And the test suite stays green while it happens, because the tests run against
 /// <c>InMemoryRecordStore</c>, a dictionary that never generates SQL. This shipped once already and stalled
-/// the whole pipeline: <c>GetVerdictsAsync</c> returning empty means <c>StageDispatcher.TryAssembleAsync</c>
+/// the whole pipeline: <c>GetVerdictsAsync</c> returning empty means <c>PipelineRunner.RunMatrixAsync</c>
 /// can never satisfy <c>MatrixAssembler.IsComplete</c>, so the matrix never assembles and Regulatory never
 /// parks in <c>awaiting-RE</c>; <c>search_catalog</c> returns nothing, so Discovery can propose no candidates.
 /// </para>

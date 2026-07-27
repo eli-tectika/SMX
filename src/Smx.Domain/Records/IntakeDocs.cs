@@ -44,11 +44,11 @@ public sealed class SessionAttachment
 /// The interview scratchpad. Lives in its OWN Cosmos container (`intake-sessions`, PK /sessionId) and
 /// never in `record`.
 ///
-/// That separation is structural, not organisational. The `record` container's change feed IS the
-/// dispatch bus: RecordDocRouter reads a document's `type` and StageDispatcher runs a stage. A session
-/// document sitting in `record` would be a document the router must be TAUGHT to ignore — a rule that
-/// holds right up until someone forgets it, at which point an unfinished interview dispatches a stage.
-/// A separate container makes the mistake unavailable rather than merely discouraged.
+/// That separation is structural, not organisational. `record` holds the per-project analytical bus —
+/// the documents every stage reads as its input and every export cites. A half-finished interview
+/// scratchpad sitting among them would be a document each of those readers must be TAUGHT to ignore, a
+/// rule that holds right up until someone forgets it. A separate container makes the mistake unavailable
+/// rather than merely discouraged.
 public sealed class IntakeSessionDoc
 {
     public required string Id { get; set; }

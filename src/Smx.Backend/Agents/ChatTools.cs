@@ -213,9 +213,9 @@ public sealed class ChatTools(IRecordStore store, string projectId, string stage
         // silently change an established input — with no reason recorded and nothing re-run. That is exactly
         // the direct edit Law 4 forbids, so it is refused and the model is pointed at apply_revision.
         //
-        // This guard is also load-bearing for the re-trigger below: StageDispatcher.OnProjectAsync runs
-        // Intake only when the stage is `pending` AND no constraints exist. Loosen it and record_answer would
-        // reopen a stage the dispatcher then refuses to run — intake stuck at `pending` forever.
+        // This guard is also load-bearing for the re-trigger below: PipelineRunner.RunIntakeAsync runs
+        // Intake only when the stage has not run AND no constraints exist. Loosen it and record_answer would
+        // reopen a stage the runner then refuses to run — intake stuck at `pending` forever.
         if (await store.GetConstraintsAsync(projectId, ct) is not null)
             return Error("intake has already produced constraints, so this is no longer a gap-fill. " +
                          "To change an established input, use apply_revision with the operator's reason.");

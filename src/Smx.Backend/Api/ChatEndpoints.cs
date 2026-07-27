@@ -38,7 +38,7 @@ public static class ChatEndpoints
             if (await store.GetProjectAsync(projectId, ct) is null) return Results.NotFound();
 
             // The suffix must be an ID-SAFE token ([A-Za-z0-9_-]+), and that is a cross-service contract, not a
-            // local style choice: StageDispatcher derives the chat key from this id's last '|'-segment and hands
+            // local style choice: PipelineRunner derives the chat key from this id's last '|'-segment and hands
             // it to ChatTools, which concatenates it into further Cosmos item ids. Cosmos rejects an id
             // containing '/', '\', '?' or '#' — a 400 that no in-memory test store can produce. A "friendlier"
             // scheme (a slug of the text, a timestamp with ':') would pass every backend test and break every

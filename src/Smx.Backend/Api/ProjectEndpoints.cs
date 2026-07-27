@@ -142,8 +142,10 @@ public static class ProjectEndpoints
         // never will be: creating a project is safe to delegate because it runs nothing, but starting
         // the analysis is the human asserting that what the agent wrote is correct (design §2.3).
         //
-        // Writing `pending` is the dispatch — the change feed picks the doc up and StageDispatcher runs
-        // intake. That is why this endpoint, and not create_project, is the trigger.
+        // Writing `pending` is what makes the project runnable: PipelineRunner.RunIntakeAsync skips a
+        // project still at `awaiting-confirmation`, so until this endpoint is called no pass over it can
+        // start intake. That is why this endpoint, and not create_project, is the trigger. (Launching the
+        // runner from here is Task 9's wiring; the flip is the precondition either way.)
         app.MapPost("/projects/{projectId}/start",
             async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
         {

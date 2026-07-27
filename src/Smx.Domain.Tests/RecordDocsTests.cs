@@ -48,7 +48,7 @@ public class RecordDocsTests
     /// THE TRIPWIRE FOR PLAN 4. `ProjectDoc.Create`'s stage dictionary is a fourth, hand-maintained
     /// enumeration of the stages, and it was the only one nothing pinned. The other three are safe: Stages.All
     /// is reflection-tested against the constants (ChatEndpointsTests), and ToolBox.ReadToolsFor and
-    /// StageDispatcher.StageInputsJsonAsync both fail CLOSED on a stage they do not know.
+    /// PipelineRunner.StageInputsJsonAsync both fail CLOSED on a stage they do not know.
     ///
     /// This one fails OPEN, in both directions. Add `Stages.Dosing` and forget this dictionary and:
     ///   - Stages.All gains it the same commit (the reflection test forces that), so POST /stages/dosing/chat

@@ -4,11 +4,14 @@ using Smx.Domain.Records;
 
 namespace Smx.Backend.Pipeline;
 
-/// Deserializes a record document by its `type` discriminator. It was written for the change feed, and the
-/// change feed is gone — but it SURVIVES the one-service merge, for two reasons: StageDispatcher (which it
-/// feeds) survives until the pipeline runner replaces it, and it is what a dozen dispatch tests round-trip
-/// through to get the object a delivery actually produces rather than the one the test happened to build.
-/// That round-trip has caught a real bug in this codebase. It goes when StageDispatcher goes.
+/// Deserializes a record document by its `type` discriminator. It was written for the change feed; the
+/// change feed is gone and so is StageDispatcher, and it SURVIVES both — it is what a dozen pipeline tests
+/// round-trip a fixture through to get the object real persistence would produce rather than the one the
+/// test happened to build in memory. That round-trip has caught a real bug in this codebase, and it is the
+/// only thing standing between "my fixture is correct" and "the serialized record is correct".
+///
+/// It is no longer a DISPATCH table: nothing routes on a document's type any more. Adding a `type` here
+/// grants nothing and triggers nothing; it only lets a test deserialize that shape.
 public static class RecordDocRouter
 {
     public static object? Route(JsonElement element) =>

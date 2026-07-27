@@ -82,7 +82,7 @@ public static class IntakeAgent
     /// IDS, not the values hanging off them, so both errors sail through as a successful intake run.
     ///
     /// The payload can also be deserialized here in the first place — the JsonException below is not caught.
-    /// That is on purpose. StageDispatcher wraps the stage and reports a throw as `failed` WITH ITS MESSAGE,
+    /// That is on purpose. PipelineRunner wraps the stage and reports a throw as `failed` WITH ITS MESSAGE,
     /// which names the payload. Parsing it inside Validate (as this used to) instead threw inside the runner's
     /// retry loop, which reports every JsonException as the AGENT's reply being malformed — so a poisoned
     /// payload cost three model round-trips and then blamed the model for it.

@@ -16,7 +16,7 @@ public static class RevisionEffects
     ///
     /// Decision IS revisable (Plan 5, Task 15): the pick is the agent's PROPOSAL, and the operator changes
     /// it the same way — never by hand, always with a reason the knowledge layer keeps. The executor
-    /// (StageDispatcher.ReviseDecisionAsync) refuses outright once the project is CLOSED (VP gate
+    /// (PipelineRunner.ReviseDecisionAsync) refuses outright once the project is CLOSED (VP gate
     /// approved): the signature is history, and revising history is a new project decision.
     ///
     /// Intake is deliberately excluded even though it DOES have an agent: its output is the derived
@@ -29,7 +29,7 @@ public static class RevisionEffects
     /// A gate is an operator's signature over a SPECIFIC analysis. Re-running an agent at or upstream of
     /// the Regulatory gate replaces that analysis, so the signature is void and has to be re-taken.
     ///
-    /// This is not bookkeeping — it is the false-pass guard. StageDispatcher.TryAssembleAsync will not
+    /// This is not bookkeeping — it is the false-pass guard. PipelineRunner's matrix assembly will not
     /// lower a stage that already reached `done`, so an approved gate left standing would let a `done`
     /// Regulatory stage silently absorb the brand-new, UNREVIEWED verdicts a revision produces: the
     /// operator's signature would then cover verdicts they never saw.

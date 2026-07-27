@@ -6,7 +6,7 @@ namespace Smx.Backend.Api;
 
 /// The VP hard gate (spec §4): the VP's determination is an OPERATOR-SIGNED RECORD, and this endpoint is
 /// the ONLY writer of an approved VP GateDoc — the dispatcher's close handler trusts that, the same
-/// contract as the regulatory gate (see the note on StageDispatcher.OnGateAsync). Mirrors
+/// contract as the regulatory gate (see the note on PipelineRunner.OnGateAsync). Mirrors
 /// POST /regulatory/approve's discipline: arm on the LIVE records, 422 with named blockers, idempotent
 /// approved-timestamp.
 public static class DecisionEndpoints
@@ -56,7 +56,7 @@ public static class DecisionEndpoints
                 return Results.UnprocessableEntity(new { error = "VP gate not armable", blockers = blocked.Blockers });
 
             // The regulatory signature is not self-proving: the gate record carries no binding to the
-            // verdicts it was signed over (the TryDoseAsync rationale, StageDispatcher ~:207-228). A live
+            // verdicts it was signed over (the rationale on PipelineRunner.RunDosingAsync). A live
             // unreviewed non-pass verdict that appeared after the approval — a revise's leftovers, a race —
             // means the signature no longer covers the analysis this determination would sign over.
             var candidates = await store.GetCandidatesAsync(projectId, ct);
