@@ -48,7 +48,10 @@ public sealed class PipelineRunner(
     int regulatoryParallelism,
     ILogger<PipelineRunner>? logger = null,
     IKnowledgeStore? knowledge = null,
-    ICatalogLookup? catalog = null)
+    ICatalogLookup? catalog = null,
+    // REGULATORY_AUTO_APPROVE (dev/demo only). Off by default — see BackendOptions.RegulatoryAutoApprove
+    // and AutoApproveRegulatoryAsync for exactly what turning it on gives up.
+    bool regulatoryAutoApprove = false)
 {
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _live = new();
 
@@ -459,12 +462,54 @@ public sealed class PipelineRunner(
             finally { gate.Release(); }
         }));
 
-        // The RUN is done — every substance was screened. The STAGE is not: the R.E. has not signed, and
-        // a Regulatory stage that reached `done` off its own agent's output would be the agent signing a
-        // hard gate (Law 9). RunMatrixAsync computes which of the two it is, from the gate record.
+        // The human-gate kill switch (dev/demo). When on, adopt the agent's proposals and sign the gate right
+        // here, so RunMatrixAsync computes `done` and the pipeline flows to Dosing with no R.E. Off by default.
+        if (regulatoryAutoApprove) await AutoApproveRegulatoryAsync(projectId, trail, ct);
+
+        // The RUN is done — every substance was screened. The STAGE is not (unless auto-approve just signed
+        // above): a Regulatory stage that reached `done` off its own agent's output would be the agent signing
+        // a hard gate (Law 9). RunMatrixAsync computes which of the two it is, from the gate record.
         return new StageResult(RunOutcome.Done, null,
             $"Wrote {missing.Count} verdicts — {missing.Count - flagged} screened, {flagged} flagged.",
             null, StageStatus.AwaitingRe);
+    }
+
+    /// REGULATORY_AUTO_APPROVE — the human gate, removed. It adopts each verdict's PROPOSED determination as
+    /// the final one, marks every verdict evidence-reviewed, and signs the regulatory gate itself. That is,
+    /// precisely, the three things the R.E. does by hand — and precisely what the design forbids an agent from
+    /// doing (CompliantSet reads only the human `Determination`, and `ProposedDetermination` is a separate
+    /// field EXACTLY so a proposal cannot be read as a signature). Turning this on lets the agent's verdicts
+    /// reach Dosing → Cost → Decision → procurement unreviewed, so it is dev/demo only and defaults off.
+    ///
+    /// The safe asymmetry is kept even here: a null proposal (the failed-verdict fallback) stays null, so an
+    /// un-screenable substance is EXCLUDED from the compliant set rather than auto-recommended.
+    private async Task AutoApproveRegulatoryAsync(string projectId, RunTrail trail, CancellationToken ct)
+    {
+        var verdicts = await store.GetVerdictsAsync(projectId, ct);
+        var adopted = 0;
+        foreach (var v in verdicts)
+        {
+            if (v.ProposedDetermination is Determinations.Recommended or Determinations.Rejected)
+            {
+                v.Determination = v.ProposedDetermination;
+                v.DeterminationReason = "auto-adopted from the agent's proposal (REGULATORY_AUTO_APPROVE)";
+                adopted++;
+            }
+            // Marked reviewed so RegulatoryGate.Armable stops blocking on unreviewed non-pass verdicts. This
+            // is the rubber-stamp the gate is built to prevent — which is the whole meaning of the flag.
+            v.EvidenceReviewed = true;
+            await store.UpsertVerdictAsync(v, ct);
+        }
+        var existing = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
+        await store.UpsertGateAsync(new GateDoc
+        {
+            Id = RecordIds.Gate(projectId, GateTypes.Regulatory), ProjectId = projectId,
+            GateType = GateTypes.Regulatory, Status = "approved",
+            ApprovedAt = existing?.Status == "approved" ? existing.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
+        }, ct);
+        await trail.StepAsync(RunStepKind.Output,
+            $"REGULATORY_AUTO_APPROVE: adopted {adopted} agent determination(s) and signed the gate — no human review.",
+            ct: ct);
     }
 
     /// The compatibility matrix: a DETERMINISTIC fold over (candidates, verdicts). No agent — the null

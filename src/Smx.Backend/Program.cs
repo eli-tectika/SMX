@@ -360,7 +360,8 @@ public static class BackendHost
             sp.GetRequiredService<IAgentRuns>(), sp.GetRequiredService<ThreadEventHub>(),
             sp.GetRequiredService<ILearnedConclusionWriter>(), opts.RegulatoryParallelism,
             sp.GetRequiredService<ILogger<PipelineRunner>>(),
-            sp.GetRequiredService<IKnowledgeStore>(), sp.GetRequiredService<ICatalogLookup>()));
+            sp.GetRequiredService<IKnowledgeStore>(), sp.GetRequiredService<ICatalogLookup>(),
+            opts.RegulatoryAutoApprove));
 
         // ONE supervisor, resolved twice. The hosted-service registration MUST go through the container
         // rather than construct its own — `AddHostedService<PipelineSupervisor>()` would build a SECOND
