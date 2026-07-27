@@ -10,6 +10,7 @@ import {
 } from '../api/client';
 import type { IntakeQuestion, IntakeSession, InterviewTurn } from '../api/types';
 import { AttachmentChip } from '../components/AttachmentChip';
+import { BackLink } from '../components/BackLink';
 import { coverage, createBlocker } from '../domain/intakeGate';
 import { useStickToBottom } from '../hooks/useStickToBottom';
 
@@ -223,6 +224,13 @@ export function Interview() {
 
   return (
     <div className="chatpage">
+      {/* The interview has no context bar to carry a way out, and it is the one screen an
+          operator can land on with nowhere obvious to go. The session is persisted, so leaving
+          costs nothing. */}
+      <nav className="small muted" style={{ marginBottom: 8 }}>
+        <BackLink fallback="/" fallbackLabel="projects" />
+      </nav>
+
       <div className="cap">
         <b>New project</b>
         Tell the agent about the job. It asks the rest.

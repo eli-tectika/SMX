@@ -1,9 +1,9 @@
-import { useState } from 'react';
 import { getMarkerLibrary } from '../api/client';
 import type { MarkerLibraryEntry } from '../api/types';
 import { Data } from '../components/ui/Data';
 import { BarRow, EmptyState, SearchInput, SectionHeader, StatCard } from '../components/ui/Primitives';
 import { useKnowledge } from '../hooks/useKnowledge';
+import { useQueryParam } from '../hooks/useQueryParam';
 
 /**
  * Marker Library (spec §6) — the approved codes, written at VP sign-off.
@@ -21,8 +21,11 @@ import { useKnowledge } from '../hooks/useKnowledge';
  * show invented rows. Nothing appears here until a project has passed the VP R&D gate.
  */
 export function MarkerLibrary() {
-  const [q, setQ] = useState('');
-  const [showRetired, setShowRetired] = useState(false);
+  // Both filters live in the URL, so a filtered library survives leaving the screen and can be
+  // pasted to someone as what it shows.
+  const [q, setQ] = useQueryParam('q');
+  const [retiredParam, setRetired] = useQueryParam('retired');
+  const showRetired = retiredParam === 'yes';
 
   const state = useKnowledge<MarkerLibraryEntry>(getMarkerLibrary, q);
 
@@ -79,7 +82,7 @@ export function MarkerLibrary() {
         </div>
         <button
           className="btn"
-          onClick={() => setShowRetired((v) => !v)}
+          onClick={() => setRetired(showRetired ? '' : 'yes')}
           aria-pressed={showRetired}
           style={{ flex: 'none' }}
         >

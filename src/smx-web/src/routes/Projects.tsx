@@ -46,7 +46,7 @@ export function Projects() {
             <button className="btn" onClick={refresh} disabled={loading}>
               <i className={`ti ti-refresh ${loading ? 'spin' : ''}`} aria-hidden="true" /> Refresh
             </button>
-            <Link className="btn primary" to="/new">
+            <Link className="btn primary" to="/new" state={{ from: { label: 'projects' } }}>
               <i className="ti ti-plus" aria-hidden="true" /> New project
             </Link>
           </>
@@ -326,7 +326,7 @@ function ProjectsEmpty({ onLoadDemo }: { onLoadDemo: () => void }) {
       <SectionHeader
         title="Projects"
         actions={
-          <Link className="btn primary" to="/new">
+          <Link className="btn primary" to="/new" state={{ from: { label: 'projects' } }}>
             <i className="ti ti-plus" aria-hidden="true" /> New project
           </Link>
         }
@@ -337,7 +337,7 @@ function ProjectsEmpty({ onLoadDemo }: { onLoadDemo: () => void }) {
         body={<>Start one — the agent asks what it needs.</>}
         actions={
           <>
-            <Link className="btn primary" to="/new">
+            <Link className="btn primary" to="/new" state={{ from: { label: 'projects' } }}>
               <i className="ti ti-plus" aria-hidden="true" /> New project
             </Link>
             {DEMO_ENABLED && (

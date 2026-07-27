@@ -1,10 +1,10 @@
-import { useState } from 'react';
 import { getLearnedConclusions } from '../api/client';
 import type { ConclusionScope, LearnedConclusion } from '../api/types';
 import { Data } from '../components/ui/Data';
 import { Meter } from '../components/ui/Meter';
 import { EmptyState, SearchInput, SectionHeader } from '../components/ui/Primitives';
 import { useKnowledge } from '../hooks/useKnowledge';
+import { useQueryParam } from '../hooks/useQueryParam';
 
 /**
  * A kind is a CATEGORY, not a verdict. Painting `xrf-background` green would say "Pass" in
@@ -40,8 +40,10 @@ function iconFor(kind: string): string {
  * high-confidence finding is not a Pass.
  */
 export function LearnedConclusions() {
-  const [q, setQ] = useState('');
-  const [kind, setKind] = useState<string | null>(null);
+  // In the URL: a filtered view of what the system has learned survives leaving the screen.
+  // The empty string is "no facet", which is why the state below is compared against '' and not null.
+  const [q, setQ] = useQueryParam('q');
+  const [kind, setKind] = useQueryParam('kind');
 
   const state = useKnowledge<LearnedConclusion>(getLearnedConclusions, q);
 
@@ -88,9 +90,9 @@ export function LearnedConclusions() {
         <div style={{ display: 'flex', gap: 6, margin: '10px 0 0', flexWrap: 'wrap' }}>
           <button
             className="qr"
-            onClick={() => setKind(null)}
-            aria-pressed={kind === null}
-            style={kind === null ? { borderColor: 'var(--text-accent)', color: 'var(--text-accent)' } : undefined}
+            onClick={() => setKind('')}
+            aria-pressed={kind === ''}
+            style={kind === '' ? { borderColor: 'var(--text-accent)', color: 'var(--text-accent)' } : undefined}
           >
             All
           </button>
@@ -98,7 +100,7 @@ export function LearnedConclusions() {
             <button
               key={k}
               className="qr"
-              onClick={() => setKind(kind === k ? null : k)}
+              onClick={() => setKind(kind === k ? '' : k)}
               aria-pressed={kind === k}
               style={kind === k ? { borderColor: 'var(--text-accent)', color: 'var(--text-accent)' } : undefined}
             >
