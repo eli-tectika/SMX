@@ -1281,6 +1281,31 @@ describe('Decision', () => {
 Run: `npx vitest run src/routes/stages/Decision.test.tsx`
 Expected: FAIL — the component still imports fixtures and calls no client function.
 
+> **As built — read this before trusting the code block below.** The shipped implementation
+> (commits `c17901e`, `1d3eff8`, and the quality-review follow-up) diverges from this listing in
+> ways the reviews forced, and the *code* is the record. The divergences, and why:
+>
+> - **`awaiting-VP` was missing from the frontend `StageStatus` union** even though the dispatcher
+>   has always written it. Added, along with the `StageStatusCard` entries it forces, and `bucket()`
+>   now treats it as `needs-you` — a project parked on the VP is stopped and waiting on a human, and
+>   bucketing it `settled` hid work on the dashboard.
+> - **The gate is withdrawn once a determination is on the record**, replaced by a banner. `Gate`
+>   does not disable reject on a closed project, but the POST refuses one — a mounted gate there
+>   would offer a live-looking control the server rejects.
+> - **`Gate.canReject` requires `armed`** (see the corrected Task 4 note), and the `codes`
+>   requirement is marked approve-only via `appliesTo`, because the endpoint's `rejected` branch
+>   returns before it ever reads dosing.
+> - **The `codes` requirement mirrors the endpoint's membership check** against the DosingDoc rather
+>   than merely checking that a code was chosen.
+> - **The MSDS registry read is detached from the `Promise.all`.** It is a cross-project read that
+>   only the order rows need; letting it fail the whole screen replaced the gate with a false
+>   message. A failed read renders `unknown — the registry did not load`, never "no sheet on file",
+>   and disables the Order button — the inverse of `Cost.tsx`, because this button actually orders.
+> - **`Procurement` lives in its own file.**
+>
+> The block below is the original intent, kept for the reasoning in its comments.
+
+
 - [ ] **Step 3: Rewrite the component**
 
 Replace the entire contents of `src/routes/stages/Decision.tsx`:
