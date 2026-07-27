@@ -7,22 +7,26 @@ import {
   getCandidates,
   getChatThread,
   getCost,
+  getDecision,
   getDosing,
   getMatrix,
   getProject,
   getRegulatoryGate,
   getRevisions,
+  getVpGate,
   listProjects,
   matrixXlsxUrl,
+  orderSubstance,
   recordDetermination,
   recordLoading,
+  recordVpDetermination,
   reviewDosing,
   reviewEvidence,
   reviseStage,
   sendChatMessage,
   setAccessTokenProvider,
 } from './client';
-import type { CostDoc, CreateProjectRequest } from './types';
+import type { CostDoc, CreateProjectRequest, DecisionDoc } from './types';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -454,5 +458,119 @@ describe('reviewDosing', () => {
   it('returns NotFound when there is no dosing record to review', async () => {
     stubFetch(() => new Response('', { status: 404 }));
     await expect(reviewDosing('p1', { note: 'n' })).resolves.toBe(NotFound);
+  });
+});
+
+/* ---- Decision: the VP hard gate -------------------------------------------- */
+
+describe('getDecision', () => {
+  it('returns the NotFound sentinel before the stage has assembled a decision', async () => {
+    stubFetch(() => new Response('', { status: 404 }));
+    await expect(getDecision('p1')).resolves.toBe(NotFound);
+  });
+
+  it('returns the parsed DecisionDoc on 200, confirmedCode arriving as an explicit null', async () => {
+    const doc: DecisionDoc = {
+      id: 'p1|decision',
+      projectId: 'p1',
+      type: 'decision',
+      components: [
+        {
+          componentId: 'bottle',
+          rows: [
+            {
+              cas: '1314-36-9',
+              element: 'Y',
+              determination: 'Pass',
+              recommendedPpm: 120,
+              cleared: { regulatory: true, dosing: true, cost: true },
+              traceability: { verdict: 'p1|verdict|bottle|1314-36-9', window: 'p1|dosing', audit: 'p1|cost' },
+            },
+          ],
+          proposedCode: { ratioSignature: 'Y:120', markerCas: ['1314-36-9'], rationale: 'stoichiometric Y2O3' },
+          confirmedCode: null,
+        },
+      ],
+      procurement: { status: 'unreleased', orderedCas: [] },
+      generatedAt: '2026-07-27T00:00:00Z',
+    };
+    stubFetch(() => json(doc));
+    const res = await getDecision('p1');
+    expect(res).toEqual(doc);
+    expect((res as DecisionDoc).components[0].confirmedCode).toBeNull();
+  });
+});
+
+describe('getVpGate', () => {
+  it('returns the parsed gate on 200', async () => {
+    const gate = { status: 'locked', armable: false, blockers: ['dosing has not run — there are no finalized codes to confirm'] };
+    stubFetch(() => json(gate));
+    await expect(getVpGate('p1')).resolves.toEqual(gate);
+  });
+
+  it('throws rather than returning a sentinel on a non-ok status — the gate read never 404s', async () => {
+    stubFetch(() => json({ error: 'server error' }, 500));
+    await expect(getVpGate('p1')).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe('recordVpDetermination', () => {
+  it('POSTs the determination and returns the approved status', async () => {
+    let seen: { url: string; init?: RequestInit } | undefined;
+    stubFetch((url, init) => {
+      seen = { url, init };
+      return json({ status: 'approved' });
+    });
+    const req = {
+      determination: 'approved' as const,
+      reason: 'the R.E. and physics both cleared the ratio',
+      confirmations: [{ componentId: 'bottle', code: 'Y:120' }],
+    };
+    await expect(recordVpDetermination('p1', req)).resolves.toEqual({ status: 'approved' });
+    expect(seen?.url).toBe('/api/projects/p1/decision/determination');
+    expect(seen?.init?.method).toBe('POST');
+    expect(JSON.parse(String(seen?.init?.body))).toEqual(req);
+  });
+
+  it("throws an ApiError carrying the server message when the gate is not armable (422)", async () => {
+    stubFetch(() =>
+      json({ error: 'VP gate not armable', blockers: ['a revision is in flight for this project'] }, 422),
+    );
+    await expect(
+      recordVpDetermination('p1', { determination: 'approved', reason: 'r' }),
+    ).rejects.toThrow('VP gate not armable');
+    await expect(
+      recordVpDetermination('p1', { determination: 'approved', reason: 'r' }),
+    ).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe('orderSubstance', () => {
+  it('POSTs to the orders endpoint, URL-encoding the CAS, and returns the 202 body', async () => {
+    let seen: { url: string; init?: RequestInit } | undefined;
+    stubFetch((url, init) => {
+      seen = { url, init };
+      return json({ ordered: '1314-36-9' }, 202);
+    });
+    await expect(orderSubstance('p1', '1314-36-9')).resolves.toEqual({ ordered: '1314-36-9' });
+    expect(seen?.url).toBe('/api/projects/p1/orders/1314-36-9');
+    expect(seen?.init?.method).toBe('POST');
+  });
+
+  it('URL-encodes a CAS containing characters that need escaping', async () => {
+    let seen: { url: string; init?: RequestInit } | undefined;
+    stubFetch((url, init) => {
+      seen = { url, init };
+      return json({ ordered: 'a/b' }, 202);
+    });
+    await orderSubstance('p1', 'a/b');
+    expect(seen?.url).toBe('/api/projects/p1/orders/a%2Fb');
+  });
+
+  it("surfaces the server's 422 for MSDS-before-order verbatim", async () => {
+    stubFetch(() =>
+      json({ error: "MSDS-before-order: no reviewed MSDS on file for '1314-36-9' — review it via POST /msds-registry/1314-36-9/review first" }, 422),
+    );
+    await expect(orderSubstance('p1', '1314-36-9')).rejects.toThrow('MSDS-before-order');
   });
 });

@@ -5,6 +5,7 @@ import type {
   CostDoc,
   CreateProjectRequest,
   CreateProjectResponse,
+  DecisionDoc,
   Determination,
   DeterminationRequest,
   DocumentBytes,
@@ -32,6 +33,8 @@ import type {
   ReviseRequest,
   RevisionDoc,
   SessionAttachment,
+  VpDeterminationRequest,
+  VpGate,
   XrfConfirmed,
   XrfParseResult,
   XrfProposal,
@@ -623,4 +626,57 @@ export async function reviewDosing(
   if (res.status === 404) return NotFound;
   if (!res.ok) throw await failure(res);
   return (await res.json()) as { reviewed: true };
+}
+
+/* ---------------------------------------------------------------------------
+   DECISION — the VP hard gate and procurement release.
+   --------------------------------------------------------------------------- */
+
+/** The assembled decision, or the sentinel before the Decision stage has run. */
+export async function getDecision(projectId: string): Promise<DecisionDoc | NotFound> {
+  const res = await authorizedFetch(`${p(projectId)}/decision`);
+  if (res.status === 404) return NotFound;
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as DecisionDoc;
+}
+
+/** The VP gate's armability, computed server-side against the rules the POST enforces. Never 404s. */
+export async function getVpGate(projectId: string): Promise<VpGate> {
+  const res = await authorizedFetch(`${p(projectId)}/gate/vp`);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as VpGate;
+}
+
+/**
+ * Sign or reject the VP gate — the highest-consequence call in the system.
+ *
+ * Approval writes the Marker Library and a Learned Conclusion and releases procurement; rejection
+ * records a locked gate WITH the reason, so the audit trail shows the VP looked and said no.
+ *
+ * The backend re-checks armability and 422s if the record moved (a revision in flight, a stage no
+ * longer parked at awaiting-VP, a code that is not in the DosingDoc). So this can fail even when the
+ * button looked enabled — catch the ApiError, re-read the gate, and show its fresh blockers.
+ */
+export async function recordVpDetermination(
+  projectId: string,
+  req: VpDeterminationRequest,
+): Promise<{ status: 'approved' | 'rejected' }> {
+  const res = await postJson(`${p(projectId)}/decision/determination`, req);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as { status: 'approved' | 'rejected' };
+}
+
+/**
+ * Order one substance — gated by MSDS-before-order (spec §5).
+ *
+ * The 422 chain is release → signed-code membership → MSDS, so the error is always the FIRST rule the
+ * order breaks and a 4xx always means no order record exists. Surface the message verbatim: it names
+ * which rule stopped it.
+ */
+export async function orderSubstance(projectId: string, cas: string): Promise<{ ordered: string }> {
+  const res = await authorizedFetch(`${p(projectId)}/orders/${encodeURIComponent(cas)}`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as { ordered: string };
 }

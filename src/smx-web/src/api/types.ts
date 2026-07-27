@@ -265,6 +265,123 @@ export interface CandidatesDoc {
   substances: CandidateSubstance[];
 }
 
+/* ---------------------------------------------------------------------------
+   DECISION — src/Smx.Domain/Records/DecisionDoc.cs. The last stage of the journey.
+   --------------------------------------------------------------------------- */
+
+/**
+ * Which criteria a row has actually cleared — booleans DecisionAssembler computes FROM THE RECORD
+ * (a recommended determination, a dosable window, a priced audit), never asserted by an agent.
+ *
+ * There are three, not the four the old fixture drew. `xrf` and `compatibility` were never criteria
+ * the record evaluates at this stage.
+ */
+export interface ClearedCriteria {
+  regulatory: boolean;
+  dosing: boolean;
+  cost: boolean;
+}
+
+/** Where each claim in a row came from — RECORD IDS, so every figure is traceable end-to-end (§3.5). */
+export interface TraceRefs {
+  verdict: string;
+  window: string;
+  audit: string;
+}
+
+/** One substance's line in a component's decision. `determination` is the R.E.'s word, not the agent's. */
+export interface DecisionRow {
+  cas: string;
+  element: string;
+  determination: string;
+  recommendedPpm: number;
+  cleared: ClearedCriteria;
+  traceability: TraceRefs;
+}
+
+/** The agent's RECOMMENDED code for a component. A PROPOSAL — never render it as a signature. */
+export interface ProposedCode {
+  ratioSignature: string;
+  markerCas: string[];
+  rationale: string;
+}
+
+/**
+ * A component's decision.
+ *
+ * `proposedCode` is the AGENT's; `confirmedCode`/`confirmedBy`/`confirmedReason` are the VP's, written
+ * only by POST …/decision/determination. `confirmedCode` serializes as an EXPLICIT `null` while
+ * unconfirmed (a `JsonIgnore(Never)` attribute on the record exists precisely so the UI reads
+ * "not signed yet" off the wire rather than inferring it from a missing key). Law 9 in a type: a UI
+ * that gives these two fields one visual treatment is the agent signing the gate.
+ */
+export interface ComponentDecision {
+  componentId: string;
+  rows: DecisionRow[];
+  proposedCode?: ProposedCode;
+  /** Explicitly nullable — see the JsonIgnore note above. The ONLY `| null` in this group. */
+  confirmedCode: string | null;
+  confirmedBy?: string;
+  confirmedReason?: string;
+}
+
+/**
+ * Procurement is a STATE FLAG plus the substances actually ordered.
+ *
+ * `status` flips to `released` NOT by the signing call but by the ORCHESTRATOR reacting to the
+ * approved gate (StageDispatcher). So a UI that signs must re-poll: release is eventually consistent,
+ * and rendering the order controls straight off a 200 would offer an action the API still refuses.
+ */
+export interface ProcurementState {
+  status: 'unreleased' | 'released';
+  orderedCas: string[];
+}
+
+/** DecisionDoc — 404s until the Decision stage has assembled one. */
+export interface DecisionDoc {
+  id: string;
+  projectId: string;
+  type: string;
+  components: ComponentDecision[];
+  procurement: ProcurementState;
+  generatedAt: string;
+}
+
+/**
+ * GET /projects/{id}/gate/vp — DecisionEndpoints.cs.
+ *
+ * Same envelope as RegulatoryGate but DIFFERENT blocker semantics: these are plain-English sentences
+ * meant to be displayed verbatim, not the parseable "unreviewed: {cas}|{comp}" strings the regulatory
+ * gate emits. `armable` is computed server-side against the same rules the POST enforces, so the UI
+ * must read it rather than tally anything browser-side — a gate that advertises a pen the POST refuses
+ * is how a gate gets rubber-stamped.
+ */
+export interface VpGate {
+  status: 'locked' | 'approved';
+  armable: boolean;
+  blockers: string[];
+  approvedAt?: string;
+}
+
+/** One component's confirmed code. The VP may confirm the proposal or override with any REAL code. */
+export interface VpConfirmation {
+  componentId: string;
+  code: string;
+}
+
+/**
+ * POST /projects/{id}/decision/determination.
+ *
+ * `reason` is required for BOTH rulings — the backend 422s a blank one, and an override of a Fail
+ * most of all. `confirmations` is required to approve and must name every component with a code that
+ * exists in the DosingDoc for it; a signature over a nonexistent code is the false pass.
+ */
+export interface VpDeterminationRequest {
+  determination: 'approved' | 'rejected';
+  reason: string;
+  confirmations?: VpConfirmation[];
+}
+
 /** StageState — src/Smx.Domain/Records/ProjectDoc.cs */
 export interface StageState {
   status: StageStatus;
