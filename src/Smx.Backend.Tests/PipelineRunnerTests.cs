@@ -391,6 +391,60 @@ public class PipelineRunnerTests
         Assert.Equal(callsAfterFirst, agents.RegulatoryCalls);
     }
 
+    /// One parent run for the stage and one child per substance. The parent is what the operator cancels
+    /// and what the UI groups under; children carry `subject` so each is nameable. Grouping is therefore
+    /// EXPLICIT in the data rather than inferred from timing — fourteen substances screened in parallel
+    /// produce fourteen interleaved run docs, and timing cannot tell you which stage they belong to.
+    [Fact]
+    public async Task Regulatory_opens_a_parent_run_and_one_child_per_substance()
+    {
+        var (d, store, agents, runs) = Sut();
+        agents.Discovery = (_, c, _) => Task.FromResult(
+            Smx.Backend.Agents.AgentRunResult<CandidatesDoc>.Ok(new CandidatesDoc
+            {
+                Id = RecordIds.Candidates(c.ProjectId), ProjectId = c.ProjectId,
+                Substances = [.. new[] { "cas-a", "cas-b", "cas-c" }.Select(cas =>
+                    new CandidateSubstance("bottle", "Zr", "oxide", cas, null, null, true, "A", "ok",
+                        [new Citation("catalog", "ref-catalog/x", "t")]))],
+            }));
+        await Seed(store);
+
+        await d.RunAsync("p1", default);
+
+        var regulatory = (await runs.ListAsync("p1", Stages.Regulatory, default)).ToList();
+        var parent = Assert.Single(regulatory.Where(r => r.ParentRunId is null));
+        var children = regulatory.Where(r => r.ParentRunId == parent.Id).ToList();
+        Assert.Equal(3, children.Count);
+        Assert.All(children, c => Assert.NotNull(c.Subject));
+        Assert.Null(parent.Subject);                                   // the parent IS the stage
+        Assert.All(children, c => Assert.Equal(RunOutcome.Done, c.Outcome));
+        // Every child names the substance it screened, so a fourteen-way fan-out reads as fourteen
+        // nameable pieces of work rather than one opaque block.
+        Assert.Equal(
+            new[] { "cas-a|bottle", "cas-b|bottle", "cas-c|bottle" },
+            children.Select(c => c.Subject).OrderBy(x => x, StringComparer.Ordinal).ToArray());
+    }
+
+    /// A substance the agent could not screen still gets a verdict — one that SAYS so. An absent verdict
+    /// and a verdict reading "no cited verdict could be produced" are very different things downstream,
+    /// and only the second one blocks the gate honestly. Its child run says needs-review to match.
+    [Fact]
+    public async Task AFailedChild_LeavesANeedsReviewVerdict_AndANeedsReviewChildRun()
+    {
+        var (d, store, agents, runs) = Sut();
+        agents.Regulatory = (_, _, _) => Task.FromResult(
+            Smx.Backend.Agents.AgentRunResult<VerdictDoc>.NeedsReview("no retrieval"));
+        await Seed(store);
+
+        await d.RunAsync("p1", default);
+
+        var child = Assert.Single(
+            (await runs.ListAsync("p1", Stages.Regulatory, default)).Where(r => r.ParentRunId is not null));
+        Assert.Equal(RunOutcome.NeedsReview, child.Outcome);
+        Assert.Equal("no retrieval", child.Error);
+        Assert.Equal(VerdictStatus.NeedsReview, Assert.Single(await store.GetVerdictsAsync("p1")).Overall);
+    }
+
     [Fact]
     public async Task RegulatoryNeedsReview_WritesPlaceholderVerdict_MatrixStillAssembles()
     {
