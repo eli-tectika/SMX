@@ -47,7 +47,7 @@ Invoke-Native az webapp auth update -g $rg -n $app `
     --aad-client-id $clientId `
     --aad-token-issuer-url "https://login.microsoftonline.com/$tenantId/v2.0" --output none
 
-Write-Warn "Callers (ACA orchestrator) must present an Entra token for audience api://$appRegName."
+Write-Warn "Callers (the ACA backend) must present an Entra token for audience api://$appRegName."
 Write-Log "Keep Bicep in sync: redeploy with -Parameters @('authClientId=$clientId'), then run harden.ps1."
 
 # --- Search Proxy: its OWN app registration, never regsync's. Separate apps, separate identities,
@@ -67,9 +67,9 @@ if ([string]::IsNullOrWhiteSpace($proxyClientId)) {
 }
 
 # The audience is api://<appId>, NOT api://<display-name>: functions.bicep pins the proxy's
-# allowedAudiences to 'api://${proxyAuthClientId}' and main.bicep hands the orchestrator that same
+# allowedAudiences to 'api://${proxyAuthClientId}' and main.bicep hands the backend that same
 # string as SEARCH_PROXY_AUDIENCE. The identifier URI must exist in exactly that form or the token the
-# orchestrator asks for is one Entra will not mint. Setting it here keeps the script's state and the
+# backend asks for is one Entra will not mint. Setting it here keeps the script's state and the
 # Bicep's state identical, so the follow-up redeploy is idempotent rather than a flip-flop.
 $proxyAudience = "api://$proxyClientId"
 Invoke-Native az ad app update --id $proxyClientId --identifier-uris $proxyAudience --output none
@@ -81,9 +81,9 @@ Invoke-Native az webapp auth update -g $rg -n $proxyApp `
     --aad-client-id $proxyClientId `
     --aad-token-issuer-url "https://login.microsoftonline.com/$tenantId/v2.0" --output none
 
-Write-Warn "The ACA orchestrator must present a token for audience $proxyAudience (SEARCH_PROXY_AUDIENCE)."
+Write-Warn "The ACA backend must present a token for audience $proxyAudience (SEARCH_PROXY_AUDIENCE)."
 Write-Log "Keep Bicep in sync: redeploy with -Parameters @('proxyAuthClientId=$proxyClientId'). That redeploy is"
-Write-Log "not optional: it is also what sets the orchestrator's SEARCH_PROXY_AUDIENCE, empty until you pass it."
+Write-Log "not optional: it is also what sets the backend's SEARCH_PROXY_AUDIENCE, empty until you pass it."
 
 # =====================================================================================================
 # Frontend Entra app registrations (Task B1): the SPA (React web app) that signs the operator in, and

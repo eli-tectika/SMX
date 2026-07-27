@@ -8,7 +8,7 @@ the `.sh`. They are twins, not alternatives: fix a bug in one and fix it in the 
 lib.sh / lib.ps1                 shared helpers (naming, guards, logging) — sourced, not run
 preflight.*                      dry run: lint, register RPs, what-if
 deploy.*                         deploy the environment (subscription-scoped Bicep)
-build-images.*                   build frontend + backend + orchestrator images in ACR
+build-images.*                   build frontend + backend images in ACR
 swap-images.*                    repoint one Container App at an image (stopgap — see below)
 publish-functions.*              build + zip-deploy Smx.Functions to the regsync Function App
 publish-searchproxy.*            build + zip-deploy Smx.SearchProxy to the searchproxy Function App
@@ -38,8 +38,8 @@ Order matters, and two of the steps below exist only because of a chicken-and-eg
   secret is there.
 - **`configure-auth` before the redeploy that passes `proxyAuthClientId`.** Entra app objects are Graph
   resources, not ARM, so a script has to create them first. That redeploy is not cosmetic: it is also
-  what sets the orchestrator's `SEARCH_PROXY_AUDIENCE`, which stays **empty** until you pass the id —
-  and an orchestrator with no audience cannot call the proxy at all.
+  what sets the backend's `SEARCH_PROXY_AUDIENCE`, which stays **empty** until you pass the id —
+  and a backend with no audience cannot call the proxy at all.
 
 Both also have to happen **before `harden`**, along with `seed-reference-data`: all three need public
 reach (Key Vault, Storage, an Entra token), and `harden` is what takes that reach away.
@@ -55,7 +55,6 @@ reach (Key Vault, Storage, an Entra token), and `harden` is what takes that reac
 ./deploy.sh dev \                  # 7. one redeploy that wires steps 2/5/6 in
   -p frontendImage=<acr>.azurecr.io/smx-frontend:<tag> \
   -p backendImage=<acr>.azurecr.io/smx-backend:<tag> \
-  -p orchestratorImage=<acr>.azurecr.io/smx-orchestrator:<tag> \
   -p authClientId=<regsync-client-id> \
   -p proxyAuthClientId=<searchproxy-client-id> \
   -p proxySearchKeySecretUri=<uri from step 5> \
@@ -109,10 +108,10 @@ what harden closed.
 files: `.dev-local/backend.env` (exported into the backend) and `src/Smx.Functions/local.settings.json`.
 No keys are written — local auth is your own `az login` via `DefaultAzureCredential`.
 
-**The orchestrator and the Functions host are not started locally.** Both need AI Search and
-Foundry, which `harden` puts behind private endpoints; a laptop is not in the VNet and cannot
-reach them. `dev-local-setup` prints exactly which services are reachable, so check its output
-before assuming a hang is a bug in your code.
+**The Functions host is not started locally.** It needs AI Search and Foundry, which `harden`
+puts behind private endpoints; a laptop is not in the VNet and cannot reach them.
+`dev-local-setup` prints exactly which services are reachable, so check its output before
+assuming a hang is a bug in your code.
 
 **Cosmos is an IP allowlist.** It is the one backing service the local backend really uses, and
 it only accepts the IPs recorded at deploy time. If your public IP has changed, every Cosmos call

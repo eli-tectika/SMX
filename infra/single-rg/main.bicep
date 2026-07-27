@@ -56,9 +56,6 @@ param frontendImage string = ''
 @description('Backend API image (ACR path incl. tag). Empty = placeholder.')
 param backendImage string = ''
 
-@description('Orchestrator image (ACR path incl. tag). Empty = placeholder.')
-param orchestratorImage string = ''
-
 @description('Entra app-registration client id for Function App Easy Auth. Empty = auth OFF (first deploy); configure-auth.sh fills it in.')
 param authClientId string = ''
 
@@ -229,7 +226,6 @@ module compute 'modules/compute.bicep' = {
     acrLoginServer: acr.outputs.acrLoginServer
     frontendImage: frontendImage
     backendImage: backendImage
-    orchestratorImage: orchestratorImage
     uamiClientId: security.outputs.uamiClientId
     foundryEndpoint: ai.outputs.foundryEndpoint
     modelProvider: modelProvider
@@ -241,7 +237,7 @@ module compute 'modules/compute.bicep' = {
     bronzeFilesystem: data.outputs.bronzeFilesystem
     keyVaultUri: security.outputs.keyVaultUri
     appInsightsConnectionString: observability.outputs.appInsightsConnectionString
-    // The orchestrator reaches the proxy over its private endpoint; nothing here consumes compute's
+    // The backend reaches the proxy over its private endpoint; nothing here consumes compute's
     // outputs, so this dependency on functions does not close a cycle.
     searchProxyEndpoint: 'https://${functions.outputs.searchProxyDefaultHostName}'
     searchProxyAudience: empty(proxyAuthClientId) ? '' : 'api://${proxyAuthClientId}'

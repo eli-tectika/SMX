@@ -203,14 +203,17 @@ The first application code now lives under `src/` (this is no longer a pure-infr
     `blob:` URL inherits the app origin, which would make open-web regulatory HTML stored XSS.
   - The backend has **no CORS policy and needs none**: Vite's proxy (dev) and App Gateway's `apiPathRule`
     (Azure) both make `/api/*` same-origin.
-  - Deploy: `infra/scripts/build-images.sh <env>` (builds all three images), then pass the tag through
+  - Deploy: `infra/scripts/build-images.sh <env>` (builds both images), then pass the tag through
     the `frontendImage` Bicep parameter. `swap-images.sh` only mutates the live Container App, so the
     next `deploy.sh` reverts it to the placeholder — treat it as a stopgap, not a deploy.
-- **Agent backend** (`src/Smx.Backend.sln`: `Smx.Domain`, `Smx.Infrastructure`, `Smx.Backend` API,
-  `Smx.Orchestrator` agent host; deployed as the `backend` + `orchestrator` Container Apps) — the SMX
-  reasoning layer: self-managed **Microsoft Agent Framework** agents on **Claude Opus 4.7** (Foundry,
-  Anthropic-native endpoint) with RAG tools over the three AI Search indexes + the deterministic `ref-*`
-  Cosmos lookups, **record-as-bus** in the Cosmos `record` container (change-feed dispatch), and Excel-style
+- **Agent backend** (`src/Smx.Backend.sln`: `Smx.Domain`, `Smx.Infrastructure`, `Smx.Backend` API and
+  agent host in one process; deployed as the single `backend` Container App — `Smx.Orchestrator` no
+  longer exists as a separate project or app) — the SMX reasoning layer: self-managed **Microsoft Agent
+  Framework** agents on **Claude Opus 4.7** (Foundry, Anthropic-native endpoint) with RAG tools over the
+  three AI Search indexes + the deterministic `ref-*` Cosmos lookups, a **sequential pipeline runner**
+  (a hosted service in the same process, not change-feed dispatch) that advances each project's stages
+  in order and persists every step to a **run trail** (the Cosmos `runs` container, separate from
+  `record` so append-only telemetry never appears in a query that reads project state), and Excel-style
   compatibility-matrix output. The journey now ends at a **signed close**: Decision parks at the VP hard
   gate (`POST /projects/{id}/decision/determination`), whose approval writes the Marker Library + a
   Learned Conclusion and releases procurement behind MSDS-before-order (`POST /projects/{id}/orders/{cas}`);

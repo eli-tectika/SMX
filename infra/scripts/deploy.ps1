@@ -8,7 +8,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory, Position = 0)][string]$Environment,
-    # Extra Bicep parameters as 'name=value' - e.g. the three container image tags.
+    # Extra Bicep parameters as 'name=value' - e.g. the two container image tags.
     [string[]]$Parameters = @()
 )
 

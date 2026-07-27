@@ -125,8 +125,8 @@ The ordering is forced, not stylistic:
   `deploySearchKeyRbac` defaults to `false` and you flip it to `true` on the redeploy *after*
   `set-search-key`.
 - **The app registration exists before its client id.** Entra app objects are Graph, not ARM. The redeploy
-  that passes `proxyAuthClientId` is also what sets the orchestrator's `SEARCH_PROXY_AUDIENCE` — empty until
-  you pass it, and an orchestrator with no audience cannot call the proxy.
+  that passes `proxyAuthClientId` is also what sets the backend's `SEARCH_PROXY_AUDIENCE` — empty until
+  you pass it, and a backend with no audience cannot call the proxy.
 - **Both before `harden`**, which closes Key Vault's public access.
 
 **The key is never a plaintext app setting.** `PROXY_SEARCH_API_KEY` is a Key Vault *reference*

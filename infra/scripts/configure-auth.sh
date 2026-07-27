@@ -33,7 +33,7 @@ az webapp auth update -g "${RG}" -n "${APP}" \
   --aad-client-id "${CLIENT_ID}" \
   --aad-token-issuer-url "https://login.microsoftonline.com/${TENANT_ID}/v2.0" --output none
 
-warn "Callers (ACA orchestrator) must present an Entra token for audience api://${APP_REG_NAME}."
+warn "Callers (the ACA backend) must present an Entra token for audience api://${APP_REG_NAME}."
 log "Keep Bicep in sync: redeploy with -p authClientId=${CLIENT_ID}, then run harden.sh."
 
 # --- Search Proxy: its OWN app registration, never regsync's. Separate apps, separate identities,
@@ -51,9 +51,9 @@ if [ -z "${PROXY_CLIENT_ID}" ]; then
 fi
 
 # The audience is api://<appId>, NOT api://<display-name>: functions.bicep pins the proxy's
-# allowedAudiences to 'api://${proxyAuthClientId}' and main.bicep hands the orchestrator that same
+# allowedAudiences to 'api://${proxyAuthClientId}' and main.bicep hands the backend that same
 # string as SEARCH_PROXY_AUDIENCE. The identifier URI must exist in exactly that form or the token the
-# orchestrator asks for is one Entra will not mint. Setting it here keeps the script's state and the
+# backend asks for is one Entra will not mint. Setting it here keeps the script's state and the
 # Bicep's state identical, so the follow-up redeploy is idempotent rather than a flip-flop.
 PROXY_AUDIENCE="api://${PROXY_CLIENT_ID}"
 az ad app update --id "${PROXY_CLIENT_ID}" --identifier-uris "${PROXY_AUDIENCE}" --output none
@@ -65,9 +65,9 @@ az webapp auth update -g "${RG}" -n "${PROXY_APP}" \
   --aad-client-id "${PROXY_CLIENT_ID}" \
   --aad-token-issuer-url "https://login.microsoftonline.com/${TENANT_ID}/v2.0" --output none
 
-warn "The ACA orchestrator must present a token for audience ${PROXY_AUDIENCE} (SEARCH_PROXY_AUDIENCE)."
+warn "The ACA backend must present a token for audience ${PROXY_AUDIENCE} (SEARCH_PROXY_AUDIENCE)."
 log "Keep Bicep in sync: redeploy with -p proxyAuthClientId=${PROXY_CLIENT_ID}. That redeploy is not optional:"
-log "it is also what sets the orchestrator's SEARCH_PROXY_AUDIENCE, which is empty until you pass it."
+log "it is also what sets the backend's SEARCH_PROXY_AUDIENCE, which is empty until you pass it."
 
 # =====================================================================================================
 # Frontend Entra app registrations (Task B1): the SPA (React web app) that signs the operator in, and

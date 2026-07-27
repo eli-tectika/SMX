@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Build + push the frontend, backend and orchestrator images in ACR (cloud build, no local
+  Build + push the frontend and backend images in ACR (cloud build, no local
   Docker). Twin of build-images.sh.
 .DESCRIPTION
   Entra SPA auth (optional): Vite inlines import.meta.env.VITE_* at build time, so the SPA
@@ -28,7 +28,7 @@ param(
     # Build the STAKEHOLDER-DEMO frontend: it ships the fixture proj-demo (see
     # src/smx-web/Dockerfile). Tagged '-demo' so it can never be mistaken for a real image, and it
     # must be served from its own origin — never production (MSW registers a service worker at the
-    # origin scope; see src/smx-web/src/mocks/demo.ts). Backend/orchestrator images are unaffected.
+    # origin scope; see src/smx-web/src/mocks/demo.ts). The backend image is unaffected.
     [switch]$FrontendDemo
 )
 
@@ -71,9 +71,8 @@ if ($FrontendDemo) {
 # The frontend carries both sets: the Entra SPA args (always, empty => open mode) and, only
 # for a demo image, ENABLE_DEMO=true.
 $images = @(
-    @{ App = 'frontend';     Tag = $frontendTag; BuildArgs = ($frontendBuildArgs + $frontendArgs); Dockerfile = "$srcDir\smx-web\Dockerfile";          Context = "$srcDir\smx-web" },
-    @{ App = 'backend';      Tag = $Tag;         BuildArgs = @();                                  Dockerfile = "$srcDir\Smx.Backend\Dockerfile";      Context = $srcDir },
-    @{ App = 'orchestrator'; Tag = $Tag;         BuildArgs = @();                                  Dockerfile = "$srcDir\Smx.Orchestrator\Dockerfile"; Context = $srcDir }
+    @{ App = 'frontend'; Tag = $frontendTag; BuildArgs = ($frontendBuildArgs + $frontendArgs); Dockerfile = "$srcDir\smx-web\Dockerfile";     Context = "$srcDir\smx-web" },
+    @{ App = 'backend';  Tag = $Tag;         BuildArgs = @();                                  Dockerfile = "$srcDir\Smx.Backend\Dockerfile"; Context = $srcDir }
 )
 
 Write-Log "Building images in $acr (tag $Tag)"

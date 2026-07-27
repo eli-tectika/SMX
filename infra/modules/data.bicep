@@ -210,8 +210,7 @@ resource knowledgeCosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDat
   }
 }]
 
-// Agent-backend structured record — the record-as-bus. One container, discriminated
-// document types, partitioned by project.
+// Agent-backend structured record. One container, discriminated document types, partitioned by project.
 resource record 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
   parent: cosmosDb
   name: 'record'
@@ -223,14 +222,15 @@ resource record 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2
   }
 }
 
-// Change-feed processor leases for the orchestrator.
-resource recordLeases 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+// The run trail. Separate from `record` on purpose: append-only telemetry must never appear in a
+// query that reads project state.
+resource runs 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
   parent: cosmosDb
-  name: 'record-leases'
+  name: 'runs'
   properties: {
     resource: {
-      id: 'record-leases'
-      partitionKey: { paths: [ '/id' ], kind: 'Hash' }
+      id: 'runs'
+      partitionKey: { paths: [ '/projectId' ], kind: 'Hash' }
     }
   }
 }
@@ -267,5 +267,6 @@ output refBibliographyContainer string = refCosmosContainers[1].name
 output refSuppliersContainer string = refCosmosContainers[2].name
 output refCatalogContainer string = refCosmosContainers[3].name
 output recordContainer string = record.name
+output runsContainer string = runs.name
 output intakeSessionsContainer string = intakeSessions.name
 output cosmosDocumentEndpoint string = cosmos.properties.documentEndpoint
