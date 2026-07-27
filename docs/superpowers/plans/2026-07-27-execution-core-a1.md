@@ -518,6 +518,11 @@ public class RunTrailTests
 
         var run = await store.GetAsync("p1", "r1", default);
         Assert.Single(run!.Steps);
+        // ORDER MATTERS, and the lazy open is why: the first frame a subscriber sees is `entry`
+        // (the run group appearing), and only then the `step` that goes inside it. A step arriving
+        // first would have nothing to attach to on the client.
+        Assert.True(subscription.Reader.TryRead(out var opened));
+        Assert.Equal("entry", opened!.Event);
         Assert.True(subscription.Reader.TryRead(out var published));
         Assert.Equal("step", published!.Event);
     }
