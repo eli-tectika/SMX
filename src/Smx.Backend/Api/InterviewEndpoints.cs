@@ -77,8 +77,9 @@ public static class InterviewEndpoints
     private static async Task WriteEventAsync(HttpContext http, string name, object payload, CancellationToken ct)
     {
         await http.Response.WriteAsync($"event: {name}\ndata: {JsonSerializer.Serialize(payload, Json.Options)}\n\n", ct);
-        // Flush per event or the whole point is lost: a buffered response arrives in one lump and the
-        // operator watches a spinner, which is the outcome this endpoint exists to avoid.
+        // Belt-and-braces. ASP.NET Core already flushes response-body writes, and deleting this line
+        // keeps the streaming test green — but an explicit per-event flush is what the SSE contract
+        // actually asks for, and it costs nothing to not depend on that behaviour holding.
         await http.Response.Body.FlushAsync(ct);
     }
 }

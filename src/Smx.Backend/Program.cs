@@ -73,10 +73,21 @@ if (builder.Configuration["COSMOS_ACCOUNT_ENDPOINT"] is { Length: > 0 })
 if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] is { Length: > 0 })
     builder.Services.AddOpenTelemetry()
         .UseAzureMonitor()
-        // The distro instruments ASP.NET Core and HttpClient; it does not know about the MAF and Azure
-        // SDK ActivitySources an agent run emits on. Those spans ARE the view of a stage that hung, so
-        // the sources are added here rather than left to the distro's defaults.
-        .WithTracing(t => t.AddSource("*"));
+        // The distro instruments ASP.NET Core, HttpClient and the Azure SDK; it does not know about the
+        // agent framework's own sources. An agent run's spans are the only view there is of a stage that
+        // hung, so they are named here.
+        //
+        // NAMED, never AddSource("*"). The wildcard subscribes to the RUNTIME's own diagnostic sources,
+        // including System.Net.NameResolution — and the distro's standard-metrics processor calls
+        // Dns.GetHostName() from inside its own OnEnd, whose resource is still null on re-entry:
+        //   StandardMetricsExtractionProcessor.OnEnd → CreateAzureMonitorResource → Dns.GetHostName()
+        //     → NameResolutionActivity.Stop → StandardMetricsExtractionProcessor.OnEnd → ...
+        // That recursion is a StackOverflowException, which is not catchable and takes the whole process
+        // with it — and since the orchestrator was folded in, that process is ALL of SMX, not just stage
+        // dispatch. It does not fire on the pinned aspnet:8.0 base image only because those sources are
+        // .NET 9+; with RollForward=Major a routine base-image bump would arm it.
+        // See BackendTelemetryWiringTests, which fails if this list stops covering the agent sources.
+        .WithTracing(t => t.AddSource(AgentTelemetry.Sources));
 
 var app = builder.Build();
 // App Gateway path-based routing forwards /api/* WITHOUT stripping the prefix, so serve under it.
