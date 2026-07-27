@@ -74,3 +74,64 @@ export type ThreadEvent =
 export const isRunning = (r: RunSummary) => r.outcome === 'running';
 export const isRetryable = (r: RunSummary) =>
   r.outcome === 'failed' || r.outcome === 'needs-review' || r.outcome === 'cancelled';
+
+const BASE = '/api';
+
+/** A refusal the operator must see. `422` on rerun means "that stage is done"; do not swallow it. */
+export class ThreadError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(`${status}: ${message}`);
+  }
+}
+
+async function post(path: string, body?: unknown): Promise<Response> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new ThreadError(res.status, await res.text());
+  return res;
+}
+
+export async function getThread(projectId: string, stage: string): Promise<ThreadEntry[]> {
+  const res = await fetch(`${BASE}/projects/${projectId}/stages/${stage}/thread`);
+  if (!res.ok) throw new ThreadError(res.status, await res.text());
+  return (await res.json()) as ThreadEntry[];
+}
+
+export interface SendResult {
+  messageId: string;
+  seq: number;
+  /** true ⇒ a run is in flight; the agent sees this when it finishes. */
+  queued: boolean;
+}
+
+export async function sendMessage(
+  projectId: string,
+  stage: string,
+  text: string,
+): Promise<SendResult> {
+  const res = await post(`/projects/${projectId}/stages/${stage}/messages`, { text });
+  return (await res.json()) as SendResult;
+}
+
+/**
+ * Cancel targets the RUN, not the stage — a stage may hold several runs (regulatory's fan-out),
+ * and the run id contains '|', which must be encoded or it splits the path.
+ */
+export async function cancelRun(projectId: string, runId: string): Promise<void> {
+  await post(`/projects/${projectId}/runs/${encodeURIComponent(runId)}/cancel`);
+}
+
+export async function rerunStage(projectId: string, stage: string): Promise<void> {
+  await post(`/projects/${projectId}/stages/${stage}/rerun`);
+}
+
+/** The stream URL. Opened by useThread with fetch + a reader — EventSource cannot carry auth headers. */
+export const streamUrl = (projectId: string, stage: string, since?: string) =>
+  `${BASE}/projects/${projectId}/stages/${stage}/thread/stream` +
+  (since ? `?since=${encodeURIComponent(since)}` : '');
