@@ -1,10 +1,12 @@
-import { useState } from 'react';
-import type { ProjectSummary } from '../../api/types';
-import { MockBadge } from '../../components/MockBadge';
+import { useCallback, useEffect, useState } from 'react';
+import { NotFound, getCandidates } from '../../api/client';
+import type { CandidateSubstance, CandidatesDoc } from '../../api/types';
+import { Loading } from '../../components/Loading';
 import { ReviseForm, RevisionTrail } from '../../components/RevisionControls';
 import { StageStatusCard } from '../../components/StageStatusCard';
-import { BarRow, CitationChip } from '../../components/ui/Primitives';
-import discovery from '../../mocks/fixtures/discovery.json';
+import { Data } from '../../components/ui/Data';
+import { CitationChip, EmptyState, SectionHeader } from '../../components/ui/Primitives';
+import type { ScreenProps } from '../ProjectLayout';
 
 /** Tier IS a severity ordering — strong / needs-validation / excluded — so the verdict palette fits. */
 const TIER_CLASS: Record<string, string> = { A: 'v', B: 'l', C: 'x' };
@@ -13,175 +15,244 @@ const TIER_BG: Record<string, string> = {
   B: 'var(--text-pro)',
   C: 'var(--text-danger)',
 };
-
-interface Candidate {
-  element: string;
-  form: string;
-  cas: string;
-  metalPercent: number;
-  why: string;
-  sources: string[];
-}
-interface Tier {
-  tier: string;
-  candidates: Candidate[];
-}
+const TIERS = ['A', 'B', 'C'] as const;
 
 /**
- * Discovery & AI-screening (spec §4.3).
+ * Discovery & AI-screening (spec §4.3) — real.
  *
- * The screening stage's *status* is real — it comes from ProjectDoc.stages.screening.
- * The A/B/C candidate tiers are fixtures: the record persists verdict docs, not a
- * ranked pool, and exposes no endpoint for one.
+ * Three things this screen used to get wrong, and now cannot:
  *
- * Spec §4.3 calls this "the heaviest provenance burden" — the one stage of open-ended
- * search — so every candidate carries why-this-tier and its sources.
+ *  1. **Candidates are per-component tracks.** The fixture flattened them into one product-wide
+ *     ranked pool, which contradicts the architecture — background, form, ppm and codes all run
+ *     independently per component. Grouping is by component first, tier second.
+ *  2. **Citations are the agent's, verbatim.** The fixture passed `reference="catalog"` and a
+ *     fabricated `retrievedAt` to every chip. A citation without its retrieval date is a claim.
+ *  3. **Nothing is shown that the record does not hold.** The search queries and the metal-loading
+ *     bars are gone: Discovery never persists its queries, and no metal-loading figure exists
+ *     anywhere in the record. Drawing either was inventing evidence for the one stage the spec
+ *     calls "the heaviest provenance burden".
+ *
+ * `preferred` and the tier cap are the deterministic rails, surfaced: a web-only candidate is capped
+ * at tier B and can never be preferred (DiscoveryAgent.Validate), so a preferred row is a claim about
+ * corpus evidence.
  */
-export function Discovery({ project }: { project: ProjectSummary }) {
-  const [openTier, setOpenTier] = useState<string | null>('A');
-  const [reviseNonce, setReviseNonce] = useState(0);
-  const { queries, tiers } = discovery as { queries: string[]; tiers: Tier[] };
+export function Discovery({ project }: ScreenProps) {
+  const stage = project.stages.discovery;
+  const status = stage?.status;
 
-  const total = tiers.reduce((n, t) => n + t.candidates.length, 0);
-  const maxMetal = Math.max(...tiers.flatMap((t) => t.candidates.map((c) => c.metalPercent)));
+  const [doc, setDoc] = useState<CandidatesDoc | null>(null);
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'absent' | 'error'>('loading');
+  const [errMsg, setErrMsg] = useState<string>();
+  const [reviseNonce, setReviseNonce] = useState(0);
+
+  const load = useCallback(
+    async (signal?: { cancelled: boolean }) => {
+      try {
+        const res = await getCandidates(project.projectId);
+        if (signal?.cancelled) return;
+        if (res === NotFound) {
+          setDoc(null);
+          setPhase('absent');
+        } else {
+          setDoc(res);
+          setPhase('ready');
+        }
+      } catch (err) {
+        if (!signal?.cancelled) {
+          setErrMsg(err instanceof Error ? err.message : String(err));
+          setPhase('error');
+        }
+      }
+    },
+    [project.projectId],
+  );
+
+  useEffect(() => {
+    const signal = { cancelled: false };
+    void load(signal);
+    return () => {
+      signal.cancelled = true;
+    };
+  }, [load, status]);
+
+  if (phase === 'loading') return <Loading what="the candidate pool" />;
+
+  const substances = doc?.substances ?? [];
+  const components = [...new Set(substances.map((s) => s.componentId))];
+  const total = substances.length;
 
   return (
-    <section className="screen" data-provenance="mock">
+    <section className="screen">
       <div className="cap">
         <b>Discovery &amp; AI-screening</b>
-        Candidates + regulatory pre-checks
+        Candidates + regulatory pre-checks, per component
       </div>
 
-      <StageStatusCard name="Discovery agent" state={project.stages.discovery} />
+      <StageStatusCard name="Discovery agent" state={stage} />
 
-      <MockBadge note="The screening status above is real. The candidate tiers below are not — the record stores verdicts, not a ranked pool." />
-
-      {/* The tier shape, without having to open an accordion to learn anything. */}
-      <div style={{ marginBottom: 6 }}>
-        <div className="ribbon" role="img" aria-label={tiers.map((t) => `${t.candidates.length} tier ${t.tier}`).join(', ')}>
-          {tiers.map((t) =>
-            t.candidates.length ? (
-              <div
-                key={t.tier}
-                className="ribbon__seg"
-                style={{ width: `${(t.candidates.length / total) * 100}%`, background: TIER_BG[t.tier] }}
-                title={`${t.candidates.length} in tier ${t.tier}`}
-              />
-            ) : null,
-          )}
-        </div>
-        <div className="ribbon__key">
-          {tiers.map((t) => (
-            <span key={t.tier}>
-              <span className="ribbon__dot" style={{ background: TIER_BG[t.tier] }} />
-              {t.candidates.length} tier {t.tier}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ margin: '14px 0' }}>
-        {queries.map((q) => (
-          <span className="src" key={q}>
-            <i className="ti ti-search" aria-hidden="true" /> {q}
-          </span>
-        ))}
-      </div>
-
-      {tiers.map((t) => {
-        const isOpen = openTier === t.tier;
-        return (
-          <div className="card" key={t.tier} style={{ marginBottom: 10 }}>
-            <button
-              type="button"
-              onClick={() => setOpenTier(isOpen ? null : t.tier)}
-              aria-expanded={isOpen}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                width: '100%',
-                background: 'none',
-                border: 0,
-                padding: 0,
-                cursor: 'pointer',
-                textAlign: 'left',
-              }}
-            >
-              <span className={`chip ${TIER_CLASS[t.tier]}`}>{t.tier}</span>
-              <span style={{ fontSize: 12, fontWeight: 500 }}>
-                tier {t.tier} · {t.candidates.length} candidate
-                {t.candidates.length === 1 ? '' : 's'}
-              </span>
-              <i
-                className={`ti ${isOpen ? 'ti-chevron-up' : 'ti-chevron-down'}`}
-                style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}
-                aria-hidden="true"
-              />
-            </button>
-
-            {isOpen &&
-              t.candidates.map((c) => (
-                <div
-                  key={c.cas}
-                  style={{ borderTop: '1px solid var(--border)', marginTop: 12, paddingTop: 12 }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 13, fontWeight: 500 }}>
-                      {c.element} {c.form}
-                    </span>
-                    <span className="tiny muted data">
-                      CAS {c.cas}
-                    </span>
-                  </div>
-
-                  <div style={{ maxWidth: 300, margin: '6px 0' }}>
-                    <BarRow
-                      label={<span className="tiny muted">metal loading</span>}
-                      value={c.metalPercent}
-                      max={maxMetal}
-                      display={`${c.metalPercent}%`}
-                    />
-                  </div>
-
-                  <p className="small secondary" style={{ margin: '4px 0 4px' }}>
-                    {c.why}
-                  </p>
-
-                  <div>
-                    {c.sources.map((s) => (
-                      <CitationChip
-                        key={s}
-                        source={s}
-                        reference="catalog"
-                        retrievedAt="2026-07-01T00:00:00Z"
-                      />
-                    ))}
-                    <span className="tiny muted" style={{ marginLeft: 4 }}>
-                      {c.sources.length} independent source{c.sources.length === 1 ? '' : 's'}
-                    </span>
-                  </div>
-
-                  {/*
-                    No manual re-tiering (spec §1.4 / §4.3): the operator never hand-mutates the
-                    agent's record. This is the real path — name the candidate, state the reason, and
-                    the agent applies the change and records the reason as a Learned Conclusion.
-                  */}
-                  <div style={{ marginTop: 8 }}>
-                    <ReviseForm
-                      projectId={project.projectId}
-                      stage="discovery"
-                      fixedTarget={`${c.element} ${c.form}`}
-                      onRequested={() => setReviseNonce((n) => n + 1)}
-                    />
-                  </div>
-                </div>
-              ))}
+      {phase === 'error' && (
+        <div className="banner warn" role="alert">
+          <i className="ti ti-alert-triangle" aria-hidden="true" />
+          <div>
+            <b>The candidate pool could not be read.</b>
+            <div className="tiny" style={{ marginTop: 3 }}>{errMsg}</div>
           </div>
-        );
-      })}
+        </div>
+      )}
+
+      {phase === 'absent' && (
+        <EmptyState
+          icon="ti-flask-off"
+          title="No candidates yet."
+          body={
+            <>
+              Discovery writes its pool once it has screened the element pool against the catalog.
+              Until then there is nothing to rank — the stage status above says where it is.
+            </>
+          }
+        />
+      )}
+
+      {phase === 'ready' && total === 0 && (
+        <EmptyState
+          icon="ti-flask-off"
+          title="Discovery found no candidates."
+          body={
+            <>
+              The agent ran and produced an empty pool. That is a finding, not a gap: nothing in the
+              catalog matched this project's element pool.
+            </>
+          }
+        />
+      )}
+
+      {phase === 'ready' &&
+        components.map((component) => {
+          const forComponent = substances.filter((s) => s.componentId === component);
+          return (
+            <div key={component} style={{ marginBottom: 18 }}>
+              <SectionHeader
+                eyebrow={component}
+                count={forComponent.length}
+                hint="candidates on this component's own track"
+              />
+
+              {/* The tier shape, without having to open anything to learn it. */}
+              <div style={{ marginBottom: 10 }}>
+                <div
+                  className="ribbon"
+                  role="img"
+                  aria-label={TIERS.map(
+                    (t) => `${forComponent.filter((s) => s.tier === t).length} tier ${t}`,
+                  ).join(', ')}
+                >
+                  {TIERS.map((t) => {
+                    const n = forComponent.filter((s) => s.tier === t).length;
+                    return n ? (
+                      <div
+                        key={t}
+                        className="ribbon__seg"
+                        style={{ width: `${(n / forComponent.length) * 100}%`, background: TIER_BG[t] }}
+                        title={`${n} in tier ${t}`}
+                      />
+                    ) : null;
+                  })}
+                </div>
+                <div className="ribbon__key">
+                  {TIERS.map((t) => (
+                    <span key={t}>
+                      <span className="ribbon__dot" style={{ background: TIER_BG[t] }} />
+                      {forComponent.filter((s) => s.tier === t).length} tier {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {forComponent.map((c) => (
+                <CandidateCard
+                  key={`${c.componentId}|${c.cas}`}
+                  candidate={c}
+                  projectId={project.projectId}
+                  onRevised={() => setReviseNonce((n) => n + 1)}
+                />
+              ))}
+            </div>
+          );
+        })}
 
       <RevisionTrail projectId={project.projectId} refreshKey={reviseNonce} />
     </section>
+  );
+}
+
+function CandidateCard({
+  candidate: c,
+  projectId,
+  onRevised,
+}: {
+  candidate: CandidateSubstance;
+  projectId: string;
+  onRevised: () => void;
+}) {
+  return (
+    <div className="card" style={{ marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <span className={`chip ${TIER_CLASS[c.tier]}`}>{c.tier}</span>
+        <span style={{ fontSize: 13, fontWeight: 500 }}>
+          {c.element} {c.form}
+        </span>
+        <span className="tiny muted">
+          CAS <Data kind="code">{c.cas}</Data>
+        </span>
+        {/* Preferred is the agent's pick, and it is unreachable for a web-only candidate — so it
+            says something about the evidence, not just about the ranking. */}
+        {c.preferred && (
+          <span className="chip chip--neutral" title="The agent's preferred candidate on this component">
+            preferred
+          </span>
+        )}
+      </div>
+
+      {(c.particleSize || c.solvent) && (
+        <div className="tiny muted" style={{ marginTop: 4 }}>
+          {c.particleSize && <>particle size {c.particleSize}</>}
+          {c.particleSize && c.solvent && ' · '}
+          {c.solvent && <>solvent {c.solvent}</>}
+        </div>
+      )}
+
+      <p className="small secondary" style={{ margin: '6px 0 4px' }}>
+        {c.rationale}
+      </p>
+
+      <div>
+        {c.citations.map((cite) => (
+          <CitationChip
+            key={`${cite.source}|${cite.reference}`}
+            source={cite.source}
+            reference={cite.reference}
+            retrievedAt={cite.retrievedAt}
+            snippet={cite.snippet}
+          />
+        ))}
+        <span className="tiny muted" style={{ marginLeft: 4 }}>
+          {c.citations.length} source{c.citations.length === 1 ? '' : 's'}
+        </span>
+      </div>
+
+      {/*
+        No manual re-tiering (spec §1.4 / §4.3): the operator never hand-mutates the agent's record.
+        This is the real path — name the candidate, state the reason, and the agent applies the change
+        and records the reason as a Learned Conclusion.
+      */}
+      <div style={{ marginTop: 8 }}>
+        <ReviseForm
+          projectId={projectId}
+          stage="discovery"
+          fixedTarget={`${c.element} ${c.form}`}
+          onRequested={onRevised}
+        />
+      </div>
+    </div>
   );
 }
