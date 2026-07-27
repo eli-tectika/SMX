@@ -2,20 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { NotFound, getIntakeBrief, startProject } from '../../api/client';
 import type { IntakeBrief as Brief } from '../../api/types';
 import { IntakeBrief } from '../../components/IntakeBrief';
-import { MockBadge } from '../../components/MockBadge';
 import { StageStatusCard } from '../../components/StageStatusCard';
 import { Data } from '../../components/ui/Data';
 import { SectionHeader } from '../../components/ui/Primitives';
-import library from '../../mocks/fixtures/marker-library.json';
 import type { ScreenProps } from '../ProjectLayout';
-
-interface LibraryEntry {
-  code: string;
-  composition: string;
-  validatedFor: string[];
-  status: string;
-  reuseCount: number;
-}
 
 type BriefState =
   | { kind: 'loading' }
@@ -35,17 +25,15 @@ type BriefState =
  *  - A project created through the form/API has no brief; the record still holds the submitted payload,
  *    read back below in its own vocabulary.
  *
- * The screen keeps a hard boundary between what the RECORD proves and the one MOCK zone (the marker
- * library reuse the intake agent would surface but does not yet), because on a screen that mixes a
- * live record with illustrative content the operator must never have to guess which is which.
+ * There is one zone and it is the record's. The screen once carried a second, fixture band showing
+ * the Marker Library reuse an intake agent would surface — deleted, because nothing matches the
+ * library against a project and a list that pretends otherwise is a recommendation with no analysis
+ * behind it. The library stays browsable where it is real.
  */
 export function Intake({ project, refreshProject }: ScreenProps) {
   const [state, setState] = useState<BriefState>({ kind: 'loading' });
   const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
-
-  const { entries } = library as { entries: LibraryEntry[] };
-  const reusable = entries.filter((e) => e.status === 'approved');
 
   const payload = project.payload;
 
@@ -334,39 +322,6 @@ export function Intake({ project, refreshProject }: ScreenProps) {
             </div>
           </>
         )}
-      </section>
-
-      <section className="screen" data-provenance="mock">
-        <SectionHeader
-          eyebrow="Mock — what the intake agent would surface"
-          hint="The intake agent reads the Marker Library first"
-        />
-
-        <MockBadge note="No intake agent has run. Nothing below was matched against this project." />
-
-        <div className="small secondary" style={{ marginBottom: 10 }}>
-          An approved code that already covers a similar material is the cheapest possible outcome —
-          no discovery, no new regulatory screening, no new MSDS.
-        </div>
-
-        {reusable.map((e) => (
-          <div className="card" key={e.code} style={{ marginBottom: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="chip chip--neutral chip--mono">{e.code}</span>
-              <span className="small secondary">{e.composition}</span>
-              <span className="tiny muted" style={{ marginLeft: 'auto' }}>
-                reused {e.reuseCount}×
-              </span>
-            </div>
-            <div style={{ marginTop: 6 }}>
-              {e.validatedFor.map((v) => (
-                <span className="src" key={v}>
-                  {v}
-                </span>
-              ))}
-            </div>
-          </div>
-        ))}
       </section>
     </>
   );

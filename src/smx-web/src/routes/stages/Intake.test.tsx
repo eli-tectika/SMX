@@ -69,8 +69,8 @@ const renderIntake = (p = project(), refreshProject = vi.fn()) => {
   return refreshProject;
 };
 
-/** The record zone is the first `.screen`; the mock zone is the second. */
-const realZone = () => document.querySelectorAll('.screen')[0] as HTMLElement;
+/** The one zone on the screen — the payload read-back. */
+const realZone = () => document.querySelector('.screen') as HTMLElement;
 
 beforeEach(() => {
   vi.mocked(api.getIntakeBrief).mockResolvedValue(brief);
@@ -118,7 +118,7 @@ describe('the intake stage screen — the interview brief', () => {
 
 describe('Intake — the record zone', () => {
   // No interview brief in these, so the interview-brief `.screen` never renders and the record zone
-  // (the payload read-back) stays the FIRST `.screen` — which is what realZone() indexes.
+  // (the payload read-back) is the only `.screen` on the page — which is what realZone() finds.
   beforeEach(() => vi.mocked(api.getIntakeBrief).mockResolvedValue(api.NotFound));
 
   it('renders what the operator actually submitted, from the projection', () => {
@@ -132,16 +132,15 @@ describe('Intake — the record zone', () => {
   });
 
   /**
-   * The submitted inputs are the operator's OWN, not an agent's, so they belong in the record zone
-   * and carry no badge. The bar this guards is the opposite one: they must never drift into the
-   * mock surface, where a real value would print under "MOCK DATA — NOT FOR REGULATORY USE".
+   * The screen used to be two zones: a real record band and a fixture band behind a mock badge. The
+   * fixture band is gone, so there is exactly one zone and nothing on it is fabricated. If a second
+   * `.screen` ever reappears here, something was added that this test should be made to justify.
    */
-  it('keeps the submitted inputs out of the mock-provenance surface', () => {
+  it('renders one zone and carries no mock provenance marker', () => {
     renderIntake(project({ payload: PAYLOAD }));
-    expect(realZone()).not.toHaveAttribute('data-provenance', 'mock');
-    const mock = document.querySelector('.screen[data-provenance="mock"]') as HTMLElement;
-    expect(mock).toBeInTheDocument();
-    expect(within(mock).queryByText('HDPE')).not.toBeInTheDocument();
+    expect(document.querySelectorAll('.screen[data-provenance="mock"]').length).toBe(0);
+    expect(screen.queryByText(/Mock data/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/what the intake agent would surface/i)).not.toBeInTheDocument();
   });
 
   /**
