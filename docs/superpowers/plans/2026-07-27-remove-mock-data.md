@@ -195,7 +195,22 @@ const doc: CandidatesDoc = {
   type: 'candidates',
   substances: [
     candidate({ preferred: true }),
-    candidate({ element: 'Zr', cas: '1314-23-4', tier: 'B', componentId: 'lid' }),
+    // A DISTINCT citation. Both components render at once (there is no accordion), so a shared
+    // citation makes the singular `getByText(/Sigma-Aldrich/)` below match twice and throw.
+    candidate({
+      element: 'Zr',
+      cas: '1314-23-4',
+      tier: 'B',
+      componentId: 'lid',
+      citations: [{ source: 'Alfa Aesar', reference: '11081', retrievedAt: '2026-06-20T00:00:00Z' }],
+    }),
+    // Out of tier order on purpose: this is what pins the within-component sort.
+    candidate({
+      element: 'La',
+      cas: '1312-81-8',
+      tier: 'C',
+      citations: [{ source: 'Alfa Aesar', reference: '11286', retrievedAt: '2026-06-20T00:00:00Z' }],
+    }),
   ],
 };
 
@@ -237,6 +252,17 @@ describe('Discovery', () => {
     view();
     await waitFor(() => expect(screen.getByText(/no candidates/i)).toBeInTheDocument());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  /**
+   * The cards must agree with the tier ribbon drawn above them. Nothing else about the order may
+   * change: within a tier the agent's own sequence IS its ranking, and the UI does not re-rank it.
+   */
+  it('orders a component\'s candidates by tier, A before C', async () => {
+    const { container } = view();
+    await waitFor(() => expect(screen.getByText('bottle')).toBeInTheDocument());
+    const text = container.textContent ?? '';
+    expect(text.indexOf('1314-36-9')).toBeLessThan(text.indexOf('1312-81-8'));
   });
 
   /** The whole point of the change: nothing on this screen is fabricated. */
@@ -389,7 +415,15 @@ export function Discovery({ project }: ScreenProps) {
 
       {phase === 'ready' &&
         components.map((component) => {
-          const forComponent = substances.filter((s) => s.componentId === component);
+          /*
+            Sorted by tier, because the ribbon above the cards renders A/B/C left to right and the
+            cards must agree with it. `sort` is stable, so the agent's own ordering WITHIN a tier
+            survives — that order is its ranking and the UI does not get to re-rank it.
+          */
+          const forComponent = substances
+            .filter((s) => s.componentId === component)
+            .slice()
+            .sort((a, b) => TIERS.indexOf(a.tier) - TIERS.indexOf(b.tier));
           return (
             <div key={component} style={{ marginBottom: 18 }}>
               <SectionHeader
@@ -522,7 +556,7 @@ function CandidateCard({
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/routes/stages/Discovery.test.tsx`
-Expected: PASS, 4 tests.
+Expected: PASS, 5 tests.
 
 - [ ] **Step 5: Delete the fixture and verify nothing references it**
 
