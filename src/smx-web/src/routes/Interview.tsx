@@ -42,7 +42,7 @@ export function Interview() {
   // batches `setSending(true)` with the optimistic operator turn, so `turns.length` has usually
   // already moved in that commit — but it is the ONLY dep that changes on the empty-reply failure
   // path: the stream produces no text, so no turn is ever appended, and the sole visible change is
-  // `sending` flipping back to false as the "agent is thinking…" line disappears. Without it here,
+  // `sending` flipping back to false as the "Working…" line disappears. Without it here,
   // that commit shrinks the transcript with nothing re-measuring the scroll position.
   const scroller = useStickToBottom<HTMLDivElement>([session?.turns.length, streaming, sending]);
 
@@ -247,11 +247,23 @@ export function Interview() {
               </div>
             ))}
 
+            {/*
+              Deliberately NOT a live region. `streaming` is appended to on every chunk (see the
+              `send` function above), so this text mutates many times a second while a reply is
+              coming in. A screen reader that treats each mutation as a fresh announcement of the
+              region's whole content — which several do, since the update isn't a text-node diff,
+              it's a full re-render of the child — would re-read the ENTIRE accumulated reply after
+              every single token, which is far worse than the silence it would replace: not just
+              noisy but actually unable to keep up, so the operator would hear a stale partial
+              sentence restart over and over rather than ever hearing the finished one. The
+              "Working…" status below is the live announcement for this state; once the turn lands,
+              its own text sits in the transcript, calmly readable rather than shouted mid-arrival.
+            */}
             {streaming !== null && <div className="bub ba">{streaming}</div>}
 
             {sending && streaming === null && (
-              <div className="tiny muted">
-                <i className="ti ti-loader" data-running="" aria-hidden="true" /> The agent is thinking…
+              <div className="tiny muted" role="status" aria-live="polite">
+                <i className="ti ti-loader" data-running="" aria-hidden="true" /> Working…
               </div>
             )}
           </div>
@@ -309,7 +321,11 @@ export function Interview() {
                   style={{ display: 'none' }}
                 />
               </label>
-              {uploading && <span className="tiny muted">Storing and reading the file…</span>}
+              {uploading && (
+                <span className="tiny muted" role="status" aria-live="polite">
+                  Reading the file…
+                </span>
+              )}
               <button
                 className="btn primary"
                 type="button"
@@ -328,7 +344,7 @@ export function Interview() {
               only when they ask what is still missing. */}
           <div className="region" style={{ marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span className="tiny muted">
+              <span className="tiny muted" role="status" aria-live="polite">
                 {cov.covered} of {cov.total} covered
               </span>
               {cov.open.length > 0 && (

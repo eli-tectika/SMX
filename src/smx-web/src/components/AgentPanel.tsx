@@ -50,8 +50,11 @@ function ClosedPanel({ stageLabel }: { stageLabel: string }) {
     <PanelFrame stageLabel={stageLabel}>
       <div className="tiny muted" style={{ marginTop: 'auto', marginBottom: 'auto', textAlign: 'center', padding: 12 }}>
         <i className="ti ti-message-off" aria-hidden="true" style={{ fontSize: 20, display: 'block', marginBottom: 6 }} />
-        No agent for this stage. The conversation is available on intake, discovery, regulatory, the
-        matrix, dosing and cost — the stages the backend runs an agent for.
+        {/* The enumeration of which stages DO have agents used to live here too, but the stage spine
+            already shows that at a glance, and it cost this panel three lines of its whole height to
+            say a second time. The fact that matters here — this stage has no agent — is preserved;
+            only the redundant explanation is gone. */}
+        No agent on this stage.
       </div>
     </PanelFrame>
   );
@@ -104,12 +107,12 @@ function LiveChat({ projectId, stage, stageLabel }: { projectId: string; stage: 
     <PanelFrame stageLabel={stageLabel}>
       <div ref={scroller.ref} onScroll={scroller.onScroll} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {state.kind === 'loading' && (
-          <div className="tiny muted">
-            <i className="ti ti-loader" data-running="" aria-hidden="true" /> Loading the thread…
+          <div className="tiny muted" role="status" aria-live="polite">
+            <i className="ti ti-loader" data-running="" aria-hidden="true" /> Loading…
           </div>
         )}
         {state.kind === 'error' && (
-          <div className="tiny" style={{ color: 'var(--text-danger)' }}>
+          <div className="tiny" style={{ color: 'var(--text-danger)' }} role="alert">
             <i className="ti ti-alert-triangle" aria-hidden="true" /> {state.message}
           </div>
         )}
@@ -158,14 +161,14 @@ function LiveChat({ projectId, stage, stageLabel }: { projectId: string; stage: 
         ))}
 
         {pending && (
-          <div className="tiny muted">
-            <i className="ti ti-loader" data-running="" aria-hidden="true" /> The agent is working…
+          <div className="tiny muted" role="status" aria-live="polite">
+            <i className="ti ti-loader" data-running="" aria-hidden="true" /> Working…
           </div>
         )}
       </div>
 
       {error && (
-        <div className="tiny" style={{ color: 'var(--text-danger)', margin: '4px 0' }}>
+        <div className="tiny" style={{ color: 'var(--text-danger)', margin: '4px 0' }} role="alert">
           <i className="ti ti-alert-triangle" aria-hidden="true" /> {error}
         </div>
       )}

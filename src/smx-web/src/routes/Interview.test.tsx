@@ -185,3 +185,34 @@ describe('Interview composer', () => {
     expect(zone).toHaveAttribute('data-dragging', 'false');
   });
 });
+
+describe('Interview live regions', () => {
+  /**
+   * Without this, an operator using a screen reader gets no signal at all that they are waiting:
+   * the send button empties, and then nothing happens audibly until the whole reply has landed.
+   */
+  it('announces that the agent is working, politely', async () => {
+    // A promise that never resolves keeps the screen in the "sending, no chunk yet" state so the
+    // status line is observable — resolving (or rejecting) it would race the assertion below.
+    vi.mocked(api.sendInterviewMessage).mockImplementation(() => new Promise(() => {}));
+
+    const user = userEvent.setup();
+    renderAt();
+    const box = await screen.findByLabelText(/message the interview agent/i);
+    await user.type(box, 'the client is Acme');
+    await user.click(screen.getByRole('button', { name: /^send$/i }));
+
+    // Scoped rather than `getByRole('status')` bare: the coverage counter ("0 of 2 covered") is its
+    // own permanent `role="status"` region on this screen, so a singular query would throw on
+    // "multiple elements" the moment both are on screen at once — which, per the task's own warning,
+    // is a reason to scope the query, not a reason to strip the role from either node.
+    const status = await screen.findByText(/^working…$/i);
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+
+    // This is the only test in the file that leaves `sendInterviewMessage` permanently pending —
+    // restore the `beforeEach` default so a test added after this one does not inherit a promise
+    // that never settles.
+    vi.mocked(api.sendInterviewMessage).mockResolvedValue(undefined);
+  });
+});
