@@ -192,7 +192,7 @@ export function Matrix({ project }: { project: ProjectSummary }) {
             <>
               The assembler writes the matrix only after screening completes. Screening is currently{' '}
               <b>{screening}</b>
-        . This is the normal state of a young project, not a failure.
+        . This is normal for a young project, not a failure.
             </>
           }
         />

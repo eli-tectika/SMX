@@ -115,8 +115,8 @@ export function Cost({ project }: ScreenProps) {
           title="Nothing costed yet."
           body={
             <>
-              Cost prices the finalized codes, so it runs after dosing produces them. It is a deterministic
-              catalog lookup — there is no agent here to ask and nothing to revise.
+              Cost runs after dosing produces finalized codes. It&rsquo;s a deterministic catalog lookup
+              — there is no agent here to ask and nothing to revise.
             </>
           }
         />
@@ -160,9 +160,8 @@ export function Cost({ project }: ScreenProps) {
         <div className="banner warn">
           <i className="ti ti-alert-triangle" aria-hidden="true" />
           <div>
-            The MSDS registry did not load, so the safety-sheet status below is <b>unknown</b> — not
-            cleared. Spec §5 still makes a reviewed sheet a precondition for an order; check the registry
-            before ordering anything here.
+            The MSDS registry did not load — the safety-sheet status below is <b>unknown</b>, not cleared.
+            Spec §5 requires a reviewed sheet before ordering; check the registry directly.
           </div>
         </div>
       )}
@@ -264,8 +263,7 @@ function SubstanceAudit({
         <div className="banner danger" style={{ margin: '8px 0 0' }}>
           <i className="ti ti-file-alert" aria-hidden="true" />
           <div>
-            <b>Not orderable yet.</b> Spec §5 makes a reviewed safety data sheet a hard precondition for an
-            order.{' '}
+            <b>Not orderable yet.</b> Spec §5 requires a reviewed safety data sheet before an order.{' '}
             {sheet ? (
               <>
                 The sheet for <span className="data">{audit.cas}</span> is <b>{sheet.reviewStatus}</b>, not

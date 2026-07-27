@@ -119,9 +119,9 @@ export function LearnedConclusions() {
               <>No conclusion matches that filter.</>
             ) : (
               <>
-                A conclusion is written when you tell an agent <i>why</i> to change something,
-                and again when a project closes. Until then the system has no prior knowledge to
-                bring to a new project — which is a fact worth seeing, not a gap to fill.
+                A conclusion is written when you tell an agent <i>why</i> to change something, or
+                when a project closes. Until then, the system has no prior knowledge to bring to a
+                new project.
               </>
             )
           }

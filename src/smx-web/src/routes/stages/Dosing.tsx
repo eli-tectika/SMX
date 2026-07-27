@@ -119,9 +119,8 @@ export function Dosing({ project, refreshProject }: ScreenProps) {
           title="Waiting on physics."
           body={
             <>
-              Dosing needs a measured XRF background before it can compute a detection floor, and that comes
-              from the physics team offline. There is nothing to enter here — the background arrives at
-              intake, and dosing resumes on its own once it does.
+              Dosing needs a measured XRF background from the physics team, entered at intake. There is
+              nothing to enter here — dosing resumes on its own once it arrives.
             </>
           }
         />
@@ -141,12 +140,7 @@ export function Dosing({ project, refreshProject }: ScreenProps) {
         <EmptyState
           icon="ti-flask"
           title="No ppm windows yet."
-          body={
-            <>
-              Dosing runs once the regulatory gate is signed — it doses only the substances the operator
-              recommended, so it waits for that signature rather than guessing at the compliant set.
-            </>
-          }
+          body={<>Dosing runs once the regulatory gate is signed, on the substances it recommends.</>}
         />
       )}
 

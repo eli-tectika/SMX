@@ -106,7 +106,7 @@ export function Background({ project, refreshProject }: ScreenProps) {
         {/* Attached to the matrix it is about, not to the top of the screen: the zone above is real,
             and a badge floating over both would be a false claim in the other direction. */}
         <SectionHeader eyebrow="The verdict matrix" />
-        <MockBadge note="Fixture data. No agent has read the XRF result, so these V / L / X verdicts belong to no project — including this one. The objective toggle re-labels the legend but cannot re-evaluate anything. The XRF entry above this section IS real: it writes to the record." />
+        <MockBadge note="No agent has read the XRF result — these V / L / X verdicts belong to no project. The objective toggle relabels the legend; it does not re-evaluate anything. The XRF entry above this section is real and writes to the record." />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 14px' }}>
           <div className="seg" role="group" aria-label="Objective">

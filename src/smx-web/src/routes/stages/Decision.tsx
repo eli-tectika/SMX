@@ -233,8 +233,8 @@ export function Decision({ project }: { project: ProjectSummary }) {
                         ))}
                         {fails.length === 0 && (
                           <div className="tiny muted" style={{ marginTop: 6 }}>
-                            Cleared on all four criteria. Cleared is not approved — the VP gate is
-                            still the only thing that releases procurement.
+                            Cleared is not approved — the VP gate is the only thing that releases
+                            procurement.
                           </div>
                         )}
                       </div>

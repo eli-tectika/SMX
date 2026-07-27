@@ -125,8 +125,8 @@ export function Regulatory({ project }: { project: ProjectSummary }) {
           title="No verdicts to rule on yet."
           body={
             <>
-              The screening agents have not produced a compatibility matrix, so there is nothing to sign
-              off. Regulatory sign-off opens once discovery and screening complete.
+              Discovery and screening haven&rsquo;t produced a compatibility matrix yet. Sign-off opens
+              once they complete.
             </>
           }
         />

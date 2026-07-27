@@ -96,15 +96,11 @@ export function MarkerLibrary() {
           body={
             q ? (
               <>
-                No approved code matches “{q}”. That is a real answer, not a gap: only codes
-                that have passed the VP R&amp;D gate are written here.
+                No approved code matches “{q}” — only codes that passed the VP R&amp;D gate are
+                written here.
               </>
             ) : (
-              <>
-                No project has passed the VP R&amp;D gate yet. Signing that gate is what writes
-                a code here — and what lets the next project reuse it instead of rediscovering
-                it.
-              </>
+              <>No project has passed the VP R&amp;D gate yet. Signing it writes a code here.</>
             )
           }
         />

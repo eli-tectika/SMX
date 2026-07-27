@@ -177,7 +177,7 @@ export function Intake({ project, refreshProject }: ScreenProps) {
         {state.kind === 'none' && (
           <div className="tiny muted" style={{ marginTop: 10 }}>
             <i className="ti ti-eye-off" aria-hidden="true" /> This project was created through the
-            form, not through an interview, so there is no brief to read. What was submitted is below.
+            form, not an interview — there is no brief to read. What was submitted is below.
           </div>
         )}
 
@@ -326,10 +326,9 @@ export function Intake({ project, refreshProject }: ScreenProps) {
                     : payload.device
                       ? 'A device is on file, but no measured background is.'
                       : 'A measured background is on file, but no XRF device is.'}{' '}
-                  The physicist's run happens offline and can land days later, so intake does not
-                  demand it — but the detection floor is computed from the background and the
-                  device's LOD together, so dosing will park on <code>awaiting-physics</code> until
-                  both are on the record.
+                  The physicist's run happens offline and can land days later. The detection floor
+                  needs both the background and the device's LOD — dosing parks on{' '}
+                  <code>awaiting-physics</code> until both are on the record.
                 </div>
               )}
             </div>

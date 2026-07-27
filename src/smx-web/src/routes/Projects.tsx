@@ -89,7 +89,7 @@ export function Projects() {
         <StatCard
           label="Needs signing"
           absent
-          hint="not reportable — no gate state in the record"
+          hint="not reported"
         />
       </div>
 
@@ -144,8 +144,7 @@ function ProjectRow({ card, onForgetDemo }: { card: ProjectCard; onForgetDemo: (
           <div className="banner warn" style={{ margin: '10px 0 0' }}>
             <i className="ti ti-flask" aria-hidden="true" />
             <div>
-              <b>Demo data</b> — a fixture project, not a real record. Dev only. Use <i>Forget</i>{' '}
-              to remove it.
+              <b>Demo data</b> — a fixture project, not a real record.
             </div>
           </div>
         )}
@@ -308,8 +307,7 @@ function ProjectsError({ message, onRetry }: { message: string; onRetry: () => v
         title="Could not read the project list."
         body={
           <>
-            The record may be fine — this says only that <span className="data">GET /projects</span>{' '}
-            did not answer: {message}
+            <span className="data">GET /projects</span> did not answer: {message}
           </>
         }
         actions={
@@ -336,12 +334,7 @@ function ProjectsEmpty({ onLoadDemo }: { onLoadDemo: () => void }) {
       <EmptyState
         icon="ti-flask-2"
         title="No projects yet."
-        body={
-          <>
-            The record holds no projects. This is the whole record, not this browser's memory of it —
-            create one here and it will be waiting on any machine you sign in from.
-          </>
-        }
+        body={<>Start one — the agent asks what it needs.</>}
         actions={
           <>
             <Link className="btn primary" to="/new">
@@ -369,8 +362,7 @@ function ProjectsEmpty({ onLoadDemo }: { onLoadDemo: () => void }) {
           </div>
           <MiniSpine showLabels />
           <p className="tiny muted" style={{ marginTop: 10 }}>
-            Six are backed by the API today — intake, discovery, regulatory, matrix, dosing and cost.
-            The rest have no agent yet, and render fixture data behind a mock badge.
+            Six stages are backed by the API. The rest render fixture data behind a mock badge.
           </p>
         </div>
       </EmptyState>

@@ -214,8 +214,7 @@ export function Interview() {
     <>
       <div className="cap">
         <b>New project</b>
-        An interview, not a form. Tell the agent about the job; it asks the rest, records what you say,
-        and creates the project itself when it has enough.
+        Tell the agent about the job. It asks the rest.
       </div>
 
       {error && (
@@ -249,8 +248,7 @@ export function Interview() {
           >
             {session.turns.length === 0 && streaming === null && (
               <div className="tiny muted">
-                Nothing said yet. Start with who the client is and what the job is — and drop any file
-                you already have: a brief, a lab report, an email thread.
+                Start with the client and the job. Drop any file you already have.
               </div>
             )}
 
@@ -428,16 +426,13 @@ export function Interview() {
               className="btn primary"
               type="button"
               disabled={blocker !== null || sending}
+              title="Creating the project is the agent's own tool — it needs the summary and the component breakdown before it can call it."
               onClick={() =>
                 void send('Everything looks right. Please create the project now.')
               }
             >
               Create the project
             </button>
-            <span className="tiny muted">
-              Creating the project is the agent’s own tool — it needs the summary and the component
-              breakdown before it can call it.
-            </span>
             {blocker && (
               <div className="tiny" style={{ color: 'var(--text-warning)', flexBasis: '100%' }}>
                 <i className="ti ti-lock" aria-hidden="true" /> {blocker}
