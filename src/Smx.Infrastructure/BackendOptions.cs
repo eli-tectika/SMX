@@ -9,7 +9,6 @@ public sealed record BackendOptions(
     string CosmosAccountEndpoint,
     string CosmosDatabase,
     string RecordContainer,
-    string LeaseContainer,
     string CompatibilityContainer,
     string CatalogContainer,
     string LearnedConclusionsContainer,
@@ -51,6 +50,9 @@ public sealed record BackendOptions(
     /// see IntakeSessionDoc's class comment.
     public string IntakeSessionContainer { get; init; } = "intake-sessions";
 
+    /// The run-trail container. Separate from RecordContainer on purpose — see IRunStore.
+    public string RunContainer { get; init; } = "runs";
+
     /// The ADLS Gen2 account holding the `bronze` filesystem — the SDS PDFs and regulatory source
     /// documents. Empty in local dev, where BronzeLocalPath takes over.
     public string BronzeAccountName { get; init; } = "";
@@ -69,9 +71,9 @@ public sealed record BackendOptions(
     /// (an AIServices account serves OpenAI there too) when OPENAI_ENDPOINT is not set.
     public string ResolvedOpenAiEndpoint => string.IsNullOrEmpty(OpenAiEndpoint) ? FoundryEndpoint : OpenAiEndpoint;
 
-    // FOUNDRY_ENDPOINT / SEARCH_ENDPOINT default to "" (the API host doesn't use them);
-    // the components that actually need them throw — see FoundryChatClientFactory and the
-    // orchestrator Program.cs guard in Task 13.
+    // FOUNDRY_ENDPOINT / SEARCH_ENDPOINT default to "" (a host with no Cosmos configured — every
+    // endpoint test — doesn't use them); the components that actually need them throw. See
+    // FoundryChatClientFactory and the BackendHost.ConfigureServices guards in Smx.Backend/Program.cs.
     public static BackendOptions From(IConfiguration c) => new(
         FoundryEndpoint: c["FOUNDRY_ENDPOINT"] ?? "",
         ClaudeDeployment: c["CLAUDE_DEPLOYMENT"] ?? "claude-opus-4-7",
@@ -82,7 +84,6 @@ public sealed record BackendOptions(
         CosmosAccountEndpoint: c["COSMOS_ACCOUNT_ENDPOINT"] ?? throw new InvalidOperationException("COSMOS_ACCOUNT_ENDPOINT missing"),
         CosmosDatabase: c["COSMOS_DATABASE"] ?? "smx",
         RecordContainer: c["RECORD_CONTAINER"] ?? "record",
-        LeaseContainer: c["RECORD_LEASE_CONTAINER"] ?? "record-leases",
         CompatibilityContainer: c["COMPATIBILITY_CONTAINER"] ?? "ref-compatibility",
         CatalogContainer: c["CATALOG_CONTAINER"] ?? "ref-catalog",
         LearnedConclusionsContainer: c["LEARNED_CONCLUSIONS_CONTAINER"] ?? "learned-conclusions",
@@ -115,6 +116,7 @@ public sealed record BackendOptions(
         WebSearchProvider: c["WEB_SEARCH_PROVIDER"] ?? "hosted")
     {
         IntakeSessionContainer = c["INTAKE_SESSION_CONTAINER"] ?? "intake-sessions",
+        RunContainer = c["RUN_CONTAINER"] ?? "runs",
         BronzeAccountName = c["BRONZE_ACCOUNT_NAME"] ?? "",
         BronzeFilesystem = c["BRONZE_FILESYSTEM"] ?? "bronze",
         BronzeLocalPath = c["BRONZE_LOCAL_PATH"] ?? "",

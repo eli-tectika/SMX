@@ -8,10 +8,10 @@ using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
 using Smx.Domain.Tools;
-using Smx.Orchestrator.Agents;
-using Smx.Orchestrator.Dispatch;
-using Smx.Orchestrator.Knowledge;
-using Smx.Orchestrator.Tests.Fakes;
+using Smx.Backend.Agents;
+using Smx.Backend.Pipeline;
+using Smx.Backend.Knowledge;
+using Smx.Backend.Tests.Fakes;
 
 namespace Smx.Backend.Tests;
 

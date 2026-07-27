@@ -9,7 +9,7 @@ namespace Smx.Domain;
 
 /// One Learned Conclusion as an AI Search document. The wire names are pinned to the type with
 /// [JsonPropertyName] — deliberately, not left to DI: nothing in Smx.Backend.sln registers a camelCase
-/// serializer (Smx.Orchestrator builds bare SearchClients with default options), so a PascalCase payload
+/// serializer (Smx.Backend builds bare SearchClients with default options), so a PascalCase payload
 /// would miss the index schema and the reader's `doc["content"]` lookup would return "" for every hit.
 /// These names must match the schema built by LearnedConclusionsIndex.EnsureIndexAsync exactly.
 public sealed record LearnedConclusionChunk(

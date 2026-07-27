@@ -27,7 +27,7 @@ host.Run();
 namespace Smx.SearchProxy
 {
     /// Extracted from the top-level statements so HostWiringTests can build the real graph and catch a
-    /// missing registration at test time rather than at 3am (the OrchestratorHostWiringTests pattern).
+    /// missing registration at test time rather than at 3am (the BackendHostWiringTests pattern).
     public static class ProxyHost
     {
         public static void ConfigureServices(IServiceCollection services, IConfiguration config)

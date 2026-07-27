@@ -17,7 +17,7 @@
          MissingMethodException on whichever member happened to change shape.
 
          The constraints, and there is exactly one gap they all fit through:
-           • Microsoft.Agents.AI 1.13.0 (Smx.Orchestrator) floors Extensions.AI[.Abstractions] at 10.6.0.
+           • Microsoft.Agents.AI 1.13.0 (Smx.Backend) floors Extensions.AI[.Abstractions] at 10.6.0.
            • Extensions.AI.OpenAI must MATCH the Abstractions actually loaded — 10.4.1 against Abstractions
              10.6.0 threw 'Void WebSearchToolResultContent.set_Results(IList<AIContent>)'.
            • Extensions.AI.OpenAI 10.6.0 floors OpenAI at 2.10.0; 10.7.0 raises it to 2.11.0.
@@ -50,14 +50,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- CosmosQueryTextTests asserts on the SQL the LINQ provider generates for the private row
-         shapes in Search/CatalogLookup.cs and Search/CompatibilityLookup.cs. -->
-    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-      <_Parameter1>Smx.Orchestrator.Tests</_Parameter1>
-    </AssemblyAttribute>
-    <!-- SdsIndexTextReaderTests round-trips the real SdsIndexTextReader.Row through the real
-         serializer. A test-local copy of that record would prove nothing about the type the
-         production client actually binds to. -->
+    <!-- CosmosQueryTextTests asserts on the SQL the LINQ provider generates for the private row shapes in
+         Search/CatalogLookup.cs and Search/CompatibilityLookup.cs. SdsIndexTextReaderTests round-trips the
+         real SdsIndexTextReader.Row through the real serializer — a test-local copy of that record would
+         prove nothing about the type the production client actually binds to.
+         ONE attribute, not two: both test sets live in Smx.Backend.Tests now that the orchestrator has been
+         folded into the backend, and a repeated InternalsVisibleTo for the same assembly is a build error. -->
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>Smx.Backend.Tests</_Parameter1>
     </AssemblyAttribute>

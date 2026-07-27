@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
-using Smx.Orchestrator.Agents;
+using Smx.Backend.Agents;
 
 namespace Smx.Backend.Tests;
 

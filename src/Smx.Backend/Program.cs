@@ -1,16 +1,31 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using Azure.AI.OpenAI;
+using Azure.Core.Serialization;
 using Azure.Identity;
 using Azure.Monitor.OpenTelemetry.AspNetCore;
 using Azure.Search.Documents;
+using Azure.Search.Documents.Indexes;
 using Azure.Storage.Files.DataLake;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Azure.Cosmos;
+using OpenTelemetry.Trace;
+using Smx.Backend.Agents;
 using Smx.Backend.Api;
 using Smx.Backend.Extraction;
+using Smx.Backend.Knowledge;
+using Smx.Backend.Pipeline;
 using Smx.Domain;
 using Smx.Domain.Documents;
+using Smx.Domain.Tools;
 using Smx.Infrastructure;
+using Smx.Infrastructure.Search;
+
+// `LearnedConclusionsIndex` is BOTH a type (the AI Search write side) and a BackendOptions property (the
+// index NAME). Alias the type so `new LcSearchIndex(client, opts.LearnedConclusionsIndex)` reads as what
+// it is — a client over the index called `opts.LearnedConclusionsIndex`.
+using LcSearchIndex = Smx.Infrastructure.Search.LearnedConclusionsIndex;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.ConfigureHttpJsonOptions(o =>
@@ -53,132 +68,15 @@ if (authEnabled)
 
 // Production wiring only when configured; tests inject InMemoryRecordStore instead.
 if (builder.Configuration["COSMOS_ACCOUNT_ENDPOINT"] is { Length: > 0 })
-{
-    var opts = BackendOptions.From(builder.Configuration);
-    Azure.Core.TokenCredential credential = opts.UamiClientId is { } id
-        ? new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(id))
-        : new DefaultAzureCredential();
-    builder.Services.AddSingleton(new CosmosClient(opts.CosmosAccountEndpoint, credential, new CosmosClientOptions
-    {
-        // System.Text.Json (not the SDK's default Newtonsoft) — required to round-trip JsonElement
-        // (ProjectDoc.Payload + the ChangeFeedProcessor<JsonElement>). See SystemTextJsonCosmosSerializer.
-        Serializer = new SystemTextJsonCosmosSerializer(Json.Options),
-    }));
-    builder.Services.AddSingleton<IRecordStore>(sp => new CosmosRecordStore(
-        sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.RecordContainer)));
-    builder.Services.AddSingleton<IKnowledgeStore>(sp =>
-    {
-        var cosmos = sp.GetRequiredService<CosmosClient>();
-        return new CosmosKnowledgeStore(
-            cosmos.GetContainer(opts.CosmosDatabase, opts.LearnedConclusionsContainer),
-            cosmos.GetContainer(opts.CosmosDatabase, opts.MarkerLibraryContainer),
-            cosmos.GetContainer(opts.CosmosDatabase, opts.MsdsRegistryContainer),
-            cosmos.GetContainer(opts.CosmosDatabase, opts.SubstancePropertiesContainer));
-    });
+    BackendHost.ConfigureServices(builder.Services, builder.Configuration);
 
-    // Read-only view over the SDS subsystem's corpus registry: the MSDS Registry surface
-    // composes sheet facts from it at read time (design §6.3 — reference, don't duplicate).
-    builder.Services.AddSingleton<ISdsCorpusReader>(sp =>
-        new CosmosSdsCorpusReader(
-            sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.SdsRegistryContainer)));
-
-    builder.Services.AddSingleton<IIntakeSessionStore>(sp => new CosmosIntakeSessionStore(
-        sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.IntakeSessionContainer)));
-
-    // ── Document access layer (the file viewer's read side) ─────────────────────────────────────
-    // Everything below is read-only by construction: none of these types has a write method.
-    //
-    // sds-master-list, reg-registry, reg-state and reg-silver are literals rather than options
-    // because they name the regsync Functions app's estate, not this app's configuration surface;
-    // functions.bicep pins the same four names as literals on the writing side. SDS_REGISTRY_CONTAINER
-    // is an option here only because the MSDS Registry surface already made it one. If a later change
-    // makes these configurable, add them to BackendOptions alongside it — all five or none.
-    builder.Services.AddSingleton<IDocumentContentStore>(_ =>
-    {
-        // BRONZE_LOCAL_PATH stands a directory in for the filesystem in local dev, and wins when both
-        // are set. Neither set is a misconfiguration that has to name itself: an empty account name
-        // resolves to "https://.dfs.core.windows.net" and would otherwise surface as an opaque DNS
-        // failure on the operator's first click.
-        if (opts.BronzeLocalPath is { Length: > 0 }) return new LocalBronzeDocumentStore(opts.BronzeLocalPath);
-        if (opts.BronzeAccountName is not { Length: > 0 })
-            throw new InvalidOperationException(
-                "BRONZE_ACCOUNT_NAME is not set (BRONZE_LOCAL_PATH is the local-dev alternative) — " +
-                "the document viewer has no bronze filesystem to read.");
-        // The workload UAMI already holds Storage Blob Data Contributor at account scope
-        // (infra/modules/data.bicep). The missing half was this code, not the permission.
-        return new BronzeDocumentStore(
-            new DataLakeServiceClient(new Uri($"https://{opts.BronzeAccountName}.dfs.core.windows.net"), credential)
-                .GetFileSystemClient(opts.BronzeFilesystem));
-    });
-
-    builder.Services.AddSingleton<ISdsDocumentSource>(sp =>
-    {
-        var cosmos = sp.GetRequiredService<CosmosClient>();
-        return new CosmosSdsDocumentSource(
-            cosmos.GetContainer(opts.CosmosDatabase, opts.SdsRegistryContainer),
-            cosmos.GetContainer(opts.CosmosDatabase, "sds-master-list"));
-    });
-
-    builder.Services.AddSingleton<IRegDocumentSource>(sp =>
-    {
-        var cosmos = sp.GetRequiredService<CosmosClient>();
-        return new CosmosRegDocumentSource(
-            cosmos.GetContainer(opts.CosmosDatabase, "reg-registry"),
-            cosmos.GetContainer(opts.CosmosDatabase, "reg-state"));
-    });
-
-    builder.Services.AddSingleton<IDocumentCatalog>(sp => new DocumentCatalog(
-        new SdsDocumentProvider(sp.GetRequiredService<ISdsDocumentSource>()),
-        new RegDocumentProvider(sp.GetRequiredService<IRegDocumentSource>(),
-                                sp.GetRequiredService<IDocumentContentStore>())));
-
-    builder.Services.AddSingleton<IDocumentTextReader>(sp =>
-    {
-        // SDS chunks live in the AI Search index, not in Cosmos, so an unset SEARCH_ENDPOINT would
-        // reach `new Uri("")` and throw "the URI is empty" from somewhere that names nothing.
-        if (opts.SearchEndpoint is not { Length: > 0 })
-            throw new InvalidOperationException(
-                "SEARCH_ENDPOINT is not set — the document viewer reads SDS chunk text from the sds-index.");
-        return new CompositeDocumentTextReader(
-            new CosmosRegSilverTextReader(
-                sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, "reg-silver")),
-            // ClientOptions() is not optional: the SDK's default serializer is PascalCase and
-            // case-sensitive, and would bind every field of a camelCase index row to null in silence.
-            new SdsIndexTextReader(new SearchClient(
-                new Uri(opts.SearchEndpoint), opts.SdsIndex, credential, SdsIndexTextReader.ClientOptions())));
-    });
-
-    // Interview attachments live in the existing `bronze` ADLS filesystem. Registered only when
-    // configured, exactly like the Cosmos stores above: the tests inject an InMemoryAttachmentBlobStore
-    // and never construct a real client.
-    if (builder.Configuration["BRONZE_ACCOUNT_NAME"] is { Length: > 0 } bronzeAccount)
-    {
-        var filesystem = builder.Configuration["BRONZE_FILESYSTEM"] ?? "bronze";
-        builder.Services.AddSingleton<IAttachmentBlobStore>(_ => new BlobAttachmentStore(
-            new DataLakeServiceClient(new Uri($"https://{bronzeAccount}.dfs.core.windows.net"), credential)
-                .GetFileSystemClient(filesystem)));
-    }
-}
-
-if (builder.Configuration["ORCHESTRATOR_BASE_URL"] is { Length: > 0 } orchestratorUrl)
-{
-    builder.Services.AddHttpClient(IntakeSessionEndpoints.OrchestratorClient, c =>
-    {
-        c.BaseAddress = new Uri(orchestratorUrl);
-        // An interview turn is a model call with tool round-trips. The default 100 s is a plausible
-        // real duration here, not a pathological one.
-        c.Timeout = TimeSpan.FromMinutes(5);
-    });
-}
-else
-{
-    // Tests set no ORCHESTRATOR_BASE_URL and never exercise the proxy. Registering the factory anyway
-    // keeps DI resolvable so the ROUTE still builds — an unregistered IHttpClientFactory would break
-    // endpoint construction for the whole app (see trap 1).
-    builder.Services.AddHttpClient();
-}
 if (builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] is { Length: > 0 })
-    builder.Services.AddOpenTelemetry().UseAzureMonitor();
+    builder.Services.AddOpenTelemetry()
+        .UseAzureMonitor()
+        // The distro instruments ASP.NET Core and HttpClient; it does not know about the MAF and Azure
+        // SDK ActivitySources an agent run emits on. Those spans ARE the view of a stage that hung, so
+        // the sources are added here rather than left to the distro's defaults.
+        .WithTracing(t => t.AddSource("*"));
 
 var app = builder.Build();
 // App Gateway path-based routing forwards /api/* WITHOUT stripping the prefix, so serve under it.
@@ -203,6 +101,9 @@ app.MapDocumentEndpoints();
 app.MapDosingEndpoints();
 app.MapCostEndpoints();
 app.MapIntakeSessionEndpoints();
+// The interview's streaming turn. Served HERE, in the same process as the agent that answers it — it used
+// to be an SSE relay from this app to a second one, and the relay existed for no other reason.
+app.MapInterviewEndpoints();
 app.MapAttachmentEndpoints();
 app.MapIntakeBriefEndpoints();
 app.MapXrfEndpoints();
@@ -211,3 +112,234 @@ app.MapExportEndpoints();
 app.Run();
 
 public partial class Program { } // WebApplicationFactory hook
+
+/// Everything this app needs a configured estate for: the Cosmos stores, the document access layer, and —
+/// since the orchestrator was folded in — the agents, their tools and the run trail.
+///
+/// In one callable place so a test can actually BUILD it. `dotnet build` proves nothing about DI: a missing
+/// registration is a runtime failure at the first resolve, and for half of this graph that means in
+/// production, mid-interview or mid-stage. See Smx.Backend.Tests/BackendHostWiringTests.
+public static class BackendHost
+{
+    public static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
+    {
+        var opts = BackendOptions.From(configuration);
+        if (string.IsNullOrEmpty(opts.SearchEndpoint))
+            throw new InvalidOperationException("SEARCH_ENDPOINT missing — required for the agent host");
+        // Guarded HERE, not deferred to FoundryChatClientFactory: the embedder's AzureOpenAIClient is
+        // constructed eagerly below and needs a parseable URI, so an unset FOUNDRY_ENDPOINT would surface as
+        // an opaque UriFormatException from a client nobody mentioned instead of the missing setting.
+        if (string.IsNullOrEmpty(opts.FoundryEndpoint))
+            throw new InvalidOperationException("FOUNDRY_ENDPOINT missing — required for the agent host (chat + embeddings)");
+
+        Azure.Core.TokenCredential credential = opts.UamiClientId is { } id
+            ? new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(id))
+            : new DefaultAzureCredential();
+
+        services.AddSingleton(opts);
+        services.AddSingleton(credential);
+        services.AddSingleton(new CosmosClient(opts.CosmosAccountEndpoint, credential, new CosmosClientOptions
+        {
+            // System.Text.Json (not the SDK's default Newtonsoft) — required to round-trip JsonElement
+            // (ProjectDoc.Payload). See SystemTextJsonCosmosSerializer.
+            Serializer = new SystemTextJsonCosmosSerializer(Json.Options),
+        }));
+        services.AddSingleton<IRecordStore>(sp => new CosmosRecordStore(
+            sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.RecordContainer)));
+        // The run trail. Its OWN container, not `record`: a run is execution history, not an analytical
+        // output, and it must never appear on the record bus.
+        services.AddSingleton<IRunStore>(sp => new CosmosRunStore(
+            sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.RunContainer)));
+        services.AddSingleton<IIntakeSessionStore>(sp => new CosmosIntakeSessionStore(
+            sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.IntakeSessionContainer)));
+
+        // Read-only view over the SDS subsystem's corpus registry: the MSDS Registry surface
+        // composes sheet facts from it at read time (design §6.3 — reference, don't duplicate).
+        services.AddSingleton<ISdsCorpusReader>(sp => new CosmosSdsCorpusReader(
+            sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.SdsRegistryContainer)));
+
+        // Interview attachments live in the existing `bronze` ADLS filesystem. Registered only when
+        // configured, exactly like the Cosmos stores above: the tests inject an InMemoryAttachmentBlobStore
+        // and never construct a real client. Reuses the SAME `credential` built above; do not construct
+        // a second one.
+        if (configuration["BRONZE_ACCOUNT_NAME"] is { Length: > 0 } bronzeAccount)
+        {
+            var filesystem = configuration["BRONZE_FILESYSTEM"] ?? "bronze";
+            services.AddSingleton<IAttachmentBlobStore>(_ => new BlobAttachmentStore(
+                new DataLakeServiceClient(new Uri($"https://{bronzeAccount}.dfs.core.windows.net"), credential)
+                    .GetFileSystemClient(filesystem)));
+        }
+
+        // ── Document access layer (the file viewer's read side) ─────────────────────────────────────
+        // Everything below is read-only by construction: none of these types has a write method.
+        //
+        // sds-master-list, reg-registry, reg-state and reg-silver are literals rather than options
+        // because they name the regsync Functions app's estate, not this app's configuration surface;
+        // functions.bicep pins the same four names as literals on the writing side. SDS_REGISTRY_CONTAINER
+        // is an option here only because the MSDS Registry surface already made it one. If a later change
+        // makes these configurable, add them to BackendOptions alongside it — all five or none.
+        services.AddSingleton<IDocumentContentStore>(_ =>
+        {
+            // BRONZE_LOCAL_PATH stands a directory in for the filesystem in local dev, and wins when both
+            // are set. Neither set is a misconfiguration that has to name itself: an empty account name
+            // resolves to "https://.dfs.core.windows.net" and would otherwise surface as an opaque DNS
+            // failure on the operator's first click.
+            if (opts.BronzeLocalPath is { Length: > 0 }) return new LocalBronzeDocumentStore(opts.BronzeLocalPath);
+            if (opts.BronzeAccountName is not { Length: > 0 })
+                throw new InvalidOperationException(
+                    "BRONZE_ACCOUNT_NAME is not set (BRONZE_LOCAL_PATH is the local-dev alternative) — " +
+                    "the document viewer has no bronze filesystem to read.");
+            // The workload UAMI already holds Storage Blob Data Contributor at account scope
+            // (infra/modules/data.bicep). The missing half was this code, not the permission.
+            return new BronzeDocumentStore(
+                new DataLakeServiceClient(new Uri($"https://{opts.BronzeAccountName}.dfs.core.windows.net"), credential)
+                    .GetFileSystemClient(opts.BronzeFilesystem));
+        });
+
+        services.AddSingleton<ISdsDocumentSource>(sp =>
+        {
+            var cosmos = sp.GetRequiredService<CosmosClient>();
+            return new CosmosSdsDocumentSource(
+                cosmos.GetContainer(opts.CosmosDatabase, opts.SdsRegistryContainer),
+                cosmos.GetContainer(opts.CosmosDatabase, "sds-master-list"));
+        });
+
+        services.AddSingleton<IRegDocumentSource>(sp =>
+        {
+            var cosmos = sp.GetRequiredService<CosmosClient>();
+            return new CosmosRegDocumentSource(
+                cosmos.GetContainer(opts.CosmosDatabase, "reg-registry"),
+                cosmos.GetContainer(opts.CosmosDatabase, "reg-state"));
+        });
+
+        services.AddSingleton<IDocumentCatalog>(sp => new DocumentCatalog(
+            new SdsDocumentProvider(sp.GetRequiredService<ISdsDocumentSource>()),
+            new RegDocumentProvider(sp.GetRequiredService<IRegDocumentSource>(),
+                                    sp.GetRequiredService<IDocumentContentStore>())));
+
+        services.AddSingleton<IDocumentTextReader>(sp => new CompositeDocumentTextReader(
+            new CosmosRegSilverTextReader(
+                sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, "reg-silver")),
+            // ClientOptions() is not optional: the SDK's default serializer is PascalCase and
+            // case-sensitive, and would bind every field of a camelCase index row to null in silence.
+            new SdsIndexTextReader(new SearchClient(
+                new Uri(opts.SearchEndpoint), opts.SdsIndex, credential, SdsIndexTextReader.ClientOptions()))));
+
+        // ── The agents, their tools, and the deterministic lookups they answer from ──────────────────
+        services.AddSingleton<ICompatibilityLookup>(sp => new CosmosCompatibilityLookup(
+            sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.CompatibilityContainer)));
+        services.AddSingleton<ICatalogLookup>(sp => new CosmosCatalogLookup(
+            sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.CatalogContainer)));
+        services.AddSingleton<IKnowledgeStore>(sp =>
+        {
+            var cosmos = sp.GetRequiredService<CosmosClient>();
+            return new CosmosKnowledgeStore(
+                cosmos.GetContainer(opts.CosmosDatabase, opts.LearnedConclusionsContainer),
+                cosmos.GetContainer(opts.CosmosDatabase, opts.MarkerLibraryContainer),
+                cosmos.GetContainer(opts.CosmosDatabase, opts.MsdsRegistryContainer),
+                cosmos.GetContainer(opts.CosmosDatabase, opts.SubstancePropertiesContainer));
+        });
+
+        // ONE embedder, resolved from the container on BOTH sides of the learned-conclusions loop:
+        // LearnedConclusionsSearchTool vectorizes the agent's QUERY, LearnedConclusionWriter vectorizes the
+        // CONCLUSION it pushed. Both legs must use the SAME embedding model, or the query vector and the
+        // document vectors live in different spaces: cosine similarity between them is meaningless, the
+        // vector half of every hybrid search returns noise, and nothing errors — retrieval just silently
+        // degrades. A single shared singleton makes that structural instead of conventional; do not
+        // construct a second FoundryEmbedder anywhere.
+        services.AddSingleton<IEmbedder>(new FoundryEmbedder(
+            new AzureOpenAIClient(new Uri(opts.ResolvedOpenAiEndpoint), credential), opts.EmbeddingDeployment));
+
+        services.AddSingleton<ILearnedConclusionsSearch>(sp => new LearnedConclusionsSearchTool(
+            new SearchClient(new Uri(opts.SearchEndpoint), opts.LearnedConclusionsIndex, credential),
+            sp.GetRequiredService<IEmbedder>()));                                   // read side
+        services.AddSingleton<ILearnedConclusionsIndex>(new LcSearchIndex(
+            new SearchIndexClient(new Uri(opts.SearchEndpoint), credential, new SearchClientOptions
+            {
+                // camelCase so LearnedConclusionChunk maps onto the index's field names (id, content,
+                // contentVector, …). The chunk also pins them with [JsonPropertyName], so this is
+                // belt-and-braces — but the Functions writers rely on exactly this, and a mismatch here
+                // means the reader finds nothing, silently.
+                Serializer = new JsonObjectSerializer(
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }),
+            }),
+            opts.LearnedConclusionsIndex));                                          // write side (index name)
+        services.AddSingleton<ILearnedConclusionWriter, LearnedConclusionWriter>();  // Cosmos + index, same IEmbedder
+
+        services.AddSingleton<IRegulatorySearch>(new RegulatorySearchTool(
+            new SearchClient(new Uri(opts.SearchEndpoint), opts.RegulatoryIndex, credential)));
+        services.AddSingleton<ISdsSearch>(new SdsSearchTool(
+            new SearchClient(new Uri(opts.SearchEndpoint), opts.SdsIndex, credential)));
+        services.AddSingleton<IReferenceSearch>(new ReferenceSearchTool(
+            new SearchClient(new Uri(opts.SearchEndpoint), opts.ReferenceIndex, credential)));
+        // Web search. The tool is built PER PROJECT (it closes over that project's sensitive terms and its own
+        // stage budget), so what DI holds is a factory, not an instance.
+        //
+        // Fail-safe by construction: with no endpoint configured there is no proxy to call, so the tool reports
+        // itself disabled and Discovery falls back to the catalog. A missing deployment must degrade the system,
+        // not break it — and it must never silently egress instead.
+        var webEnabled = opts.WebSearchEnabled && !string.IsNullOrEmpty(opts.SearchProxyEndpoint);
+
+        // SearchProxyClient takes (HttpClient, TokenCredential, endpoint, audience, ILogger). The two strings
+        // mean a typed-client registration cannot construct it, so name the client and build it explicitly.
+        // Registered unconditionally so that switching to the anonymizing egress is a pure config flip
+        // (WEB_SEARCH_PROVIDER=proxy) with no code change and no redeploy. Both singletons are lazy: in the
+        // default hosted mode ToolBox never invokes the factory, so neither the proxy client nor WebSearchTool
+        // is ever actually constructed.
+        services.AddHttpClient(nameof(SearchProxyClient));
+        services.AddSingleton<ISearchProxyClient>(sp => new SearchProxyClient(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(SearchProxyClient)),
+            sp.GetRequiredService<Azure.Core.TokenCredential>(),
+            opts.SearchProxyEndpoint,
+            opts.SearchProxyAudience,
+            sp.GetRequiredService<ILogger<SearchProxyClient>>()));
+
+        services.AddSingleton<Func<SensitiveTerms, IWebSearch>>(sp => terms => new WebSearchTool(
+            sp.GetRequiredService<ISearchProxyClient>(),
+            terms,
+            webEnabled,
+            opts.WebSearchMaxPerStage,
+            sp.GetRequiredService<ILogger<WebSearchTool>>()));
+        // ToolBox takes the hosted-vs-proxy web-search flag as a bool, which DI cannot auto-resolve, so it is
+        // constructed explicitly. opts.UseHostedWebSearch selects the built-in tool (default) vs the legacy proxy.
+        services.AddSingleton(sp => new ToolBox(
+            sp.GetRequiredService<ICatalogLookup>(),
+            sp.GetRequiredService<ICompatibilityLookup>(),
+            sp.GetRequiredService<IRegulatorySearch>(),
+            sp.GetRequiredService<ISdsSearch>(),
+            sp.GetRequiredService<IReferenceSearch>(),
+            sp.GetRequiredService<IKnowledgeStore>(),
+            sp.GetRequiredService<ILearnedConclusionsSearch>(),
+            sp.GetRequiredService<Func<SensitiveTerms, IWebSearch>>(),
+            opts.UseHostedWebSearch));
+        services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(sp =>
+            FoundryChatClientFactory.CreateAsync(opts, credential).GetAwaiter().GetResult());
+        services.AddSingleton<IAgentRuns, AgentRuns>();
+
+        // ChatTools IS DELIBERATELY NOT REGISTERED HERE, and that absence is a safety property — do not
+        // "tidy" it into the container.
+        //
+        // StageDispatcher.OnChatMessageAsync constructs one PER TURN, closed over the (projectId, stage,
+        // chatKey) of the chat-message it is answering. That closure is the cross-project write guard:
+        // because the project is captured rather than passed, the model's tool schema offers no parameter
+        // with which to NAME a project — so it can only act on the one it is talking about. A singleton
+        // would have to take the project from somewhere ambient, and one hallucinated id would then mutate
+        // a DIFFERENT project's analysis: a revision queued against records the operator never asked about,
+        // no undo, and no reason for anyone to look. The per-turn binding turns "must not" into "cannot",
+        // which is the only form of that rule worth having.
+        //
+        // (ChatAgent is static and needs nothing; AgentRuns already holds the IChatClient and the ToolBox a
+        // chat turn reads with. So there is genuinely nothing else for chat to register — see
+        // BackendHostWiringTests.AChatTurnsTools_BuildFromTheRealGraph_ForEveryChattableStage, which
+        // builds a real turn's tool list out of this container rather than taking that on trust.)
+        // The two OPTIONAL trailing params are wired here deliberately — this is the "deferred production
+        // wiring" the StageDispatcher XML docs point at. Without the IKnowledgeStore every metal loading
+        // reads as unknown and Dosing parks in `awaiting-operator` forever; without the ICatalogLookup the
+        // Cost stage never prices (it degrades safely to `pending`). Both are the singletons registered
+        // above; the E2E (DosingCostEndToEndTests) proves the logic, this line turns it on.
+        services.AddSingleton(sp => new StageDispatcher(
+            sp.GetRequiredService<IRecordStore>(), sp.GetRequiredService<IAgentRuns>(),
+            sp.GetRequiredService<ILearnedConclusionWriter>(), opts.RegulatoryParallelism,
+            sp.GetRequiredService<IKnowledgeStore>(), sp.GetRequiredService<ICatalogLookup>()));
+    }
+}

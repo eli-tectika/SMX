@@ -3,16 +3,17 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Smx.Backend.Pipeline;
+using Smx.Backend.Tests.Fakes;
 using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
 
 namespace Smx.Backend.Tests;
 
-/// The backend's side of the pre-project interview (Task 11). The backend owns session CRUD and JWT
-/// validation; the orchestrator owns the agent — Task 10's InterviewEndpointsTests covers that side.
-/// This class covers session create/read and that the SSE proxy route builds without breaking routing
-/// for the rest of the app (trap 1).
+/// The pre-project interview's HTTP surface as the browser meets it: session create/read here, the
+/// streaming turn's own behaviour in InterviewEndpointsTests. Both routes are served by this one app —
+/// there is no second host and no proxy hop any more.
 public class IntakeSessionEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly WebApplicationFactory<Program> _factory;
@@ -68,24 +69,30 @@ public class IntakeSessionEndpointsTests : IClassFixture<WebApplicationFactory<P
     }
 
     [Fact]
-    public async Task Messages_ProxiesTheOrchestratorsEventsToTheClient_WithoutWaitingForTheTurnToEnd()
+    public async Task Messages_ReachTheClientAsTheAgentProducesThem_NotInOneLumpAtTheEnd()
     {
-        // The proxy's ONLY job is to relay without re-buffering, and nothing else in the suite would
-        // notice it starting to. Losing that turns the whole streaming path — proven end to end in
-        // MafStreamingPathTests, flushed per event by the orchestrator — into a one-lump arrival at the
-        // last hop, which no test that simply reads the finished body could see.
+        // This used to test the SSE PROXY (backend → orchestrator). There is no proxy any more — the
+        // agent runs in this process — but the guarantee it existed to protect is unchanged and is
+        // exactly as easy to lose: an interview turn is only worth streaming if each event leaves the
+        // server when it is produced. Nothing else in the suite would notice this path starting to
+        // buffer, because a test that simply reads the finished body cannot tell the difference.
         //
-        // The gate makes this decisive rather than a timing guess: the fake orchestrator refuses to send
-        // its LAST event until the client has already read the first one. If anything on the path
-        // buffers, this deadlocks and the test times out.
+        // The gate makes it decisive rather than a timing guess: the fake agent refuses to yield its
+        // LAST chunk until the client has already read the first event off the wire. If anything on the
+        // path buffers, this deadlocks and the test times out.
         var firstEventSeen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var sessions = new InMemoryIntakeSessionStore();
+        await sessions.UpsertAsync(new IntakeSessionDoc
+        {
+            Id = "isx-abc", SessionId = "isx-abc", CreatedAt = DateTimeOffset.UtcNow.ToString("O"),
+        });
+        var runs = new FakeAgentRuns { Interview = (_, _, _) => GatedChunks(firstEventSeen) };
         using var app = _factory.WithWebHostBuilder(b => b.ConfigureServices(s =>
         {
             s.AddSingleton<IIntakeSessionStore>(sessions);
-            s.AddHttpClient(Api.IntakeSessionEndpoints.OrchestratorClient)
-                .ConfigurePrimaryHttpMessageHandler(() => new FakeOrchestrator(firstEventSeen))
-                .ConfigureHttpClient(c => c.BaseAddress = new Uri("http://orchestrator.internal"));
+            s.AddSingleton<IRecordStore>(new InMemoryRecordStore());
+            s.AddSingleton<IAttachmentBlobStore>(new InMemoryAttachmentBlobStore());
+            s.AddSingleton<IAgentRuns>(runs);
         }));
 
         // ResponseHeadersRead on the CLIENT too: HttpClient's default buffers the whole body before
@@ -105,47 +112,20 @@ public class IntakeSessionEndpointsTests : IClassFixture<WebApplicationFactory<P
         while ((line = await reader.ReadLineAsync()) is not null)
         {
             if (line.StartsWith("event: ", StringComparison.Ordinal)) seen.Add(line["event: ".Length..]);
-            // Releases the fake orchestrator's final event. Reaching this at all proves the first event
-            // crossed the proxy while the upstream response was still open.
+            // Releases the fake agent's remaining chunk. Reaching this at all proves the first event
+            // crossed the whole stack while the turn was still running.
             if (seen.Count > 0) firstEventSeen.TrySetResult();
         }
 
-        Assert.Equal(["chunk", "done"], seen);
+        Assert.Equal(["chunk", "chunk", "done"], seen);
     }
 
-    /// A stand-in for the orchestrator's SSE surface. Writes into a real pipe so the response body is
-    /// genuinely streamed — a plain custom HttpContent would buffer itself into a MemoryStream and fake
-    /// up a passing result no matter what the proxy did.
-    private sealed class FakeOrchestrator(TaskCompletionSource gate) : HttpMessageHandler
+    /// Two chunks with a gate between them: the second is withheld until the client has read the first.
+    private static async IAsyncEnumerable<string> GatedChunks(TaskCompletionSource gate)
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-        {
-            var pipe = new System.IO.Pipelines.Pipe();
-            _ = Task.Run(async () =>
-            {
-                var stream = pipe.Writer.AsStream();
-                async Task Write(string s)
-                {
-                    await stream.WriteAsync(System.Text.Encoding.UTF8.GetBytes(s), ct);
-                    await stream.FlushAsync(ct);
-                }
-                try
-                {
-                    await Write("event: chunk\ndata: {\"text\":\"Hel\"}\n\n");
-                    await gate.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
-                    await Write("event: done\ndata: {\"createdProjectId\":null}\n\n");
-                    await pipe.Writer.CompleteAsync();
-                }
-                catch (Exception e) { await pipe.Writer.CompleteAsync(e); }
-            }, ct);
-
-            var res = new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StreamContent(pipe.Reader.AsStream()),
-            };
-            res.Content.Headers.ContentType = new("text/event-stream");
-            return Task.FromResult(res);
-        }
+        yield return "Hel";
+        await gate.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        yield return "lo";
     }
 
     [Fact]

@@ -44,7 +44,7 @@ namespace Smx.Infrastructure;
 /// </para>
 ///
 /// <para>
-/// <c>CosmosQueryTextTests</c> (in Smx.Orchestrator.Tests) is the guard: it asserts on the SQL text the SDK
+/// <c>CosmosQueryTextTests</c> (in Smx.Backend.Tests) is the guard: it asserts on the SQL text the SDK
 /// actually emits. If you change the base class, that is the test that will fail. Believe it.
 /// </para>
 /// </summary>

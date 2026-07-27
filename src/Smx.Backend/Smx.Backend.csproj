@@ -15,6 +15,15 @@
          ClosedXML 0.104.2 actually resolves (verified via "dotnet list package, include transitive"). -->
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.1" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.29" />
+    <!-- ── From the folded-in orchestrator ──────────────────────────────────────────────────────
+         Microsoft Agent Framework: this app now HOSTS the agents, it no longer proxies to a host. -->
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.13.0" />
+    <!-- IHttpClientFactory, for the named client the SearchProxyClient is built over. -->
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.*" />
+    <!-- The Azure Monitor distro above configures OpenTelemetry; this is what lets Program.cs reach
+         its TracerProvider to add the MAF + Azure SDK activity sources (AddSource("*")). Without it
+         an agent run produces no spans, which is the only view there is of a stage that hung. -->
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.16.0" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -23,5 +32,17 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The agents' `internal static string? Validate(...)` functions are pure and are the cheapest place to
+         pin an invariant exhaustively (RegulatoryAgentTests): the runner feeds their error string back to the
+         model, so a rule that lives here is a rule no model output can slip past. Tested directly rather than
+         through a scripted agent, and internal rather than public, because they are not an API.
+         DiscoveryAgentTests drives DiscoveryAgent.Validate the same way — the web-evidence rails are
+         deterministic code, so they are tested as code rather than through a scripted agent round-trip. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Smx.Backend.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 
 </Project>
