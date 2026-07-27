@@ -40,6 +40,7 @@
 
   <ItemGroup>
     <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryRecordStore.cs" Link="Fakes/InMemoryRecordStore.cs" />
+    <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryRunStore.cs" Link="Fakes/InMemoryRunStore.cs" />
     <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryKnowledgeStore.cs" Link="Fakes/InMemoryKnowledgeStore.cs" />
     <Compile Include="../Smx.Domain.Tests/Fakes/InMemorySdsCorpusReader.cs" Link="Fakes/InMemorySdsCorpusReader.cs" />
     <Compile Include="../Smx.Domain.Tests/Fakes/InMemoryIntakeSessionStore.cs"
