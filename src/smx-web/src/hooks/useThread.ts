@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createSseParser } from '../api/sse';
 import { getThread, streamUrl } from '../api/thread';
 import type { ThreadEntry } from '../api/thread';
@@ -13,6 +13,16 @@ export interface ThreadState {
   live: boolean;
   loading: boolean;
   error: string | null;
+  /**
+   * Re-read the thread now.
+   *
+   * Needed because the stream is not a complete record of what changes. The server does not publish
+   * message entries to the hub — a message belongs to no run, so it has no id in the `{runId}` cursor
+   * space a reconnect replays from (ThreadEndpoints, the "NOT PUBLISHED" note) — and the degraded
+   * poll only runs while the stream is DOWN. On a healthy connection an operator's own message would
+   * otherwise never appear. Call this after any write the stream will not carry back.
+   */
+  refresh: () => Promise<void>;
 }
 
 /**
@@ -32,6 +42,9 @@ export function useThread(projectId: string, stage: string): ThreadState {
   // Read by the poll interval below. `live` the state variable is captured by the closure the
   // interval was created with, which is the mount-time `false` forever; this follows the truth.
   const isLive = useRef(false);
+  // The live effect's own `seed`, so `refresh` can drive it without being re-created per render
+  // (a changing callback identity would re-fire every effect that depends on it).
+  const seedNow = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +63,7 @@ export function useThread(projectId: string, stage: string): ThreadState {
         if (!cancelled) setLoading(false);
       }
     }
+    seedNow.current = seed;
 
     async function stream() {
       try {
@@ -116,5 +130,7 @@ export function useThread(projectId: string, stage: string): ThreadState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, stage]);
 
-  return { entries, live, loading, error };
+  const refresh = useCallback(() => seedNow.current(), []);
+
+  return { entries, live, loading, error, refresh };
 }

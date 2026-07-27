@@ -14,11 +14,14 @@ import * as api from '../api/thread';
 import { useThread } from '../hooks/useThread';
 import { AgentPanel } from './AgentPanel';
 
+const refresh = vi.fn().mockResolvedValue(undefined);
+
 const ready = (entries: ThreadEntry[] = []): ReturnType<typeof useThread> => ({
   entries,
   live: true,
   loading: false,
   error: null,
+  refresh,
 });
 
 describe('AgentPanel', () => {
@@ -40,6 +43,20 @@ describe('AgentPanel', () => {
     expect(box).toHaveValue('');
   });
 
+  /**
+   * The server never streams a message entry — it belongs to no run, so it has no id in the cursor
+   * space a reconnect replays from. Without an explicit re-read the operator would send into a
+   * timeline that visibly does nothing, which reads as the send having failed.
+   */
+  it('re-reads the thread after sending, because the stream will not carry the message', async () => {
+    vi.mocked(useThread).mockReturnValue(ready());
+    refresh.mockClear();
+    render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
+    await userEvent.type(screen.getByLabelText(/message the discovery agent/i), 'why Zr?');
+    await userEvent.click(screen.getByRole('button', { name: /send/i }));
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+
   /** "Nothing is happening" and "I am not being told what is happening" must be distinguishable. */
   it('says when it is not receiving live updates', () => {
     vi.mocked(useThread).mockReturnValue({
@@ -47,6 +64,7 @@ describe('AgentPanel', () => {
       live: false,
       loading: false,
       error: null,
+      refresh,
     });
     render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
     expect(screen.getByText(/not live/i)).toBeInTheDocument();
@@ -74,6 +92,7 @@ describe('AgentPanel', () => {
       live: true,
       loading: false,
       error: null,
+      refresh,
     } as ReturnType<typeof useThread>);
 
     const { rerender } = render(
@@ -92,6 +111,7 @@ describe('AgentPanel', () => {
       live: true,
       loading: false,
       error: null,
+      refresh,
     } as ReturnType<typeof useThread>);
     rerender(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
 

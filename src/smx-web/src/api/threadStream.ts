@@ -42,6 +42,22 @@ export function decodeEvent(frame: SseEvent, id: string): ThreadEvent | null {
 const bySeq = <T extends { seq: number }>(items: T[]) => [...items].sort((a, b) => a.seq - b.seq);
 
 /**
+ * Thread position, with the stream's placeholder filed last.
+ *
+ * A live `entry` frame carries `seq: 0` — the publisher stamps it that way (RunTrail.OpenAsync,
+ * ThreadEndpoints.ReplayAsync) because a run's position in the merged thread is not known until the
+ * read endpoint merges the runs with the chat half. Sorting on the raw value would file every
+ * just-opened run ABOVE the whole seeded thread; a run that opened a moment ago is the newest thing
+ * in it. The next seed read replaces the placeholder with the real seq.
+ */
+const position = (entry: ThreadEntry) => (entry.seq > 0 ? entry.seq : Number.MAX_SAFE_INTEGER);
+
+const inOrder = (entries: ThreadEntry[]) =>
+  [...entries].sort((a, b) => position(a) - position(b));
+
+const runIdOf = (entry: ThreadEntry) => (entry.kind === 'run' ? entry.run.runId : null);
+
+/**
  * Fold one event into the entry list.
  *
  * Pure, and idempotent on `(entry.seq)` and `(runId, step.seq)` — a reconnect replays from the
@@ -51,8 +67,18 @@ const bySeq = <T extends { seq: number }>(items: T[]) => [...items].sort((a, b) 
  */
 export function applyEvent(entries: ThreadEntry[], event: ThreadEvent): ThreadEntry[] {
   if (event.type === 'entry') {
-    if (entries.some((e) => e.seq === event.entry.seq)) return entries;
-    return bySeq([...entries, event.entry]);
+    const runId = runIdOf(event.entry);
+    if (runId !== null) {
+      // A RUN entry keys on its runId, never on seq: every live one arrives as seq 0, so a seq-based
+      // dedupe would silently drop every run after the first — one visible child out of regulatory's
+      // fourteen. Already holding it means holding a state at least as advanced as this frame (it is
+      // published when the run OPENS), so the held one wins; steps and the landing arrive as their
+      // own frames.
+      if (entries.some((e) => runIdOf(e) === runId)) return entries;
+      return inOrder([...entries, event.entry]);
+    }
+    if (entries.some((e) => e.kind !== 'run' && e.seq === event.entry.seq)) return entries;
+    return inOrder([...entries, event.entry]);
   }
 
   return entries.map((entry) => {

@@ -100,6 +100,7 @@ function LiveChat({
   const live = threads.every((t) => t.live);
   const loading = threads.some((t) => t.loading);
   const error = threads.find((t) => t.error)?.error ?? null;
+  const refreshAll = () => Promise.all(threads.map((t) => t.refresh()));
 
   // Defaults to the LAST backing stage — the one whose output the screen shows. On Intake & pool
   // that is `pool`: the brief is a transcription of the operator's own answers, the pool is the
@@ -123,6 +124,11 @@ function LiveChat({
     try {
       await sendMessage(projectId, stage, message);
       setText('');
+      // The stream will not deliver this back. A message belongs to no run, so the server has no id
+      // for it in the `{runId}` cursor space the stream replays from and deliberately does not
+      // publish it — and the degraded poll only runs while the stream is DOWN. Without this the
+      // operator sends into a timeline that visibly does nothing.
+      await refreshAll();
     } catch (err) {
       setSendError(err instanceof ThreadError ? err.message : String(err));
     } finally {

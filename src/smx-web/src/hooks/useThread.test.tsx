@@ -141,4 +141,34 @@ describe('useThread', () => {
     expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
     expect(String(fetchMock.mock.calls[1][0])).toContain('since=e1.r');
   });
+
+  /**
+   * The server does NOT publish message entries to the hub — a message has no run and so no id in
+   * the `{runId}` cursor space the stream replays from (ThreadEndpoints, the "NOT PUBLISHED"
+   * note). The poll only runs while NOT live. So without an explicit re-read, an operator's own
+   * message stays invisible for as long as the stream holds, which on a healthy connection is
+   * forever.
+   */
+  it('re-reads on demand, so a message the stream will never carry still appears', async () => {
+    vi.mocked(api.getThread).mockResolvedValue([]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: frames() }));
+
+    const { result } = renderHook(() => useThread('proj-1', 'discovery'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    vi.mocked(api.getThread).mockResolvedValue([
+      {
+        seq: 1,
+        at: 'x',
+        kind: 'message',
+        role: 'operator',
+        text: 'why Zr?',
+        status: 'queued',
+        error: null,
+      },
+    ]);
+    await act(() => result.current.refresh());
+
+    expect(result.current.entries).toHaveLength(1);
+  });
 });
