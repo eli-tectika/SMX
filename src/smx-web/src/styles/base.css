@@ -945,3 +945,91 @@ select:focus {
   font-weight: var(--w-medium);
   pointer-events: none;
 }
+
+/* ---- shortcut sheet ----------------------------------------------------------
+   A true overlay, so it is one of the few things in this app allowed a shadow.
+
+   z-index 60 ties it with the document viewer (.fv-overlay, primitives.css) and sits under
+   the finder (.finder__scrim, 100). That ordering is a deliberate call, not an oversight:
+   the finder is a search the operator is mid-keystroke in, so it should stay on top of a
+   reference sheet that only exists to be glanced at and dismissed; the tie with the document
+   viewer resolves by DOM order (this sheet is the last child AppShell renders), so if the
+   operator presses `?` while a document is open the sheet paints above it, which is right —
+   `?` was just pressed on purpose, so whatever it opens should be the thing in front. */
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sheet__backdrop {
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--shadow-hue) / 0.28);
+}
+.sheet__panel {
+  position: relative;
+  width: min(520px, calc(100vw - 2 * var(--s5)));
+  max-height: 78vh;
+  overflow-y: auto;
+  padding: var(--s5);
+  border-radius: var(--r3);
+  border: var(--hair) solid var(--border);
+  background: var(--surface-0);
+  box-shadow: var(--shadow-3);
+}
+.sheet__panel:focus {
+  outline: none;
+}
+.sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+}
+.sheet__close {
+  background: none;
+  border: 0;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.sheet__list {
+  margin: 0;
+}
+.sheet__row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: var(--s3);
+  align-items: baseline;
+  padding: var(--s2) 0;
+  border-top: var(--hair) solid var(--border);
+  font-size: var(--t-body);
+}
+.sheet__row dt,
+.sheet__row dd {
+  margin: 0;
+}
+.sheet__row kbd {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  border: var(--hair) solid var(--border);
+  border-radius: var(--r1);
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+.masthead__hint kbd {
+  font-family: var(--font-mono);
+  font-size: var(--t-tiny);
+  color: var(--text-muted);
+  border: var(--hair) solid var(--border);
+  border-radius: var(--r1);
+  padding: 1px 6px;
+}

@@ -676,9 +676,10 @@
 }
 
 /* ---- finder (⌘K) ---------------------------------------------------------------
-   One of exactly two true overlays in the app, and therefore one of exactly two things
-   permitted to cast a shadow. It floats above the page and can be dismissed; that is what
-   a shadow means, and it is the only thing it may mean. */
+   One of a small number of true overlays in the app (alongside .fv-overlay below and
+   .sheet in base.css), and therefore one of a small number of things permitted to cast a
+   shadow. It floats above the page and can be dismissed; that is what a shadow means, and
+   it is the only thing it may mean. */
 
 .finder__scrim {
   position: fixed;

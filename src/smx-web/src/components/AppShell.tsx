@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { CORPUS_SYNCED_AT, CORPUS_UNKNOWN_REASON } from '../domain/corpus';
 import { Finder } from './Finder';
+import { ShortcutSheet } from './ShortcutSheet';
 import { Data } from './ui/Data';
 import logoUrl from '../assets/smx-logo.png';
 
@@ -124,6 +125,11 @@ export function AppShell() {
         <Brand />
         <div className="masthead__end">
           <Finder />
+          {/* The one visible advertisement that `?` does anything at all — everything else
+              about the shortcut sheet is discovered by pressing the key itself. */}
+          <span className="masthead__hint" title="Press ? for keyboard shortcuts">
+            <kbd>?</kbd>
+          </span>
           <CorpusStamp />
         </div>
       </header>
@@ -162,6 +168,8 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      <ShortcutSheet />
     </>
   );
 }
