@@ -1,9 +1,8 @@
-using System.Text.Json.Serialization;
-
 namespace Smx.Domain.Records;
 
-/// The terminal states a run can reach. `Interrupted` is not a failure the agent caused — it means the
-/// process holding the run died, and it exists so the trail shows the gap rather than hiding it.
+/// The states a run can be in. All but `Running` are terminal. `Interrupted` is not a failure the agent
+/// caused — it means the process holding the run died, and it exists so the trail shows the gap rather
+/// than hiding it.
 public static class RunOutcome
 {
     public const string Running = "running";
@@ -67,7 +66,7 @@ public sealed class RunStep
 /// never appear in a query that reads project state.
 public sealed class RunDoc
 {
-    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    public string Id { get; set; } = "";
     public string ProjectId { get; set; } = "";
     public string Stage { get; set; } = "";
     /// null ⇒ a deterministic stage. The UI must not imply a model was involved.
@@ -77,18 +76,26 @@ public sealed class RunDoc
     /// Set on regulatory children, so the UI groups them explicitly rather than inferring from timing.
     public string? ParentRunId { get; set; }
     public string Trigger { get; set; } = RunTriggers.Pipeline;
-    public string StartedAt { get; set; } = DateTimeOffset.UtcNow.ToString("O");
+    /// ISO-8601, ALWAYS via DateTimeOffset...ToString("O") — caller-supplied; the domain has no clock
+    /// (the RevisionDoc.CreatedAt rule). A default of `UtcNow` here would mean a doc deserialized
+    /// without the field silently acquires a fabricated start time.
+    public required string StartedAt { get; set; }
     public string? EndedAt { get; set; }
     public string Outcome { get; set; } = RunOutcome.Running;
     public string? Error { get; set; }
+    /// `Append` is the only sanctioned way to add a step — wholesale replacement would destroy the
+    /// `Seq` monotonicity the SSE resume cursor depends on. This is NOT enforced by a get-only property:
+    /// STJ's default `JsonObjectCreationHandling.Replace` cannot populate a get-only collection through
+    /// a missing setter, so a get-only `Steps` silently deserializes to empty — verified by round-trip
+    /// test, not assumed. The setter stays; the discipline is convention plus the round-trip test.
     public List<RunStep> Steps { get; set; } = [];
 
-    public RunStep Append(string kind, string text, RunStepDetail? detail = null)
+    public RunStep Append(string kind, string text, string at, RunStepDetail? detail = null)
     {
         var step = new RunStep
         {
             Seq = Steps.Count + 1,
-            At = DateTimeOffset.UtcNow.ToString("O"),
+            At = at,
             Kind = kind,
             Text = text,
             Detail = detail,
