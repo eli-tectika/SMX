@@ -233,3 +233,31 @@
 .mx--crosshair th {
   transition: background var(--dur-1) var(--ease-out);
 }
+
+/* ---- matrix scroll edge ------------------------------------------------------
+
+   The pane scrolls horizontally, and a component column that has slid out of view leaves no
+   trace. In a verdict matrix that is not a styling problem: the operator signs a gate against
+   what they read, and a column they never knew existed is a column they never read.
+
+   `background-attachment: local` on the two inner gradients pins them to the CONTENT, so each
+   shadow paints only while there is content on that side to hide. Scroll to the end and the
+   shadow goes; scroll back and it returns. */
+
+.mxscroll__pane {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 70vh;
+  background:
+    linear-gradient(to right, var(--surface-0) 30%, transparent) left center / 24px 100% no-repeat,
+    linear-gradient(to left, var(--surface-0) 30%, transparent) right center / 24px 100% no-repeat,
+    radial-gradient(farthest-side at 0 50%, hsl(var(--shadow-hue) / 0.14), transparent) left center /
+      12px 100% no-repeat,
+    radial-gradient(farthest-side at 100% 50%, hsl(var(--shadow-hue) / 0.14), transparent) right
+      center / 12px 100% no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
+
+.mxscroll__count {
+  margin-bottom: var(--s2);
+}

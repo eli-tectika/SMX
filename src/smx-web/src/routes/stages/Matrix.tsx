@@ -317,152 +317,158 @@ export function Matrix({ project }: { project: ProjectSummary }) {
           alignItems: 'start',
         }}
       >
-        <div style={{ overflowX: 'auto', maxHeight: '70vh', overflowY: 'auto' }}>
-          <table
-            className={`mx mx--sticky mx--crosshair${compact ? ' mx--compact' : ''}`}
-            ref={gridRef}
-            onKeyDown={onGridKeyDown}
-            onMouseLeave={() => setHot(null)}
-          >
-            <caption className="sr-only">
-              Compatibility verdict per candidate substance and product component. Use the arrow keys
-              to move between cells and Enter to open the evidence.
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col" data-rowhead>
-                  Substance
-                </th>
-                <th scope="col">CAS</th>
-                {m.columns.map((c) => (
-                  <th
-                    key={c}
-                    scope="col"
-                    style={{ textAlign: 'center' }}
-                    data-hot={hot?.col === c ? '' : undefined}
-                  >
-                    {c}
+        <div className="mxscroll">
+          <div className="mxscroll__count tiny muted">
+            {m.rows.length} substance{m.rows.length === 1 ? '' : 's'} × {m.columns.length} component
+            {m.columns.length === 1 ? '' : 's'}
+          </div>
+          <div className="mxscroll__pane">
+            <table
+              className={`mx mx--sticky mx--crosshair${compact ? ' mx--compact' : ''}`}
+              ref={gridRef}
+              onKeyDown={onGridKeyDown}
+              onMouseLeave={() => setHot(null)}
+            >
+              <caption className="sr-only">
+                Compatibility verdict per candidate substance and product component. Use the arrow keys
+                to move between cells and Enter to open the evidence.
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col" data-rowhead>
+                    Substance
                   </th>
-                ))}
-                <th scope="col" style={{ textAlign: 'right' }}>
-                  Clears
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {m.rows.map((row, ri) => {
-                const rowCells = m.columns
-                  .map((c) => cellAt(index, row.cas, c))
-                  .filter((c): c is MatrixCell => Boolean(c));
-                const clears = rowCells.filter((c) => c.overall === 'Pass').length;
+                  <th scope="col">CAS</th>
+                  {m.columns.map((c) => (
+                    <th
+                      key={c}
+                      scope="col"
+                      style={{ textAlign: 'center' }}
+                      data-hot={hot?.col === c ? '' : undefined}
+                    >
+                      {c}
+                    </th>
+                  ))}
+                  <th scope="col" style={{ textAlign: 'right' }}>
+                    Clears
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {m.rows.map((row, ri) => {
+                  const rowCells = m.columns
+                    .map((c) => cellAt(index, row.cas, c))
+                    .filter((c): c is MatrixCell => Boolean(c));
+                  const clears = rowCells.filter((c) => c.overall === 'Pass').length;
 
-                return (
-                  <tr key={row.cas} data-hot={hot?.row === row.cas ? '' : undefined}>
-                    <td data-rowhead>
-                      <div style={{ fontWeight: 500 }}>{row.element}</div>
-                      <div className="tiny muted">{row.form}</div>
-                    </td>
-                    <td className="tiny muted data">
-                      {row.cas}
-                    </td>
-                    {m.columns.map((col, ci) => {
-                      const cell = cellAt(index, row.cas, col);
-                      if (!cell)
+                  return (
+                    <tr key={row.cas} data-hot={hot?.row === row.cas ? '' : undefined}>
+                      <td data-rowhead>
+                        <div style={{ fontWeight: 500 }}>{row.element}</div>
+                        <div className="tiny muted">{row.form}</div>
+                      </td>
+                      <td className="tiny muted data">
+                        {row.cas}
+                      </td>
+                      {m.columns.map((col, ci) => {
+                        const cell = cellAt(index, row.cas, col);
+                        if (!cell)
+                          return (
+                            <td key={col} style={{ textAlign: 'center' }} className="tiny muted">
+                              —
+                            </td>
+                          );
+                        const bad = isInconsistent(cell);
+                        const k = key(cell.cas, cell.componentId);
+                        const isSel =
+                          selected?.cas === cell.cas && selected?.componentId === cell.componentId;
+                        const opened = reviewed.has(k);
+                        const flagged = s.flagged.includes(k);
+
                         return (
-                          <td key={col} style={{ textAlign: 'center' }} className="tiny muted">
-                            —
+                          <td
+                            key={col}
+                            style={{ textAlign: 'center', padding: 4 }}
+                            onMouseEnter={() => setHot({ row: row.cas, col })}
+                          >
+                            <button
+                              data-r={ri}
+                              data-c={ci}
+                              data-cell={k}
+                              onClick={() => (isSel ? setSelected(null) : open(cell))}
+                              aria-pressed={isSel}
+                              title={`${cell.overall} — ${cell.dimensions.length} dimensions${bad ? ' — INCONSISTENT' : ''}. Enter for evidence.`}
+                              className={`chip ${verdictClass(cell.overall)}`}
+                              style={{
+                                cursor: 'pointer',
+                                width: 40,
+                                border: 0,
+                                boxShadow: isSel ? 'inset 0 0 0 1.5px var(--text-primary)' : undefined,
+                                transition: 'box-shadow var(--dur-1) var(--ease-out)',
+                                position: 'relative',
+                              }}
+                            >
+                              {verdictGlyph(cell.overall)}
+                              {bad && <b>!</b>
+          }
+                              {/* A flagged cell nobody has opened yet withholds the gate. */}
+                              {flagged && !opened && (
+                                <span
+                                  aria-label="not yet opened"
+                                  style={{
+                                    position: 'absolute',
+                                    top: 2,
+                                    right: 3,
+                                    width: 4,
+                                    height: 4,
+                                    borderRadius: '50%',
+                                    background: 'var(--text-warning)',
+                                  }}
+                                />
+                              )}
+                            </button>
                           </td>
                         );
-                      const bad = isInconsistent(cell);
-                      const k = key(cell.cas, cell.componentId);
-                      const isSel =
-                        selected?.cas === cell.cas && selected?.componentId === cell.componentId;
-                      const opened = reviewed.has(k);
-                      const flagged = s.flagged.includes(k);
-
-                      return (
-                        <td
-                          key={col}
-                          style={{ textAlign: 'center', padding: 4 }}
-                          onMouseEnter={() => setHot({ row: row.cas, col })}
-                        >
-                          <button
-                            data-r={ri}
-                            data-c={ci}
-                            data-cell={k}
-                            onClick={() => (isSel ? setSelected(null) : open(cell))}
-                            aria-pressed={isSel}
-                            title={`${cell.overall} — ${cell.dimensions.length} dimensions${bad ? ' — INCONSISTENT' : ''}. Enter for evidence.`}
-                            className={`chip ${verdictClass(cell.overall)}`}
-                            style={{
-                              cursor: 'pointer',
-                              width: 40,
-                              border: 0,
-                              boxShadow: isSel ? 'inset 0 0 0 1.5px var(--text-primary)' : undefined,
-                              transition: 'box-shadow var(--dur-1) var(--ease-out)',
-                              position: 'relative',
-                            }}
-                          >
-                            {verdictGlyph(cell.overall)}
-                            {bad && <b>!</b>
-        }
-                            {/* A flagged cell nobody has opened yet withholds the gate. */}
-                            {flagged && !opened && (
-                              <span
-                                aria-label="not yet opened"
-                                style={{
-                                  position: 'absolute',
-                                  top: 2,
-                                  right: 3,
-                                  width: 4,
-                                  height: 4,
-                                  borderRadius: '50%',
-                                  background: 'var(--text-warning)',
-                                }}
-                              />
-                            )}
-                          </button>
-                        </td>
-                      );
-                    })}
-                    <td className="tiny muted" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      {clears} of {rowCells.length}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td data-rowhead className="tiny muted">
-                  worst per component
-                </td>
-                <td />
-                {m.columns.map((col) => {
-                  const colCells = m.rows
-                    .map((r) => cellAt(index, r.cas, col))
-                    .filter((c): c is MatrixCell => Boolean(c));
-                  const worst = fold(
-                    colCells.map((c) => ({
-                      dimension: 'ElementGate' as const,
-                      status: c.overall,
-                      citations: [],
-                      confidence: 1,
-                      rationale: '',
-                    })),
-                  );
-                  return (
-                    <td key={col} style={{ textAlign: 'center' }}>
-                      <span className={`chip ${verdictClass(worst)}`} title={`worst verdict on ${col}`}>
-                        {verdictGlyph(worst)}
-                      </span>
-                    </td>
+                      })}
+                      <td className="tiny muted" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {clears} of {rowCells.length}
+                      </td>
+                    </tr>
                   );
                 })}
-                <td />
-              </tr>
-            </tfoot>
-          </table>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td data-rowhead className="tiny muted">
+                    worst per component
+                  </td>
+                  <td />
+                  {m.columns.map((col) => {
+                    const colCells = m.rows
+                      .map((r) => cellAt(index, r.cas, col))
+                      .filter((c): c is MatrixCell => Boolean(c));
+                    const worst = fold(
+                      colCells.map((c) => ({
+                        dimension: 'ElementGate' as const,
+                        status: c.overall,
+                        citations: [],
+                        confidence: 1,
+                        rationale: '',
+                      })),
+                    );
+                    return (
+                      <td key={col} style={{ textAlign: 'center' }}>
+                        <span className={`chip ${verdictClass(worst)}`} title={`worst verdict on ${col}`}>
+                          {verdictGlyph(worst)}
+                        </span>
+                      </td>
+                    );
+                  })}
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
 
         {selected && (
