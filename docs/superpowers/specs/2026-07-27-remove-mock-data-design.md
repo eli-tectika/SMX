@@ -41,14 +41,27 @@ already real. `CLAUDE.md` is stale in claiming otherwise.
 4. **Ordering is in scope.** `POST /projects/{id}/orders/{cas}` already exists. Without it the
    "MSDS not current" tile states a precondition for an action the screen cannot take.
 
-## The one hard constraint
+## How `X` is recovered
 
-**`X` is never persisted.** `XrfConfirmation.Build` writes only `V` and `L` rows into
-`ConstraintsDoc.ElementPools`; an `X` row survives only as a `MeasuredBackground`, and only if it
-carried a level. Background's three-state matrix therefore cannot be rebuilt from the record. The
-absence of a pool entry means the element was never measured there *or* was measured as present, and
-the record cannot distinguish them. Rendering that absence as "avoid" would invent a verdict, so
-Background becomes a two-state screen with an explicit third rendering for *no pool entry*.
+**`X` is not stored as a status; it is recovered by a join.** `XrfConfirmation.Build` writes only `V`
+and `L` rows into `ConstraintsDoc.ElementPools` — an `X` row is deliberately not a pool entry. But it
+*is* still recorded, as a `MeasuredBackground`, and this is by design rather than by accident:
+`types.ts` states it outright ("its measurement is still recorded as a MeasuredBackground, so 'measured
+and rejected' stays distinguishable from 'never measured'"), and `XrfTemplate.Csv`'s own worked example
+carries an X row with a level, commented "measured, rejected, still recorded".
+
+The inference is sound because every `MeasuredBackground` row came from a proposal whose status was
+V, L, or X, and V/L proposals also produce a pool entry. So for a `(component, element)` pair:
+
+| pool entry | background row | renders as |
+|---|---|---|
+| yes | either | `V` or `L`, the recorded status |
+| no | yes | `X` — measured, present, rejected |
+| no | no | not measured |
+
+The fourth state is the one the fixture never had and the screen must not blur: **"not measured" is
+not "avoid."** An X row entered without a level is indistinguishable from never-measured and renders
+as the latter — less informative, still honest.
 
 ---
 
@@ -118,10 +131,10 @@ offers an order action calling `POST /projects/{id}/orders/{cas}`, gated on a cu
 The two real zones are untouched: `XrfEntry`, and the "what is waiting on this" park readout. The
 fabricated matrix below them is replaced, not translated.
 
-- **Two states, not three.** Rows are element + emission line, columns are components, cells are the
-  real `elementPools[].status` (`V` or `L`) with `signalNote` as the cell title. A component with no
-  pool entry for that element renders as an explicit *"no pool entry"*, and the legend says so. See
-  the hard constraint above for why this is not `X`.
+- **Four states, from the pool ⋈ background join** described above. Rows are element + emission line,
+  columns are components. A pool entry renders its recorded `V` or `L` with `signalNote` as the cell
+  title; a background row with no pool entry renders `X`; neither renders as *not measured*, visually
+  distinct from `X` and never counted as an avoid.
 - **The measured levels become visible**, from `measuredBackgrounds` — real ppm per (component,
   element) — plus `device` and its per-element LODs. These are the two inputs `DetectionFloor`
   computes from, and today they are visible only on Intake.
@@ -135,8 +148,9 @@ fabricated matrix below them is replaced, not translated.
   `Fail` there is product-wide by construction, which is the hatched, struck row lock the screen
   already draws. Rendered only when verdicts exist — before Regulatory runs there are none and the
   table has no locks.
-- **Dropped:** the `usable / conditional / avoid` tally footer, whose "avoid" count was fixture
-  arithmetic over a status that is not recorded.
+- **The tally footer survives**, but counts four buckets rather than three — usable, conditional,
+  avoid, not measured — because the fixture's version silently folded "never measured" into "avoid",
+  which is the whole error this screen has to stop making.
 
 `GET /xrf` 404s before the operator confirms anything; `XrfEntry` above it is already the answer.
 
