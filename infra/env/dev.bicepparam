@@ -45,3 +45,21 @@ param acmebotPrincipalId = ''
 // API app registration client id (backend JwtBearer audience). Empty until configure-auth.sh creates the
 // app registration (Task B1) and prints the id; while empty the backend runs with auth OFF.
 param apiClientId = ''
+
+// The container images the environment runs. THESE ARE NOT OPTIONAL POLISH.
+//
+// `compute.bicep` falls back to `placeholderImage` — a Microsoft hello-world container — whenever an
+// image parameter is empty. So a plain `./deploy.sh dev`, with these unset, does not "leave the apps
+// alone" and does not revert them to a previous build: it REPLACES BOTH RUNNING APPS WITH A DEMO PAGE.
+// Every deploy so far has avoided that only by remembering to pass `-p frontendImage=... -p
+// backendImage=...` on the command line, which is a footgun with one safe path and no guard rail.
+//
+// Recording them here makes `./deploy.sh dev` reproduce the environment that is supposed to be
+// running, which is the standing requirement for `infra/` (CLAUDE.md): the templates deploy the whole
+// system, not the system minus whatever the operator forgot to type.
+//
+// BUMP THESE with every `build-images.sh` whose result you intend to keep. `swap-images.sh` is
+// deliberately NOT enough — it mutates the live Container App only, and the next deploy reconciles it
+// back to whatever this file says.
+param frontendImage = 'acrsmxdevlmxnb.azurecr.io/smx-frontend:961a98f'
+param backendImage = 'acrsmxdevlmxnb.azurecr.io/smx-backend:961a98f'
