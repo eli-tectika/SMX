@@ -15,7 +15,8 @@ public sealed class ToolBox(
     IKnowledgeStore knowledge,
     ILearnedConclusionsSearch learnedConclusions,
     Func<SensitiveTerms, IWebSearch> webSearchFactory,
-    bool useHostedWebSearch)
+    bool useHostedWebSearch,
+    ISdsAcquisition? acquisition = null)
 {
     /// SensitiveTerms is a REQUIRED parameter, not an optional one: the PROXY tool set built without the
     /// project's client/product names is a tool set that cannot protect the project. Forgetting it is a
@@ -117,6 +118,9 @@ public sealed class ToolBox(
             "intent must be one of: discovery.candidate_forms, discovery.form_properties, discovery.supplier_availability.");
     }
 
+    /// Regulatory's tools — AND, because ReadToolsFor routes the Regulatory stage straight here, the read
+    /// surface a CHAT turn on that stage gets. Note there is still no search_web and there never will be:
+    /// a regulatory verdict must trace to the synced corpus (RegulatoryTools_NeverIncludeSearchWeb).
     public IList<AITool> RegulatoryTools() =>
     [
         AIFunctionFactory.Create(SearchRegulatoryAsync, "search_regulatory",
@@ -125,7 +129,35 @@ public sealed class ToolBox(
             "Search safety-data-sheet (GHS) chunks by CAS or element: H-codes, CMR, hazard classifications. Call this for the Hazard dimension."),
         AIFunctionFactory.Create(SearchReferenceAsync, "search_reference",
             "Search SMX reference prose: solubility, XRF cleanliness, marker forms, bibliography-backed notes."),
+        .. EnsureSdsTool(),
     ];
+
+    /// `ensure_sds` — fetch and index a safety data sheet the corpus does not have (2026-07-29 design §7).
+    /// Handed to the Regulatory agent because it owns the hazard/CLP layer and is therefore the agent that
+    /// DISCOVERS a sheet is missing; before this it could only report the hole, and the sheet waited on a
+    /// weekly cron that (measured on 2026-07-29) had 40 substances permanently stuck.
+    ///
+    /// IT IS ALSO ON THE CHAT SURFACE, and that is a DELIBERATE departure from this file's standing rule
+    /// that a chat turn never triggers egress (see DiscoveryReadTools / PoolReadTools, where the rule is
+    /// enforced by removing search_web). The rule exists to keep PROJECT-REVEALING web searches inside the
+    /// autonomous run, where the Search Proxy's k-anonymity cover batches protect which chemistry a live
+    /// client project is evaluating. An SDS fetch reveals no project: it is keyed by CAS, carries no field a
+    /// client/product/project name could travel in, and "get me the sheet for X" is exactly what an operator
+    /// says out loud. The departure is scoped to this ONE tool — ChatStillHasNoWebSearch is the tripwire that
+    /// stops it drifting into a general web tool in chat.
+    ///
+    /// Absent when no acquisition client is wired: a tool that could only ever fail is worse than no tool,
+    /// and fail-closed is the same rule ReadToolsFor applies to a stage it does not recognise.
+    private IEnumerable<AITool> EnsureSdsTool() =>
+        acquisition is null
+            ? []
+            : [AIFunctionFactory.Create(EnsureSdsAsync, "ensure_sds",
+                "Fetch and index the safety data sheet for a CAS the corpus does not have. Call this when " +
+                "search_sds returns NOTHING for a substance you need hazard data for — do not conclude a " +
+                "substance is unclassified until you have tried it. Returns immediately with what it tried " +
+                "if no sheet can be obtained: it NEVER blocks and never parks the stage, so a failure is " +
+                "something to note and move past, not something to wait on. Takes a CAS and, if you know " +
+                "them, the element and form. Re-run search_sds after a successful fetch to read the sheet.")];
 
     public IList<AITool> IntakeTools() =>
     [
@@ -331,6 +363,55 @@ public sealed class ToolBox(
         {
             results = result.Hits.Select(h => new AgentVisibleChunk($"web:{h.Host}", h.Url, $"{h.Title} — {h.Snippet}")),
             note = hitsNote,
+        }, Json.Options);
+    }
+
+    /// The body behind `ensure_sds`. Public so a test can drive it directly, as ToolBoxTests drives
+    /// SearchCatalogAsync.
+    ///
+    /// `element` and `form` DEFAULT so the emitted JSON schema marks them optional (see the note on
+    /// SearchMarkerLibraryAsync: a parameter without a default is emitted as REQUIRED, and the binding would
+    /// then reject the very call the description invites). They are hints that let the service pick a
+    /// curated supplier template; the CAS is the identity.
+    ///
+    /// On `unavailable` this renders the REASON and EVERY ATTEMPT, not a bare failure. Without them the
+    /// agent cannot tell "that supplier is bot-walled" from "no sheet exists for this substance" — and it
+    /// would write down the second when only the first was true, which is a claim about the world nothing
+    /// tested. The note says so in words, because the distinction is the whole value of the field.
+    public async Task<string> EnsureSdsAsync(
+        string cas, string? element = null, string? form = null, CancellationToken ct = default)
+    {
+        // Null-checked because the tool is not offered without a client; belt-and-braces for a direct call.
+        if (acquisition is null)
+            return JsonSerializer.Serialize(new
+            {
+                status = SdsEnsureStatus.Unavailable,
+                reason = "no SDS acquisition service is configured in this deployment",
+                note = "this is a CONFIGURATION gap, not evidence about the substance — say so if it matters.",
+            }, Json.Options);
+
+        var result = await acquisition.EnsureAsync(cas, element, form, ct);
+
+        if (result.Have)
+            return JsonSerializer.Serialize(new
+            {
+                status = result.Status,
+                cas,
+                registryId = result.RegistryId,
+                supplier = result.Supplier,
+                revisionDate = result.RevisionDate,
+                note = "the sheet is indexed — call search_sds for this CAS to read its hazard sections.",
+            }, Json.Options);
+
+        return JsonSerializer.Serialize(new
+        {
+            status = result.Status,
+            cas,
+            reason = result.Reason,
+            attempted = result.Attempts,
+            note = "no sheet could be obtained. This does NOT prove the substance has no safety data sheet — " +
+                   "read `attempted` for what was tried and why each source failed, report that distinction, " +
+                   "and continue. The stage is not blocked and must not wait on this.",
         }, Json.Options);
     }
 

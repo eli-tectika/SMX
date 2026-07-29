@@ -54,3 +54,40 @@ public sealed class FakeLearnedConclusionsSearch : ILearnedConclusionsSearch
         return Task.FromResult<IReadOnlyList<RetrievedChunk>>(Results.Take(top).ToList());
     }
 }
+
+/// Records what was asked of the SDS service and answers whatever the test scripted. Defaults to
+/// `already-had`, which is the zero-egress answer — a test that cares about a fetch or a failure says so.
+public sealed class FakeSdsAcquisition : ISdsAcquisition
+{
+    public List<(string Cas, string? Element, string? Form)> Ensured { get; } = [];
+    public List<(string Element, string Form, string Cas)> Appended { get; } = [];
+    public SdsEnsureResult Result { get; set; } = new(SdsEnsureStatus.AlreadyHad, RegistryId: "sds-1", Supplier: "Acme");
+
+    /// A ledger append that fails. The real client swallows its own transport failures, but the runner may
+    /// not RELY on that: a bookkeeping call must not be able to fail a stage no matter how it misbehaves.
+    public bool ThrowOnAppend { get; set; }
+
+    public Task<SdsEnsureResult> EnsureAsync(string cas, string? element, string? form, CancellationToken ct)
+    {
+        Ensured.Add((cas, element, form));
+        return Task.FromResult(Result);
+    }
+
+    public Task AppendAsync(string element, string form, string cas, CancellationToken ct)
+    {
+        if (ThrowOnAppend) throw new InvalidOperationException("the SDS service is down");
+        Appended.Add((element, form, cas));
+        return Task.CompletedTask;
+    }
+
+    /// No agent and no pipeline stage uploads a sheet — the operator does, through the registry screen,
+    /// and KnowledgeEndpointsTests fakes that separately. Recorded here rather than thrown so that a
+    /// caller appearing in this direction shows up as an unexpected entry rather than a crash.
+    public List<SdsUpload> Uploaded { get; } = [];
+
+    public Task<SdsUploadResult> UploadAsync(SdsUpload upload, CancellationToken ct)
+    {
+        Uploaded.Add(upload);
+        return Task.FromResult(new SdsUploadResult(true, RegistryId: "sds-1"));
+    }
+}

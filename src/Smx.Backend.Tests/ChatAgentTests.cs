@@ -12,7 +12,7 @@ public class ChatAgentTests
     private static ToolBox Box() =>
         new(new FakeCatalogLookup(), new FakeCompatibilityLookup(), new FakeSearch(), new FakeSearch(),
             new FakeSearch(), new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore(), new FakeLearnedConclusionsSearch(),
-            _ => new FakeWebSearch(), useHostedWebSearch: false);
+            _ => new FakeWebSearch(), useHostedWebSearch: false, new FakeSdsAcquisition());
 
     [Fact]
     public async Task Run_GivesTheAgentTheThread_TheStageInputs_AndTheNewMessage()
@@ -75,8 +75,15 @@ public class ChatAgentTests
         Assert.Equal(
             ["lookup_compatibility", "search_catalog", "search_learned_conclusions", "search_reference"],
             box.ReadToolsFor(Stages.Discovery).Select(t => t.Name).OrderBy(x => x));
+        // Regulatory's chat surface carries ONE tool that is not pure retrieval — `ensure_sds` — and this is
+        // the place it was argued for (2026-07-29 design §7). It causes EGRESS from a chat turn, which every
+        // other stage's read set is built to prevent. The reason it is allowed here and nowhere else: the
+        // rule protects PROJECT-REVEALING queries, and an SDS fetch is keyed by CAS with no field a client,
+        // product or project name could travel in. It writes nothing to the project record, approves
+        // nothing, signs nothing — it obtains a public safety document. The line it must never cross is a
+        // general web tool in chat, which the next assertion in ToolBoxTests (ChatStillHasNoWebSearch) pins.
         Assert.Equal(
-            ["search_reference", "search_regulatory", "search_sds"],
+            ["ensure_sds", "search_reference", "search_regulatory", "search_sds"],
             box.ReadToolsFor(Stages.Regulatory).Select(t => t.Name).OrderBy(x => x));
         // Dosing's read half is retrieval-only too — prior dosing conclusions and the reference corpus. The
         // deterministic calculators (Task 10) are not retrieval and are not here; nothing that writes,
@@ -124,8 +131,11 @@ public class ChatAgentTests
         new[] { "record_answer", "search_learned_conclusions", "search_marker_library", "search_reference", "search_regulatory" })]
     [InlineData(Stages.Discovery,
         new[] { "apply_revision", "lookup_compatibility", "search_catalog", "search_learned_conclusions", "search_reference" })]
+    // Regulatory additionally carries ensure_sds — the one chat tool that egresses, argued for above and in
+    // ToolBox.EnsureSdsTool. It is not a revision and not a signature: it obtains a public safety sheet
+    // keyed by CAS, so a turn holding it still cannot change or approve anything about the project.
     [InlineData(Stages.Regulatory,
-        new[] { "apply_revision", "search_reference", "search_regulatory", "search_sds" })]
+        new[] { "apply_revision", "ensure_sds", "search_reference", "search_regulatory", "search_sds" })]
     [InlineData(Stages.Matrix, new string[0])]
     // Dosing IS revisable (a ppm change with a reason), so its turn adds apply_revision to its two read tools.
     [InlineData(Stages.Dosing,
@@ -146,7 +156,7 @@ public class ChatAgentTests
         var chatTools = new ChatTools(new InMemoryRecordStore(), "p1", Stages.Regulatory, "k1");
         Assert.Equal(Stages.Regulatory, chatTools.Stage);
         Assert.Equal(
-            ["apply_revision", "search_reference", "search_regulatory", "search_sds"],
+            ["apply_revision", "ensure_sds", "search_reference", "search_regulatory", "search_sds"],
             AgentRuns.ChatTurnTools(Box(), chatTools).Select(t => t.Name).OrderBy(x => x));
     }
 
