@@ -28,7 +28,7 @@ public sealed class SdsSweep
     // Testable core (no trigger attribute): process the whole due set in bulk.
     public async Task RunSweepAsync(string nowUtc, CancellationToken ct)
     {
-        var due = await _masterList.QueryDueAsync(_opts.RetryCap, _opts.RevisionRecheckDays, nowUtc, ct);
+        var due = await _masterList.QueryDueAsync(_opts.RevisionRecheckDays, nowUtc, ct);
         _log.LogInformation("SDS sweep: {Count} due entries", due.Count);
 
         EgressFetch fetch = (url, c) => _egress.FetchAsync(url, c);
@@ -65,13 +65,13 @@ public sealed class SdsSweep
                 }
 
                 if (ingested) await _masterList.MarkFetchedAsync(entry, nowUtc, ct);
-                else await _masterList.RecordFailureAsync(entry, _opts.RetryCap, nowUtc, ct);
+                else await _masterList.RecordFailureAsync(entry, nowUtc, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 _log.LogError(ex, "Sweep entry {Id} threw; recording failure and continuing", entry.Id);
-                await _masterList.RecordFailureAsync(entry, _opts.RetryCap, nowUtc, ct);
+                await _masterList.RecordFailureAsync(entry, nowUtc, ct);
             }
         }
     }

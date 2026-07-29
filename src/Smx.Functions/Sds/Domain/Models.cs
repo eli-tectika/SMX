@@ -5,12 +5,19 @@ public static class SdsStatus
     public const string Pending = "pending";
     public const string Fetched = "fetched";
     public const string Failed = "failed";
-    public const string AwaitingOperator = "awaiting_operator";
+
+    // `awaiting_operator` is deliberately gone. It was the only status IsDue never returned, and no
+    // reset operation existed anywhere in the codebase, so reaching it meant "never fetched again" —
+    // on 2026-07-29 that had consumed 40 of 53 substances while the weekly timer kept firing and
+    // finding nothing due. ParkedEntryMigration maps the surviving rows to Failed.
+    // The literal is still referenced by name there and by SdsDocumentProvider's legacy explanation.
 }
 
 public sealed record MasterListEntry(
     string Id, string Element, string Form, string Cas, string? SubstrateClass,
-    string Status, string AddedBy, string AddedUtc, string? LastAttemptUtc, int AttemptCount);
+    string Status, string AddedBy, string AddedUtc, string? LastAttemptUtc, int AttemptCount,
+    // Null means "due now": rows written before backoff existed must read as retryable, never as parked.
+    string? NextAttemptUtc = null);
 
 public sealed record RegistryPointer(
     string Id, string Cas, string Supplier, string ProductName, string RevisionDate,

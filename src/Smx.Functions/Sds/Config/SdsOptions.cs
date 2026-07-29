@@ -15,7 +15,6 @@ public sealed class SdsOptions
     public string FoundryEndpoint { get; init; } = "";
     public string EmbeddingDeployment { get; init; } = "text-embedding-3-large";
     public string? UamiClientId { get; init; }
-    public int RetryCap { get; init; } = 3;
     public int FetchTimeoutSeconds { get; init; } = 30;
     public int RevisionRecheckDays { get; init; } = 90;
     public bool DryRun { get; init; }
@@ -37,7 +36,6 @@ public sealed class SdsOptions
         FoundryEndpoint = c["FOUNDRY_ENDPOINT"] ?? "",
         EmbeddingDeployment = c["EMBEDDING_DEPLOYMENT"] ?? "text-embedding-3-large",
         UamiClientId = c["WORKLOAD_UAMI_CLIENT_ID"],
-        RetryCap = int.TryParse(c["SDS_RETRY_CAP"], out var r) ? r : 3,
         FetchTimeoutSeconds = int.TryParse(c["SDS_FETCH_TIMEOUT_SECONDS"], out var t) ? t : 30,
         RevisionRecheckDays = int.TryParse(c["SDS_REVISION_RECHECK_DAYS"], out var d) ? d : 90,
         DryRun = bool.TryParse(c["SDS_DRY_RUN"], out var dr) && dr,
