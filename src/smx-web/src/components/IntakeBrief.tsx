@@ -66,83 +66,56 @@ function DossierRow({ entry }: { entry: DossierEntry }) {
 }
 
 /**
- * What the interview recorded, and the one control that starts the analysis.
+ * What the interview recorded, question by question.
  *
  * Read-only by law, not by omission (CLAUDE.md Law 4): there is no input, no textarea, no select and
  * no contenteditable anywhere in this component, and a test pins that. The operator changes something
  * by telling the agent why — which is also how the change earns a Learned Conclusion. A field here
  * would silently edit an analytical record with no reason captured and nothing learned.
  *
- * The Start button is the operator's signature (Law 9): the agent may create a project, but only the
- * operator may start one, and there is no agent tool that can.
+ * Two things left this component in the redesign, and both left for a reason:
+ *  - **Start Processing.** It is the operator's signature (Law 9: the agent may create a project,
+ *    only the operator may start one) and it was buried three sections down this panel. It is now
+ *    the next-action block's button, at the top of the screen, and exists nowhere else.
+ *  - **The components table**, which the intake screen now owns. The record's own component list
+ *    carries more than the brief's copy of it (physical state, batch mass), and two tables of the
+ *    same four components on one screen is exactly the undifferentiated column being unwound.
+ *
+ * What is left is the dossier and its provenance — which is the evidence behind the summary, and
+ * the reason the panel is worth opening.
  */
-export function IntakeBrief({
-  brief,
-  canStart,
-  onStart,
-  busy = false,
-}: {
-  brief: Brief;
-  canStart: boolean;
-  onStart: () => void;
-  busy?: boolean;
-}) {
-  const unknowns = brief.dossier.filter((d) => d.state === 'unknown').length;
-
+export function IntakeBrief({ brief }: { brief: Brief }) {
   return (
-    <section className="screen">
-      <div className="cap">
-        <b>The brief</b>
-        Written by the interview, from what you said. Nothing here can be typed over.
-      </div>
-
+    <>
       {brief.summary.trim().length > 0 && (
-        <p className="small prose" style={{ margin: '0 0 12px' }}>
+        <p className="prose" style={{ margin: '0 0 12px' }}>
           {brief.summary}
         </p>
       )}
 
-      <SectionHeader eyebrow="Components" count={brief.components.length} />
-      <table className="mx" style={{ marginBottom: 14 }}>
-        <thead>
-          <tr>
-            <th style={{ width: 130 }}>Component</th>
-            <th>Material</th>
-            <th>Application</th>
-            <th>Markets</th>
-            <th>Objective</th>
-          </tr>
-        </thead>
-        <tbody>
-          {brief.components.map((c) => (
-            <tr key={c.id}>
-              <td className="data">{c.id}</td>
-              <td>{c.material}</td>
-              <td>{c.application}</td>
-              <td>{c.markets.join(', ')}</td>
-              <td>{c.objective}</td>
-            </tr>
+      {/* The summary above is the conclusion; this is what it was drawn from. One interaction away,
+          never further — the operator is about to start an analysis on it. */}
+      <details style={{ marginBottom: 12 }}>
+        <summary className="small secondary" style={{ cursor: 'pointer' }}>
+          Question by question, and who answered ({brief.dossier.length})
+        </summary>
+        <div className="region" style={{ marginTop: 8 }}>
+          {brief.dossier.map((e) => (
+            <DossierRow key={e.questionId} entry={e} />
           ))}
-        </tbody>
-      </table>
+        </div>
 
-      <SectionHeader eyebrow="Dossier" count={brief.dossier.length} />
-      <div className="region" style={{ marginBottom: 14 }}>
-        {brief.dossier.map((e) => (
-          <DossierRow key={e.questionId} entry={e} />
-        ))}
-      </div>
-
-      {brief.attachments.length > 0 && (
-        <>
-          <SectionHeader eyebrow="Attachments" count={brief.attachments.length} />
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-            {brief.attachments.map((a) => (
-              <AttachmentChip key={a.fileId} attachment={a} />
-            ))}
-          </div>
-        </>
-      )}
+        {brief.attachments.length > 0 && (
+          <>
+            <SectionHeader eyebrow="Attachments" count={brief.attachments.length} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+              {brief.attachments.map((a) => (
+                <AttachmentChip key={a.fileId} attachment={a} />
+              ))}
+            </div>
+          </>
+        )}
+      </details>
 
       {/* The whole conversation, closed by default. It is the provenance of every line above, so it
           must be reachable — but it is not what the operator is here to read. `<details>` because a
@@ -162,27 +135,14 @@ export function IntakeBrief({
         </details>
       )}
 
-      {canStart && (
-        <div className="region">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <button className="btn primary" type="button" disabled={busy} onClick={onStart}>
-              Start Processing
-            </button>
-            {/* Beside the button, because the gaps are part of what is being signed for. */}
-            <span className="tiny muted">
-              {unknowns === 0
-                ? 'Nothing is open — every question was settled.'
-                : unknowns === 1
-                  ? '1 question will be carried into the analysis as an unknown.'
-                  : `${unknowns} questions will be carried into the analysis as unknowns.`}
-            </span>
-          </div>
-          <div className="tiny muted" style={{ marginTop: 8 }}>
-            To change anything above, tell the agent why — it re-derives and records the reason as a
-            Learned Conclusion.
-          </div>
-        </div>
-      )}
-    </section>
+      {/* Law 4, stated where the operator is looking at something they cannot type over. It used to
+          sit beside the Start button and only appear when the project could be started — so on every
+          project already running, the one rule that explains why nothing here is editable was not on
+          the screen at all. */}
+      <p className="small muted" style={{ margin: 0 }}>
+        To change anything here, tell the agent why — it re-derives and records the reason as a
+        Learned Conclusion.
+      </p>
+    </>
   );
 }

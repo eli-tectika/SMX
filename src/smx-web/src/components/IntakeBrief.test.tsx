@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { IntakeBrief } from './IntakeBrief';
 import type { IntakeBrief as Brief } from '../api/types';
 
@@ -21,22 +22,29 @@ const brief = (over: Partial<Brief> = {}): Brief => ({
   attachments: [], transcript: [], createdAt: '2026-07-22T10:00:00Z', ...over,
 });
 
-const show = (b = brief(), onStart = vi.fn()) =>
-  render(<MemoryRouter><IntakeBrief brief={b} canStart onStart={onStart} /></MemoryRouter>);
+const show = (b = brief()) => render(<MemoryRouter><IntakeBrief brief={b} /></MemoryRouter>);
+
+/** The dossier is behind a disclosure — open it the way the operator would. */
+const openDossier = () => userEvent.click(screen.getByText(/question by question/i));
 
 describe('the intake brief', () => {
-  it('renders the summary and the proposed components', () => {
+  /**
+   * The summary is the conclusion and stays at full size; the dossier it was drawn from is one
+   * interaction away, never further. The components table left this panel entirely — the intake
+   * screen renders the record's own component list, which carries more than the brief's copy.
+   */
+  it('renders the summary without a second components table', () => {
     show();
     expect(screen.getByText(/500 ml PET bottle/)).toBeInTheDocument();
-    expect(screen.getByText('bottle')).toBeInTheDocument();
-    expect(screen.getByText(/EU/)).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('distinguishes every dossier state, including the agent-proposed confidence', () => {
+  it('distinguishes every dossier state, including the agent-proposed confidence', async () => {
     // Provenance collapse is the failure this screen must not permit: an agent inference and an
     // operator statement must never render the same, or the operator signs off on the model's guess
     // believing they said it.
     const { container } = show();
+    await openDossier();
     expect(screen.getByText(/PET resin/)).toBeInTheDocument();
     expect(screen.getByText(/client hasn't replied/)).toBeInTheDocument();
     expect(screen.getByText(/after the blow moulder/)).toBeInTheDocument();
@@ -64,12 +72,6 @@ describe('the intake brief', () => {
     expect(row('agent-proposed')?.textContent).toMatch(/confidence low/i);
   });
 
-  it('states how many questions the analysis will carry as unknown', () => {
-    // Beside the Start button, because it is what the operator is signing for.
-    show();
-    expect(screen.getByText(/1 question/i)).toBeInTheDocument();
-  });
-
   /**
    * THE tripwire for Law 4. Nothing the agent produced may be hand-edited: the operator changes it by
    * telling the agent WHY, which is also how the change earns a Learned Conclusion. A stray <input>
@@ -87,8 +89,13 @@ describe('the intake brief', () => {
     expect(screen.getByText(/tell the agent/i)).toBeInTheDocument();
   });
 
-  it('only offers Start Processing when the project is awaiting confirmation', () => {
-    render(<MemoryRouter><IntakeBrief brief={brief()} canStart={false} onStart={vi.fn()} /></MemoryRouter>);
-    expect(screen.queryByRole('button', { name: /start processing/i })).not.toBeInTheDocument();
+  /**
+   * Start Processing left this panel. It is the operator's signature (Law 9) and it was three
+   * sections down a scrolling brief; it is now the next-action block's button, at the top of the
+   * artifact column, and there must not be a second one anywhere.
+   */
+  it('carries no control at all — it is something to read', () => {
+    const { container } = show();
+    expect(container.querySelectorAll('button')).toHaveLength(0);
   });
 });

@@ -10,11 +10,19 @@ const project = (stages: Record<string, StageState>): ProjectSummary => ({
 });
 
 describe('nextAction', () => {
-  it('turns an intake park into Start Processing, pointed at intake', () => {
+  /**
+   * The one cta that is a WRITE, not a destination. Every other block sends the operator to the
+   * screen that owns the control; starting the analysis has no such screen any more — the press
+   * itself is the write (Law 9), so the action carries `perform` and no `to`. A link here would
+   * navigate to the intake screen and leave the operator hunting for a second button that no
+   * longer exists.
+   */
+  it('turns an intake park into Start Processing, and makes it perform rather than navigate', () => {
     const a = nextAction(project({ intake: { status: 'awaiting-confirmation', attempts: 1 } }));
     expect(a).not.toBeNull();
     expect(a!.title).toBe('Start processing');
-    expect(a!.cta).toEqual({ label: 'Start processing', to: '/p/p1/intake' });
+    expect(a!.cta).toEqual({ label: 'Start processing', perform: 'start-processing' });
+    expect(a!.cta?.to).toBeUndefined();
   });
 
   it('turns an R.E. park into recording the determination, pointed at regulatory', () => {

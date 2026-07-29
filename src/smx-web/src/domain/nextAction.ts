@@ -17,6 +17,22 @@ import { STAGES } from './stages';
  * its own; there is nothing for the operator to press, and a button that only navigated somewhere
  * would imply an action that does not exist.
  */
+/**
+ * What the button does. Two kinds, and the difference is real.
+ *
+ * Almost every next action is a NAVIGATION: the control that clears the block lives on some
+ * screen, and the button's job is to get the operator there. One is not. Starting the analysis
+ * has no screen that owns it any more — the press itself is the write (Law 9: the agent may
+ * create a project, only the operator may start one), so the block that states the action is
+ * also the thing that performs it, and Start Processing exists nowhere else in the app.
+ *
+ * The two `?: undefined` markers are what let a caller read `cta.perform` or `cta.to` on the
+ * union without narrowing first, and still get an exhaustive discriminant when it does narrow.
+ */
+export type NextActionCta =
+  | { label: string; to: string; perform?: undefined }
+  | { label: string; perform: 'start-processing'; to?: undefined };
+
 export interface NextAction {
   title: string;
   body: string;
@@ -25,7 +41,7 @@ export interface NextAction {
   tone: 'warning' | 'danger' | 'accent' | 'muted';
   icon: string;
   /** Absent where no control exists — see the doc comment above. */
-  cta?: { label: string; to: string };
+  cta?: NextActionCta;
 }
 
 /**
@@ -99,13 +115,15 @@ export function nextAction(project: ProjectSummary): NextAction | null {
   // 2. Created by the interview agent and never started. Nothing is dispatched until this is pressed.
   const confirmation = entries.find(([, s]) => s.status === 'awaiting-confirmation');
   if (confirmation) {
-    const [stage] = confirmation;
     return {
       title: 'Start processing',
       body: 'The brief is ready. Nothing runs until you start it.',
       tone: 'warning',
       icon: 'ti-player-play',
-      cta: ctaTo(projectId, stage, 'Start processing'),
+      // The one cta that is not a link. Sending the operator to the intake screen to find a
+      // second Start button is a journey to nowhere: the button was three sections down that
+      // screen, and this block is where the eye already is.
+      cta: { label: 'Start processing', perform: 'start-processing' },
     };
   }
 

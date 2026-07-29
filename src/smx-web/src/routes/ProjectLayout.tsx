@@ -102,7 +102,9 @@ export function ProjectLayout() {
       <ProjectHeader project={state.project} />
       <StageStepper project={state.project} />
       <WorkArea chat={chat} collapsible={def.slug === 'matrix' || def.slug === 'dosing'}>
-        <NextAction project={state.project} />
+        {/* It takes `refresh` because its button is sometimes a write: Start Processing is the
+            block's own control now, and the spine has to catch up with the record it changed. */}
+        <NextAction project={state.project} refreshProject={refresh} />
         {screen}
       </WorkArea>
     </>

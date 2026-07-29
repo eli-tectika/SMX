@@ -55,17 +55,28 @@ export function SectionHeader({
   count,
   hint,
   actions,
+  headingLevel,
 }: {
   eyebrow?: string;
   title?: string;
   count?: number;
   hint?: string;
   actions?: ReactNode;
+  /**
+   * Render the title as a real heading rather than a styled span. Opt-in, because most section
+   * headers in this app label a list inside a screen — but where the sections ARE the structure
+   * of the screen (Intake's three), a screen-reader user must be able to jump between them, and
+   * a `<span>` that merely looks like a heading is not one. Levels are the page's, not the
+   * component's: ProjectHeader owns the h1 and NextAction the h2, so a stage screen's sections
+   * are h3.
+   */
+  headingLevel?: 2 | 3 | 4;
 }) {
+  const Title = (headingLevel ? `h${headingLevel}` : 'span') as 'h3' | 'span';
   return (
     <div className="sec">
       {eyebrow && <span className="sec__eyebrow">{eyebrow}</span>}
-      {title && <span className="sec__title">{title}</span>}
+      {title && <Title className="sec__title">{title}</Title>}
       {count !== undefined && <span className="sec__count">{count}</span>}
       {hint && <span className="sec__hint">{hint}</span>}
       {actions && <span className="sec__actions">{actions}</span>}

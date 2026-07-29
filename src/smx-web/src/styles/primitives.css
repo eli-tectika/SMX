@@ -408,6 +408,11 @@
   font-size: var(--t-lead);
   font-weight: 500;
   color: var(--brand-navy); /* client brand direction: titles carry navy */
+  /* The title is a <span> by default and an <h2>/<h3> where the section is real page structure
+     (SectionHeader's `headingLevel`). A heading element brings UA margins with it, which would
+     break the baseline alignment `.sec` sets up between the title, the count and the hint —
+     so the type is stated here and the box is not. */
+  margin: 0;
 }
 
 .sec__count {

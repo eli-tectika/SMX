@@ -17,8 +17,21 @@ import { CitationChip, SectionHeader } from '../../components/ui/Primitives';
  *
  * `hint` lets each host say why the pool matters THERE: it is the element list Background measures
  * against, and the hypothesis Discovery is corroborating.
+ *
+ * `heading` may be turned off by a host whose own section already names the pool — two headings
+ * reading "The proposed pool" and "PROPOSED POOL" in consecutive lines is noise, not hierarchy.
+ * It is opt-out rather than opt-in because a bare list of elements with nothing saying what it is
+ * would be the worse default.
  */
-export function ProposedPool({ projectId, hint }: { projectId: string; hint?: string }) {
+export function ProposedPool({
+  projectId,
+  hint,
+  heading = true,
+}: {
+  projectId: string;
+  hint?: string;
+  heading?: boolean;
+}) {
   const state = usePolling(
     () => getPool(projectId),
     (p) => p !== NotFound,
@@ -59,10 +72,12 @@ export function ProposedPool({ projectId, hint }: { projectId: string; hint?: st
 
   return (
     <section>
-      <SectionHeader
-        eyebrow="Proposed pool"
-        hint={hint ?? 'a starting hypothesis — everything downstream sieves it'}
-      />
+      {heading && (
+        <SectionHeader
+          eyebrow="Proposed pool"
+          hint={hint ?? 'a starting hypothesis — everything downstream sieves it'}
+        />
+      )}
       {components.map((component) => (
         <div key={component} style={{ marginBottom: 12 }}>
           <div style={{ fontWeight: 500, fontSize: 13 }}>{component}</div>

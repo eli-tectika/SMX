@@ -1,8 +1,15 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextAction } from './NextAction';
 import type { ProjectSummary, StageState } from '../../api/types';
+
+vi.mock('../../api/client', () => ({
+  NotFound: Symbol.for('NotFound'),
+  startProject: vi.fn(),
+}));
+import * as api from '../../api/client';
 
 const project = (stages: Record<string, StageState>): ProjectSummary => ({
   projectId: 'p1',
@@ -11,13 +18,18 @@ const project = (stages: Record<string, StageState>): ProjectSummary => ({
   stages,
 });
 
-function block(p: ProjectSummary) {
+function block(p: ProjectSummary, refreshProject: () => void = vi.fn()) {
   return render(
     <MemoryRouter initialEntries={['/p/p1/regulatory']}>
-      <NextAction project={p} />
+      <NextAction project={p} refreshProject={refreshProject} />
     </MemoryRouter>,
   );
 }
+
+beforeEach(() => {
+  vi.mocked(api.startProject).mockReset();
+  vi.mocked(api.startProject).mockResolvedValue({ status: 'pending' });
+});
 
 describe('NextAction', () => {
   /**
@@ -61,7 +73,10 @@ describe('NextAction', () => {
 
     rerender(
       <MemoryRouter initialEntries={['/p/p1/regulatory']}>
-        <NextAction project={project({ regulatory: { status: 'awaiting-RE', attempts: 1 } })} />
+        <NextAction
+          project={project({ regulatory: { status: 'awaiting-RE', attempts: 1 } })}
+          refreshProject={vi.fn()}
+        />
       </MemoryRouter>,
     );
     expect(container.querySelector('[aria-live]')).toBe(before);
@@ -126,8 +141,14 @@ describe('NextAction', () => {
   it('labels the region with an id that is unique per instance', () => {
     const { container } = render(
       <MemoryRouter>
-        <NextAction project={project({ regulatory: { status: 'awaiting-RE', attempts: 1 } })} />
-        <NextAction project={project({ decision: { status: 'awaiting-VP', attempts: 1 } })} />
+        <NextAction
+          project={project({ regulatory: { status: 'awaiting-RE', attempts: 1 } })}
+          refreshProject={vi.fn()}
+        />
+        <NextAction
+          project={project({ decision: { status: 'awaiting-VP', attempts: 1 } })}
+          refreshProject={vi.fn()}
+        />
       </MemoryRouter>,
     );
     const ids = [...container.querySelectorAll('.next__title')].map((el) => el.id);
@@ -154,5 +175,95 @@ describe('NextAction', () => {
     // The heading is inside the live region, and is still a heading.
     expect(live.contains(screen.getByRole('heading', { level: 2 }))).toBe(true);
     expect(screen.getByRole('heading', { level: 2 })).not.toHaveAttribute('role');
+  });
+});
+
+/**
+ * Start Processing — the one next action that is a WRITE.
+ *
+ * It was buried three sections down the intake screen, inside the brief panel. It is now this
+ * block's own button and exists nowhere else in the app, which means this component performs it:
+ * it calls the endpoint, holds the busy state, and says what happened when the call fails.
+ */
+describe('NextAction — starting the analysis', () => {
+  const unstarted = () => project({ intake: { status: 'awaiting-confirmation', attempts: 0 } });
+
+  /**
+   * A <button>, not a <Link>. Sending the operator to the intake screen would land them on the
+   * screen they are usually already on, with nothing to press when they got there.
+   */
+  it('renders the start action as a button rather than a link', () => {
+    block(unstarted());
+    expect(screen.getByRole('button', { name: /start processing/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
+  it('starts the analysis on the press, then re-reads the record', async () => {
+    const refreshProject = vi.fn();
+    block(unstarted(), refreshProject);
+
+    await userEvent.click(screen.getByRole('button', { name: /start processing/i }));
+
+    expect(api.startProject).toHaveBeenCalledWith('p1');
+    // The spine has to catch up with the record the press just changed.
+    await waitFor(() => expect(refreshProject).toHaveBeenCalled());
+  });
+
+  /**
+   * A 404 means the project is gone from under the operator. Silence would leave them looking at
+   * a button they just pressed, believing the analysis is running.
+   */
+  it('says so when start finds no such project, and does not re-read the record', async () => {
+    vi.mocked(api.startProject).mockResolvedValue(api.NotFound);
+    const refreshProject = vi.fn();
+    block(unstarted(), refreshProject);
+
+    await userEvent.click(screen.getByRole('button', { name: /start processing/i }));
+
+    expect(await screen.findByText(/no project with id p1/i)).toBeInTheDocument();
+    expect(refreshProject).not.toHaveBeenCalled();
+  });
+
+  it('reports the failure verbatim when the call throws', async () => {
+    vi.mocked(api.startProject).mockRejectedValue(new Error('502 Bad Gateway'));
+    block(unstarted());
+
+    await userEvent.click(screen.getByRole('button', { name: /start processing/i }));
+
+    expect(await screen.findByText('502 Bad Gateway')).toBeInTheDocument();
+  });
+
+  /**
+   * The failure text has to live INSIDE the live region, or the one message that says the press
+   * did not work is the one thing a screen-reader user is never told.
+   */
+  it('puts the failure inside the live region', async () => {
+    vi.mocked(api.startProject).mockResolvedValue(api.NotFound);
+    const { container } = block(unstarted());
+
+    await userEvent.click(screen.getByRole('button', { name: /start processing/i }));
+
+    const live = container.querySelector('[aria-live]')!;
+    expect(live).toHaveTextContent(/no project with id p1/i);
+  });
+
+  /** Feedback while the request is in flight — a button that looks idle invites a second press. */
+  it('disables the button while the start is in flight', async () => {
+    let release: (v: { status: string }) => void = () => {};
+    vi.mocked(api.startProject).mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    block(unstarted());
+
+    await userEvent.click(screen.getByRole('button', { name: /start processing/i }));
+    const button = screen.getByRole('button', { name: /starting/i });
+    expect(button).toBeDisabled();
+
+    release({ status: 'pending' });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /start processing/i })).toBeEnabled(),
+    );
   });
 });
