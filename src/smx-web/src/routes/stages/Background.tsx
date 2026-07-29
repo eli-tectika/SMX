@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { NotFound, getMatrix, getXrfState } from '../../api/client';
-import type { MatrixDoc, XrfState } from '../../api/types';
+import type { MatrixDoc, StageStatus, XrfState } from '../../api/types';
 import { Data } from '../../components/ui/Data';
 import { EmptyState, SectionHeader } from '../../components/ui/Primitives';
 import { ProposedPool } from './ProposedPool';
-import { XrfEntry } from '../../components/xrf/XrfEntry';
 import type { ScreenProps } from '../ProjectLayout';
 
 type Cell = 'V' | 'L' | 'X' | 'none';
@@ -18,13 +17,13 @@ const CELL_TITLE: Record<Cell, string> = {
 };
 
 /**
- * Background analysis (spec §4.2) — real, end to end.
+ * Background analysis — the physicist's measurement, read back per component.
  *
- * The screen is two provenances in two sections, and both are now the record's:
- *
- *  1. `XrfEntry` — the operator transcribes the physicist's measurement and confirms it, which writes
- *     the element pool and lifts Discovery's park.
- *  2. The matrix below — the SAME data read back, joined into the four states the record can support.
+ * The ENTRY half of this stage is no longer on this screen. `XrfEntry` now sits in the work area's
+ * left column (ProjectLayout), because this is the one stage with no agent — the XRF filter is a
+ * deterministic pass-through, a thread on it would be a conversation with nobody, and the operator's
+ * own transcription is what belongs in the position where input lives. What is left here is the
+ * artifact: the SAME data read back, joined into the four states the record can support.
  *
  * The join is the whole point. `X` is not a stored status: XrfConfirmation writes only V and L into
  * `elementPools`, but an X row is still recorded as a `measuredBackgrounds` entry — deliberately, so
@@ -42,13 +41,26 @@ const CELL_TITLE: Record<Cell, string> = {
  * The objective toggle is gone. Each component's objective is a RECORDED value, not a control — a
  * toggle that relabelled a legend implied a re-evaluation that never happened.
  */
-export function Background({ project, refreshProject }: ScreenProps) {
+export function Background({ project }: ScreenProps) {
   const discovery = project.stages.discovery;
 
   const [xrf, setXrf] = useState<XrfState | null>(null);
   const [matrix, setMatrix] = useState<MatrixDoc | null>(null);
-  const [phase, setPhase] = useState<'loading' | 'ready' | 'absent' | 'error'>('loading');
+  /** The gate could not be read — as opposed to there being no gate. The two must not look alike. */
+  const [gateUnreadable, setGateUnreadable] = useState(false);
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'absent' | 'unreadable' | 'error'>(
+    'loading',
+  );
   const [errMsg, setErrMsg] = useState<string>();
+
+  /*
+   * The confirm button is in the OTHER column now, in a component this screen does not own, so it
+   * cannot be handed a callback. What it does do is write the record and start Discovery — so the
+   * polled project's discovery status/attempts moving is this screen's signal that the record it is
+   * reading has changed underneath it. A re-measure re-dispatches Discovery and bumps `attempts`,
+   * which is why both halves are in the key and not just the status.
+   */
+  const discoveryKey = `${discovery?.status ?? 'none'}#${discovery?.attempts ?? 0}`;
 
   const load = useCallback(
     async (signal?: { cancelled: boolean }) => {
@@ -58,10 +70,27 @@ export function Background({ project, refreshProject }: ScreenProps) {
           getMatrix(project.projectId),
         ]);
         if (signal?.cancelled) return;
-        setMatrix(m === NotFound ? null : m);
+
+        /*
+         * Shape checks, not schema validation. `client.ts` casts every response with `as` and
+         * checks nothing, and a deployed backend that answers a shape this screen does not expect
+         * used to throw out of render and take the whole project shell down with it. A payload
+         * this cannot read degrades INSIDE its own region instead.
+         */
+        if (m === NotFound || !isMatrix(m)) {
+          setMatrix(null);
+          setGateUnreadable(m !== NotFound);
+        } else {
+          setMatrix(m);
+          setGateUnreadable(false);
+        }
+
         if (x === NotFound) {
           setXrf(null);
           setPhase('absent');
+        } else if (!isXrfState(x)) {
+          setXrf(null);
+          setPhase('unreadable');
         } else {
           setXrf(x);
           setPhase('ready');
@@ -82,25 +111,20 @@ export function Background({ project, refreshProject }: ScreenProps) {
     return () => {
       signal.cancelled = true;
     };
-  }, [load]);
-
-  const refresh = () => {
-    refreshProject();
-    void load();
-  };
+    // `discoveryKey` is a re-read trigger, not a value `load` closes over — see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [load, discoveryKey]);
 
   const components = xrf?.components ?? [];
+  const pools = xrf?.elementPools ?? [];
 
   /** Every element the record mentions at all, in either half of the join. */
   const elements = [
-    ...new Set([
-      ...(xrf?.elementPools ?? []).map((p) => p.element),
-      ...(xrf?.measuredBackgrounds ?? []).map((b) => b.element),
-    ]),
+    ...new Set([...pools.map((p) => p.element), ...(xrf?.measuredBackgrounds ?? []).map((b) => b.element)]),
   ].sort();
 
   const poolFor = (element: string, component: string) =>
-    (xrf?.elementPools ?? []).find((p) => p.element === element && p.component === component);
+    pools.find((p) => p.element === element && p.component === component);
   const bgFor = (element: string, component: string) =>
     (xrf?.measuredBackgrounds ?? []).find((b) => b.element === element && b.component === component);
 
@@ -115,7 +139,8 @@ export function Background({ project, refreshProject }: ScreenProps) {
     const cas = (matrix?.rows ?? []).filter((r) => r.element === element).map((r) => r.cas);
     for (const cell of matrix?.cells ?? []) {
       if (!cas.includes(cell.cas)) continue;
-      const gate = cell.dimensions.find((d) => d.dimension === 'ElementGate' && d.status === 'Fail');
+      const dims = Array.isArray(cell.dimensions) ? cell.dimensions : [];
+      const gate = dims.find((d) => d.dimension === 'ElementGate' && d.status === 'Fail');
       if (gate) return gate.rationale;
     }
     return undefined;
@@ -126,60 +151,23 @@ export function Background({ project, refreshProject }: ScreenProps) {
     project.payload?.components.find((c) => c.id === component)?.objective;
 
   /** The line is a property of the element's measurement, identical across components. */
-  const lineFor = (element: string) =>
-    (xrf?.elementPools ?? []).find((p) => p.element === element)?.line;
+  const lineFor = (element: string) => pools.find((p) => p.element === element)?.line;
 
   return (
     <>
-      {/* Real, and first — this is the thing the operator came here to do. */}
-      <XrfEntry projectId={project.projectId} onConfirmed={refresh} />
-
-      {/* The real downstream consequence: StageDispatcher parks Discovery with a plain-English reason
-          when the project has no element pools, so this reads the record rather than asserting it. */}
-      {discovery && (
-        <section className="screen">
-          <div className="cap">
-            <b>What is waiting on this</b>
-            live from the record — <Data kind="code">stages.discovery</Data>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 13, fontWeight: 500 }}>Discovery agent</span>
-            <span className="chip">{discovery.status}</span>
-          </div>
-          {/* Only while the stage is actually stopped. A stale message left on a `done` stage would
-              read as a live park for a project that has already moved on. */}
-          {discovery.error && (discovery.status === 'needs-review' || discovery.status === 'failed') && (
-            <div className="banner warn" role="note" style={{ margin: '10px 0 0' }}>
-              <i className="ti ti-player-pause" aria-hidden="true" />
-              <div>
-                <b>
-                  {discovery.status === 'failed'
-                    ? 'Discovery halted.'
-                    : 'Discovery stopped and is waiting.'}
-                </b>
-                {/* Verbatim, in mono. A paraphrased reason is a lost reason. */}
-                <div className="data" style={{ marginTop: 3, fontSize: 11 }}>
-                  {discovery.error}
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-      )}
-
       <section className="screen">
-        <div className="cap">
-          <b>Background analysis</b>
-          spec §4.2 — the physicist's measurement, read back per component
-        </div>
-
-        {/* Which elements a background is measured FOR. This stage is the sieve over the pool, so
-            the pool is its subject, not a cross-reference — without it the screen asks for XRF
-            numbers while never naming the elements they are for. */}
-        <ProposedPool
-          projectId={project.projectId}
-          hint="the elements this measurement is filtering"
+        <SectionHeader
+          title="What the measurement means"
+          headingLevel={3}
+          hint="element × component, as recorded"
         />
+
+        {phase === 'loading' && (
+          <p className="prose" style={{ margin: 0 }}>
+            <i className="ti ti-loader" data-running="" aria-hidden="true" /> Reading the
+            measurement…
+          </p>
+        )}
 
         {phase === 'error' && (
           <div className="banner warn" role="alert">
@@ -193,11 +181,32 @@ export function Background({ project, refreshProject }: ScreenProps) {
           </div>
         )}
 
+        {/* A payload that arrived but is not the shape the join reads. Distinct from "nothing
+            recorded yet": one is a normal pre-measurement state, the other is a defect, and
+            rendering an empty matrix for it would say the physicist measured nothing. */}
+        {phase === 'unreadable' && (
+          <div className="banner warn" role="alert">
+            <i className="ti ti-alert-triangle" aria-hidden="true" />
+            <div>
+              <b>The recorded measurement could not be read.</b>
+              <div className="tiny" style={{ marginTop: 3 }}>
+                It came back in a shape this screen does not recognise, so nothing is shown rather
+                than something wrong.
+              </div>
+            </div>
+          </div>
+        )}
+
         {phase === 'absent' && (
           <EmptyState
             icon="ti-wave-square"
             title="No measurement on the record yet."
-            body={<>Confirm the physicist's XRF result above and it will be read back here.</>}
+            body={
+              <>
+                Confirm the physicist&rsquo;s XRF result in the entry panel and it is read back
+                here.
+              </>
+            }
           />
         )}
 
@@ -205,13 +214,19 @@ export function Background({ project, refreshProject }: ScreenProps) {
           <EmptyState
             icon="ti-wave-square"
             title="The record holds no elements for this project."
-            body={<>Nothing has been confirmed yet — the entry form above is where it starts.</>}
+            body={<>Nothing has been confirmed yet — the entry panel is where it starts.</>}
           />
         )}
 
         {phase === 'ready' && elements.length > 0 && (
           <>
-            <SectionHeader eyebrow="The verdict matrix" hint="element × component, as measured" />
+            {/* Losing the gate silently would under-state a ban, so it is said out loud. */}
+            {gateUnreadable && (
+              <p className="prose" style={{ margin: '0 0 10px' }} role="note">
+                The regulatory element gate could not be read, so no product-wide ban is shown on any
+                row below.
+              </p>
+            )}
 
             <table className="mx">
               <thead>
@@ -327,9 +342,13 @@ export function Background({ project, refreshProject }: ScreenProps) {
               </tfoot>
             </table>
 
+            {/* Four states and the lock, all five spelled out. The legend is the only place the
+                difference between "measured and present" and "never measured" is stated in words,
+                so it stays at reading size (`.tiny` is 12px, the floor) rather than shrinking to
+                fit the table it explains. */}
             <div
               className="tiny muted"
-              style={{ display: 'flex', gap: 12, margin: '10px 0 18px', flexWrap: 'wrap' }}
+              style={{ display: 'flex', gap: 12, margin: '10px 0 0', flexWrap: 'wrap' }}
             >
               <span>
                 <span className="chip v">V</span> not detected — usable
@@ -349,85 +368,164 @@ export function Background({ project, refreshProject }: ScreenProps) {
               </span>
             </div>
 
-            {xrf?.device && (
-              <>
-                <SectionHeader
-                  eyebrow="Deployment device"
-                  hint="the unit the marker must be READ BY in the field — the floor targets it"
-                />
-                <div className="card" style={{ marginBottom: 18 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>{xrf.device.model}</div>
-                  <div className="tiny muted" style={{ marginTop: 4 }}>
-                    {xrf.device.lods.length === 0
-                      ? 'no per-element LODs recorded'
-                      : xrf.device.lods.map((l) => `${l.element} LOD ${l.lod} ${l.unit}`).join(' · ')}
-                  </div>
-                </div>
-              </>
-            )}
+            {/* Supporting detail, not two more sections. Both are readings of the same matrix: what
+                each component is left with, and the instrument the field reading has to happen on. */}
+            <details style={{ marginTop: 14 }}>
+              <summary className="small secondary" style={{ cursor: 'pointer' }}>
+                What each component is left with
+              </summary>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+                  gap: 10,
+                  marginTop: 10,
+                }}
+              >
+                {components.map((component) => {
+                  const strong = elements.filter((e) => !lockFor(e) && cellFor(e, component) === 'V');
+                  const conditional = elements.filter(
+                    (e) => !lockFor(e) && cellFor(e, component) === 'L',
+                  );
+                  const objective = objectiveFor(component);
+                  return (
+                    <div className="card" key={component}>
+                      <div className="small" style={{ fontWeight: 500, marginBottom: 2 }}>
+                        {component}
+                      </div>
+                      {objective && (
+                        <div className="tiny muted" style={{ marginBottom: 8 }}>
+                          objective: {objective}
+                        </div>
+                      )}
+                      <div className="tiny muted">strong</div>
+                      <div style={{ marginBottom: 8, marginTop: 2 }}>
+                        {strong.length ? (
+                          strong.map((e) => (
+                            <span className="chip v" key={e} style={{ marginRight: 3 }}>
+                              {e}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="tiny muted">none</span>
+                        )}
+                      </div>
+                      <div className="tiny muted">conditional</div>
+                      <div style={{ marginTop: 2 }}>
+                        {conditional.length ? (
+                          conditional.map((e) => (
+                            <span className="chip l" key={e} style={{ marginRight: 3 }}>
+                              {e}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="tiny muted">none</span>
+                        )}
+                      </div>
+                      {/* A stated rule over recorded data, in the conditional tense — never a verdict
+                          stamped into a cell. The agent decides usability; this only says what the
+                          recorded objective implies. */}
+                      {objective === 'quantification' && conditional.length > 0 && (
+                        <div className="tiny" style={{ color: 'var(--text-warning)', marginTop: 8 }}>
+                          Under quantification, {conditional.length} conditional element
+                          {conditional.length === 1 ? '' : 's'} would not be usable.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
 
-            <SectionHeader eyebrow="Per-component pools" hint="what each component's objective demands" />
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-                gap: 10,
-              }}
-            >
-              {components.map((component) => {
-                const strong = elements.filter((e) => !lockFor(e) && cellFor(e, component) === 'V');
-                const conditional = elements.filter(
-                  (e) => !lockFor(e) && cellFor(e, component) === 'L',
-                );
-                const objective = objectiveFor(component);
-                return (
-                  <div className="card" key={component}>
-                    <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 2 }}>{component}</div>
-                    {objective && (
-                      <div className="tiny muted" style={{ marginBottom: 8 }}>
-                        objective: <Data kind="code">{objective}</Data>
-                      </div>
-                    )}
-                    <div className="tiny muted">strong</div>
-                    <div style={{ marginBottom: 8, marginTop: 2 }}>
-                      {strong.length ? (
-                        strong.map((e) => (
-                          <span className="chip v" key={e} style={{ marginRight: 3 }}>
-                            {e}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="tiny muted">none</span>
-                      )}
-                    </div>
-                    <div className="tiny muted">conditional</div>
-                    <div style={{ marginTop: 2 }}>
-                      {conditional.length ? (
-                        conditional.map((e) => (
-                          <span className="chip l" key={e} style={{ marginRight: 3 }}>
-                            {e}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="tiny muted">none</span>
-                      )}
-                    </div>
-                    {/* A stated rule over recorded data, in the conditional tense — never a verdict
-                        stamped into a cell. The agent decides usability; this only says what the
-                        recorded objective implies. */}
-                    {objective === 'quantification' && conditional.length > 0 && (
-                      <div className="tiny" style={{ color: 'var(--text-warning)', marginTop: 8 }}>
-                        Under quantification, {conditional.length} conditional element
-                        {conditional.length === 1 ? '' : 's'} would not be usable.
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            {xrf?.device && (
+              <details style={{ marginTop: 8 }}>
+                <summary className="small secondary" style={{ cursor: 'pointer' }}>
+                  Measured on {xrf.device.model}
+                </summary>
+                <p className="prose small" style={{ margin: '6px 0 0' }}>
+                  The unit the marker must be read by in the field — the ppm floor targets it.{' '}
+                  {Array.isArray(xrf.device.lods) && xrf.device.lods.length > 0
+                    ? xrf.device.lods.map((l) => `${l.element} LOD ${l.lod} ${l.unit}`).join(' · ')
+                    : 'No per-element LODs recorded.'}
+                </p>
+              </details>
+            )}
           </>
         )}
+
+        {/* Which elements a background is measured FOR. This stage is the sieve over the pool, so the
+            pool belongs on the screen — but as the input it is, behind a disclosure, opened by
+            default only while there is no matrix to read instead. */}
+        <details open={phase !== 'ready' || elements.length === 0} style={{ marginTop: 14 }}>
+          <summary className="small secondary" style={{ cursor: 'pointer' }}>
+            The elements this measurement is filtering
+          </summary>
+          <div style={{ marginTop: 10 }}>
+            <ProposedPool projectId={project.projectId} heading={false} />
+          </div>
+        </details>
+      </section>
+
+      <section className="screen">
+        <SectionHeader title="What is waiting on this" headingLevel={3} />
+
+        {/* The real downstream consequence: StageDispatcher parks Discovery with a plain-English
+            reason when the project has no element pools. This reads the record rather than asserting
+            it — and it says it as a sentence, not as the name of the field it came out of. */}
+        <p className="prose" style={{ margin: 0 }}>
+          {discoverySentence(discovery?.status, pools.length > 0)}
+        </p>
+
+        {/* Only while the stage is actually stopped. A stale message left on a `done` stage would
+            read as a live park for a project that has already moved on. */}
+        {discovery?.error &&
+          (discovery.status === 'needs-review' || discovery.status === 'failed') && (
+            <div className="banner warn" role="note" style={{ margin: '10px 0 0' }}>
+              <i className="ti ti-player-pause" aria-hidden="true" />
+              {/* Verbatim, in mono. A paraphrased reason is a lost reason. */}
+              <div className="data small">{discovery.error}</div>
+            </div>
+          )}
       </section>
     </>
   );
+}
+
+/**
+ * What Discovery is doing about this measurement, in a sentence.
+ *
+ * It used to be the literal string `stages.discovery` in a code chip beside a raw status word, which
+ * named the field the fact came out of instead of stating the fact. `measured` is what the dispatcher
+ * itself keys on: no element pool means Discovery has nothing to screen against, and saying so is the
+ * only version of this line that explains why the operator is on this screen at all.
+ */
+function discoverySentence(status: StageStatus | undefined, measured: boolean): string {
+  switch (status) {
+    case 'running':
+      return 'Discovery is screening its candidates against this measurement now.';
+    case 'done':
+      return 'Discovery has screened its candidates against this measurement.';
+    case 'failed':
+      return 'Discovery stopped before it finished screening against this measurement.';
+    case 'needs-review':
+      return 'Discovery stopped and is waiting on you.';
+    default:
+      return measured
+        ? 'Discovery has not run yet. It screens every candidate element against this measurement.'
+        : 'Discovery is waiting for this measurement — it screens candidate elements against the measured background, and there is none on the record yet.';
+  }
+}
+
+/** The three arrays the join reads. Anything else is a payload this screen cannot honestly render. */
+function isXrfState(x: XrfState): boolean {
+  return (
+    Array.isArray(x.components) &&
+    Array.isArray(x.elementPools) &&
+    Array.isArray(x.measuredBackgrounds)
+  );
+}
+
+/** The two arrays `lockFor` walks. */
+function isMatrix(m: MatrixDoc): boolean {
+  return Array.isArray(m.rows) && Array.isArray(m.cells);
 }

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProjectSummary, StageState } from '../api/types';
@@ -86,14 +86,18 @@ describe('ProjectLayout — the in-project shell', () => {
 
   /**
    * `background` has no agent — the XRF filter is a deterministic pass-through, so a thread on it
-   * would be a conversation with nobody. The column is ABSENT rather than a panel apologising for
-   * not existing. (The spec puts the operator's own XRF entry form here; hoisting it out of the
-   * Background screen is Plan 2's job, and until then absent is the honest state.)
+   * would be a conversation with nobody. The column is not empty for it: the operator's own XRF
+   * entry takes the position every other stage gives its agent, because that is where input lives.
+   * There is still no agent panel in it.
    */
-  it('gives background no chat column at all', async () => {
+  it('puts the operator’s XRF entry in the background column', async () => {
     await atStage('background');
-    expect(document.querySelector('.work')).toHaveAttribute('data-chat', 'none');
-    expect(document.querySelector('.work__chat')).toBeNull();
+    const column = document.querySelector('.work__chat') as HTMLElement;
+    expect(column).not.toBeNull();
+    expect(document.querySelector('.work')).toHaveAttribute('data-chat', 'open');
+    expect(within(column).getByLabelText(/XRF measurement/i)).toBeInTheDocument();
+    expect(within(column).getByLabelText(/upload/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/agent$/i)).toBeNull();
     expect(screen.queryByText(/No agent on this stage/i)).not.toBeInTheDocument();
   });
 

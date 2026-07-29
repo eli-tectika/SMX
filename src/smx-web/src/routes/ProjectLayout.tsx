@@ -7,6 +7,7 @@ import { StageErrorBoundary } from '../components/shell/StageErrorBoundary';
 import { StageStepper } from '../components/shell/StageStepper';
 import { WorkArea } from '../components/shell/WorkArea';
 import { Timeline } from '../components/timeline/Timeline';
+import { XrfEntry } from '../components/xrf/XrfEntry';
 import { STAGES } from '../domain/stages';
 import { useProject } from '../hooks/useProject';
 import { useThread } from '../hooks/useThread';
@@ -75,13 +76,19 @@ export function ProjectLayout() {
   );
 
   /*
-   * `background` gets null here, not its XRF form. The spec puts XrfEntry in this column — the
-   * operator's own input, in the position where input lives — but that form currently lives
-   * inside the Background screen, and hoisting it is part of that screen's rewrite in Plan 2.
-   * Until then the column is absent rather than empty, which is the honest intermediate state.
+   * `background` gets the operator's own XRF entry form where every other stage gets its agent.
+   * That stage has no agent — the XRF filter is a deterministic pass-through, so a thread on it
+   * would be a conversation with nobody — and the input surface is what belongs in the position
+   * where input lives. The screen beside it reads the same record back as the four-state matrix.
    */
   const chat =
-    def.slug === 'background' ? null : def.surface === 'record' ? (
+    def.slug === 'background' ? (
+      <div className="work__form">
+        {/* The confirm writes the record and starts Discovery; `refresh` is how the stepper and
+            the next-action block above catch up with the stage it just moved. */}
+        <XrfEntry projectId={state.project.projectId} onConfirmed={refresh} />
+      </div>
+    ) : def.surface === 'record' ? (
       /*
        * A signing surface takes no composer. The VP gate is not a screen where the operator works
        * THROUGH an agent — nobody instructs anything here, they sign. But the column is not

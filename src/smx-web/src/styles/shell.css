@@ -142,6 +142,17 @@
 .work__artifact { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: var(--s4); }
 .work[data-chat='none'] .work__artifact { padding-inline: var(--s5); }
 
+/* The Background column holds a FORM, not a conversation: that stage has no agent, so the
+   operator's own XRF entry takes the position where input lives. It needs the same thing the agent
+   panel gets from its own frame — a definite box that scrolls INSIDE the column — because `.work`
+   has a definite height and a form carrying a parsed grid is taller than it. Padding rather than
+   the panel's border: this is the column's whole content, not a card sitting inside it. */
+.work__form {
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--s3);
+}
+
 /* Collapsed: a rail, not an absence. The agent is the only surface the operator may instruct,
    and an interface where it can be dismissed entirely invites working around it. */
 .work__rail {

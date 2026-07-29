@@ -17,10 +17,25 @@ import type { XrfProposal, XrfState } from '../../api/types';
 import { SectionHeader } from '../ui/Primitives';
 import { XrfProposalTable } from './XrfProposalTable';
 
-/** `null` while the first read is in flight; `'absent'` when intake has not written constraints. */
-type RecordState = XrfState | 'absent' | null;
+/**
+ * `null` while the first read is in flight; `'absent'` when intake has not written constraints;
+ * `'unreadable'` when something came back that is not an XrfState at all.
+ */
+type RecordState = XrfState | 'absent' | 'unreadable' | null;
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/**
+ * The arrays this component reads. `client.ts` casts every response with `as` and validates nothing,
+ * so a backend answering an unexpected shape used to throw out of render here — and this component
+ * is mounted in the shell's own column, where a throw takes the entry form down with the summary.
+ * A payload that cannot be read is reported; the form above it keeps working, because entering a
+ * measurement is exactly what an operator looking at a broken record wants to do.
+ */
+const readable = (x: XrfState): boolean =>
+  Array.isArray(x.components) &&
+  Array.isArray(x.elementPools) &&
+  Array.isArray(x.measuredBackgrounds);
 
 /**
  * A blank row for the manual grid.
@@ -75,7 +90,7 @@ export function XrfEntry({
     try {
       const r = await getXrfState(projectId);
       if (mine !== reqId.current) return;
-      setRecord(r === NotFound ? 'absent' : r);
+      setRecord(r === NotFound ? 'absent' : readable(r) ? r : 'unreadable');
     } catch (e) {
       if (mine !== reqId.current) return;
       setError(message(e));
@@ -91,7 +106,8 @@ export function XrfEntry({
     void load();
   }, [load]);
 
-  const components = record && record !== 'absent' ? record.components : [];
+  const components =
+    record && record !== 'absent' && record !== 'unreadable' ? record.components : [];
 
   const upload = useCallback(
     async (file: File | undefined) => {
@@ -149,30 +165,47 @@ export function XrfEntry({
   const addRow = () =>
     setProposals((rows) => [...(rows ?? []), blankRow(rows ?? [], components)]);
 
+  /*
+   * The grid is ten columns of transcription and it lives in a 390px column, so it scrolls
+   * SIDEWAYS inside its own box. Without this the table would simply be wider than the column and
+   * spill over the artifact beside it — and the columns it would spill are the ones carrying the
+   * signal note and the Remove control, i.e. the end of every row.
+   */
   const table = proposals && (
-    <XrfProposalTable
-      proposals={proposals}
-      components={components}
-      onChange={setProposals}
-      onConfirm={(rows) => void confirm(rows)}
-      busy={busy}
-    />
+    <div style={{ overflowX: 'auto' }}>
+      <XrfProposalTable
+        proposals={proposals}
+        components={components}
+        onChange={setProposals}
+        onConfirm={(rows) => void confirm(rows)}
+        busy={busy}
+      />
+    </div>
   );
 
   return (
-    <section className="screen">
-      <div className="cap">
-        <b>The physicist&rsquo;s XRF result</b>
-        spec §4.2 — real, written to the record
-      </div>
+    /*
+     * This is the work area's LEFT column on the Background stage — the position every other stage
+     * gives its agent. Background has none (the XRF filter is a deterministic pass-through), so the
+     * operator's own transcription takes it: the input surface goes where input lives. It is
+     * therefore framed as a panel, not as a `.screen` card with a page title over it; the stage
+     * header and the stepper already say which screen this is.
+     */
+    <section aria-label="XRF measurement">
+      <header style={{ marginBottom: 'var(--s3)' }}>
+        <h3 className="sec__title" style={{ margin: 0 }}>
+          XRF measurement
+        </h3>
+        <p className="small secondary" style={{ margin: '2px 0 0' }}>
+          The physicist measures; you transcribe and confirm.
+        </p>
+      </header>
 
       {/* The one error slot. */}
       {error && (
         <div className="banner danger" role="alert">
           <i className="ti ti-alert-triangle" aria-hidden="true" />
-          <div className="data" style={{ fontSize: 12 }}>
-            {error}
-          </div>
+          <div className="data small">{error}</div>
         </div>
       )}
 
@@ -187,35 +220,41 @@ export function XrfEntry({
       )}
 
       <SectionHeader eyebrow="Enter a measurement" />
-      <div className="region" style={{ marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <label htmlFor="xrf-file" className="small secondary">
-            Upload the physicist&rsquo;s result file
-          </label>
-          <input
-            id="xrf-file"
-            type="file"
-            accept=".csv,.tsv,.txt"
-            disabled={busy}
-            onChange={(e) => {
-              void upload(e.target.files?.[0]);
-              // Let the same file be chosen twice — after a rejected parse the operator fixes the
-              // file and picks it again, and an unchanged value fires no change event.
-              e.target.value = '';
-            }}
-          />
+      {/* Stacked, not a wrapping row: at this column's width a row of a file picker and two
+          buttons wraps into ragged lines whose order stops matching the order they are used in. */}
+      <div
+        className="region"
+        style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 'var(--s2)' }}
+      >
+        <label htmlFor="xrf-file" className="small secondary">
+          Upload the physicist&rsquo;s result file
+        </label>
+        <input
+          id="xrf-file"
+          type="file"
+          accept=".csv,.tsv,.txt"
+          disabled={busy}
+          style={{ maxWidth: '100%' }}
+          onChange={(e) => {
+            void upload(e.target.files?.[0]);
+            // Let the same file be chosen twice — after a rejected parse the operator fixes the
+            // file and picks it again, and an unchanged value fires no change event.
+            e.target.value = '';
+          }}
+        />
+        <div style={{ display: 'flex', gap: 'var(--s2)', flexWrap: 'wrap' }}>
           {/* The template lives on the API, beside the parser, so the two cannot drift apart. */}
           <a className="btn" href={xrfTemplateUrl} download>
-            <i className="ti ti-download" aria-hidden="true" /> Download the CSV template
+            <i className="ti ti-download" aria-hidden="true" /> CSV template
           </a>
           {!manual && (
             <button type="button" className="btn" onClick={startManual}>
-              <i className="ti ti-table-plus" aria-hidden="true" /> Enter the rows by hand
+              <i className="ti ti-table-plus" aria-hidden="true" /> Enter rows by hand
             </button>
           )}
           {busy && <span className="tiny muted">Working…</span>}
         </div>
-        <div className="tiny muted" style={{ marginTop: 8 }}>
+        <div className="tiny muted">
           Nothing is written until you confirm. Reading a file only proposes rows — you check them
           first.
         </div>
@@ -268,7 +307,21 @@ export function XrfEntry({
  * has been entered" from "this screen has nothing to do with me", and the second reading is how a
  * project sits parked for a week.
  */
-function ConfirmedSummary({ record }: { record: XrfState | 'absent' }) {
+function ConfirmedSummary({ record }: { record: XrfState | 'absent' | 'unreadable' }) {
+  /* Not the same statement as "nothing is recorded". Saying that about a payload we could not read
+     would report an absence we have not established. */
+  if (record === 'unreadable') {
+    return (
+      <div className="region" data-testid="xrf-confirmed-summary" style={{ marginBottom: 14 }}>
+        <div className="small secondary">
+          <i className="ti ti-alert-triangle" aria-hidden="true" /> The recorded measurement came
+          back in a shape this cannot read, so what is on the record is not shown. Entering a
+          measurement still works.
+        </div>
+      </div>
+    );
+  }
+
   if (record === 'absent') {
     return (
       <div className="region" data-testid="xrf-confirmed-summary" style={{ marginBottom: 14 }}>
