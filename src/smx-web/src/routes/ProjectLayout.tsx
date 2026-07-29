@@ -1,8 +1,10 @@
 import { Navigate, useParams } from 'react-router-dom';
 import { AgentPanel } from '../components/AgentPanel';
-import { ContextBar } from '../components/ContextBar';
-import { Dock } from '../components/Dock';
 import { ErrorScreen, Loading } from '../components/Loading';
+import { NextAction } from '../components/shell/NextAction';
+import { ProjectHeader } from '../components/shell/ProjectHeader';
+import { StageStepper } from '../components/shell/StageStepper';
+import { WorkArea } from '../components/shell/WorkArea';
 import { Timeline } from '../components/timeline/Timeline';
 import { STAGES } from '../domain/stages';
 import { useProject } from '../hooks/useProject';
@@ -41,7 +43,13 @@ const SCREENS: Record<string, (p: ScreenProps) => JSX.Element> = {
 
 export function ProjectLayout() {
   const { projectId, stage } = useParams<{ projectId: string; stage?: string }>();
-  const { state, refresh, readAt, polling } = useProject(projectId);
+  /*
+   * `readAt` / `polling` are no longer read here. They fed the ContextBar's "watching the record"
+   * ticker, which is gone with it: what the operator actually needed out of a live poll was for
+   * the block at the top of the artifact to CHANGE, and `NextAction` does that from the project
+   * itself. The hook still polls exactly as before — only the two display-only fields are unread.
+   */
+  const { state, refresh } = useProject(projectId);
 
   if (!stage) return <Navigate to={`/p/${projectId}/intake`} replace />;
   if (state.kind === 'loading') return <Loading what="project" />;
@@ -56,37 +64,37 @@ export function ProjectLayout() {
 
   const screen = <Screen project={state.project} refreshProject={refresh} />;
 
+  /*
+   * `background` gets null here, not its XRF form. The spec puts XrfEntry in this column — the
+   * operator's own input, in the position where input lives — but that form currently lives
+   * inside the Background screen, and hoisting it is part of that screen's rewrite in Plan 2.
+   * Until then the column is absent rather than empty, which is the honest intermediate state.
+   */
+  const chat =
+    def.slug === 'background' ? null : def.surface === 'record' ? (
+      /*
+       * A signing surface takes no composer. The VP gate is not a screen where the operator works
+       * THROUGH an agent — nobody instructs anything here, they sign. But the column is not
+       * wasted: the Decision agent's pick and the deterministic assembly before it are both worth
+       * seeing, so the trail goes where the conversation would have been.
+       */
+      <ReadOnlyTrail projectId={state.project.projectId} stage="decision" />
+    ) : (
+      <AgentPanel
+        projectId={state.project.projectId}
+        stageSlug={def.slug}
+        stageLabel={def.label}
+      />
+    );
+
   return (
     <>
-      <ContextBar project={state.project} readAt={readAt} polling={polling} />
-
-      {def.surface === 'record' ? (
-        /*
-         * A signing surface takes no dock (domain/stages.ts — `surface: 'record'`).
-         *
-         * The dock's "always present" doctrine is about the agent being undismissable on a screen
-         * where the operator works THROUGH an agent. The VP gate is not that screen: nobody instructs
-         * anything here, they sign. Docking a panel that only apologises for not existing spends the
-         * last screen of the journey on an absence — and it is the one screen whose subject is a
-         * human's own signature.
-         */
-        <div className="recordframe">
-          {screen}
-          <ReadOnlyTrail projectId={state.project.projectId} stage="decision" />
-        </div>
-      ) : (
-        <Dock
-          panel={
-            <AgentPanel
-              projectId={state.project.projectId}
-              stageSlug={def.slug}
-              stageLabel={def.label}
-            />
-          }
-        >
-          {screen}
-        </Dock>
-      )}
+      <ProjectHeader project={state.project} />
+      <StageStepper project={state.project} />
+      <WorkArea chat={chat} collapsible={def.slug === 'matrix' || def.slug === 'dosing'}>
+        <NextAction project={state.project} />
+        {screen}
+      </WorkArea>
     </>
   );
 }
@@ -102,7 +110,16 @@ function ReadOnlyTrail({ projectId, stage }: { projectId: string; stage: string 
   const { entries } = useThread(projectId, stage);
   const noop = () => {};
   return (
-    <section aria-label="Decision trail" style={{ marginTop: 16 }}>
+    /*
+     * It scrolls itself, for the same reason the agent panel that normally occupies this column
+     * does: `.work` has a definite height (styles/shell.css), so a trail longer than the column
+     * would otherwise spill out of it rather than scroll inside it. The panel gets that from its
+     * own `flex: 1; overflow-y: auto`; this box has no frame of its own, so it says it here.
+     */
+    <section
+      aria-label="Decision trail"
+      style={{ height: '100%', overflowY: 'auto', padding: 'var(--s3)' }}
+    >
       <Timeline entries={entries.filter((e) => e.kind === 'run')} onCancel={noop} onRerun={noop} />
     </section>
   );

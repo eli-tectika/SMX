@@ -66,19 +66,21 @@
   --s6: 32px;
   --s7: 48px;
 
-  /* frame. The sticky stack has to agree on its own heights or the context bar pins in the
-     wrong place, so these are tokens, not magic numbers scattered across three files. */
+  /* frame. --masthead-h (below) is the one height the layout still has to agree on: the nav
+     rail and the in-project shell both size themselves against it.
+
+     There is no longer a --ctxbar-h. The sticky context bar that owned it measured its own
+     border-box at runtime and published it here, because its height depended on the record —
+     and everything pinned beneath it was one stale frame away from being occluded by it. The
+     shell that replaced it is an ordinary flex column (base.css, `.wrap[data-frame='instrument']`),
+     so the browser subtracts the header and the stepper and nothing has to be told a number.
+     Do not reintroduce a height constant for a row whose height depends on content.
+
+     --dock-w / --dock-rail-w went with the dock. The chat column's width is a fixed measure
+     stated where it is used (styles/shell.css) rather than a token, because exactly one rule
+     and its one breakpoint read it. */
   --appnav-h: 41px; /* nav tier: 11px padding × 2 + ~17px line + 1px rule */
-  /* context bar: identity row + stage spine. This is only the PRE-MEASUREMENT fallback (first
-     paint, or a browser with no ResizeObserver) — the bar's real height depends on the record
-     (a settled project is one short line, a halted one is a sentence plus a verbatim error, and
-     either can wrap), so ContextBar.tsx measures itself and overwrites this value at runtime via
-     `document.documentElement.style.setProperty('--ctxbar-h', ...)`. A fixed number here can never
-     be right for every state again — do not "fix" a layout bug by editing this constant. */
-  --ctxbar-h: 74px;
   --canvas-max: 1600px; /* a CEILING — a 3000px table is distance, not density */
-  --dock-w: 360px; /* fixed. A dock has a width; the canvas gets the rest. */
-  --dock-rail-w: 44px; /* collapsed. It never goes to zero — "always present" is doctrine. */
 
   /* radii. Ceiling is 8px — above that a corner reads consumer-app, not instrument.
      --r-pill survives for exactly one shape: the end-cap of a BAR (.meter, .ribbon,

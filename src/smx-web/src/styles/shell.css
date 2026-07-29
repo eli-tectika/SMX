@@ -110,7 +110,21 @@
    the height back with `align-self: stretch` on each child, which is the same layout written
    as a rule plus two exceptions to it. */
 
-.work { display: flex; min-height: 0; }
+/* The height budget.
+
+   `.work` needs a DEFINITE height, not merely a `min-height: 0`. Everything inside it that
+   scrolls — the agent panel's thread (`flex: 1; overflow-y: auto`), the decision trail, the
+   artifact column below — resolves against this box; without it those resolve against
+   `auto`, the panel grows to the length of its own thread, and a long conversation pushes the
+   composer off the bottom of the page instead of scrolling inside the column.
+
+   It comes from `.wrap[data-frame='instrument']` (base.css), which is the project workspace and
+   nothing else: that frame is a viewport-tall flex column, and `.work` takes what the header and
+   the stepper leave. Nothing measures anything — the two rows above are ordinary static content,
+   so the browser subtracts them, and a product name that wraps to two lines simply takes a line
+   from `.work` instead of pushing the columns off-screen. This is the part the old `--ctxbar-h`
+   could never get right, and it is now not a number at all. */
+.work { display: flex; flex: 1; min-height: 0; }
 .work__chat {
   /* Fixed. A conversation has a comfortable measure and gains nothing past it, while the
      artifact beside it gains everything. */
@@ -121,7 +135,11 @@
   border-right: var(--hair) solid var(--border);
   background: var(--surface-2);
 }
-.work__artifact { flex: 1; min-width: 0; padding: var(--s4); }
+/* The artifact scrolls itself rather than scrolling the page. With `.work` bounded to the
+   viewport, a page-level scroller would take the header and the stepper off the top the moment
+   the operator scrolled a long screen — and the stepper is the one control that says where in
+   the journey they are. The matrix is unaffected: it has always had its own `.mxscroll__pane`. */
+.work__artifact { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: var(--s4); }
 .work[data-chat='none'] .work__artifact { padding-inline: var(--s5); }
 
 /* Collapsed: a rail, not an absence. The agent is the only surface the operator may instruct,
@@ -192,5 +210,79 @@
 .next__title { margin: 0; font-size: var(--t-lead); font-weight: var(--w-semibold); }
 .next__text { margin: var(--s1) 0 0; font-size: var(--t-body); color: var(--text-secondary); line-height: var(--lh-body); }
 .next__detail { margin: var(--s2) 0 0; font-size: var(--t-small); color: var(--text-secondary); }
-/* Fitts: the primary action of the screen is a 40px target, and it is always here. */
-.next__cta { margin-top: var(--s3); padding: 10px 16px; font-size: var(--t-body); }
+/* Fitts: the primary action of the screen is a 40px target, and it is always here.
+
+   `display: inline-flex` is load-bearing, not tidying. `.btn` (base.css) sets no display, which
+   is fine for the <button> it was written for — a UA gives that inline-block — but this CTA is a
+   router <Link>, i.e. a plain inline <a>. On an inline box `margin-top` is ignored outright and
+   vertical padding overflows the line box without reserving space, so the button painted ON TOP
+   of the `.next__detail` line above it. That line is the agent's own verbatim instruction, and
+   the park that carries both a detail AND a cta — awaiting-RE, awaiting-operator, any halted
+   stage — is the common case, not the corner. */
+.next__cta {
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--s3);
+  padding: 10px 16px;
+  font-size: var(--t-body);
+}
+
+/* Nothing is blocked.
+
+   The ELEMENT stays — it is a live region, and a live region that is inserted already populated
+   announces nothing on most screen readers (see NextAction.tsx). So this is the empty state of a
+   box that is always mounted, and `display: none` is specifically not it: that would take the
+   region back out of the accessibility tree and undo the reason it is mounted at all.
+
+   Zero everything instead. An "all clear" band on every screen of a running project is furniture,
+   and furniture teaches the eye to skip a region — including on the day it carries the thing that
+   needs a human. Last in the file so it beats the four `[data-tone]` rules above at equal
+   specificity; they cannot match anyway, since an empty region carries no tone. */
+.next[data-empty] {
+  padding: 0;
+  border: 0;
+  margin: 0;
+  background: none;
+}
+
+/* ---- responsive ----
+
+   Two breakpoints, and both are about the ARTIFACT. The chat is a fixed measure by design, so
+   as the viewport narrows it is the matrix — the thing being decided — that pays, which is
+   backwards. (Widths here are viewport widths; the 76px nav rail comes off before any of this.) */
+
+/* A 1280×800 laptop lands here. 390px against a compatibility matrix is the wrong split once
+   the artifact is under ~800px, so the chat gives some back — down to ~54 characters, which is
+   still a readable measure and still shows a cited regulation name on one line. */
+@media (max-width: 1400px) {
+  .work__chat { width: 340px; }
+}
+
+/* Below this the two columns stop being a working surface and become two cramped ones, so they
+   stack — chat first, keeping the reading order the wide layout has.
+
+   The height budget is handed back to the page here: a viewport-tall shell with two stacked
+   panes inside it has nowhere to put the second one. So `.wrap` goes back to `auto` and the
+   page scrolls, and the chat takes a fixed 420px instead — the panel still needs a definite
+   box to scroll its thread inside, and it must not be allowed to grow to the length of the
+   conversation and bury the artifact underneath it. */
+@media (max-width: 1000px) {
+  .wrap[data-frame='instrument'] { height: auto; }
+  .work { flex-direction: column; }
+  .work__chat {
+    width: auto;
+    height: 420px;
+    border-right: 0;
+    border-bottom: var(--hair) solid var(--border);
+  }
+  .work__artifact { overflow-y: visible; }
+  .work__rail {
+    width: auto;
+    flex-direction: row;
+    justify-content: center;
+    border-right: 0;
+    border-bottom: var(--hair) solid var(--border);
+  }
+  /* Along the rail, not across it — the rail is a horizontal strip now. */
+  .work__rail-label { writing-mode: horizontal-tb; }
+}

@@ -10,7 +10,7 @@
    So printing is a real output format, and the rules below are correctness rules, not
    cosmetics:
 
-     - Chrome disappears. Masthead, nav, agent dock, buttons, the ⌘K finder: none of them
+     - Chrome disappears. Masthead, nav, agent panel, buttons, the ⌘K finder: none of them
        exist on paper, and a disabled button printed onto a compliance document is noise
        that invites a question the page cannot answer.
 
@@ -38,13 +38,22 @@
     font-size: 10pt;
   }
 
-  /* Chrome that has no meaning on paper. */
+  /* Chrome that has no meaning on paper.
+
+     `.work__chat` / `.work__rail` are the agent column and its collapsed rail — the old `.dock`
+     under the names the in-project shell gave it. `.stepper` is navigation; `.next` is the "what
+     do I do now" block, which is an instruction to the operator sitting at the screen and reads
+     as a defect on a document that has left the building. */
   .masthead,
   .appnav,
-  .dock,
+  .work__chat,
+  .work__rail,
+  .work__collapse,
+  .stepper,
+  .next,
   .finder__scrim,
   .findbtn,
-  .ctxbar__back,
+  .phead__back,
   .btn,
   .qr,
   .seg,
@@ -52,16 +61,25 @@
     display: none !important;
   }
 
-  /* The page is the document now. */
+  /* The page is the document now. The instrument frame is a viewport-height flex column on
+     screen (base.css) — on paper there is no viewport, and a fixed height would clip the
+     document at one page. */
   .wrap,
   .wrap[data-frame='instrument'] {
     max-width: none;
     padding: 0;
+    display: block;
+    height: auto;
   }
 
-  .workspace,
-  .workspace[data-dock='collapsed'] {
+  /* Both columns are gone or unbounded: the artifact is the page, and it must not scroll
+     inside a box the printer cannot see past. */
+  .work {
     display: block;
+  }
+  .work__artifact {
+    overflow: visible;
+    padding: 0;
   }
 
   .screen,
@@ -74,9 +92,10 @@
     break-inside: avoid;
   }
 
-  /* The context bar becomes the document's running head — which project this is about is
-     the single most important thing on a printed page that has left the building. */
-  .ctxbar {
+  /* The project header becomes the document's running head — which project this is about is
+     the single most important thing on a printed page that has left the building. It carries
+     the product and the client, which is exactly what that head has to say. */
+  .phead {
     position: static;
     border-bottom: 2px solid #000;
     margin: 0 0 8mm;

@@ -202,48 +202,13 @@ export function foldStatus(states: (StageState | undefined)[]): StageStatus {
   return statuses.every((s) => s === 'done') ? 'done' : 'pending';
 }
 
-/** Maps a folded stage status onto the mockup's pill classes. */
-export function pillClass(stage: StageDef, status: StageStatus | undefined): string {
-  const cls = ['pill'];
-  if (stage.gate) cls.push('gate');
-  if (!status) return [...cls, 'mut'].join(' ');
-  switch (status) {
-    case 'done':
-      cls.push('done');
-      break;
-    case 'running':
-      cls.push('on');
-      break;
-    case 'failed':
-      cls.push('fail');
-      break;
-    case 'needs-review':
-      cls.push('gate');
-      break;
-    case 'pending':
-      cls.push('mut');
-      break;
-    // A park reads like a gate: stopped, waiting on a person, and it wants to be noticed. All
-    // FIVE of them — `awaiting-VP` and `awaiting-confirmation` are here now because `foldStatus`
-    // can finally emit them, and without a case they fell through to a bare `pill` with no tone
-    // at all, which is quieter than the `mut` a merely-pending stage gets.
-    case 'awaiting-operator':
-    case 'awaiting-physics':
-    case 'awaiting-RE':
-    case 'awaiting-VP':
-    case 'awaiting-confirmation':
-      cls.push('gate');
-      break;
-    // A status with no case of its own would render as a bare `pill` — no tone at all, quieter
-    // than the `mut` a merely-pending stage gets. That is how every park in this file used to
-    // render. The never-check turns the next unhandled status into a compile error; the runtime
-    // fallback (for an old bundle meeting a new API, which the compiler cannot see) takes the
-    // gate tone for the same reason stageIcon takes the alert glyph — loud is the safe direction.
-    default:
-      return unhandledStatus(status, [...cls, 'gate'].join(' '));
-  }
-  return cls.join(' ');
-}
+/*
+ * `pillClass` used to live here — the mockup's pill classes for a folded status. Its only caller
+ * was `StageSpine`, which the horizontal stepper replaced (components/shell/StageStepper.tsx), and
+ * the stepper paints status from `data-status` in CSS rather than from a computed class list. It
+ * had no test of its own, so nothing else was pinning it. Deleted with the `.pill` rules in
+ * base.css rather than left behind as a second, silently diverging status-to-colour map.
+ */
 
 export function stageIcon(status: StageStatus | undefined, gate?: boolean): string {
   if (gate) return 'ti-lock';

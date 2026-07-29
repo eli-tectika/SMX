@@ -23,11 +23,50 @@ describe('NextAction', () => {
   /**
    * An "all clear" band would be furniture on every screen of a running project, and furniture is
    * what teaches the eye to skip the region — including on the day it does carry the thing that
-   * needs a human.
+   * needs a human. So there is no content, no title and no landmark name when nothing is blocked.
    */
-  it('renders nothing when nothing needs a human', () => {
+  it('shows nothing when nothing needs a human', () => {
     const { container } = block(project({ intake: { status: 'done', attempts: 1 } }));
-    expect(container).toBeEmptyDOMElement();
+    expect(container.querySelector('.next')).toBeEmptyDOMElement();
+    expect(container.querySelector('.next')).not.toHaveAttribute('aria-labelledby');
+    expect(container.querySelector('.next')).not.toHaveAttribute('data-tone');
+  });
+
+  /**
+   * …and yet the ELEMENT is there, because it is the live region.
+   *
+   * Most screen readers announce mutations INSIDE a region that was already in the accessibility
+   * tree; a region inserted already populated is just more page to them. Returning `null` here
+   * would therefore announce nothing on the exact transition that matters — the poll loop finding
+   * a park while the operator is thirty rows into a matrix. So the region is mounted persistently
+   * and only its contents toggle. `data-empty` is what styles it to nothing; `display: none` is
+   * NOT available, because that takes the region back out of the tree and undoes the point.
+   */
+  it('keeps the live region mounted when nothing is blocked, so it can announce later', () => {
+    const { container } = block(project({ intake: { status: 'done', attempts: 1 } }));
+    const live = container.querySelector('[aria-live]');
+    expect(live).not.toBeNull();
+    expect(live).toHaveAttribute('aria-live', 'polite');
+    expect(live).toHaveAttribute('data-empty');
+  });
+
+  /**
+   * The transition itself: the SAME element must survive a settled → parked update, or the
+   * announcement is an insertion again and we are back where we started.
+   */
+  it('fills the region it already mounted when the record parks', () => {
+    const { container, rerender } = block(project({ regulatory: { status: 'done', attempts: 1 } }));
+    const before = container.querySelector('[aria-live]');
+    expect(before).toBeEmptyDOMElement();
+
+    rerender(
+      <MemoryRouter initialEntries={['/p/p1/regulatory']}>
+        <NextAction project={project({ regulatory: { status: 'awaiting-RE', attempts: 1 } })} />
+      </MemoryRouter>,
+    );
+    expect(container.querySelector('[aria-live]')).toBe(before);
+    expect(before).not.toHaveAttribute('data-empty');
+    expect(before).toHaveTextContent('Record the R.E. determination');
   });
 
   it('renders the title, the body and a working link when there is a cta', () => {

@@ -52,10 +52,15 @@ strong {
 
    Full-bleed everywhere would be a mistake: a 1600px-wide list of project cards reads
    worse than an 1100px one, because prose and cards want a measure. But the project
-   workspace holds a compatibility matrix AND a permanently docked agent panel, and at
-   1100px the matrix was starved to ~660px — and collapsed to ~300px the moment a cell was
-   selected and the evidence rail opened a third column. The app's most important screen
-   degraded the instant you used it the way it is meant to be used.
+   workspace holds a compatibility matrix AND an agent panel beside it, and at 1100px the
+   matrix was starved to ~660px — and collapsed to ~300px the moment a cell was selected and
+   the evidence rail opened a third column. The app's most important screen degraded the
+   instant you used it the way it is meant to be used.
+
+   Note this is chosen by ROUTE, not by width: `/p/*` is always the instrument. The two numbers
+   below are the two frames' max-widths, not breakpoints — nothing switches frame as the window
+   resizes, so there is no interaction between this and the in-project shell's own media queries
+   (styles/shell.css).
 
    So the frame widens only where the instrument lives. --canvas-max is a CEILING, not a
    target: without it a 4K monitor would produce a 3000px-wide table, which is not density,
@@ -68,277 +73,26 @@ strong {
   padding: 20px 24px 48px;
 }
 
+/* The in-project shell, and the height budget it hangs everything on.
+
+   `height` rather than `min-height`, and the same technique the rail beside it already uses
+   (`.rail`, below): the masthead is sticky and 64px tall, so a viewport-tall content column
+   under it is exactly `100vh - --masthead-h`. `.phead` and `.stepper` take their natural
+   heights out of that column and `.work` takes the rest (`flex: 1`), which is what gives the
+   agent panel and the artifact a definite box to scroll inside. Nothing measures itself; that
+   was `--ctxbar-h`'s job and it is gone. Below 1000px shell.css hands the height back to the
+   page, because a stacked layout has nowhere to put the second pane.
+
+   NO PADDING, deliberately. Every row of the shell pads itself and rules to its own edges —
+   the header and the stepper carry a full-width bottom border, the chat column a full-height
+   right one. An inset here would double the artifact's padding and stop all three rules short
+   of the frame. */
 .wrap[data-frame='instrument'] {
   max-width: var(--canvas-max);
-  padding: 0 var(--s5) var(--s6);
-}
-
-/* ---- project context bar (sticky) ------------------------------------------ */
-
-.ctxbar {
-  position: sticky;
-  /* sits directly under the sticky masthead */
-  top: var(--masthead-h);
-  z-index: 15;
-  background: var(--page-bg);
-  border-bottom: var(--hair) solid var(--border);
-  margin: 0 calc(-1 * var(--s5)) var(--s4);
-  padding: var(--s3) var(--s5) var(--s3);
-}
-
-.ctxbar__row {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s3);
-  margin-bottom: var(--s3);
-  flex-wrap: wrap;
-}
-
-.ctxbar__back {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-size: var(--t-small);
-  color: var(--text-muted);
-  flex: none;
-}
-.ctxbar__back:hover {
-  color: var(--text-accent);
-  text-decoration: none;
-}
-
-.ctxbar__sep {
-  width: var(--hair);
-  height: 12px;
-  background: var(--border-strong);
-  flex: none;
-  align-self: center;
-}
-
-.ctxbar__product {
-  font-size: var(--t-lead);
-  font-weight: var(--w-medium);
-  color: var(--ink);
-}
-
-.ctxbar__meta {
-  font-size: var(--t-small);
-  color: var(--text-muted);
-}
-
-/* The Next line. Tone is set by data-tone, from the record — never by the screen.
-   Right-positioned (`margin-left: auto`) but LEFT-aligned: the identical sentence is
-   left-aligned on the dashboard card, and a 2–3 line sentence reads worse ragged-left
-   than the ragged-right a short two-word status used to get away with. */
-.ctxbar__next {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: flex-start;
-  gap: 5px;
-  max-width: 46ch;
-  font-size: var(--t-small);
-  line-height: var(--lh-tight);
-  text-align: left;
-  justify-content: flex-end;
-}
-.ctxbar__next[data-tone='danger'] {
-  color: var(--text-danger);
-}
-.ctxbar__next[data-tone='warning'] {
-  color: var(--text-warning);
-}
-.ctxbar__next[data-tone='accent'] {
-  color: var(--text-accent);
-}
-.ctxbar__next[data-tone='muted'] {
-  color: var(--text-muted);
-}
-.ctxbar__next[data-tone='success'] {
-  color: var(--text-success);
-}
-
-/* The agent's own error string, verbatim and monospaced — it is machine output, not prose.
-   No opacity dimming: that used to take --text-warning from 5.77:1 to 4.21:1 against
-   --page-bg, under the 4.5:1 AA floor — and the warning tone is exactly the
-   awaiting-operator / awaiting-physics case, whose detail is the dispatcher's own literal
-   instruction, the most actionable string the record carries. The 11px mono face and the
-   margin already separate it from the sentence above without needing to fade it.
-   Specificity note: `.data` (primitives.css) sets font-size: 0.94em and loads after this
-   file at equal specificity, so it would otherwise win outright — hence the compound
-   selector here, rather than a font-size rule that never actually applies. */
-.ctxbar__detail.data {
-  display: block;
-  font-size: var(--t-small);
-  margin-top: 2px;
-}
-
-.ctxbar__poll {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: var(--s2);
-  font-size: var(--t-small);
-  color: var(--text-muted);
-}
-
-/* A slow pulse, not a spinner. The record is being watched, not worked on — and a spinner
-   here would claim activity the operator is not waiting for. */
-.ctxbar__pulse {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--r-pill);
-  background: var(--text-accent);
-  animation: ctxpulse 2s var(--ease-inout) infinite;
-}
-@keyframes ctxpulse {
-  0%,
-  100% {
-    opacity: 0.25;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ctxbar__pulse {
-    animation: none;
-    opacity: 0.8;
-  }
-}
-
-/* ---- workspace: canvas + dock ---------------------------------------------- */
-
-.workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--dock-w);
-  gap: var(--s4);
-  align-items: start;
-}
-
-.workspace[data-dock='collapsed'] {
-  grid-template-columns: minmax(0, 1fr) var(--dock-rail-w);
-}
-
-.workspace__canvas {
-  min-width: 0;
-}
-
-/* The dock is an instrument, not a fluid column.
-
-   It used to be `minmax(280px, 1fr)`, which is the wrong shape entirely: it made the agent
-   panel GROW on a wide monitor, stealing the space from the matrix — exactly backwards. A
-   dock has a width. The canvas gets everything else. */
-.dock {
-  position: sticky;
-  /*
-   * `top` has to clear the context bar's actual painted (border-box) bottom edge, or this pins
-   * UNDER the bar rather than beneath it — .ctxbar is z-index: 15 with an opaque background,
-   * so any overlap here is a real occlusion, not a harmless z-fight. There is no z-index rescue
-   * for that: .ctxbar's 15 already beats anything reasonable this element could carry (and
-   * raising this above 15 would only flip which of the two paints over the other), so getting
-   * --ctxbar-h right (ContextBar.tsx measures its own border-box height and publishes it) is
-   * the only thing that actually keeps this a gap instead of an occlusion.
-   */
-  top: calc(var(--masthead-h) + var(--ctxbar-h));
-  height: calc(100vh - var(--masthead-h) - var(--ctxbar-h) - var(--s5));
-  min-height: 320px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  min-width: 0;
-}
-
-.dock > .region {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-/* Collapsed: a rail, not an absence. */
-.dock__rail {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--s3);
-  padding: var(--s3) 0;
-  background: var(--surface-1);
-  border: var(--hair) solid var(--border);
-  border-radius: var(--r3);
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.dock__rail:hover {
-  border-color: var(--border-strong);
-  color: var(--text-primary);
-}
-
-.dock__rail-label {
-  writing-mode: vertical-rl;
-  font-size: var(--t-small);
-  text-transform: uppercase;
-  letter-spacing: var(--track-eyebrow);
-}
-
-.dock__collapse {
-  position: absolute;
-  top: var(--s2);
-  right: var(--s2);
-  z-index: 1;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 2px;
-  line-height: 1;
-  border-radius: var(--r1);
-}
-.dock__collapse:hover {
-  color: var(--text-primary);
-  background: var(--surface-2);
-}
-
-/* A 1280×800 laptop lands here. The dock keeps its doctrine — always present, never zero — but
-   360px of it against a compatibility matrix is the wrong split at this width. */
-@media (max-width: 1400px) {
-  :root {
-    --dock-w: 300px;
-  }
-}
-
-@media (max-width: 1100px) {
-  /* Below this the two-column workspace stops being a workspace and becomes two cramped
-     columns. Stack, and let the dock size to its content. */
-  .workspace,
-  .workspace[data-dock='collapsed'] {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .dock {
-    position: static;
-    height: auto;
-  }
-  .dock__rail {
-    flex-direction: row;
-    justify-content: center;
-  }
-  .dock__rail-label {
-    writing-mode: horizontal-tb;
-  }
-}
-
-/* ---- record frame: a signing surface, not a workspace ------------------------
-
-   The decision screen carries no dock (domain/stages.ts — `surface: 'record'`), and that
-   removes the whole reason the instrument frame is --canvas-max wide: that ceiling exists
-   for a canvas holding a matrix AND a docked panel beside it (see the .wrap note above).
-   Neither is here.
-
-   A determination a human signs is a document, and a document wants a measure. So the record
-   takes one back from inside the wide frame — which keeps AppShell's per-route rule untouched
-   and leaves the seven workspace stages exactly as they were. */
-
-.recordframe {
-  max-width: 1180px;
-  margin: 0 auto;
+  height: calc(100vh - var(--masthead-h));
 }
 
 .screen {
@@ -681,53 +435,6 @@ textarea {
   border: var(--hair) solid var(--border);
   border-radius: var(--r1);
   padding: 1px 4px;
-}
-
-/* ---- stage spine --------------------------------------------------------- */
-
-.spine {
-  display: flex;
-  gap: 4px;
-  margin: 0 0 14px;
-}
-
-.pill {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  justify-content: center;
-  font-size: var(--t-small);
-  padding: 6px 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--r2);
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  background: var(--surface-0);
-  cursor: pointer;
-}
-.pill.on {
-  border-color: var(--border-accent);
-  background: var(--bg-accent);
-  color: var(--text-accent);
-}
-.pill.gate {
-  background: var(--bg-warning);
-  border-color: var(--border-warning);
-  color: var(--text-warning);
-}
-.pill.done {
-  color: var(--text-success);
-}
-.pill.fail {
-  background: var(--bg-danger);
-  border-color: var(--border-danger);
-  color: var(--text-danger);
-}
-.pill.mut {
-  opacity: 0.5;
 }
 
 /* ---- verdict chips (V / L / X and Pass / Fail) --------------------------- */

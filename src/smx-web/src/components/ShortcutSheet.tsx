@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
  * Every binding this app implements, in one place, behind `?`.
  *
  * The bindings were all real and all invisible: ⌘K opened a finder nobody knew existed, `f`
- * walked the matrix's flagged queue, ⌘\ toggled the agent dock, and so on — each one shipped
+ * walked the matrix's flagged queue, ⌘\ toggled the agent panel, and so on — each one shipped
  * with a tooltip at best, on the one control that happens to render it. A shortcut nobody can
  * discover is a shortcut nobody uses, and this is a single-operator instrument they will drive
  * every working day.
@@ -15,7 +15,10 @@ import { useEffect, useRef, useState } from 'react';
  */
 const KEYS: { keys: string; what: string; where?: string }[] = [
   { keys: '⌘K / Ctrl K', what: 'Open the finder', where: 'anywhere' },
-  { keys: '⌘\\ / Ctrl \\', what: 'Show or hide the agent dock', where: 'a project stage' },
+  // Bound only where a collapse control exists (WorkArea's `collapsible`), which is Matrix and
+  // Dosing — the two screens whose artifact is genuinely width-starved. Elsewhere the agent
+  // column has no control to bring it back, so the key is deliberately not listened for.
+  { keys: '⌘\\ / Ctrl \\', what: 'Show or hide the agent panel', where: 'the matrix and dosing' },
   { keys: '↵', what: 'Send the message', where: 'the interview' },
   { keys: '⌘↵ / Ctrl ↵ / ⇧↵', what: 'Start a new line', where: 'the interview' },
   { keys: 'F', what: 'Jump to the next flagged cell', where: 'the matrix' },

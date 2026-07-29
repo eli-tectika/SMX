@@ -60,8 +60,9 @@ describe('Intake & pool', () => {
  *
  * That is the same failure this codebase has now found three times (`whatsBlocking` missing
  * `awaiting-VP`, `bucket()` before it, this): work that needs a human rendered as work that has
- * not started. It was never intended here either — `pillClass` and `stageIcon` have always
- * carried complete park branches, and the fold simply never handed them one.
+ * not started. It was never intended here either — `stageIcon` (and `pillClass`, until the pill
+ * spine was replaced by the stepper) have always carried complete park branches, and the fold
+ * simply never handed them one.
  */
 describe('foldStatus — a park is not a pending stage', () => {
   const PARKS = [

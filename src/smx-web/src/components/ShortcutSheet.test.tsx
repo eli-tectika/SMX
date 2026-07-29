@@ -34,7 +34,7 @@ describe('ShortcutSheet', () => {
   it('lists every binding the app actually implements', () => {
     render(<ShortcutSheet />);
     fireEvent.keyDown(window, { key: '?' });
-    for (const label of [/open the finder/i, /agent dock/i, /send/i, /flagged cell/i, /close/i]) {
+    for (const label of [/open the finder/i, /agent panel/i, /send/i, /flagged cell/i, /close/i]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
   });
