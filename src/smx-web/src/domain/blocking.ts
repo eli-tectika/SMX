@@ -51,6 +51,7 @@ const LABEL: Record<string, string> = {
   matrix: 'Matrix',
   dosing: 'Dosing',
   cost: 'Cost',
+  decision: 'Decision',
 };
 
 /** Who each park is stopped on — the record's own claim, in the operator's words. */
@@ -160,6 +161,24 @@ export function whatsBlocking(
       icon: 'ti-player-pause',
       text: `${LABEL[name] ?? name} awaiting ${AWAITED[s.status as AwaitingStatus]}`,
       detail: s.error ?? undefined,
+    };
+  }
+
+  // 7b. Parked on the VP's determination — the last signature in the journey, and the same shape
+  //     as the awaiting-RE park above: an offline person's ruling the operator goes and records.
+  //     Not folded into `awaitingPerson` because `awaiting-VP` is not an AwaitingStatus and has no
+  //     entry in AWAITED — PipelineRunner parks Decision with `error` deliberately null, so there is
+  //     no dispatcher instruction to surface, only the wait itself. `bucket()` below already
+  //     special-cases this status, with a comment explaining why leaving it out is the one direction
+  //     a mis-bucketing must not go (it would read as settled); this is the matching text branch —
+  //     without it, the card said nothing at all for the highest-consequence wait in the pipeline.
+  const awaitingVp = entries.find(([, s]) => s.status === 'awaiting-VP');
+  if (awaitingVp) {
+    const [name] = awaitingVp;
+    return {
+      tone: 'warning',
+      icon: 'ti-player-pause',
+      text: `${LABEL[name] ?? name} awaiting the VP's determination`,
     };
   }
 

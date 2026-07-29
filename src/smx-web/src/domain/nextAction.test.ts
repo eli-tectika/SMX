@@ -85,5 +85,21 @@ describe('nextAction', () => {
   it('points a failed pool at the intake screen, not a /pool route that does not exist', () => {
     const a = nextAction(project({ pool: { status: 'failed', attempts: 1, error: 'no candidates' } }));
     expect(a!.cta?.to).toBe('/p/p1/intake');
+    // The button must name the screen it actually opens, not the backend process that failed —
+    // "Open pool" would promise a screen that does not exist.
+    expect(a!.cta?.label).toBe('Open intake & pool');
+  });
+
+  /**
+   * The highest-consequence park in the journey: Decision parks at `awaiting-VP` once the agent
+   * has proposed a code, and the VP's determination is the signature that releases procurement and
+   * writes the Marker Library. `bucket()` in blocking.ts special-cases this status for exactly the
+   * reason this test exists — omitted, it reads as "nothing to do" for the last gate in the pipeline.
+   */
+  it('turns a VP park into recording the determination, pointed at decision', () => {
+    const a = nextAction(project({ decision: { status: 'awaiting-VP', attempts: 1 } }));
+    expect(a).not.toBeNull();
+    expect(a!.title).toBe('Record the VP determination');
+    expect(a!.cta?.to).toBe('/p/p1/decision');
   });
 });

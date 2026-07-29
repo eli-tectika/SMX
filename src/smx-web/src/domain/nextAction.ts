@@ -32,7 +32,8 @@ export interface NextAction {
  * All nine of ProjectDoc.Stages' real keys (RecordIds.cs), not the six-stage subset the older
  * BACKED_STAGES constant in api/types.ts still names — `pool`, `background` and `decision` are real
  * tracked stages too (domain/stages.ts's doc comment), and a failed `decision` must not read as the
- * lowercase raw key.
+ * lowercase raw key. This is the name of the STAGE, used in titles ("Pool halted") — it is
+ * deliberately NOT what a button says, because `pool` has no screen of its own; see `screenLabel`.
  */
 const LABEL: Record<string, string> = {
   intake: 'Intake',
@@ -49,15 +50,26 @@ const LABEL: Record<string, string> = {
 const label = (stage: string) => LABEL[stage] ?? stage;
 
 /**
- * The spine slug whose pill a backend stage key drives — via `STAGES[].backedBy`, never a second
+ * The spine entry whose pill a backend stage key drives — via `STAGES[].backedBy`, never a second
  * hardcoded key === slug assumption. `pool` has no slug of its own (folded into `intake`, since intake
- * transcribes the need and pool turns it into a hypothesis with no operator step between them), so a
- * `cta` built as `/p/{id}/{stageKey}` would 404-by-redirect for it (ProjectLayout.tsx finds no matching
- * slug and silently lands on `/p/{id}/intake` with no explanation). Reading the relationship out of
- * `STAGES` instead means `pool → intake` falls out of the existing declaration and cannot drift from it.
+ * transcribes the need and pool turns it into a hypothesis with no operator step between them).
  */
+function stageDef(stage: string) {
+  return STAGES.find((def) => (def.backedBy as string[] | undefined)?.includes(stage));
+}
+
 function slugFor(stage: string): string | undefined {
-  return STAGES.find((def) => (def.backedBy as string[] | undefined)?.includes(stage))?.slug;
+  return stageDef(stage)?.slug;
+}
+
+/**
+ * The name of the SCREEN a button opens, as opposed to `label()` which names the backend STAGE.
+ * They differ for `pool`: a button reading "Open pool" would promise a screen that does not exist —
+ * `slugFor('pool')` resolves to `intake`, so the button must say where it actually lands ("Intake &
+ * pool", `STAGES[].label`), not the name of the process that failed.
+ */
+function screenLabel(stage: string): string {
+  return stageDef(stage)?.label ?? label(stage);
 }
 
 /** A CTA to the screen that backs `stage`, or undefined if no spine slug covers it — never a dead link. */
@@ -76,11 +88,11 @@ export function nextAction(project: ProjectSummary): NextAction | null {
     const [stage, s] = failed;
     return {
       title: `${label(stage)} halted`,
-      body: 'The agent stopped and could not continue. Its own words are below.',
+      body: 'The agent stopped and could not continue.',
       detail: s.error ?? undefined,
       tone: 'danger',
       icon: 'ti-alert-triangle',
-      cta: ctaTo(projectId, stage, `Open ${label(stage).toLowerCase()}`),
+      cta: ctaTo(projectId, stage, `Open ${screenLabel(stage).toLowerCase()}`),
     };
   }
 
@@ -107,7 +119,7 @@ export function nextAction(project: ProjectSummary): NextAction | null {
       detail: s.error ?? undefined,
       tone: 'warning',
       icon: 'ti-edit',
-      cta: ctaTo(projectId, stage, `Open ${label(stage).toLowerCase()}`),
+      cta: ctaTo(projectId, stage, `Open ${screenLabel(stage).toLowerCase()}`),
     };
   }
 
@@ -120,7 +132,7 @@ export function nextAction(project: ProjectSummary): NextAction | null {
       body: 'The agent stopped and is waiting on you.',
       tone: 'warning',
       icon: 'ti-player-pause',
-      cta: ctaTo(projectId, stage, `Open ${label(stage).toLowerCase()}`),
+      cta: ctaTo(projectId, stage, `Open ${screenLabel(stage).toLowerCase()}`),
     };
   }
 
@@ -159,6 +171,26 @@ export function nextAction(project: ProjectSummary): NextAction | null {
       icon: 'ti-writing-sign',
       // Unlike physics: recording the determination the operator already collected offline is
       // itself an in-app action, on the regulatory screen.
+      cta: ctaTo(projectId, stage, 'Record determination'),
+    };
+  }
+
+  // Parked on the VP's determination — the last signature in the journey, and the same shape as
+  // the awaiting-RE park above: an offline person's ruling that the operator goes and records. It
+  // is checked here, alongside awaiting-RE, rather than folded into the same `find` because
+  // `awaiting-VP` is not an AwaitingStatus and carries no dispatcher-written `error` (PipelineRunner
+  // parks Decision with `error` deliberately null — VpGate's own signal is the gate endpoint, not
+  // this string). Left unhandled, this falls through to `null` — "nothing to do" — for the signature
+  // that releases procurement and writes the Marker Library; `bucket()` in blocking.ts hit this exact
+  // gap once already and its fix comment says why plainly: it must never read as settled.
+  const awaitingVp = entries.find(([, s]) => s.status === 'awaiting-VP');
+  if (awaitingVp) {
+    const [stage] = awaitingVp;
+    return {
+      title: 'Record the VP determination',
+      body: "The proposed code is ready. VP R&D's determination is the last signature — it releases procurement and writes the Marker Library.",
+      tone: 'warning',
+      icon: 'ti-writing-sign',
       cta: ctaTo(projectId, stage, 'Record determination'),
     };
   }

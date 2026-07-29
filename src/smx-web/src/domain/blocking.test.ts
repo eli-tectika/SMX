@@ -148,6 +148,20 @@ describe('whatsBlocking — priority order', () => {
   });
 
   /**
+   * The matching text branch for the gap `bucket()` already special-cases (see its test below):
+   * `awaiting-VP` is not in AWAITING_STATES, so it needs its own line or the highest-consequence
+   * wait in the pipeline — the signature that releases procurement and writes the Marker Library —
+   * says nothing on the card at all.
+   */
+  it('names the VP when decision parks awaiting their determination', () => {
+    const p = project('done', 'done', 'done', 'done');
+    p.stages.decision = st('awaiting-VP');
+    const b = whatsBlocking(p);
+    expect(b?.tone).toBe('warning');
+    expect(b?.text).toContain("Decision awaiting the VP's determination");
+  });
+
+  /**
    * The one park the operator can clear without chasing anybody, so it outranks the others — and it
    * outranks `needs-review` too, because the record says exactly what it wants.
    */
