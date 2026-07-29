@@ -184,11 +184,42 @@ The first application code now lives under `src/` (this is no longer a pure-infr
     not shipping the fabrication is a stronger guarantee than a badge asking the operator to keep
     track of which is which. **If a screen needs data the backend does not serve, add the endpoint —
     do not add a fixture.**
+  - **The in-project shell was rebuilt (2026-07-29).** `ContextBar`, `StageSpine` and `Dock` are
+    gone, replaced by `components/shell/`: a one-line `ProjectHeader`, a horizontal `StageStepper`
+    (eight stages + "N of 8 done" — the pills said which stage you were on and nothing about the
+    journey's shape), a `NextAction` block that states the one thing needing a human and carries its
+    button, and `WorkArea`. Four stacked headers became two. The sticky bar that measured its own
+    height into `--ctxbar-h` is gone with them — the shell is an ordinary flex column with a real
+    height budget. Design + plans: `docs/superpowers/specs/2026-07-29-webapp-ux-redesign-design.md`
+    and `plans/2026-07-29-ux-redesign-plan-{1,2,3}-*.md`.
+  - **The agent lives in a fixed 390px LEFT column**, not a right dock. Primary means *position*,
+    not area: reading tops out around 65 characters, and every pixel past that is taken from the
+    compatibility matrix, which is the thing being decided. The old 230px dock gave ~32 characters —
+    a cited regulation name did not fit on a line. It collapses to a rail on Matrix and Dosing only,
+    where the artifact is genuinely width-starved.
+  - **The type floor is 12px.** `--t-micro` is retired; `--t-tiny` (11px) survives for exactly one
+    selector (`.mx th`). `.data`'s 0.94em optical correction is clamped with `max()` because a
+    multiplier composed with `.tiny` walked under the floor while the token layer still read 12.
+    Raising type is a LAYOUT change: two fixed-width boxes could not hold their contents afterward
+    and no test noticed — audit fixed dimensions whenever type changes.
   - Every spine stage is backed by `ProjectDoc.Stages`, including `background` and `decision`.
     `backedBy` (does the record report this stage) and `isChatStage` (does it have an agent) are
     deliberately separate: `background` is tracked but absent from `Stages.All` — the XRF filter is
-    a pass-through, so a thread on it would be a conversation with nobody — while `decision` has an
-    agent and still takes no dock, because a signature is not a conversation.
+    a pass-through, so a thread on it would be a conversation with nobody, and its left column holds
+    the XRF entry form instead — while `decision` has an agent and still takes no chat column,
+    because a signature is not a conversation (the read-only run trail sits there).
+  - **A park must never render as "not started".** Three shipped bugs of exactly that shape were
+    found and fixed during the redesign: `whatsBlocking` had no `awaiting-VP` branch, `foldStatus`
+    swallowed every `awaiting-*` into `pending` (so no parked stage had ever displayed as parked),
+    and `isTerminal` shared the flaw and was deleted. `PARKED` in `domain/stages.ts` is now a
+    `Record<ParkedStatus, true>` derived from the union, so an eleventh `awaiting-*` fails the build
+    until it is given a home — the family is a compile error, not a review problem. `stageIcon` and
+    `pillClass` end in never-checks whose runtime fallback is the LOUD reading, never the quiet one.
+  - **A stage screen throwing does not blank the shell.** `StageErrorBoundary` keeps the header and
+    stepper mounted and confines the failure to the artifact column, keyed on the stage so
+    navigating away recovers. It exists because `client.ts` casts every response with `as` and
+    validates nothing: one malformed payload took the whole tree down (3 of 32 routes rendered).
+    Screens should still guard their own payloads rather than lean on it.
   - **Citation chips do not link yet, deliberately.** `CitationChip` opens a document only when it
     is handed a `documentId`, and `Citation` (`ConstraintsDoc.cs`) carries none — `reference` is a
     free-text label the agent wrote. Deriving an id by parsing it would produce links that are
