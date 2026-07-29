@@ -103,3 +103,52 @@ describe('nextAction', () => {
     expect(a!.cta?.to).toBe('/p/p1/decision');
   });
 });
+
+describe('nextAction — the record it cannot classify', () => {
+  /**
+   * Settled is asserted positively. `null` from the ladder above means only "no rule matched",
+   * which is also what an empty record or an unknown future status produces — and downstream that
+   * paints as a project which has not started. The deleted ContextBar carried this guard; the spec
+   * names it as reasoning that must survive the rewrite.
+   */
+  it('says nothing for a genuinely settled project', () => {
+    expect(
+      nextAction(
+        project({
+          intake: { status: 'done', attempts: 1 },
+          discovery: { status: 'done', attempts: 1 },
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it('says nothing while an agent is working, because nobody is owed anything', () => {
+    expect(
+      nextAction(
+        project({
+          intake: { status: 'done', attempts: 1 },
+          discovery: { status: 'running', attempts: 1 },
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it('refuses to read an empty record as settled', () => {
+    const a = nextAction(project({}));
+    expect(a).not.toBeNull();
+    expect(a!.title).toBe('Status unknown');
+    expect(a!.tone).toBe('muted');
+    expect(a!.cta).toBeUndefined();
+  });
+
+  /** A tenth status a future backend introduces must not paint as "not started yet". */
+  it('refuses to read an unrecognised status as settled', () => {
+    const a = nextAction(
+      project({
+        intake: { status: 'done', attempts: 1 },
+        discovery: { status: 'quarantined' as never, attempts: 1 },
+      }),
+    );
+    expect(a!.title).toBe('Status unknown');
+  });
+});

@@ -195,5 +195,33 @@ export function nextAction(project: ProjectSummary): NextAction | null {
     };
   }
 
-  return null;
+  /*
+   * Nothing matched — and that is THREE different situations, not one.
+   *
+   * Settled (every stage done) and in-flight (an agent is running, nobody is owed anything) both
+   * correctly render no block. The third is a record this function does not understand: an empty
+   * `stages`, or a status a future backend introduces that no branch above knows. `project.stages`
+   * is an untyped `Record<string, StageState>` with no runtime validation, so that case is real.
+   *
+   * It must not be allowed to look like the other two. Downstream, an unrecognised status folds to
+   * `pending` (foldStatus), so an unclassifiable project would paint as one that has not started:
+   * grey stepper, "0 of 8 done", no block — the exact shape of the three bugs this codebase has
+   * already shipped, where work needing a human read as work not yet begun.
+   *
+   * So settled is asserted POSITIVELY — every stage present and done — and anything else that
+   * reached here says so plainly. The deleted ContextBar carried this reasoning and the spec names
+   * it as a decision that must survive the rewrite; this is where it survives.
+   */
+  const stages = Object.values(project.stages);
+  const settled = stages.length > 0 && stages.every((s) => s.status === 'done');
+  const working = stages.some((s) => s.status === 'running' || s.status === 'pending');
+  if (settled || working) return null;
+
+  return {
+    title: 'Status unknown',
+    body: 'The record does not match any state this screen knows how to describe. Open the stages below and check what it holds — do not read this as nothing to do.',
+    tone: 'muted',
+    icon: 'ti-help-circle',
+    // No cta: there is no single right destination for a record we cannot classify.
+  };
 }
