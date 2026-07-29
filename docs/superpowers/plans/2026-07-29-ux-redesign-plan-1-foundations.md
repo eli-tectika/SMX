@@ -414,9 +414,27 @@ Replace each with `var(--t-small)`, except any inside a rule that targets a dens
 grep -rn "t-micro" src/
 ```
 
-Expected: no output.
+Expected: only the prose comment added in Step 2, which names the retired token. No `var(--t-micro)`.
 
-- [ ] **Step 5: Verify nothing broke**
+- [ ] **Step 5: Audit the DIRECT `--t-tiny` uses**
+
+Steps 2-4 retire `--t-micro` and lift `.tiny`, but the stylesheets also set `--t-tiny` **directly**, and those rules are untouched by everything above. Without this step the floor is only about 40% applied, and the token layer stops being the thing that prevents drift — which is the entire reason this work is in Plan 1 rather than spread across the screen rewrites.
+
+```bash
+cd src/smx-web && grep -rn "var(--t-tiny)" src/styles/
+```
+
+There are 25. Exactly **one** — `base.css` `.mx th` — is the dense table cell the token survives for. Leave that one. Change the other 24 to `var(--t-small)`:
+
+`.ctxbar__detail.data`, `.ctxbar__poll`, `.dock__rail-label`, `.brand__system`, `.brand__tag`, `.masthead__corpus`, `.pill`, `.src`, `.name`, `.btn--quiet`, `.sheet__row kbd`, `.masthead__hint kbd`, `.chip--mono`, `.stat__label`, `.stat__hint`, `.meter__num`, `.ribbon__key`, `.sec__eyebrow`, `.sec__count`, `.gatebox__sub`, `.gatebox__req-detail`, `[data-tip]:focus-visible::after`, `.finder__scope`, `.finder__hit-sub`
+
+Check each rule's actual context rather than trusting the selector name; if one is genuinely tabular, leave it and say so.
+
+Three of these (`.ctxbar__*`, `.dock__rail-label`) belong to components Task 8 deletes. Change them anyway — three lines, and a uniformly true rule beats three unexplained exemptions.
+
+Expect visible change: `.sec__eyebrow` is uppercase at 0.07em tracking and will read noticeably larger, and `.pill` drives the stage spine. That is the rule working, not a regression.
+
+- [ ] **Step 6: Verify nothing broke**
 
 ```bash
 cd src/smx-web && npm run typecheck && npm test
@@ -424,7 +442,7 @@ cd src/smx-web && npm run typecheck && npm test
 
 Expected: typecheck PASS. Tests: PASS, **or** failures only in tests asserting a literal font size — fix those assertions to the new value; do not revert the token.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/smx-web/src/styles/
