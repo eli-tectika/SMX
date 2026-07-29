@@ -17,8 +17,11 @@ const KEY = 'smx.chatCollapsed';
  * screen that did not ask to be collapsible also IGNORES a collapse another screen persisted.
  * Honouring it there would hide the agent on a screen carrying no control to bring it back.
  *
- * `chat={null}` is the Background case — that stage has no agent, and an empty column would be a
- * panel apologising for not existing.
+ * `chat={null}` drops the column entirely (`data-chat='none'`). No screen passes it today —
+ * Background was the one case, and it now fills the column with the XRF entry form instead of
+ * leaving it empty. The path stays because it is the honest answer for a stage that has neither
+ * an agent nor an operator input: an empty 390px panel apologising for not existing is worse
+ * than no panel.
  */
 export function WorkArea({
   chat,
