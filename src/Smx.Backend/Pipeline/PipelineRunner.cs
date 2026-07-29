@@ -39,6 +39,10 @@ namespace Smx.Backend.Pipeline;
 ///
 /// <paramref name="catalog"/> is OPTIONAL for the SAME reason: it is read only by the Cost path. When it
 /// is null Cost skips entirely, never fabricating an audit from an absent catalog.
+///
+/// <paramref name="sds"/> is OPTIONAL on the same principle, and is the weakest dependency here: it is
+/// BOOKKEEPING (the living SDS ledger, design §6/D7). When it is null no substance is enrolled and every
+/// stage runs exactly as before.
 public sealed class PipelineRunner(
     IRecordStore store,
     IRunStore runs,
@@ -48,7 +52,8 @@ public sealed class PipelineRunner(
     int regulatoryParallelism,
     ILogger<PipelineRunner>? logger = null,
     IKnowledgeStore? knowledge = null,
-    ICatalogLookup? catalog = null)
+    ICatalogLookup? catalog = null,
+    ISdsAcquisition? sds = null)
 {
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _live = new();
 
@@ -324,6 +329,10 @@ public sealed class PipelineRunner(
                 Id = RecordIds.Candidates(projectId), ProjectId = projectId,
                 Substances = [.. c.ProvidedCandidates],
             }, ct);
+            // Known-candidate mode bypasses the AGENT, not the ledger: an operator-provided candidate is a
+            // substance in play by exactly the same measure, and the order gate blocks on its sheet just the
+            // same.
+            await EnrolInSdsLedgerAsync(c.ProvidedCandidates.Select(s => (s.Element, s.Form, s.Cas)), Stages.Discovery, ct);
             return new StageResult(RunOutcome.Done, null,
                 $"Recorded {c.ProvidedCandidates.Count} provided candidates.",
                 RecordIds.Candidates(projectId));
@@ -353,6 +362,11 @@ public sealed class PipelineRunner(
 
         var candidates = result.Output!;
         await store.UpsertCandidatesAsync(candidates, ct);
+        // AFTER the persist, never before: the ledger enrolls substances the record actually carries. A
+        // candidate that failed to persist is not in play, and enrolling it would put the sweep to work on a
+        // substance no project is evaluating.
+        await EnrolInSdsLedgerAsync(
+            candidates.Substances.Select(s => (s.Element, s.Form, s.Cas)), Stages.Discovery, ct);
         return new StageResult(RunOutcome.Done, null,
             $"Proposed {candidates.Substances.Count} candidates — " +
             $"{candidates.Substances.Count(s => s.Tier == "A")} Tier A, " +
@@ -370,6 +384,46 @@ public sealed class PipelineRunner(
             .Select(s => (s.Component, s.Element))
             .Distinct()
             .Select(k => new ElementPool(k.Component, k.Element, "Kα", "V"))];
+
+    /// The SDS master list as a LIVING LEDGER (2026-07-29 design §6, D7). Before this, nothing a project did
+    /// ever enrolled a substance: the list was written only by the static seed, so the sweep chased a catalog
+    /// while the substances a real project was about to dose were invisible to it. A substance entering play
+    /// is what enrolls it now, at the two moments it enters — Discovery mints a candidate with a CAS, and
+    /// Dosing selects a marker.
+    ///
+    /// FIRE-AND-FORGET, AND THAT IS THE CONTRACT. Every failure is logged and swallowed, including one the
+    /// client should have swallowed itself: a missing ledger row costs a later fetch, a failed stage costs
+    /// the operator's day. Nothing here may be turned into something a stage can fail on.
+    ///
+    /// DISTINCT on (element, form, cas) — the ledger's own key is (element, form), and a three-component
+    /// product carries the same substance three times, which is one row and one call, not three.
+    ///
+    /// Deliberately SEQUENTIAL: it is bookkeeping behind an already-finished stage, and a burst of parallel
+    /// calls into regsync buys nothing worth the concurrency.
+    private async Task EnrolInSdsLedgerAsync(
+        IEnumerable<(string Element, string Form, string Cas)> substances, string stage, CancellationToken ct)
+    {
+        if (sds is null) return;
+
+        foreach (var (element, form, cas) in substances.Distinct())
+        {
+            if (string.IsNullOrWhiteSpace(element) || string.IsNullOrWhiteSpace(form) || string.IsNullOrWhiteSpace(cas))
+                continue;
+            try
+            {
+                await sds.AppendAsync(element, form, cas, ct);
+            }
+            // Cancellation is NOT swallowed: the caller went away, and the stage's own token handling owns
+            // that. Everything else is.
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex,
+                    "SDS ledger append failed for {Element}/{Form} ({Cas}) after {Stage} — the substance is " +
+                    "not enrolled and its sheet will be fetched on demand instead", element, form, cas, stage);
+            }
+        }
+    }
 
     /// Regulatory stays PARALLEL — it is the one stage where serial execution is a real wall-clock
     /// regression, and the operator's whole complaint is about waiting. Task 7 turns the fan-out into a
@@ -564,6 +618,17 @@ public sealed class PipelineRunner(
 
         var dosing = result.Output!;
         await store.UpsertDosingAsync(dosing, ct);
+        // A SELECTED marker is the strongest signal there is that we will need its sheet: MSDS-before-order
+        // blocks procurement on exactly this, three stages downstream. The FORM comes from the candidate the
+        // marker was minted as — a CodeMarker carries CAS + element only, and the master list is keyed by
+        // (element, form), so enrolling without one would be rejected at the door.
+        var forms = candidates.Substances
+            .GroupBy(s => s.Cas).ToDictionary(g => g.Key, g => g.First().Form, StringComparer.OrdinalIgnoreCase);
+        await EnrolInSdsLedgerAsync(
+            dosing.Codes.SelectMany(k => k.Markers)
+                .Where(m => forms.ContainsKey(m.Cas))
+                .Select(m => (m.Element, forms[m.Cas], m.Cas)),
+            Stages.Dosing, ct);
         return new StageResult(RunOutcome.Done, null,
             $"Finalized {dosing.Codes.Count} codes across " +
             $"{dosing.Codes.Select(k => k.ComponentId).Distinct().Count()} components.",
