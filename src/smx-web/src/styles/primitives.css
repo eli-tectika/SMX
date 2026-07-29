@@ -750,9 +750,19 @@
   background: var(--bg-accent);
 }
 
+/* The four kinds the finder actually renders (Finder.tsx LABEL) are Marker, MSDS, Learned,
+   Document. Measured from the real IBM Plex Sans 400 glyph metrics at 12px with the
+   0.07em eyebrow tracking this rule applies, "Document" (the longest) sets ~71px including
+   tracking — the box was 58px, sized for the pre-floor 10px rendering, and had no clip rule,
+   so raising the type floor made the label spill into finder__hit-main beside it. 80px clears
+   the longest label with real headroom; overflow/ellipsis is a backstop in case a future kind
+   label is added that is longer still. */
 .finder__kind {
   flex: none;
-  width: 58px;
+  width: 80px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: var(--t-small);
   text-transform: uppercase;
   letter-spacing: var(--track-eyebrow);

@@ -591,7 +591,13 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 3px;
-  width: 64px;
+  /* Was a hardcoded 64px, sized against the pre-floor 10px label. At 12px the longest
+     label ("Projects", measured off the real IBM Plex Sans 400 glyph metrics with this
+     rule's own 0.07em tracking) needs ~64.6px — the same as the box, i.e. no margin at
+     all. --rail-w is already 76px and .rail has no horizontal padding, so the rail was
+     quietly reserving 12px this item never used; spending it here restores real headroom
+     without widening anything outside this rule. */
+  width: var(--rail-w);
   padding: 6px 0 5px;
   border-radius: var(--r2);
   color: rgba(255, 255, 255, 0.62);
@@ -606,11 +612,12 @@ textarea {
   text-transform: uppercase;
   letter-spacing: var(--track-eyebrow);
   line-height: 1.1;
-  /* The longest label ("Projects") clears the 64px item by a real margin in IBM Plex Sans,
-     but that margin is an estimate, not a guarantee — the system-font fallback that renders
-     for the instant before the webfont loads sets wider caps, and a future label swap could
-     shrink it further. Wrapping to a second line would silently break the icon+label grid
-     baseline; forcing one line makes an overflow visible (and fixable) instead of hidden. */
+  /* The longest label ("Projects") clears the item — now var(--rail-w), 76px — by a real
+     margin in IBM Plex Sans (re-verified at 12px: ~64.6px of glyphs + tracking against a
+     76px box). That margin is still an estimate, not a guarantee — the system-font fallback
+     that renders for the instant before the webfont loads sets wider caps, and a future label
+     swap could shrink it further. Wrapping to a second line would silently break the icon+label
+     grid baseline; forcing one line makes an overflow visible (and fixable) instead of hidden. */
   white-space: nowrap;
 }
 .rail__item:hover {
