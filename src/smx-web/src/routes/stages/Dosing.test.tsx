@@ -234,6 +234,52 @@ describe('Dosing — the chart is the answer', () => {
     expect(upper.querySelector('rect')).toHaveAttribute('fill', 'transparent');
   });
 
+  /**
+   * The other half of that encoding, and the one the first draft got wrong: the fade was
+   * unconditional, so a cited regulatory ceiling was drawn exactly as vague as a figure the agent
+   * extrapolated — while the key underneath claimed the fade meant "estimated". A `regulatory` or
+   * `measured` upper bound is an edge somebody can point at, so the band stops at it and the rule is
+   * capped, the same way the floor is.
+   */
+  const REGULATORY_UPPER = {
+    ...WINDOW,
+    upper: {
+      ppm: 38.5,
+      basis: 'EU 10/2011 Annex I specific migration limit',
+      kind: 'regulatory',
+      confidence: 0.94,
+    },
+  } as const;
+
+  it('does not fade a regulatory ceiling — it is a cited number, not a guess', async () => {
+    vi.mocked(api.getDosing).mockResolvedValue(doc({ windows: [REGULATORY_UPPER] as never }));
+    renderDosing();
+    await screen.findByRole('img', { name: /^Y: recommended/ });
+    const band = mark(chartRows()[0], 'window').querySelector('rect');
+    expect(band?.getAttribute('fill')).not.toMatch(/^url\(#ppmfade/);
+    expect(band).toHaveAttribute('fill', 'var(--surface-3)');
+  });
+
+  it('caps a known upper bound with the same rule it gives the floor', async () => {
+    vi.mocked(api.getDosing).mockResolvedValue(doc({ windows: [REGULATORY_UPPER] as never }));
+    renderDosing();
+    await screen.findByRole('img', { name: /^Y: recommended/ });
+    const upper = mark(chartRows()[0], 'upper');
+    expect(upper.querySelectorAll('line')).toHaveLength(1);
+    // Two caps plus the transparent hit area — the floor's shape exactly.
+    expect(upper.querySelectorAll('rect')).toHaveLength(3);
+    expect(upper.querySelector('line')).toHaveAttribute('stroke', 'var(--text-secondary)');
+  });
+
+  it('stops claiming the upper end is unknown when the record says it is not', async () => {
+    vi.mocked(api.getDosing).mockResolvedValue(doc({ windows: [REGULATORY_UPPER] as never }));
+    renderDosing();
+    await screen.findByRole('img', { name: /^Y: recommended/ });
+    const title = mark(chartRows()[0], 'window').querySelector('title')?.textContent ?? '';
+    expect(title).not.toMatch(/fades|not known/i);
+    expect(title).toMatch(/both ends are known/i);
+  });
+
   /** The floor is the opposite: a solid rule between two caps. A hard edge, because the value is known. */
   it('draws the detection floor as a solid capped rule', async () => {
     renderDosing();
@@ -309,8 +355,12 @@ describe('Dosing — the chart is the answer', () => {
     renderDosing();
     await screen.findByRole('heading', { name: /how much goes in/i });
     const dose = section(/how much goes in/i);
-    expect(dose.getByText(/detection floor — measured/i)).toBeInTheDocument();
-    expect(dose.getByText(/fading where it is only estimated/i)).toBeInTheDocument();
+    // The capped rule and the fade are two different claims about provenance, so the key names them
+    // separately. It used to name only the fade, which is how the fade came to be drawn on bands
+    // that had no business fading.
+    expect(dose.getByText(/a known end — measured, or a cited regulatory cap/i)).toBeInTheDocument();
+    expect(dose.getByText(/^dosable window$/i)).toBeInTheDocument();
+    expect(dose.getByText(/fading edge — that end is only an estimate/i)).toBeInTheDocument();
     expect(dose.getByText(/^recommended dose$/i)).toBeInTheDocument();
     expect(dose.getByText(/below the floor — xrf cannot see the marker/i)).toBeInTheDocument();
     expect(dose.getByText(/^quantification threshold$/i)).toBeInTheDocument();

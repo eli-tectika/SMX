@@ -15,10 +15,17 @@ import { axisMax, niceTicks } from '../domain/ticks';
  * distinction on the screen (one end is the physicist's measurement, the other is the agent's own
  * claim, and an agent may never author `measured`). So the chart is achromatic and the shapes speak:
  *
- *   - the detection floor is a SOLID, CAPPED rule — a hard edge, because the value is known;
- *   - the window DISSOLVES into the page towards its upper end — a soft edge, because nobody knows
- *     where it really ends;
+ *   - a KNOWN end is a solid, capped rule — the detection floor always, and the upper bound when the
+ *     record gives it a measured or regulatory basis;
+ *   - an ESTIMATED end has no rule at all: the band DISSOLVES into the page, because nobody knows
+ *     where the window really ends;
  *   - the recommended dose is the largest mark, in ink, and carries the only direct label.
+ *
+ * The dissolve is conditional on `upper.kind` and must stay that way. Fading every band alike drew a
+ * legal migration limit — a hard number with a citation — as exactly as vague as a figure the agent
+ * extrapolated from a neighbouring salt, while the key underneath claimed the fade meant "estimated".
+ * That is the one direction this drawing must not fail in: it would understate a real ceiling and
+ * launder a guess into something that looks equally considered.
  *
  * Ink and not green for the recommendation: green means *Pass* everywhere else in this app, and the
  * recommended dose is an answer, not a verdict. And the floor is NOT drawn in `--text-danger`, which
@@ -62,6 +69,15 @@ const KIND_NOTE: Record<BoundKind, string> = {
 };
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+
+/**
+ * Does this end of the window dissolve rather than stop?
+ *
+ * Only an `estimate` does. `measured` is the physicist's and `regulatory` is a cap read from the
+ * corpus with a citation behind it — both are edges somebody can point at, and drawing them as fog
+ * would say the record is vaguer than it is.
+ */
+const isSoftEnd = (b: Bound) => b.kind === 'estimate';
 
 function boundTitle(label: string, b: Bound): string {
   const basis = b.basis.trim();
@@ -225,17 +241,21 @@ export function PpmChart({ windows }: { windows: readonly PpmWindow[] }) {
                 />
               </g>
 
-              {/* The dosable window. Its right end dissolves rather than stopping. */}
-              <g data-mark="window">
+              {/* The dosable window. Its right end dissolves ONLY when the upper bound is an
+                  estimate; a measured or regulatory ceiling is a real edge and the band runs to it
+                  at full opacity, with a capped rule below. */}
+              <g data-mark="window" data-upper={isSoftEnd(w.upper) ? 'soft' : 'hard'}>
                 <title>
-                  {`Dosable window ${fmtPpm(w.floor.ppm)} to ${fmtPpm(w.upper.ppm)} ppm. Its upper end is ${w.upper.kind}, not a hard edge — the band fades because where the window really ends is not known.`}
+                  {isSoftEnd(w.upper)
+                    ? `Dosable window ${fmtPpm(w.floor.ppm)} to ${fmtPpm(w.upper.ppm)} ppm. Its upper end is an estimate, not a hard edge — the band fades because where the window really ends is not known.`
+                    : `Dosable window ${fmtPpm(w.floor.ppm)} to ${fmtPpm(w.upper.ppm)} ppm. Both ends are known: the upper bound is ${w.upper.kind}, so the band stops where it stops.`}
                 </title>
                 <rect
                   x={pct(w.floor.ppm)}
                   y={BAND_Y}
                   width={`${Math.max(0, clamp01(w.upper.ppm / max) - clamp01(w.floor.ppm / max)) * 100}%`}
                   height={BAND_H}
-                  fill={`url(#${fadeId})`}
+                  fill={isSoftEnd(w.upper) ? `url(#${fadeId})` : 'var(--surface-3)'}
                 />
               </g>
 
@@ -263,11 +283,39 @@ export function PpmChart({ windows }: { windows: readonly PpmWindow[] }) {
                 />
               </g>
 
-              {/* The upper bound gets NO rule. The absence of an edge is the encoding — see the
-                  component note. It still needs somewhere to be hovered, so the hit area is here
-                  and the mark is not. */}
-              <g data-mark="upper">
+              {/* An ESTIMATED upper bound gets no rule: the absence of an edge is the encoding, and
+                  the hit area below is the only thing there. A measured or regulatory one gets the
+                  same capped rule as the floor, because it is the same kind of fact. */}
+              <g data-mark="upper" data-edge={isSoftEnd(w.upper) ? 'soft' : 'hard'}>
                 <title>{boundTitle('Upper bound', w.upper)}</title>
+                {!isSoftEnd(w.upper) && (
+                  <>
+                    <rect
+                      x={pct(w.upper.ppm)}
+                      y={RULE_TOP - CAP_H}
+                      width={CAP_W}
+                      height={CAP_H}
+                      transform={`translate(${-CAP_W / 2},0)`}
+                      fill={FLOOR_INK}
+                    />
+                    <line
+                      x1={pct(w.upper.ppm)}
+                      x2={pct(w.upper.ppm)}
+                      y1={RULE_TOP}
+                      y2={RULE_BOT}
+                      stroke={FLOOR_INK}
+                      strokeWidth={2}
+                    />
+                    <rect
+                      x={pct(w.upper.ppm)}
+                      y={RULE_BOT}
+                      width={CAP_W}
+                      height={CAP_H}
+                      transform={`translate(${-CAP_W / 2},0)`}
+                      fill={FLOOR_INK}
+                    />
+                  </>
+                )}
                 <rect
                   x={pct(w.upper.ppm)}
                   y={BAND_Y - 4}
@@ -366,7 +414,7 @@ export function PpmChart({ windows }: { windows: readonly PpmWindow[] }) {
 function ChartKey({ hatchId, fadeId }: { hatchId: string; fadeId: string }) {
   const items: [string, JSX.Element][] = [
     [
-      'Detection floor — measured',
+      'A known end — measured, or a cited regulatory cap',
       <>
         <rect x={11} y={2} width={9} height={2} transform="translate(-4.5,0)" fill={FLOOR_INK} />
         <line x1={11} x2={11} y1={4} y2={12} stroke={FLOOR_INK} strokeWidth={2} />
@@ -374,7 +422,11 @@ function ChartKey({ hatchId, fadeId }: { hatchId: string; fadeId: string }) {
       </>,
     ],
     [
-      'Dosable window, fading where it is only estimated',
+      'Dosable window',
+      <rect x={0} y={5} width={26} height={8} fill="var(--surface-3)" />,
+    ],
+    [
+      'Fading edge — that end is only an estimate',
       <rect x={0} y={5} width={26} height={8} fill={`url(#${fadeId})`} />,
     ],
     [
