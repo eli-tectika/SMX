@@ -6,6 +6,19 @@ public static class GateTypes
     public const string Vp = "vp";
 }
 
+/// The values `GateDoc.ApprovedBy` may take. Constants rather than literals because these strings are
+/// written in three places (both hard-gate endpoints and the auto-approve path) and read by the UI as a
+/// closed set: a typo would not fail anywhere, it would render as UNKNOWN PROVENANCE — a gate whose
+/// signature the system quietly disowns.
+public static class GateSigners
+{
+    /// A human recording a determination through the gate's own endpoint.
+    public const string Operator = "operator";
+
+    /// REGULATORY_AUTO_APPROVE signing on nobody's behalf. There is no VP equivalent and must not be one.
+    public const string AutoApprove = "auto-approve";
+}
+
 /// Operator-signed set-level gate record. Per-cell determinations live on the VerdictDoc.
 public sealed class GateDoc
 {

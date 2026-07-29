@@ -72,6 +72,61 @@ public class PipelineRunnerTests
         Assert.NotEmpty(CompliantSet.Of(verdicts));                                        // dosable set is non-empty
     }
 
+    // The signature this path writes must SAY it is the machine's. With REGULATORY_AUTO_APPROVE defaulting on,
+    // every deployed project gets a gate signed here — and an approved gate with no recorded signer is
+    // indistinguishable, on every surface that reads the record, from the R.E.'s own determination. That is
+    // exactly what the hard gate exists to prevent, so the signer is not decoration: it is the gate's honesty.
+    [Fact]
+    public async Task RegulatoryAutoApprove_records_the_machine_as_the_signer()
+    {
+        var (d, store, agents, _) = Sut(autoApprove: true);
+        agents.Regulatory = (c, cand, _) => Task.FromResult(Smx.Backend.Agents.AgentRunResult<VerdictDoc>.Ok(new VerdictDoc
+        {
+            Id = RecordIds.Verdict(c.ProjectId, cand.Cas, cand.ComponentId), ProjectId = c.ProjectId,
+            Cas = cand.Cas, ComponentId = cand.ComponentId, Element = cand.Element, Form = cand.Form,
+            Dimensions = [new("ElementGate", VerdictStatus.Pass, [new Citation("regulatory", "x", "t")], 0.9, "ok")],
+            ProposedDetermination = Determinations.Recommended,
+        }));
+        await Seed(store);
+        await d.RunAsync("p1", default);
+
+        var gate = await store.GetGateAsync("p1", GateTypes.Regulatory);
+        Assert.Equal("approved", gate?.Status);
+        Assert.Equal(GateSigners.AutoApprove, gate?.ApprovedBy);
+        Assert.False(string.IsNullOrWhiteSpace(gate?.ApprovedAt));   // the pair moves together
+    }
+
+    // The direction that must never happen: an operator signs, the pipeline runs again over the same verdicts,
+    // and auto-approve overwrites the human signature with the machine's. Re-affirming keeps BOTH fields, so
+    // the record cannot end up saying "signed by the machine" over a timestamp the operator earned. (The
+    // reverse IS allowed and deliberate: POST /regulatory/approve replaces a machine signature with a human
+    // one and moves the timestamp with it.)
+    [Fact]
+    public async Task RegulatoryAutoApprove_never_overwrites_an_operator_signature()
+    {
+        var (d, store, agents, _) = Sut(autoApprove: true);
+        agents.Regulatory = (c, cand, _) => Task.FromResult(Smx.Backend.Agents.AgentRunResult<VerdictDoc>.Ok(new VerdictDoc
+        {
+            Id = RecordIds.Verdict(c.ProjectId, cand.Cas, cand.ComponentId), ProjectId = c.ProjectId,
+            Cas = cand.Cas, ComponentId = cand.ComponentId, Element = cand.Element, Form = cand.Form,
+            Dimensions = [new("ElementGate", VerdictStatus.Pass, [new Citation("regulatory", "x", "t")], 0.9, "ok")],
+            ProposedDetermination = Determinations.Recommended,
+        }));
+        await Seed(store);
+        await store.UpsertGateAsync(new GateDoc
+        {
+            Id = RecordIds.Gate("p1", GateTypes.Regulatory), ProjectId = "p1",
+            GateType = GateTypes.Regulatory, Status = "approved",
+            ApprovedAt = "2026-01-01T00:00:00.0000000+00:00", ApprovedBy = GateSigners.Operator,
+        });
+
+        await d.RunAsync("p1", default);
+
+        var gate = await store.GetGateAsync("p1", GateTypes.Regulatory);
+        Assert.Equal(GateSigners.Operator, gate?.ApprovedBy);
+        Assert.Equal("2026-01-01T00:00:00.0000000+00:00", gate?.ApprovedAt);
+    }
+
     // A null proposal (the failed-verdict fallback) must NOT be auto-recommended — the safe asymmetry survives
     // even with the human gate off: an un-screenable substance is excluded, never signed through.
     [Fact]

@@ -118,7 +118,7 @@ public static class DecisionEndpoints
             // updating them under different policies lets the pair describe an event that never
             // happened. This is the LAST hard gate — it releases procurement and writes the Marker
             // Library — so it must be able to say who signed at least as clearly as the gate before it.
-            var reaffirming = existing is { Status: "approved", ApprovedBy: "operator" };
+            var reaffirming = existing is { Status: "approved", ApprovedBy: GateSigners.Operator };
             var gate = new GateDoc
             {
                 Id = RecordIds.Gate(projectId, GateTypes.Vp), ProjectId = projectId,
@@ -126,7 +126,7 @@ public static class DecisionEndpoints
                 ApprovedAt = reaffirming ? existing!.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
                 // The operator recording the VP's offline determination. There is no agent tool for
                 // this endpoint and there never will be.
-                ApprovedBy = "operator",
+                ApprovedBy = GateSigners.Operator,
             };
             await store.UpsertGateAsync(gate, ct);
 

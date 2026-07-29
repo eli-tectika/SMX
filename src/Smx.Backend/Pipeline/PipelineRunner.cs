@@ -501,11 +501,20 @@ public sealed class PipelineRunner(
             await store.UpsertVerdictAsync(v, ct);
         }
         var existing = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
+        // `ApprovedAt` and `ApprovedBy` move as a PAIR or not at all. Re-affirming an already-approved
+        // gate keeps BOTH, which is what stops this path from overwriting a human signature with the
+        // machine's: an operator signs, the pipeline runs again over the same verdicts, and without the
+        // second half of this expression the record would then read "signed by the machine" over the
+        // operator's own timestamp — a signature attributed to nobody who made it. The reverse case is
+        // already safe: POST /regulatory/approve deliberately DOES replace a machine signature with a
+        // human one, and moves the timestamp with it.
+        var reaffirming = existing is { Status: "approved" };
         await store.UpsertGateAsync(new GateDoc
         {
             Id = RecordIds.Gate(projectId, GateTypes.Regulatory), ProjectId = projectId,
             GateType = GateTypes.Regulatory, Status = "approved",
-            ApprovedAt = existing?.Status == "approved" ? existing.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
+            ApprovedAt = reaffirming ? existing!.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
+            ApprovedBy = reaffirming ? existing!.ApprovedBy : GateSigners.AutoApprove,
         }, ct);
         await trail.StepAsync(RunStepKind.Output,
             $"REGULATORY_AUTO_APPROVE: adopted {adopted} agent determination(s) and signed the gate — no human review.",
@@ -1168,13 +1177,13 @@ public sealed class PipelineRunner(
         if (await store.GetGateAsync(r.ProjectId, GateTypes.Regulatory, ct) is { Status: "approved" } gate)
         {
             gate.Status = "locked";
-            // Invariant, for the REGULATORY gate: ApprovedBy is non-null iff ApprovedAt is non-null.
-            // It does not hold for the VP gate, which does not carry a signer yet (DecisionEndpoints
-            // writes an approved VP gate with ApprovedAt set and ApprovedBy null) — so do not read
-            // this as a rule to enforce across every GateDoc. A locked gate with a
-            // signer standing would report `{status:"locked", approvedBy:"operator"}` — read by a
-            // screen that renders the signer whenever non-null, that prints "signed by the
-            // operator" on a gate this revision deliberately voided.
+            // The pair moves together: ApprovedBy is non-null iff ApprovedAt is non-null. Both hard
+            // gates now write it that way (DecisionEndpoints gained the signer alongside this one),
+            // and both the auto-approve path above and POST /regulatory/approve preserve the pair
+            // when re-affirming. A locked gate with a signer left standing would report
+            // `{status:"locked", approvedBy:"operator"}` — read by a screen that renders the signer
+            // whenever it is non-null, that prints "signed by the operator" on a gate this revision
+            // deliberately voided.
             gate.ApprovedAt = null;
             gate.ApprovedBy = null;
             await store.UpsertGateAsync(gate, ct);

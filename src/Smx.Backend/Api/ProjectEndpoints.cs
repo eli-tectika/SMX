@@ -115,7 +115,7 @@ public static class ProjectEndpoints
             // together or the record can describe an event that never happened: an operator
             // signature stamped with the machine's timestamp, or a machine signature that
             // survives the human review that was supposed to replace it.
-            var reaffirming = existing is { Status: "approved", ApprovedBy: "operator" };
+            var reaffirming = existing is { Status: "approved", ApprovedBy: GateSigners.Operator };
             var gate = new GateDoc
             {
                 Id = RecordIds.Gate(projectId, GateTypes.Regulatory), ProjectId = projectId,
@@ -123,7 +123,7 @@ public static class ProjectEndpoints
                 // This endpoint is only reachable by the operator pressing Sign — there is no agent
                 // tool for it and there never will be.
                 ApprovedAt = reaffirming ? existing!.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
-                ApprovedBy = "operator",
+                ApprovedBy = GateSigners.Operator,
             };
             await store.UpsertGateAsync(gate, ct);
 
