@@ -121,13 +121,18 @@ const dosing: DosingDoc = {
 /** Locked, but the server says every condition is met — the state the pen is live in. */
 const armed: VpGate = { status: 'locked', armable: true, blockers: [] };
 
-const msds = (reviewStatus: string): MsdsEntry => ({
+/**
+ * A registry row. `documentId` IS the order predicate now — the review signature was deleted in the
+ * 2026-07-29 design (D8/D9), so a row without one is a governance-only entry with no sheet behind it,
+ * which the backend refuses exactly as it refuses an absent row.
+ */
+const msds = (documentId: string | null): MsdsEntry => ({
   id: 'msds|1314-36-9',
   cas: '1314-36-9',
   supplier: 'Sigma-Aldrich',
   version: '4.1',
   date: '2025-11-02',
-  reviewStatus,
+  documentId,
   linkedProjects: [],
 });
 
@@ -149,7 +154,7 @@ beforeEach(() => {
   vi.mocked(api.getDecision).mockResolvedValue(decision());
   vi.mocked(api.getVpGate).mockResolvedValue(armed);
   vi.mocked(api.getDosing).mockResolvedValue(dosing);
-  vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds('reviewed')]);
+  vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds('sds|1314-36-9')]);
   vi.mocked(api.recordVpDetermination).mockResolvedValue({ status: 'approved' });
 });
 
@@ -427,7 +432,7 @@ describe('Decision — arming the gate', () => {
 
   /** MSDS gates ORDERS, not the gate. Listing it here would invent a precondition. */
   it('does not make MSDS a precondition of the VP gate', async () => {
-    vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds('pending')]);
+    vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds(null)]);
     view();
     await waitFor(() => expect(screen.getByText(/1314-36-9/)).toBeInTheDocument());
     const checks = screen.getByRole('list', { name: /determination preconditions/i });
@@ -662,13 +667,13 @@ describe('Decision — procurement', () => {
     await waitFor(() => expect(screen.getAllByRole('button', { name: /^order$/i })).toHaveLength(2));
     expect(screen.getByText(/msds before order/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/cannot be ordered until a reviewed safety sheet is on file/i),
+      screen.getByText(/cannot be ordered until a safety sheet for it is on file/i),
     ).toBeInTheDocument();
   });
 
   it('offers an order per confirmed marker once released, and refuses one with no reviewed MSDS', async () => {
     vi.mocked(api.getDecision).mockResolvedValue(signedDecision());
-    vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds('reviewed')]); // Y only; Zr has none
+    vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds('sds|1314-36-9')]); // Y only; Zr has none
     view();
     await waitFor(() => expect(screen.getAllByRole('button', { name: /^order$/i })).toHaveLength(2));
     const buttons = screen.getAllByRole('button', { name: /^order$/i });
@@ -683,14 +688,18 @@ describe('Decision — procurement', () => {
     await waitFor(() => expect(api.orderSubstance).toHaveBeenCalledWith('proj-1', '1314-36-9'));
   });
 
-  /** A sheet on file but NOT reviewed is not a cleared sheet. */
-  it('refuses an order on an unreviewed sheet', async () => {
+  /**
+   * A registry ROW is not a sheet. Since the review signature was deleted (design 2026-07-29, D8/D9)
+   * the predicate is `documentId`, and a governance-only row carries none — the backend refuses that
+   * order exactly as it refuses one for a substance with no row at all, so the button must too.
+   */
+  it('refuses an order on a registry row with no sheet behind it', async () => {
     vi.mocked(api.getDecision).mockResolvedValue(signedDecision());
-    vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds('pending')]);
+    vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds(null)]);
     view();
     await waitFor(() => expect(screen.getAllByRole('button', { name: /^order$/i })).toHaveLength(2));
     for (const b of screen.getAllByRole('button', { name: /^order$/i })) expect(b).toBeDisabled();
-    expect(screen.getByText('pending')).toBeInTheDocument();
+    expect(api.orderSubstance).not.toHaveBeenCalled();
   });
 
   /**
@@ -747,7 +756,7 @@ describe('Decision — procurement', () => {
     for (const b of screen.getAllByRole('button', { name: /^order$/i })) expect(b).toBeDisabled();
 
     // ...and once it lands the record speaks: Y has a reviewed sheet, Zr genuinely has none.
-    land([msds('reviewed')]);
+    land([msds('sds|1314-36-9')]);
     await waitFor(() => expect(screen.getByText(/no sheet on file/)).toBeInTheDocument());
     const buttons = screen.getAllByRole('button', { name: /^order$/i });
     expect(buttons[0]).toBeEnabled();

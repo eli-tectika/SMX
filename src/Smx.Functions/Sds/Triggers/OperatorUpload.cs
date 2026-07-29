@@ -15,9 +15,7 @@ public sealed record OperatorUploadRequest(
 public sealed class OperatorUpload
 {
     private readonly IngestionPipeline _pipeline;
-    private readonly AllowlistProvider _allowlist;
-    public OperatorUpload(IngestionPipeline pipeline, AllowlistProvider allowlist)
-    { _pipeline = pipeline; _allowlist = allowlist; }
+    public OperatorUpload(IngestionPipeline pipeline) => _pipeline = pipeline;
 
     [Function("OperatorUpload")]
     public async Task<HttpResponseData> Run(
@@ -29,15 +27,12 @@ public sealed class OperatorUpload
             return req.CreateResponse(HttpStatusCode.BadRequest);
 
         var pdf = Convert.FromBase64String(body.PdfBase64);
-        // Operator-supplied source: validate against the supplier's allowlist domain if known, else the
-        // first (highest-priority) allowlist domain — the operator pulled this SDS during the offline audit.
-        var domain = _allowlist.Ordered.FirstOrDefault(e =>
-            string.Equals(e.Supplier, body.Supplier, StringComparison.OrdinalIgnoreCase))?.Domain
-            ?? _allowlist.Ordered[0].Domain;
-
+        // The allowlist lookup that used to happen here existed only to satisfy the validator's domain
+        // check, which is gone: an operator-supplied sheet is judged by its content like any other.
         var meta = new SdsMetadata(body.Cas, body.Supplier, body.ProductName, body.RevisionDate,
-            body.Region, body.Language, $"operator-upload://{body.Supplier}", body.MasterListId);
-        var result = await _pipeline.IngestAsync(pdf, meta, domain, req.FunctionContext.CancellationToken);
+            body.Region, body.Language, $"operator-upload://{body.Supplier}", body.MasterListId,
+            "operatorUpload");
+        var result = await _pipeline.IngestAsync(pdf, meta, req.FunctionContext.CancellationToken);
 
         var resp = req.CreateResponse(result.Ok ? HttpStatusCode.OK : HttpStatusCode.UnprocessableEntity);
         await resp.WriteAsJsonAsync(new { result.Ok, result.Reason, result.RegistryId });

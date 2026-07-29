@@ -63,14 +63,26 @@ namespace Smx.SearchProxy
             else
             {
                 services.AddHttpClient<ISearchProvider, BraveSearchProvider>()
-                    // The handler is built by ProxyHttp so the traceparent suppression is testable against the
-                    // real chain — see ProxyHttp and TracePropagationTests. Do not inline it back here.
+                    // Both configurators live on ProxyHttp so what the tests exercise is what ships — see
+                    // ProxyHttp, TracePropagationTests and ProxyHttpTests. Do not inline either back here.
+                    .ConfigureHttpClient(c => ProxyHttp.ConfigureClient(c, opts))
                     .ConfigurePrimaryHttpMessageHandler(ProxyHttp.CreateHandler);
 
                 TokenCredential cred = string.IsNullOrEmpty(opts.UamiClientId)
                     ? new DefaultAzureCredential()
                     : new ManagedIdentityCredential(opts.UamiClientId);
                 services.AddSingleton(cred);
+
+                // An empty account name would compose "https://.blob.core.windows.net", and `new Uri` answers
+                // that with "Invalid URI: The hostname could not be parsed" — thrown from ConfigureServices,
+                // so the host never builds and the app crash-loops on a message naming neither the setting
+                // nor the app. A misconfiguration must name itself (the BRONZE_ACCOUNT_NAME pattern in
+                // Smx.Backend/Program.cs): same failure, one line earlier, in words an operator can act on.
+                if (opts.StorageAccount is not { Length: > 0 })
+                    throw new InvalidOperationException(
+                        "AzureWebJobsStorage__accountName is not set (PROXY_DRY_RUN=true is the local-dev " +
+                        "alternative) — the Search Proxy has no storage account to hold its search cache and " +
+                        "its monthly quota counter, and cannot start.");
 
                 var blobUri = new Uri($"https://{opts.StorageAccount}.blob.core.windows.net");
                 services.AddSingleton(_ => new BlobServiceClient(blobUri, cred).GetBlobContainerClient(opts.CacheContainer));

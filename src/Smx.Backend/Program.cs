@@ -21,6 +21,7 @@ using Smx.Domain.Documents;
 using Smx.Domain.Tools;
 using Smx.Infrastructure;
 using Smx.Infrastructure.Search;
+using Smx.Infrastructure.Sds;
 
 // `LearnedConclusionsIndex` is BOTH a type (the AI Search write side) and a BackendOptions property (the
 // index NAME). Alias the type so `new LcSearchIndex(client, opts.LearnedConclusionsIndex)` reads as what
@@ -307,6 +308,21 @@ public static class BackendHost
             opts.SearchProxyAudience,
             sp.GetRequiredService<ILogger<SearchProxyClient>>()));
 
+        // SDS acquisition — the line to the regsync Function App, same shape as the proxy client above and
+        // for the same reason (two plain strings, so DI cannot construct it by type).
+        //
+        // Registered unconditionally and fail-safe by construction: with no endpoint configured the client
+        // simply cannot reach anything and reports every request as unavailable-with-a-reason, which is
+        // precisely the contract the callers already handle. A missing deployment degrades the ability to
+        // fetch a NEW sheet; it never blocks a stage and never breaks a run.
+        services.AddHttpClient(nameof(SdsAcquisitionClient));
+        services.AddSingleton<ISdsAcquisition>(sp => new SdsAcquisitionClient(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(SdsAcquisitionClient)),
+            sp.GetRequiredService<Azure.Core.TokenCredential>(),
+            opts.SdsServiceEndpoint,
+            opts.SdsServiceAudience,
+            sp.GetRequiredService<ILogger<SdsAcquisitionClient>>()));
+
         services.AddSingleton<Func<SensitiveTerms, IWebSearch>>(sp => terms => new WebSearchTool(
             sp.GetRequiredService<ISearchProxyClient>(),
             terms,
@@ -324,7 +340,11 @@ public static class BackendHost
             sp.GetRequiredService<IKnowledgeStore>(),
             sp.GetRequiredService<ILearnedConclusionsSearch>(),
             sp.GetRequiredService<Func<SensitiveTerms, IWebSearch>>(),
-            opts.UseHostedWebSearch));
+            opts.UseHostedWebSearch,
+            // Without this the ensure_sds tool is absent from every tool list and the feature is dead in
+            // production while its tests pass — the parameter is optional so the many test hosts that
+            // construct a ToolBox need not know about SDS acquisition at all.
+            sp.GetRequiredService<ISdsAcquisition>()));
         services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(sp =>
             FoundryChatClientFactory.CreateAsync(opts, credential).GetAwaiter().GetResult());
         services.AddSingleton<IAgentRuns, AgentRuns>();
@@ -361,6 +381,9 @@ public static class BackendHost
             sp.GetRequiredService<ILearnedConclusionWriter>(), opts.RegulatoryParallelism,
             sp.GetRequiredService<ILogger<PipelineRunner>>(),
             sp.GetRequiredService<IKnowledgeStore>(), sp.GetRequiredService<ICatalogLookup>(),
+            // Same reasoning: unpassed, the SDS ledger never learns about a substance a project put into
+            // play, which is the gap that made MSDS coverage look arbitrary in the first place.
+            sp.GetRequiredService<ISdsAcquisition>(),
             opts.RegulatoryAutoApprove));
 
         // ONE supervisor, resolved twice. The hosted-service registration MUST go through the container

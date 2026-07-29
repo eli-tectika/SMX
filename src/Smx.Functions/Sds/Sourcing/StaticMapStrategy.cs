@@ -20,7 +20,7 @@ public sealed class StaticMapStrategy : ISourceStrategy
             var url = entry.SdsUrlTemplate
                 .Replace("{productNumber}", productNumber)
                 .Replace("{cas}", key.Cas);
-            result = new[] { new SourceCandidate(entry.Supplier, entry.Domain, new Uri(url)) };
+            result = new[] { new SourceCandidate(entry.Supplier, entry.Domain, new Uri(url), "staticMap") };
         }
         return Task.FromResult(result);
     }

@@ -49,7 +49,8 @@ const sheet = (over: Partial<MsdsEntry> = {}): MsdsEntry => ({
   supplier: 'Fisher Scientific',
   version: '3.0',
   date: '2026-01-04',
-  reviewStatus: 'reviewed',
+  // The order predicate is the SHEET's existence, not a signature over it (design 2026-07-29, D8/D9).
+  documentId: 'sds|1314-23-4',
   linkedProjects: [],
   ...over,
 });
@@ -242,17 +243,19 @@ describe('Cost — the safety-sheet blocker', () => {
       costDoc([audit(), audit({ cas: '1314-13-2', element: 'Zn' })]),
     );
     vi.mocked(api.getMsdsRegistry).mockResolvedValue([
-      sheet({ cas: '1314-13-2', reviewStatus: 'pending' }),
+      // A registry row with no sheet behind it — governance-only, and refused exactly as if absent.
+      sheet({ cas: '1314-13-2', documentId: null }),
     ]);
     const { container } = renderCost();
     await ready();
 
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent(/2 substances cannot be ordered/i);
-    // The reason is per substance, and the two reasons are different claims.
+    // The reason is per substance, and the two reasons are different claims: a substance with no
+    // registry row at all has to have a sheet OBTAINED; one whose row carries no document has to
+    // have a sheet LINKED. Collapsing them would send the operator to the wrong place.
     expect(within(alert).getByText(/no sheet is on file/i)).toBeInTheDocument();
-    expect(within(alert).getByText(/its sheet is/i)).toBeInTheDocument();
-    expect(within(alert).getByText('pending')).toBeInTheDocument();
+    expect(within(alert).getByText(/registry entry has no sheet behind it/i)).toBeInTheDocument();
     expect(within(alert).getByText('1314-23-4')).toBeInTheDocument();
     expect(within(alert).getByRole('link', { name: /MSDS registry/i })).toBeInTheDocument();
     expect(tile(container, 'Not orderable').querySelector('.stat__value')).toHaveTextContent('2');
@@ -271,7 +274,7 @@ describe('Cost — the safety-sheet blocker', () => {
     await ready();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(
-      screen.getByText(/every substance below has a reviewed safety data sheet/i),
+      screen.getByText(/every substance below has a safety data sheet on file/i),
     ).toBeInTheDocument();
   });
 
@@ -290,7 +293,7 @@ describe('Cost — the safety-sheet blocker', () => {
     expect(screen.queryByText(/cannot be ordered/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/no MSDS on file/i)).not.toBeInTheDocument();
     expect(
-      screen.queryByText(/every substance below has a reviewed safety data sheet/i),
+      screen.queryByText(/every substance below has a safety data sheet on file/i),
     ).not.toBeInTheDocument();
 
     // The tile is the absence, not a zero: "0 not orderable" is a clearance.

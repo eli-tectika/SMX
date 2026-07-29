@@ -1,7 +1,8 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getDocuments } from '../api/client';
 import type { DocumentKind, DocumentSummary } from '../api/types';
+import { SdsActions } from '../components/SdsActions';
 import { EmptyState, SearchInput, SectionHeader } from '../components/ui/Primitives';
 import { Data } from '../components/ui/Data';
 import { useKnowledge } from '../hooks/useKnowledge';
@@ -43,14 +44,20 @@ export function Documents() {
   // endpoint, which answers 400 for a kind it does not define.
   const kind = (FILTERS.some((f) => f.key === rawKind) ? rawKind : 'all') as 'all' | DocumentKind;
 
+  // Bumped when a gap row's fetch or upload lands, so the list re-reads and the row it filled
+  // becomes an openable document rather than a gap that says it was just filled.
+  const [reloadKey, setReloadKey] = useState(0);
+
   // Stable per kind, which is what useKnowledge's effect keys on: changing the facet re-reads.
   const read = useCallback(
     (search?: string) =>
       getDocuments({ kind: kind === 'all' ? undefined : kind, q: search || undefined }),
-    [kind],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [kind, reloadKey],
   );
 
   const state = useKnowledge<DocumentSummary>(read, q);
+  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
   return (
     <section className="screen">
@@ -127,6 +134,17 @@ export function Documents() {
                       </span>
                     )}
                     <span className="tiny muted">{r.subtitle}</span>
+                    {/*
+                      A gap row is the reason this list exists, and until now it was a dead end: the
+                      subtitle said "awaiting operator upload — no automated source" and offered no
+                      way to act on either half of that sentence. It now carries the two controls
+                      that make it actionable. `cas` is served by the backend, never parsed out of
+                      the subtitle — a scraped CAS is right until the wording changes, and then it
+                      fetches a sheet for the wrong substance.
+                    */}
+                    {!r.available && r.kind === 'sds' && r.cas && (
+                      <SdsActions cas={r.cas} hasSheet={false} onDone={reload} />
+                    )}
                   </div>
                   <span className="doc-row-meta">
                     {r.state === 'superseded' && (

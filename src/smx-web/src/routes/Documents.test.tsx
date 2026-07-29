@@ -26,6 +26,9 @@ const ROWS = [
     contentType: null,
     officialDate: null,
     ingestedUtc: null,
+    // Served, never scraped out of the subtitle: the gap row now carries an action, and a parsed
+    // CAS is right until the wording changes and then fetches the wrong substance's sheet.
+    cas: '1313-97-9',
   },
 ];
 
@@ -33,8 +36,14 @@ const stub = () => {
   const seen: string[] = [];
   vi.stubGlobal(
     'fetch',
-    vi.fn((url: string) => {
+    vi.fn((url: string, init?: RequestInit) => {
       seen.push(url);
+      if (init?.method === 'POST')
+        return Promise.resolve(
+          new Response(JSON.stringify({ status: 'fetched' }), {
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
       return Promise.resolve(
         new Response(JSON.stringify(ROWS), { headers: { 'Content-Type': 'application/json' } }),
       );
@@ -65,6 +74,29 @@ describe('Documents — the library', () => {
     view();
     expect(await screen.findByText(/no safety sheet/i)).toBeInTheDocument();
     expect(screen.getByText(/3 fetch attempt/i)).toBeInTheDocument();
+  });
+
+  /**
+   * The gap row used to be a dead end — it named the absence and offered nothing to do about it,
+   * because until 2026-07-29 there genuinely was nothing (`awaiting_operator` had no exit but a
+   * hand-rolled POST). It now carries the fetch, keyed on the CAS the backend served.
+   */
+  it('offers to fetch the sheet a gap row is missing', async () => {
+    const seen = stub();
+    view();
+
+    await userEvent.click(await screen.findByRole('button', { name: /fetch now/i }));
+
+    await waitFor(() => expect(seen).toContain('/api/msds/1313-97-9/fetch'));
+  });
+
+  /** A sheet that exists is not fetched again by accident — only refreshed, deliberately. */
+  it('offers no fetch control on a row whose file is there', async () => {
+    stub();
+    view();
+    await screen.findByText('Silver nitrate');
+    // One control, on the gap row — not two.
+    expect(screen.getAllByRole('button', { name: /fetch now/i })).toHaveLength(1);
   });
 
   // A gap row has no file, so it must not pretend to open one.

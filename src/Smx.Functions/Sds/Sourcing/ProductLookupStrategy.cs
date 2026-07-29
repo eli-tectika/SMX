@@ -29,6 +29,6 @@ public sealed class ProductLookupStrategy : ISourceStrategy
         var url = entry.SdsUrlTemplate
             .Replace("{brand}", m.Groups["brand"].Value)
             .Replace("{productNumber}", m.Groups["productNumber"].Value);
-        return new[] { new SourceCandidate(entry.Supplier, entry.Domain, new Uri(url)) };
+        return new[] { new SourceCandidate(entry.Supplier, entry.Domain, new Uri(url), "productLookup") };
     }
 }

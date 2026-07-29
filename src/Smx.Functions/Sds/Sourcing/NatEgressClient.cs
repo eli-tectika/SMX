@@ -7,25 +7,34 @@ namespace Smx.Functions.Sds.Sourcing;
 public sealed class NatEgressClient : IEgressClient
 {
     private readonly HttpClient _http;
-    private readonly IReadOnlySet<string> _allowlistDomains;
     private readonly SdsOptions _opts;
     private readonly ILogger<NatEgressClient> _log;
 
-    public NatEgressClient(HttpClient http, AllowlistProvider allowlist, SdsOptions opts, ILogger<NatEgressClient> log)
+    public NatEgressClient(HttpClient http, SdsOptions opts, ILogger<NatEgressClient> log)
     {
         _http = http;
-        _allowlistDomains = allowlist.Domains;
         _opts = opts;
         _log = log;
         _http.Timeout = TimeSpan.FromSeconds(opts.FetchTimeoutSeconds);
     }
 
+    /// The allowlist gate is gone (2026-07-29 design). What remains below is robustness, not policy:
+    /// each rail refuses BEFORE the request is made, and the default for an unknown host is now allow.
+    /// Whether a fetched document is the right document is SdsValidator's question, not this class's.
     public async Task<EgressResult?> FetchAsync(Uri url, CancellationToken ct)
     {
-        var host = url.Host.ToLowerInvariant();
-        if (!_allowlistDomains.Any(d => host == d || host.EndsWith("." + d)))
+        if (!url.IsAbsoluteUri || url.Scheme != Uri.UriSchemeHttps)
         {
-            _log.LogWarning("Egress blocked: host {Host} not on allowlist", host);
+            _log.LogWarning("Egress refused: {Url} is not https", url);
+            return null;
+        }
+
+        var host = url.Host.ToLowerInvariant();
+        // Suffix match on a label boundary — "tarpit.example" must cover "cdn.tarpit.example" without
+        // also swallowing "nottarpit.example".
+        if (_opts.Denylist.Any(d => host == d || host.EndsWith("." + d, StringComparison.Ordinal)))
+        {
+            _log.LogWarning("Egress refused: host {Host} is denylisted", host);
             return null;
         }
         try

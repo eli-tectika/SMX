@@ -19,10 +19,12 @@ export type SheetsState = 'unread' | 'ok' | 'failed';
  * Procurement — the Decision screen's post-close half, visible only once the record says `released`.
  *
  * The orderable set is the markers of CONFIRMED codes, never the decision rows and never a proposal:
- * "you cannot order what the VP did not sign". Each order is independently gated on a REVIEWED MSDS,
- * and the button is disabled with the reason rather than hidden — a missing safety sheet is what
- * blocks an order, and hiding the control would hide the blocker with it. The precondition is stated
- * in words HERE, where the order is placed, and not only on a registry page nobody is looking at.
+ * "you cannot order what the VP did not sign". Each order is independently gated on an MSDS being ON
+ * FILE — the gate survives, but its predicate moved from "a human signed this sheet" to "a validated,
+ * indexed sheet exists" (D9 of the 2026-07-29 design), which is exactly what the backend's 422 checks.
+ * The button is disabled with the reason rather than hidden: a missing safety sheet is what blocks an
+ * order, and hiding the control would hide the blocker with it. The precondition is stated in words
+ * HERE, where the order is placed, and not only on a registry page nobody is looking at.
  *
  * `sheetsState` is why this takes a state rather than just a list: an empty list means "no sheets" and
  * nothing else, and the two ways of not knowing — not read yet, could not be read — are not that. Only
@@ -70,12 +72,13 @@ export function Procurement({
 
   return (
     <>
+      {/* No SectionHeader: the Decision screen owns this section's heading now. What belongs here is
+          the PRECONDITION, in words, at the place the order is actually placed. */}
       <p className="prose" style={{ margin: '0 0 var(--s3)' }}>
-        <b>MSDS before order.</b> A substance cannot be ordered until a reviewed safety sheet is on
-        file for it — the button below stays dead until one is, and the row says why. These{' '}
-        {markers.length} substance{markers.length === 1 ? '' : 's'}{' '}
-        {markers.length === 1 ? 'is' : 'are'} the markers of the codes the VP signed; nothing else on
-        this project is orderable.
+        <b>MSDS before order.</b> A substance cannot be ordered until a safety sheet for it is on file
+        — the button below stays dead until one is, and the row says why. These {markers.length}{' '}
+        substance{markers.length === 1 ? '' : 's'} {markers.length === 1 ? 'is' : 'are'} the markers
+        of the codes the VP signed; nothing else on this project is orderable.
       </p>
 
       {error && (
@@ -97,7 +100,7 @@ export function Procurement({
             <b>The MSDS registry did not load.</b>
             <div className="tiny" style={{ marginTop: 3 }}>
               Every safety-sheet status below is <b>unknown</b> — not cleared, and not missing. A
-              reviewed sheet is a hard precondition for an order, so ordering is withheld until the
+              sheet on file is a hard precondition for an order, so ordering is withheld until the
               registry can be read. Reload, or open the registry directly.
             </div>
           </div>
@@ -106,8 +109,8 @@ export function Procurement({
 
       <table className="mx">
         <caption className="sr-only">
-          The markers of the signed codes, one row per substance, with its MSDS review status and an
-          order control that stays disabled until a reviewed safety sheet is on file.
+          The markers of the signed codes, one row per substance, with whether a safety sheet has
+          been obtained and an order control that stays disabled until one has.
         </caption>
         <thead>
           <tr>
@@ -119,8 +122,13 @@ export function Procurement({
         </thead>
         <tbody>
           {markers.map((m) => {
+            // `sheetList`, not `sheets`: the registry can arrive as a non-list, and calling .find on
+            // it would take the screen down (see the guard above).
             const sheet = known ? sheetList.find((s) => s.cas === m.cas) : undefined;
-            const reviewed = known && sheet?.reviewStatus === 'reviewed';
+            // MSDS-before-order survives; its predicate is now the SHEET's existence rather than
+            // a signature over it (design 2026-07-29, D9). A row with no documentId has no corpus
+            // sheet behind it, which is exactly what the backend's 422 checks.
+            const onFile = known && Boolean(sheet?.documentId);
             const isOrdered = ordered.includes(m.cas);
             return (
               <tr key={`${m.componentId}|${m.cas}`}>
@@ -138,12 +146,10 @@ export function Procurement({
                     <span style={{ color: 'var(--text-warning)' }}>
                       unknown — the registry did not load
                     </span>
-                  ) : reviewed ? (
-                    <span style={{ color: 'var(--text-success)' }}>reviewed</span>
+                  ) : onFile ? (
+                    <span style={{ color: 'var(--text-success)' }}>on file</span>
                   ) : (
-                    <span style={{ color: 'var(--text-danger)' }}>
-                      {sheet ? sheet.reviewStatus : 'no sheet on file'}
-                    </span>
+                    <span style={{ color: 'var(--text-danger)' }}>no sheet on file</span>
                   )}
                 </td>
                 <td>
@@ -152,16 +158,16 @@ export function Procurement({
                   ) : (
                     <button
                       className="btn"
-                      disabled={!reviewed || ordering === m.cas}
+                      disabled={!onFile || ordering === m.cas}
                       onClick={() => onOrder(m.cas)}
                       title={
                         sheetsState === 'unread'
                           ? 'The MSDS registry has not come back yet — MSDS-before-order cannot be verified until it does'
                           : sheetsState === 'failed'
                             ? 'The MSDS registry did not load — MSDS-before-order cannot be verified, so this order is withheld'
-                            : reviewed
+                            : onFile
                               ? undefined
-                              : 'MSDS-before-order: a reviewed safety sheet is required before this can be ordered'
+                              : 'MSDS-before-order: a safety sheet must have been obtained and indexed before this can be ordered — fetch one from the MSDS registry'
                       }
                     >
                       Order

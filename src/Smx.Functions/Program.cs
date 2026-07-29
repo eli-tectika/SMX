@@ -43,12 +43,33 @@ var host = new HostBuilder()
             : new ManagedIdentityCredential(opts.UamiClientId);
         services.AddSingleton(cred);
 
-        // Allowlist (single artifact) + strategies + resolver
-        services.AddSingleton(_ => AllowlistProvider.FromFile(opts.AllowlistPath));
+        // Suppliers + strategies + resolver. The supplier list lives in Cosmos (see SupplierCatalog for
+        // why it is loaded lazily rather than here); the bundled file is its seed and its fallback.
         services.AddSingleton<ISourceStrategy, CasTemplateStrategy>();
         services.AddSingleton<ISourceStrategy, ProductLookupStrategy>();
         services.AddSingleton<ISourceStrategy, StaticMapStrategy>();
-        services.AddSingleton<SourceResolver>();
+
+        // Web discovery — the fallback for substances no curated template covers. No key (or a dry run)
+        // is a supported state: the dry-run search finds nothing and the resolver degrades to the
+        // curated walk. Registered as itself, NOT as ISourceStrategy: it has no allowlist row, so being
+        // in that collection would only mean sitting in a dictionary nothing looks up.
+        services.AddHttpClient();
+        if (opts.DryRun || string.IsNullOrWhiteSpace(opts.SearchApiKey))
+            services.AddSingleton<ISdsWebSearch>(sp =>
+                new DryRunSdsWebSearch(sp.GetRequiredService<ILogger<DryRunSdsWebSearch>>()));
+        else
+            services.AddSingleton<ISdsWebSearch>(sp => new BraveSdsWebSearch(
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
+                opts.SearchApiKey,
+                sp.GetRequiredService<ILogger<BraveSdsWebSearch>>()));
+        services.AddSingleton(sp => new WebDiscoveryStrategy(sp.GetRequiredService<ISdsWebSearch>()));
+
+        // Constructed by hand rather than by type: the built-in container does not honour a
+        // default parameter value, so an implicit registration could never see the optional strategy.
+        services.AddSingleton(sp => new SourceResolver(
+            sp.GetRequiredService<SupplierCatalog>(),
+            sp.GetServices<ISourceStrategy>(),
+            sp.GetRequiredService<WebDiscoveryStrategy>()));
 
         // Cosmos (camelCase so records map to /element, /cas partition keys + registry field queries)
         services.AddSingleton(_ => new CosmosClient(opts.CosmosEndpoint, cred, new CosmosClientOptions
@@ -59,6 +80,13 @@ var host = new HostBuilder()
             sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.MasterContainer)));
         services.AddSingleton<IRegistryStore>(sp => new CosmosRegistryStore(
             sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.RegistryContainer)));
+        services.AddSingleton<ISupplierStore>(sp => new CosmosSupplierStore(
+            sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.SuppliersContainer)));
+        // Lazily loaded: LoadAsync is async and DI is not. Blocking on .Result in a factory would starve
+        // the worker's thread pool and make a Cosmos round-trip a precondition of starting the app.
+        services.AddSingleton(sp => new SupplierCatalog(
+            sp.GetRequiredService<ISupplierStore>(), opts.AllowlistPath,
+            sp.GetRequiredService<ILogger<SupplierCatalog>>()));
         services.AddSingleton<MasterListRepo>();
         services.AddSingleton<RegistryRepo>();
         services.AddSingleton<Smx.Functions.Sds.Seeding.MasterListSeeder>();  // operator seed of the manifest
@@ -86,8 +114,12 @@ var host = new HostBuilder()
             sp.GetRequiredService<IBronzeStore>(), sp.GetRequiredService<SdsValidator>(),
             sp.GetRequiredService<IPdfTextExtractor>(), sp.GetRequiredService<GhsChunker>(),
             sp.GetRequiredService<IEmbedder>(), sp.GetRequiredService<ISdsSearchClient>(),
-            sp.GetRequiredService<RegistryRepo>(),
-            sp.GetRequiredService<AllowlistProvider>().Domains, opts));
+            sp.GetRequiredService<RegistryRepo>(), opts));
+
+        // The one acquisition path. SdsSweep, EnsureSds and RunSdsSync all go through it, which is what
+        // makes "the timer did it" and "an agent asked for it" the same operation.
+        services.AddSingleton<Smx.Functions.Sds.Acquisition.SdsAcquirer>();
+        services.AddSingleton<Smx.Functions.Sds.Triggers.SdsSweep>();
 
         // Egress — real (NAT) or dry-run. Only SdsSweep consumes IEgressClient.
         if (opts.DryRun)
@@ -97,7 +129,7 @@ var host = new HostBuilder()
             services.AddHttpClient();
             services.AddSingleton<IEgressClient>(sp => new NatEgressClient(
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
-                sp.GetRequiredService<AllowlistProvider>(), opts,
+                opts,
                 sp.GetRequiredService<ILogger<NatEgressClient>>()));
         }
 

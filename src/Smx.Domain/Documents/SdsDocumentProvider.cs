@@ -73,6 +73,10 @@ public sealed class SdsDocumentProvider(ISdsDocumentSource source)
                     new("Status", m.Status),
                     new("Fetch attempts", m.AttemptCount.ToString()),
                     new("Last attempt", m.LastAttemptUtc ?? "not recorded"),
+                    // "not scheduled" rather than "never": the sweep picks the row up regardless, and
+                    // the operator can force it now. An absent stamp is a gap in the schedule, not a
+                    // statement that the system has given up — it no longer can.
+                    new("Next attempt", m.NextAttemptUtc ?? "not scheduled"),
                 ],
                 UnavailableReason: UnavailableReasons.NeverFetched,
                 UnavailableDetail: explanation,
@@ -104,7 +108,8 @@ public sealed class SdsDocumentProvider(ISdsDocumentSource source)
                 State: DocumentStates.Missing,
                 ContentType: null,
                 OfficialDate: s.RevisionDate,
-                IngestedUtc: s.IngestedUtc);
+                IngestedUtc: s.IngestedUtc,
+                Cas: s.Cas);
 
         return new DocumentSummary(
             Id: id,
@@ -115,7 +120,8 @@ public sealed class SdsDocumentProvider(ISdsDocumentSource source)
             State: s.SupersededBy is { Length: > 0 } ? DocumentStates.Superseded : DocumentStates.Available,
             ContentType: SheetContentType,
             OfficialDate: s.RevisionDate,
-            IngestedUtc: s.IngestedUtc);
+            IngestedUtc: s.IngestedUtc,
+            Cas: s.Cas);
     }
 
     // Same exposure on the gap side: SdsMasterRow.Id is `{element}_{form}` (DedupKey.ForMasterList),
@@ -133,7 +139,8 @@ public sealed class SdsDocumentProvider(ISdsDocumentSource source)
                 State: DocumentStates.Missing,
                 ContentType: null,
                 OfficialDate: null,
-                IngestedUtc: null);
+                IngestedUtc: null,
+                Cas: m.Cas);
 
         return new DocumentSummary(
             Id: id,
@@ -144,7 +151,8 @@ public sealed class SdsDocumentProvider(ISdsDocumentSource source)
             State: DocumentStates.Missing,
             ContentType: null,
             OfficialDate: null,
-            IngestedUtc: null);
+            IngestedUtc: null,
+            Cas: m.Cas);
     }
 
     private static IReadOnlyList<ProvenanceField> Provenance(SdsSheetRow s) =>
@@ -172,11 +180,31 @@ public sealed class SdsDocumentProvider(ISdsDocumentSource source)
         return region == "not recorded" && language == "not recorded" ? "not recorded" : $"{region} / {language}";
     }
 
+    /// What a gap row says about itself.
+    ///
+    /// The `failed` line names the NEXT ATTEMPT, which is the fact the operator actually needs. Before
+    /// the 2026-07-29 redesign a row that burned its retry cap went to `awaiting_operator` and read
+    /// "awaiting operator upload — no automated source" — a sentence that was true when written and
+    /// that the redesign falsifies twice over: there is an automated source now, and backoff means the
+    /// system will keep chasing it forever rather than giving up. Nothing is terminal, so nothing here
+    /// may read as terminal.
+    ///
+    /// The `awaiting_operator` branch is KEPT on purpose even though the status is deleted. A
+    /// migration rewrites those rows, but a read can land before it runs, and the fallback arm renders
+    /// a raw storage token at the operator. Its wording is the new truth, not the old one.
     private static string Explain(SdsMasterRow m) => m.Status switch
     {
-        "failed" => $"{m.AttemptCount} fetch attempt(s) failed · last {m.LastAttemptUtc ?? "not recorded"}",
-        "awaiting_operator" => "awaiting operator upload — no automated source",
+        "failed" => $"{m.AttemptCount} fetch attempt(s) failed · last {m.LastAttemptUtc ?? "not recorded"}"
+                    + NextAttempt(m),
+        // Legacy: pre-migration rows only.
+        "awaiting_operator" => $"{m.AttemptCount} fetch attempt(s) failed · scheduled for retry"
+                               + NextAttempt(m),
         "pending" => "queued for fetch",
         _ => m.Status,
     };
+
+    /// Date only, not the full instant: the retry is a daily sweep, so an hour and a minute would be
+    /// precision the schedule does not have.
+    private static string NextAttempt(SdsMasterRow m) =>
+        m.NextAttemptUtc is { Length: >= 10 } n ? $" · next attempt {n[..10]}" : "";
 }

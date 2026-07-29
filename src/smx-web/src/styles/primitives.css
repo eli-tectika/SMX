@@ -887,12 +887,54 @@
 .fv-body { display: flex; align-items: stretch; }
 .fv-main { flex: 1; min-width: 0; }
 
-/* Both row actions — open the sheet, sign the review — on one line, at the end of the row. */
+/* The row actions — open the sheet, fetch it, upload one — on one line, at the end of the row. */
 .msds-actions {
   display: flex;
   align-items: center;
   gap: var(--s2);
   white-space: nowrap;
+}
+
+/* Acquisition controls plus whatever the last attempt had to say for itself. The outcome sits
+   UNDER the buttons rather than in a toast: `attempted[]` is a list, it is the substance of the
+   answer, and it has to stay on screen long enough to be read and acted on. */
+.sds-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  align-items: flex-start;
+}
+.sds-actions__note {
+  margin: 0;
+  white-space: normal;
+  max-width: 46ch;
+}
+.sds-attempts {
+  margin: var(--s1) 0 0;
+  padding-left: 1.1em;
+  list-style: disc;
+}
+.sds-attempts li {
+  margin-bottom: 1px;
+}
+.sds-upload {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s2);
+  padding: var(--s2);
+  border: var(--hair) solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface-1);
+  white-space: normal;
+}
+.sds-upload label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sds-upload input[type='text'] {
+  min-width: 12ch;
 }
 
 /* A citation that opens the document behind it. Only a chip carrying a real documentId gets

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Smx.Domain;
 using Smx.Domain.Documents;
 using Smx.Domain.Records;
+using Smx.Domain.Tools;
 
 namespace Smx.Backend.Api;
 
@@ -22,9 +23,16 @@ public static class KnowledgeEndpoints
             Results.Json(await store.QueryLearnedConclusionsAsync(search, ct), Json.Options));
 
         // Compose-at-read (design §6.3): the SDS corpus (`sds-registry`, written by the SDS library
-        // subsystem) is the source of sheet FACTS; `msds-registry` holds only the governance overlay
-        // (the operator's review signature). A plain in-memory merge by CAS — no duplication, no sync
-        // machinery, and no LLM anywhere near a gate-backing surface.
+        // subsystem) is the source of sheet FACTS; `msds-registry` holds only the governance overlay.
+        // A plain in-memory merge by CAS — no duplication, no sync machinery, and no LLM anywhere near
+        // a gate-backing surface.
+        //
+        // The overlay's only remaining job is LinkedProjects (D8 deleted the review signature), which
+        // simplifies the merge in a way worth naming: the old code applied the overlay only when its
+        // `Date` matched the current revision, so that a signature over an older sheet could not
+        // silently bless a newer one. LinkedProjects carries no such hazard — "project P put this
+        // substance in play" does not stop being true when a fresher revision arrives — so the merge is
+        // now by CAS alone, and sheet facts always come from the sheet.
         app.MapGet("/msds-registry", async (string? search, [FromServices] IKnowledgeStore store,
             [FromServices] ISdsCorpusReader corpus, CancellationToken ct) =>
         {
@@ -42,45 +50,82 @@ public static class KnowledgeEndpoints
             var rows = new List<MsdsRegistryRow>();
             foreach (var s in latest)
             {
-                // The overlay applies only if the signature names THIS revision: a review of an
-                // older sheet must never silently bless a newer one.
-                if (overlay.Remove(s.Cas, out var g) && g.Date == s.RevisionDate)
-                    rows.Add(MsdsRegistryRow.From(g, SheetDocumentId(s)));
-                else
-                    rows.Add(MsdsRegistryRow.From(new MsdsRegistryDoc
-                    {
-                        Id = KnowledgeIds.Msds(s.Cas), Cas = s.Cas, Supplier = s.Supplier,
-                        Version = "", Date = s.RevisionDate,   // the corpus records no version number; don't invent one
-                    }, SheetDocumentId(s)));
+                overlay.Remove(s.Cas, out var g);
+                rows.Add(new MsdsRegistryRow(
+                    KnowledgeIds.Msds(s.Cas), KnowledgeTypes.MsdsRegistry, s.Cas, s.Supplier,
+                    // The corpus records no version number; don't invent one.
+                    Version: "", Date: s.RevisionDate,
+                    LinkedProjects: g?.LinkedProjects ?? [],
+                    DocumentId: SheetDocumentId(s)));
             }
             // Governance-only rows (manual/legacy) stay visible, but carry no document id: there is
-            // no corpus sheet behind them, so there is nothing to open.
+            // no corpus sheet behind them, so there is nothing to open. They are also, now, exactly the
+            // rows the order gate refuses — a governance record is not a safety sheet.
             rows.AddRange(overlay.Values.Select(g => MsdsRegistryRow.From(g, null)));
             return Results.Json(rows.OrderBy(r => r.Cas, StringComparer.Ordinal), Json.Options);
         });
 
-        app.MapPost("/msds-registry/{cas}/review", async (string cas, [FromServices] IKnowledgeStore store,
-            [FromServices] ISdsCorpusReader corpus, CancellationToken ct) =>
+        // Fetch the sheet for a CAS, now, on the operator's word.
+        //
+        // The passthrough that makes "Fetch now" possible. Acquisition itself lives in the `regsync`
+        // Function App (D6 — it holds the only NAT'd subnet and the corpus write grants); this is the
+        // line to it, and it is deliberately thin: the result is returned verbatim, `attempted[]` and
+        // all, because when the answer is "unavailable" the operator is owed what was tried and why
+        // each candidate failed — not merely that it did not work.
+        //
+        // 200 even for `unavailable`: the request succeeded and produced a truthful answer about the
+        // world. A 4xx/5xx here would be a claim about THIS endpoint, and would drag the browser onto
+        // an error path that discards the very diagnostics the call exists to deliver.
+        app.MapPost("/msds/{cas}/fetch", async (string cas, [FromServices] ISdsAcquisition sds,
+            CancellationToken ct) =>
         {
-            // Reviewing signs the CURRENT sheet. If no governance doc exists yet, create it from the
-            // corpus; if neither exists there is nothing to sign — a signature must reference a real sheet.
-            var sheet = await corpus.GetLatestForCasAsync(cas, ct);
-            var m = await store.GetMsdsAsync(cas, ct);
-            if (m is null && sheet is null)
-                return Results.NotFound();
-            m ??= new MsdsRegistryDoc
-            {
-                Id = KnowledgeIds.Msds(cas), Cas = cas, Supplier = sheet!.Supplier,
-                Version = "", Date = sheet.RevisionDate,
-            };
-            if (sheet is not null) { m.Supplier = sheet.Supplier; m.Date = sheet.RevisionDate; }
-            m.ReviewStatus = MsdsReviewStatus.Reviewed;
-            // The MSDS review is a signed record, not a flag: the MSDS-before-order hard gate (Plan 5)
-            // reads it, so when it was signed must be recoverable.
-            m.ReviewedAt = DateTimeOffset.UtcNow.ToString("O");
-            await store.UpsertMsdsAsync(m, ct);
-            return Results.Ok(new { m.Cas, m.ReviewStatus, m.ReviewedAt });
+            if (string.IsNullOrWhiteSpace(cas)) return Results.BadRequest(new { error = "a CAS is required" });
+            var result = await sds.EnsureAsync(cas.Trim(), element: null, form: null, ct);
+            return Results.Json(result, Json.Options);
         });
+
+        // The fallback that has never existed: hand the system a sheet it could not find.
+        //
+        // No gate sits behind this. It is not an override either — the file goes through the same
+        // content validation every fetched sheet faces, so a document that is not a safety sheet for
+        // this substance does not become one by arriving through a file picker.
+        //
+        // Supplier and revision date are REQUIRED, and that is not form-filling zeal: together with the
+        // CAS they are the registry's compound key (DedupKey.ForRegistry). A blank one mints an id with
+        // an empty segment, which DocumentId.TryDecode refuses forever after — the sheet would be
+        // ingested, listed, and permanently un-openable. Refusing here costs the operator two fields;
+        // accepting it costs them the document.
+        app.MapPost("/msds/{cas}/upload", async (string cas, HttpRequest request,
+            [FromServices] ISdsAcquisition sds, CancellationToken ct) =>
+        {
+            if (!request.HasFormContentType) return Results.BadRequest(new { error = "expected a multipart form" });
+            var form = await request.ReadFormAsync(ct);
+            var file = form.Files.GetFile("file");
+            if (file is null || file.Length == 0)
+                return Results.UnprocessableEntity(new { error = "no file was uploaded" });
+
+            var supplier = (form["supplier"].ToString() ?? "").Trim();
+            var revisionDate = (form["revisionDate"].ToString() ?? "").Trim();
+            if (supplier.Length == 0 || revisionDate.Length == 0)
+                return Results.UnprocessableEntity(new
+                {
+                    error = "a supplier and a revision date are required — they are part of the sheet's " +
+                            "identity, and a sheet stored without them cannot be opened again",
+                });
+
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms, ct);
+            // The product name is a label, not a key. Falling back to the CAS keeps the row nameable
+            // without asking the operator for a third field the registry does not depend on.
+            var productName = (form["productName"].ToString() ?? "").Trim();
+            var result = await sds.UploadAsync(new SdsUpload(
+                cas.Trim(), supplier, productName.Length > 0 ? productName : cas.Trim(),
+                revisionDate, ms.ToArray()), ct);
+
+            // Unlike the fetch passthrough, a rejected upload IS a 422: the operator handed us a file and
+            // the answer is that this file will not do. That belongs on the browser's failure path.
+            return result.Ok ? Results.Json(result, Json.Options) : Results.UnprocessableEntity(result);
+        }).DisableAntiforgery();
     }
 
     /// The document id of the sheet a registry row was composed from, or null if it would not
@@ -115,12 +160,9 @@ public sealed record MsdsRegistryRow(
     string Supplier,
     string Version,
     string Date,
-    string ReviewStatus,
-    string? ReviewedAt,
     IReadOnlyList<string> LinkedProjects,
     string? DocumentId)
 {
     public static MsdsRegistryRow From(MsdsRegistryDoc d, string? documentId) => new(
-        d.Id, d.Type, d.Cas, d.Supplier, d.Version, d.Date, d.ReviewStatus, d.ReviewedAt,
-        d.LinkedProjects, documentId);
+        d.Id, d.Type, d.Cas, d.Supplier, d.Version, d.Date, d.LinkedProjects, documentId);
 }

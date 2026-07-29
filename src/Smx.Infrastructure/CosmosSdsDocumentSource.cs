@@ -23,9 +23,13 @@ public sealed class CosmosSdsDocumentSource(Container sdsRegistry, Container sds
         " c.sourceUrl, c.blobPath, c.indexed, c.ingestedUtc, c.supersededBy, c.masterListId FROM c";
 
     // MasterListEntry also carries substrateClass, addedBy and addedUtc — none of which the gap row
-    // reports. Status, attemptCount and lastAttemptUtc are what SdsDocumentProvider.Explain reads.
+    // reports. Status, attemptCount, lastAttemptUtc and nextAttemptUtc are what
+    // SdsDocumentProvider.Explain reads. nextAttemptUtc is absent on rows written before the
+    // 2026-07-29 backoff, and Cosmos projects a missing property as null — which is exactly the
+    // "no scheduled retry" the surface is built to say.
     private const string MasterSelect =
-        "SELECT c.id, c.element, c.form, c.cas, c.status, c.lastAttemptUtc, c.attemptCount FROM c";
+        "SELECT c.id, c.element, c.form, c.cas, c.status, c.lastAttemptUtc, c.attemptCount," +
+        " c.nextAttemptUtc FROM c";
 
     public Task<IReadOnlyList<SdsSheetRow>> ListSheetsAsync(CancellationToken ct = default)
         => QueryAsync<SdsSheetRow>(sdsRegistry, new QueryDefinition(SheetSelect), ct);

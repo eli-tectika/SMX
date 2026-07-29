@@ -1,3 +1,4 @@
+using Smx.Functions.Sds.Acquisition;
 using Smx.Functions.Sds.Config;
 using Smx.Functions.Sds.Data;
 using Smx.Functions.Sds.Domain;
@@ -29,11 +30,10 @@ public class SdsSweepTests
         var egress = DryRunEgressClient.Default(cannedPdf);
 
         var search = new FakeSearchClient(); var reg = new InMemoryRegistryStore();
-        var domains = allow.Domains;
         var pipe = new IngestionPipeline(new FakeBronzeStore(), new SdsValidator(10), new TextExtractor(),
-            new GhsChunker(), new FakeEmbedder(), search, new RegistryRepo(reg), domains, new SdsOptions());
+            new GhsChunker(), new FakeEmbedder(), search, new RegistryRepo(reg), new SdsOptions());
 
-        var sweep = new SdsSweep(mlRepo, resolver, egress, pipe, new SdsOptions(), NullLogger<SdsSweep>.Instance);
+        var sweep = NewSweep(mlRepo, resolver, egress, pipe, reg);
         await sweep.RunSweepAsync("2026-07-07T00:00:00Z", default);
 
         Assert.Equal(SdsStatus.Fetched, mlStore.Items.Values.Single().Status);
@@ -66,6 +66,17 @@ public class SdsSweepTests
                 : _inner.ResolveAsync(entry, key, fetch, ct);
     }
 
+    // Builds the sweep the way production does: over an SdsAcquirer, so these tests exercise the same
+    // code path the operator's manual sync and an agent's ensure_sds run.
+    private static SdsSweep NewSweep(MasterListRepo repo, SourceResolver resolver, IEgressClient egress,
+        IngestionPipeline pipe, InMemoryRegistryStore reg, SdsOptions? opts = null)
+    {
+        var o = opts ?? new SdsOptions();
+        var acquirer = new SdsAcquirer(repo, new RegistryRepo(reg), resolver, egress, pipe, o,
+            NullLogger<SdsAcquirer>.Instance);
+        return new SdsSweep(repo, acquirer, o, NullLogger<SdsSweep>.Instance);
+    }
+
     private static (MasterListRepo Repo, InMemoryMasterListStore Store, IngestionPipeline Pipe,
         InMemoryRegistryStore Reg, AllowlistProvider Allow) Rig(string allowJson)
     {
@@ -74,7 +85,7 @@ public class SdsSweepTests
         var reg = new InMemoryRegistryStore();
         var pipe = new IngestionPipeline(new FakeBronzeStore(), new SdsValidator(10), new BoomExtractor(),
             new GhsChunker(), new FakeEmbedder(), new FakeSearchClient(), new RegistryRepo(reg),
-            allow.Domains, new SdsOptions());
+            new SdsOptions());
         return (new MasterListRepo(store), store, pipe, reg, allow);
     }
 
@@ -96,7 +107,7 @@ public class SdsSweepTests
                 : new EgressResult(goodSds, "application/pdf", url));
 
         var resolver = new SourceResolver(allow, new ISourceStrategy[] { new CasTemplateStrategy() });
-        var sweep = new SdsSweep(repo, resolver, egress, pipe, new SdsOptions(), NullLogger<SdsSweep>.Instance);
+        var sweep = NewSweep(repo, resolver, egress, pipe, reg);
         await sweep.RunSweepAsync("2026-07-16T00:00:00Z", default);
 
         Assert.Equal(SdsStatus.Fetched, store.Items.Values.Single().Status); // 2nd supplier won
@@ -106,7 +117,7 @@ public class SdsSweepTests
     [Fact]
     public async Task Sweep_records_failure_and_moves_to_next_entry_when_all_candidates_throw()
     {
-        var (repo, store, pipe, _, allow) = Rig("""
+        var (repo, store, pipe, reg, allow) = Rig("""
           [ { "supplier":"Only","domain":"only.example","priority":10,"strategy":"casTemplate",
               "sdsUrlTemplate":"https://only.example/{cas}.pdf" } ]
         """);
@@ -120,7 +131,7 @@ public class SdsSweepTests
                 : new EgressResult(goodSds, "application/pdf", url));
 
         var resolver = new SourceResolver(allow, new ISourceStrategy[] { new CasTemplateStrategy() });
-        var sweep = new SdsSweep(repo, resolver, egress, pipe, new SdsOptions(), NullLogger<SdsSweep>.Instance);
+        var sweep = NewSweep(repo, resolver, egress, pipe, reg);
         await sweep.RunSweepAsync("2026-07-16T00:00:00Z", default);   // must not throw
 
         Assert.Equal(SdsStatus.Failed, store.Items["Xx_boom"].Status);
@@ -131,7 +142,7 @@ public class SdsSweepTests
     [Fact]
     public async Task Sweep_records_failure_and_continues_when_the_resolver_itself_throws()
     {
-        var (repo, store, pipe, _, allow) = Rig("""
+        var (repo, store, pipe, reg, allow) = Rig("""
           [ { "supplier":"Only","domain":"only.example","priority":10,"strategy":"casTemplate",
               "sdsUrlTemplate":"https://only.example/{cas}.pdf" } ]
         """);
@@ -142,11 +153,132 @@ public class SdsSweepTests
         var egress = new DryRunEgressClient(url => new EgressResult(goodSds, "application/pdf", url));
 
         var resolver = new SourceResolver(allow, new ISourceStrategy[] { new ThrowOnCasStrategy() });
-        var sweep = new SdsSweep(repo, resolver, egress, pipe, new SdsOptions(), NullLogger<SdsSweep>.Instance);
+        var sweep = NewSweep(repo, resolver, egress, pipe, reg);
         await sweep.RunSweepAsync("2026-07-16T00:00:00Z", default);   // must not throw
 
         Assert.Equal(SdsStatus.Failed, store.Items["Yy_resolverboom"].Status);
         Assert.Equal(1, store.Items["Yy_resolverboom"].AttemptCount);
         Assert.Equal(SdsStatus.Fetched, store.Items["Na_hydroxide"].Status);
+    }
+
+    // ---- bounded runs (the operator's "sync now") ----
+
+    // What the bound leaves behind has to be REPORTED, not silently dropped: an operator who cannot tell
+    // a finished sync from a truncated one has no way to know whether to run it again.
+    [Fact]
+    public async Task A_bounded_run_reports_what_it_left_behind()
+    {
+        var (repo, _, pipe, reg, allow) = Rig("""
+          [ { "supplier":"Only","domain":"only.example","priority":10,"strategy":"casTemplate",
+              "sdsUrlTemplate":"https://only.example/{cas}.pdf" } ]
+        """);
+        for (var i = 0; i < 7; i++)
+            await repo.AppendAsync($"E{i}", "oxide", $"{i}-00-0", null, "sweep", "2020-01-01T00:00:00Z", default);
+
+        var egress = new DelegateEgressClient((_, _) => Task.FromResult<EgressResult?>(null));
+        var resolver = new SourceResolver(allow, new ISourceStrategy[] { new CasTemplateStrategy() });
+        var sweep = NewSweep(repo, resolver, egress, pipe, reg);
+
+        var report = await sweep.RunSweepAsync("2026-07-29T00:00:00Z", maxEntries: 3,
+            Timeout.InfiniteTimeSpan, default);
+
+        Assert.Equal(3, report.Examined);
+        Assert.Equal(4, report.Remaining);
+        Assert.Equal(0, report.Fetched);
+        Assert.Equal(3, report.Unavailable);
+    }
+
+    [Fact]
+    public async Task An_unbounded_run_leaves_nothing_remaining()
+    {
+        var (repo, _, pipe, reg, allow) = Rig("""
+          [ { "supplier":"Only","domain":"only.example","priority":10,"strategy":"casTemplate",
+              "sdsUrlTemplate":"https://only.example/{cas}.pdf" } ]
+        """);
+        for (var i = 0; i < 4; i++)
+            await repo.AppendAsync($"E{i}", "oxide", $"{i}-00-0", null, "sweep", "2020-01-01T00:00:00Z", default);
+
+        var egress = new DelegateEgressClient((_, _) => Task.FromResult<EgressResult?>(null));
+        var resolver = new SourceResolver(allow, new ISourceStrategy[] { new CasTemplateStrategy() });
+
+        var report = await NewSweep(repo, resolver, egress, pipe, reg)
+            .RunSweepAsync("2026-07-29T00:00:00Z", default);
+
+        Assert.Equal(4, report.Examined);
+        Assert.Equal(0, report.Remaining);
+    }
+
+    // ---- concurrency ----
+
+    /// Egress that runs an arbitrary delegate, so a test can observe timing rather than only outcomes.
+    private sealed class DelegateEgressClient : IEgressClient
+    {
+        private readonly Func<Uri, CancellationToken, Task<EgressResult?>> _f;
+        public DelegateEgressClient(Func<Uri, CancellationToken, Task<EgressResult?>> f) => _f = f;
+        public Task<EgressResult?> FetchAsync(Uri url, CancellationToken ct) => _f(url, ct);
+    }
+
+    private static void RecordPeak(ref int target, int value)
+    {
+        int seen;
+        while (value > (seen = Volatile.Read(ref target)))
+            if (Interlocked.CompareExchange(ref target, value, seen) == seen) return;
+    }
+
+    // The 2026-07-16 sweep took 27 minutes against a 30-minute platform timeout because entries were
+    // processed strictly serially behind 30-second fetch timeouts — it came within three minutes of
+    // being killed mid-run. Concurrency is not an optimisation here; it is what keeps a full sweep
+    // inside the host's budget as the master list grows.
+    [Fact]
+    public async Task Entries_are_processed_concurrently()
+    {
+        var (repo, _, pipe, reg, allow) = Rig("""
+          [ { "supplier":"Only","domain":"only.example","priority":10,"strategy":"casTemplate",
+              "sdsUrlTemplate":"https://only.example/{cas}.pdf" } ]
+        """);
+        for (var i = 0; i < 8; i++)
+            await repo.AppendAsync($"E{i}", "oxide", $"{i}-00-0", null, "sweep", "2020-01-01T00:00:00Z", default);
+
+        var inFlight = 0; var peak = 0;
+        var egress = new DelegateEgressClient(async (_, ct) =>
+        {
+            RecordPeak(ref peak, Interlocked.Increment(ref inFlight));
+            await Task.Delay(50, ct);
+            Interlocked.Decrement(ref inFlight);
+            return null;
+        });
+
+        var resolver = new SourceResolver(allow, new ISourceStrategy[] { new CasTemplateStrategy() });
+        var sweep = NewSweep(repo, resolver, egress, pipe, reg);
+        await sweep.RunSweepAsync("2026-07-29T00:00:00Z", default);
+
+        Assert.True(peak > 1, $"expected concurrent processing; peak in-flight was {peak}");
+    }
+
+    // Concurrency must not weaken the per-entry isolation the serial loop had: every entry still gets
+    // its own attempt recorded even when a neighbour's supplier explodes.
+    [Fact]
+    public async Task Concurrency_preserves_per_entry_isolation()
+    {
+        var (repo, store, pipe, reg, allow) = Rig("""
+          [ { "supplier":"Only","domain":"only.example","priority":10,"strategy":"casTemplate",
+              "sdsUrlTemplate":"https://only.example/{cas}.pdf" } ]
+        """);
+        await repo.AppendAsync("Boom", "x", "9999-99-9", null, "sweep", "2020-01-01T00:00:00Z", default);
+        for (var i = 0; i < 4; i++)
+            await repo.AppendAsync($"E{i}", "oxide", $"{i}-00-0", null, "sweep", "2020-01-01T00:00:00Z", default);
+
+        var egress = new DelegateEgressClient((u, _) => u.AbsolutePath.Contains("9999-99-9")
+            ? throw new InvalidOperationException("supplier exploded")
+            : Task.FromResult<EgressResult?>(null));
+
+        var resolver = new SourceResolver(allow, new ISourceStrategy[] { new CasTemplateStrategy() });
+        var sweep = NewSweep(repo, resolver, egress, pipe, reg);
+        await sweep.RunSweepAsync("2026-07-29T00:00:00Z", default);   // must not throw
+
+        var all = await store.ListAllAsync(default);
+        Assert.Equal(5, all.Count);
+        Assert.All(all, e => Assert.Equal(SdsStatus.Failed, e.Status));
+        Assert.All(all, e => Assert.Equal(1, e.AttemptCount));
     }
 }

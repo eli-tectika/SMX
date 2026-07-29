@@ -155,12 +155,17 @@ public static class DecisionEndpoints
         });
 
         // MSDS-before-order (spec §4): procurement is a state flag, and this precondition gates each
-        // INDIVIDUAL order — MSDS current + reviewed for the substance, where "current" is the operator's
-        // signed review (POST /msds-registry/{cas}/review stamps it). The 422 chain runs release →
-        // signed-code membership → MSDS, so the error the operator sees is always the FIRST rule their
-        // order breaks, and a 4xx always means no order record exists.
+        // INDIVIDUAL order. The 422 chain runs release → signed-code membership → MSDS, so the error the
+        // operator sees is always the FIRST rule their order breaks, and a 4xx always means no order
+        // record exists.
+        //
+        // The gate survives the 2026-07-29 redesign; only its PREDICATE changed (D9). It used to ask
+        // whether the operator had signed a review. It now asks the SDS corpus whether a validated,
+        // indexed sheet exists for the CAS — which is what the signature was ever standing in for, and
+        // which no longer depends on a human remembering to tick a box on a screen. Everything the
+        // signature protected is still protected: procurement cannot run blind.
         app.MapPost("/projects/{projectId}/orders/{cas}", async (string projectId, string cas,
-            [FromServices] IRecordStore store, [FromServices] IKnowledgeStore knowledge, CancellationToken ct) =>
+            [FromServices] IRecordStore store, [FromServices] ISdsCorpusReader corpus, CancellationToken ct) =>
         {
             var decision = await store.GetDecisionAsync(projectId, ct);
             if (decision is null || decision.Procurement.Status != ProcurementStatus.Released)
@@ -177,9 +182,19 @@ public static class DecisionEndpoints
             if (!signed.Contains(cas))
                 return Results.UnprocessableEntity(new { error = $"'{cas}' is not a marker in any VP-confirmed code — you cannot order what the VP did not sign" });
 
-            var msds = await knowledge.GetMsdsAsync(cas, ct);
-            if (msds?.ReviewStatus != MsdsReviewStatus.Reviewed)
-                return Results.UnprocessableEntity(new { error = $"MSDS-before-order: no reviewed MSDS on file for '{cas}' — review it via POST /msds-registry/{cas}/review first" });
+            // GetLatestForCasAsync reads the CURRENT sheets only — indexed and not superseded — which is
+            // exactly "validated". An un-indexed blob in Bronze is not a sheet anyone can read, and a
+            // superseded one is not the sheet the drum is shipping under.
+            var sheet = await corpus.GetLatestForCasAsync(cas, ct);
+            if (sheet is null)
+                return Results.UnprocessableEntity(new
+                {
+                    // Actionable for the first time: until this design, "no MSDS" was a wall the operator
+                    // could only get past by hand-rolling an HTTP POST with a base64 PDF. Fetching a sheet
+                    // is now a button, so the error is allowed to name it.
+                    error = $"MSDS-before-order: no safety sheet on file for '{cas}' — fetch one via " +
+                            $"POST /msds/{cas}/fetch (or upload one) before ordering",
+                });
 
             if (!decision.Procurement.OrderedCas.Contains(cas))
             {

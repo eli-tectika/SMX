@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { NotFound, getMsdsRegistry, reviewMsds } from '../api/client';
-import type { MsdsEntry, MsdsReviewReceipt } from '../api/types';
+import { getMsdsRegistry } from '../api/client';
+import type { MsdsEntry } from '../api/types';
+import { SdsActions } from '../components/SdsActions';
 import { Data } from '../components/ui/Data';
 import { EmptyState, SearchInput, SectionHeader, StatCard } from '../components/ui/Primitives';
 import { useKnowledge } from '../hooks/useKnowledge';
@@ -10,51 +11,43 @@ import { useQueryParam } from '../hooks/useQueryParam';
 /**
  * MSDS Registry (spec §6) — the surface that gates procurement.
  *
- * This screen used to render a fixture behind a MockBadge, on the stated grounds that the
- * subsystem "has no read endpoint for this screen". It has three:
- * `GET /msds-registry?search=`, and `POST /msds-registry/{cas}/review` to sign the review.
- * So the badge is gone, and every row here is now a real record.
+ * **The review signature is gone** (design 2026-07-29, D8). MSDS-before-order is not: an order is
+ * still refused for a substance with no safety sheet. Only the gate's predicate changed, from *a
+ * human signed this sheet* to *a validated, indexed sheet exists for this CAS*.
  *
- * Two things the fixture got wrong, and which the real record corrects:
+ * That is a bigger change to this screen than it sounds, because the signature was the only thing
+ * this screen ever DID. Its single control asked the operator to attest to a document — while the
+ * substances that had no document at all offered nothing whatsoever, since there was nothing to
+ * sign. The screen's blockers were exactly the rows it could not help with.
  *
- *  - **There is no "expired" or "missing" status.** The record carries a sheet's revision
- *    `date` and its `reviewStatus` (reviewed / unreviewed), and nothing else. The fixture
- *    invented a three-state freshness lamp; rendering one here would mean inventing an
- *    expiry policy — a *regulatory* judgment — in a stylesheet. Age is shown as a number of
- *    days and the operator makes that call, which is the honest division of labour.
- *  - **Review is a signature, not a filter.** Spec §5 makes MSDS-before-order a hard
- *    precondition: an order stays blocked until the sheet is reviewed. `reviewedAt` is
- *    stamped server-side so *when* it was signed stays recoverable.
+ * What replaces it is the opposite kind of control: go and GET the sheet. So the column that used
+ * to show a signature now shows whether a sheet exists, and the rows that block an order — the ones
+ * with no sheet behind them — sort to the top, where "Fetch now" is finally something to press.
  *
- * Unreviewed sheets sort to the top. A registry that buries its blockers is not doing its
- * one job.
+ * Two things the old fixture got wrong, and which the real record still corrects:
+ *
+ *  - **There is no "expired" status.** The record carries a sheet's revision `date` and nothing
+ *    else. Rendering a freshness lamp would mean inventing an expiry policy — a *regulatory*
+ *    judgment — in a stylesheet. Age is shown as a number of days and the operator makes that call.
+ *  - **A governance row is not a sheet.** A row with no `documentId` has no corpus document behind
+ *    it, which is precisely what the order gate refuses. It reads as blocking, not as filed.
  */
 export function MsdsRegistry() {
   // In the URL, so opening a sheet and coming back lands on the same filtered registry.
   const [q, setQ] = useQueryParam('q');
-  const [signing, setSigning] = useState<string | null>(null);
-  // Receipts, not rows: what came back from signing, merged onto the row it signed.
-  const [signed, setSigned] = useState<Record<string, MsdsReviewReceipt>>({});
-  const [signError, setSignError] = useState<string | null>(null);
+  // Bumped when an acquisition changes the record. `useKnowledge` re-reads whenever the fetcher's
+  // identity changes, so this is the whole of the refresh mechanism — no second read path, and no
+  // locally-patched row that could disagree with what the server actually holds.
+  const [reloadKey, setReloadKey] = useState(0);
+  const read = useCallback(
+    (search?: string) => getMsdsRegistry(search),
+    // reloadKey is the point of this dependency: a new identity is what re-triggers the read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [reloadKey],
+  );
 
-  const state = useKnowledge<MsdsEntry>(getMsdsRegistry, q);
-
-  const sign = useCallback(async (cas: string) => {
-    setSigning(cas);
-    setSignError(null);
-    try {
-      const updated = await reviewMsds(cas);
-      if (updated === NotFound) {
-        setSignError(`No MSDS record for CAS ${cas}.`);
-        return;
-      }
-      setSigned((s) => ({ ...s, [cas]: updated }));
-    } catch (err: unknown) {
-      setSignError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSigning(null);
-    }
-  }, []);
+  const state = useKnowledge<MsdsEntry>(read, q);
+  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
   if (state.kind === 'loading') {
     return (
@@ -80,19 +73,14 @@ export function MsdsRegistry() {
     );
   }
 
-  // A locally-signed review supersedes the fetched row until the next read — but only the fields
-  // it actually signed. Substituting the receipt for the row would drop the supplier, the
-  // revision date and the link to the sheet from the row that was just approved.
-  const entries: MsdsEntry[] = state.items.map((e) =>
-    signed[e.cas] ? { ...e, ...signed[e.cas] } : e,
-  );
+  const entries = state.items;
+  const onFile = entries.filter(hasSheet).length;
+  const blocking = entries.length - onFile;
 
-  const reviewed = entries.filter((e) => isReviewed(e)).length;
-  const blocking = entries.length - reviewed;
-
+  // Blockers first. A registry that buries the rows an order is stuck behind is not doing its job —
+  // and those are now exactly the rows with a button worth pressing.
   const shown = [...entries].sort(
-    (a, b) =>
-      Number(isReviewed(a)) - Number(isReviewed(b)) || a.cas.localeCompare(b.cas),
+    (a, b) => Number(hasSheet(a)) - Number(hasSheet(b)) || a.cas.localeCompare(b.cas),
   );
 
   return (
@@ -103,32 +91,24 @@ export function MsdsRegistry() {
         <div className="banner danger">
           <i className="ti ti-ban" aria-hidden="true" />
           <div>
-            <b>Procurement blocked on {blocking} substance{blocking === 1 ? '' : 's'}.</b>
+            <b>
+              Procurement blocked on {blocking} substance{blocking === 1 ? '' : 's'}.
+            </b>
             <div style={{ marginTop: 3 }}>
-              An order cannot proceed until its safety data sheet is reviewed — regardless of
-              how good that substance's verdicts are.
+              An order cannot proceed until a safety data sheet for the substance has been obtained
+              and indexed — regardless of how good that substance's verdicts are. Fetch one below.
             </div>
           </div>
         </div>
       )}
 
-      {signError && (
-        <div className="banner danger">
-          <i className="ti ti-alert-triangle" aria-hidden="true" />
-          <div>
-            <b>The review was not recorded.</b>
-            <div style={{ marginTop: 3 }}>{signError}</div>
-          </div>
-        </div>
-      )}
-
       <div className="stat-strip">
-        <StatCard label="Reviewed" value={reviewed} hint="orderable" />
+        <StatCard label="Sheets on file" value={onFile} hint="orderable" />
         <StatCard
           label="Blocking an order"
           value={blocking}
           tone={blocking > 0 ? 'danger' : undefined}
-          hint="awaiting the operator's review"
+          hint="no sheet obtained"
         />
       </div>
 
@@ -150,8 +130,8 @@ export function MsdsRegistry() {
               <>No sheet matches “{q}”.</>
             ) : (
               <>
-                No safety data sheet has been registered yet. The SDS library subsystem
-                populates this; until it has run, every substance blocks its own order.
+                No safety data sheet has been registered yet. The SDS library subsystem populates
+                this; until it has, every substance blocks its own order.
               </>
             )
           }
@@ -164,14 +144,14 @@ export function MsdsRegistry() {
               <th>Supplier</th>
               <th>Version</th>
               <th>Revised</th>
-              <th>Review</th>
+              <th>Sheet</th>
               <th>Linked projects</th>
               <th />
             </tr>
           </thead>
           <tbody>
             {shown.map((e) => {
-              const ok = isReviewed(e);
+              const ok = hasSheet(e);
               const age = ageInDays(e.date);
               return (
                 <tr key={e.cas} className={ok ? undefined : 'hatch-danger'}>
@@ -184,12 +164,7 @@ export function MsdsRegistry() {
                   </td>
                   <td className="tiny muted">
                     <Data kind="date">{e.date.slice(0, 10)}</Data>
-                    {age !== null && (
-                      <span className="muted">
-                        {' '}
-                        · {age.toLocaleString()} days old
-                      </span>
-                    )}
+                    {age !== null && <span className="muted"> · {age.toLocaleString()} days old</span>}
                   </td>
                   <td>
                     <span className={`chip ${ok ? 'v' : 'x'}`}>
@@ -197,13 +172,8 @@ export function MsdsRegistry() {
                         className={`ti ${ok ? 'ti-file-check' : 'ti-file-alert'}`}
                         aria-hidden="true"
                       />
-                      &nbsp;{ok ? 'reviewed' : 'unreviewed'}
+                      &nbsp;{ok ? 'on file' : 'no sheet'}
                     </span>
-                    {ok && e.reviewedAt && (
-                      <div className="tiny muted" style={{ marginTop: 2 }}>
-                        <Data kind="date">{e.reviewedAt.slice(0, 10)}</Data>
-                      </div>
-                    )}
                   </td>
                   <td>
                     {e.linkedProjects.length === 0 ? (
@@ -216,33 +186,25 @@ export function MsdsRegistry() {
                       ))
                     )}
                   </td>
-                  <td className="msds-actions">
+                  <td>
                     {/*
-                      The sheet being signed off, openable at last. `documentId` is served by the
-                      composition that built this row (KnowledgeEndpoints), never derived here:
-                      re-deriving it in the browser would put the SDS id's normalisation rule in a
-                      second language, and a drifted copy shows up only as a 404 on the screen that
-                      blocks orders. A governance-only row carries no id and gets no link.
+                      The sheet, openable. `documentId` is served by the composition that built this
+                      row (KnowledgeEndpoints), never derived here: re-deriving it in the browser
+                      would put the SDS id's normalisation rule in a second language, and a drifted
+                      copy shows up only as a 404 on the screen that blocks orders. A governance-only
+                      row carries no id and gets no link.
                     */}
                     {e.documentId && (
-                      <Link
-                        to={`/docs/${encodeURIComponent(e.documentId)}`}
-                        state={{ from: { label: 'the MSDS registry' } }}
-                      >
-                        Open sheet
-                      </Link>
+                      <div className="msds-actions" style={{ marginBottom: 4 }}>
+                        <Link
+                          to={`/docs/${encodeURIComponent(e.documentId)}`}
+                          state={{ from: { label: 'the MSDS registry' } }}
+                        >
+                          Open sheet
+                        </Link>
+                      </div>
                     )}
-                    {!ok && (
-                      <button
-                        type="button"
-                        className="btn btn--quiet"
-                        onClick={() => void sign(e.cas)}
-                        disabled={signing === e.cas}
-                        title="Record that you have read this safety data sheet. This unblocks its order."
-                      >
-                        {signing === e.cas ? 'Recording…' : 'Mark reviewed'}
-                      </button>
-                    )}
+                    <SdsActions cas={e.cas} hasSheet={ok} onDone={reload} />
                   </td>
                 </tr>
               );
@@ -263,8 +225,13 @@ function Head() {
   );
 }
 
-function isReviewed(e: MsdsEntry): boolean {
-  return e.reviewStatus?.toLowerCase() === 'reviewed';
+/**
+ * A row is covered when a corpus sheet sits behind it — the same question the order gate asks the
+ * corpus directly. A governance-only row (manual/legacy) carries no `documentId` because there is
+ * no document; it must read as a blocker, not as a filing.
+ */
+function hasSheet(e: MsdsEntry): boolean {
+  return Boolean(e.documentId);
 }
 
 /** Age against the real clock — these are real records, so a real date is the honest one. */

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -7,6 +8,7 @@ using Smx.Domain;
 using Smx.Domain.Documents;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
+using Smx.Domain.Tools;
 
 namespace Smx.Backend.Tests;
 
@@ -14,6 +16,7 @@ public class KnowledgeEndpointsTests : IClassFixture<WebApplicationFactory<Progr
 {
     private readonly InMemoryKnowledgeStore _knowledge = new();
     private readonly InMemorySdsCorpusReader _corpus = new();
+    private readonly RecordingSdsAcquisition _sds = new();
     private readonly HttpClient _client;
 
     public KnowledgeEndpointsTests(WebApplicationFactory<Program> factory)
@@ -23,7 +26,44 @@ public class KnowledgeEndpointsTests : IClassFixture<WebApplicationFactory<Progr
             {
                 s.AddSingleton<IKnowledgeStore>(_knowledge);
                 s.AddSingleton<ISdsCorpusReader>(_corpus);
+                s.AddSingleton<ISdsAcquisition>(_sds);
             })).CreateClient();
+    }
+
+    /// A local fake rather than a shared one: the fetch passthrough is the only thing in this suite
+    /// that touches acquisition, and what it needs to prove is that the endpoint hands the CAS across
+    /// and hands the answer back unaltered.
+    private sealed class RecordingSdsAcquisition : ISdsAcquisition
+    {
+        public List<string> Ensured { get; } = [];
+        public List<SdsUpload> Uploaded { get; } = [];
+        public SdsEnsureResult Next { get; set; } = new(SdsEnsureStatus.Fetched);
+        public SdsUploadResult NextUpload { get; set; } = new(true, RegistryId: "cas|acme|2026-01-01");
+
+        public Task<SdsEnsureResult> EnsureAsync(string cas, string? element, string? form, CancellationToken ct)
+        {
+            Ensured.Add(cas);
+            return Task.FromResult(Next);
+        }
+
+        public Task AppendAsync(string element, string form, string cas, CancellationToken ct) => Task.CompletedTask;
+
+        public Task<SdsUploadResult> UploadAsync(SdsUpload upload, CancellationToken ct)
+        {
+            Uploaded.Add(upload);
+            return Task.FromResult(NextUpload);
+        }
+    }
+
+    private static MultipartFormDataContent UploadForm(byte[] pdf, string? supplier, string? revisionDate)
+    {
+        var form = new MultipartFormDataContent();
+        var file = new ByteArrayContent(pdf);
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+        form.Add(file, "file", "sheet.pdf");
+        if (supplier is not null) form.Add(new StringContent(supplier), "supplier");
+        if (revisionDate is not null) form.Add(new StringContent(revisionDate), "revisionDate");
+        return form;
     }
 
     [Fact]
@@ -56,23 +96,92 @@ public class KnowledgeEndpointsTests : IClassFixture<WebApplicationFactory<Progr
         Assert.Equal(0, miss.GetArrayLength());
     }
 
+    /// D8: the review signature is gone, and so is the route that recorded it. Pinned rather than
+    /// merely deleted — a 404 here is the difference between "we removed the button" and "we removed
+    /// the gate's second, contradictory predicate".
     [Fact]
-    public async Task Msds_Review_FlipsStatus_And404ForUnknown()
+    public async Task Msds_ReviewRoute_IsGone()
     {
         await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc
         {
             Id = KnowledgeIds.Msds("13463-67-7"), Cas = "13463-67-7", Supplier = "Acme", Version = "3", Date = "2025-01-01",
         });
-        var ok = await _client.PostAsJsonAsync("/msds-registry/13463-67-7/review", new { });
-        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
-        var reviewed = (await _knowledge.GetMsdsAsync("13463-67-7"))!;
-        Assert.Equal(MsdsReviewStatus.Reviewed, reviewed.ReviewStatus);
-        // A gate record must carry when it was signed, not just that it was.
-        Assert.NotNull(reviewed.ReviewedAt);
-        Assert.InRange(DateTimeOffset.Parse(reviewed.ReviewedAt!), DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(1));
 
-        var missing = await _client.PostAsJsonAsync("/msds-registry/nope/review", new { });
-        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        var gone = await _client.PostAsJsonAsync("/msds-registry/13463-67-7/review", new { });
+
+        Assert.Equal(HttpStatusCode.NotFound, gone.StatusCode);
+    }
+
+    /// The passthrough behind "Fetch now". Thin on purpose: the whole value of the answer is in the
+    /// diagnostics, so the endpoint must not summarise, translate or swallow them.
+    [Fact]
+    public async Task PostMsdsFetch_HandsTheCasToAcquisition_AndTheAnswerBackVerbatim()
+    {
+        _sds.Next = new SdsEnsureResult(SdsEnsureStatus.Unavailable,
+            Reason: "no candidate validated",
+            Attempted: [new SdsAttempt("https://x/y.pdf", "Acme", "rejected: CAS not in document")]);
+
+        var res = await _client.PostAsync("/msds/1310-73-2/fetch", null);
+
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);      // "unavailable" is an ANSWER, not a failure
+        Assert.Equal(["1310-73-2"], _sds.Ensured);
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(SdsEnsureStatus.Unavailable, body.GetProperty("status").GetString());
+        Assert.Equal("no candidate validated", body.GetProperty("reason").GetString());
+        // What was tried and why each one failed — the point of the contract.
+        var attempt = Assert.Single(body.GetProperty("attempted").EnumerateArray().ToList());
+        Assert.Equal("rejected: CAS not in document", attempt.GetProperty("outcome").GetString());
+    }
+
+    /// The fallback that has never existed. It is a fallback and not an override — the file still goes
+    /// through the same content validation a fetched sheet faces, which is why the endpoint's job is
+    /// only to carry it there intact.
+    [Fact]
+    public async Task PostMsdsUpload_CarriesTheFileToAcquisition()
+    {
+        var pdf = new byte[] { 0x25, 0x50, 0x44, 0x46, 0x2D };   // %PDF-
+
+        var res = await _client.PostAsync("/msds/1310-73-2/upload",
+            UploadForm(pdf, "Acme Chemicals", "2026-05-01"));
+
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var up = Assert.Single(_sds.Uploaded);
+        Assert.Equal("1310-73-2", up.Cas);
+        Assert.Equal("Acme Chemicals", up.Supplier);
+        Assert.Equal("2026-05-01", up.RevisionDate);
+        Assert.Equal(pdf, up.Pdf);
+        // No product name given: the CAS labels the row rather than a blank.
+        Assert.Equal("1310-73-2", up.ProductName);
+    }
+
+    /// Supplier and revision date are two thirds of the registry's compound key. A sheet stored without
+    /// them gets an id with an empty segment, which DocumentId.TryDecode refuses — ingested, listed,
+    /// and permanently un-openable. Refusing costs two fields; accepting costs the document.
+    [Theory]
+    [InlineData(null, "2026-05-01")]
+    [InlineData("Acme Chemicals", null)]
+    [InlineData("   ", "2026-05-01")]
+    public async Task PostMsdsUpload_RefusesASheetThatCouldNeverBeOpenedAgain(string? supplier, string? revisionDate)
+    {
+        var res = await _client.PostAsync("/msds/1310-73-2/upload",
+            UploadForm([0x25, 0x50, 0x44, 0x46], supplier, revisionDate));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, res.StatusCode);
+        Assert.Empty(_sds.Uploaded);          // nothing was stored — a refusal, not a partial write
+    }
+
+    /// A rejected upload IS this endpoint's failure: the operator handed us a file and the answer is
+    /// that this file will not do. That belongs on the browser's failure path, with the reason intact.
+    [Fact]
+    public async Task PostMsdsUpload_RelaysTheValidatorsRejection()
+    {
+        _sds.NextUpload = new SdsUploadResult(false, "rejected: CAS not in document");
+
+        var res = await _client.PostAsync("/msds/1310-73-2/upload",
+            UploadForm([0x25, 0x50, 0x44, 0x46], "Acme Chemicals", "2026-05-01"));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, res.StatusCode);
+        Assert.Contains("CAS not in document", await res.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -93,7 +202,7 @@ public class KnowledgeEndpointsTests : IClassFixture<WebApplicationFactory<Progr
         => new(cas, supplier, "product", rev, ingested);
 
     [Fact]
-    public async Task GetMsds_ListsCorpusSheets_DefaultingToUnreviewed()
+    public async Task GetMsds_ListsCorpusSheets()
     {
         _corpus.Sheets.Add(Sheet("1313-97-9", "Stanford Advanced Materials", "2022-11-02"));
 
@@ -103,32 +212,27 @@ public class KnowledgeEndpointsTests : IClassFixture<WebApplicationFactory<Progr
         Assert.Equal("1313-97-9", row.Cas);
         Assert.Equal("Stanford Advanced Materials", row.Supplier);
         Assert.Equal("2022-11-02", row.Date);
-        Assert.Equal(MsdsReviewStatus.Unreviewed, row.ReviewStatus);
     }
 
+    /// LinkedProjects is the overlay's ONLY remaining job, and — unlike the signature it replaced —
+    /// it does not lapse when a newer revision arrives. "Project P put this substance in play" stays
+    /// true across revisions, so the merge is by CAS alone while sheet facts still come from the sheet.
     [Fact]
-    public async Task GetMsds_OverlaysReview_OnlyWhenItSignedTheCurrentRevision()
+    public async Task GetMsds_OverlaysLinkedProjects_EvenOnANewerRevisionThanTheOverlayNames()
     {
-        _corpus.Sheets.Add(Sheet("100-00-0", "Acme", "2026-01-01"));
-        _corpus.Sheets.Add(Sheet("200-00-0", "Acme", "2026-03-01"));
-        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc      // signed THE current revision
-        {
-            Id = KnowledgeIds.Msds("100-00-0"), Cas = "100-00-0", Supplier = "Acme", Version = "",
-            Date = "2026-01-01", ReviewStatus = MsdsReviewStatus.Reviewed, ReviewedAt = "2026-02-01T00:00:00Z",
-        });
-        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc      // signed an OLDER revision
+        _corpus.Sheets.Add(Sheet("200-00-0", "Beta", "2026-03-01"));
+        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc
         {
             Id = KnowledgeIds.Msds("200-00-0"), Cas = "200-00-0", Supplier = "Acme", Version = "",
-            Date = "2026-02-01", ReviewStatus = MsdsReviewStatus.Reviewed, ReviewedAt = "2026-02-02T00:00:00Z",
+            Date = "2026-02-01", LinkedProjects = ["p1", "p2"],   // an OLDER revision than the corpus holds
         });
 
         var rows = (await _client.GetFromJsonAsync<List<MsdsRegistryDoc>>("/msds-registry", Json.Options))!;
 
-        Assert.Equal(MsdsReviewStatus.Reviewed, rows.Single(r => r.Cas == "100-00-0").ReviewStatus);
-        // A newer sheet arrived after the signature: the review must NOT silently bless it.
-        var stale = rows.Single(r => r.Cas == "200-00-0");
-        Assert.Equal(MsdsReviewStatus.Unreviewed, stale.ReviewStatus);
-        Assert.Equal("2026-03-01", stale.Date);
+        var row = Assert.Single(rows);
+        Assert.Equal(["p1", "p2"], row.LinkedProjects);
+        Assert.Equal("2026-03-01", row.Date);      // the sheet's revision, never the overlay's
+        Assert.Equal("Beta", row.Supplier);        // the sheet's supplier, never the overlay's
     }
 
     [Fact]
@@ -150,22 +254,7 @@ public class KnowledgeEndpointsTests : IClassFixture<WebApplicationFactory<Progr
         Assert.Contains(rows, r => r.Cas == "999-99-9");          // governance-only row stays visible
     }
 
-    [Fact]
-    public async Task Msds_Review_CreatesTheGovernanceDocFromTheCorpus_WhenMissing()
-    {
-        _corpus.Sheets.Add(Sheet("1313-97-9", "Stanford Advanced Materials", "2022-11-02"));
-
-        var ok = await _client.PostAsJsonAsync("/msds-registry/1313-97-9/review", new { });
-        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
-
-        var doc = (await _knowledge.GetMsdsAsync("1313-97-9"))!;
-        Assert.Equal(MsdsReviewStatus.Reviewed, doc.ReviewStatus);
-        Assert.Equal("Stanford Advanced Materials", doc.Supplier);
-        Assert.Equal("2022-11-02", doc.Date);                     // the signature names the revision it signed
-        Assert.NotNull(doc.ReviewedAt);
-    }
-
-    /// The registry screen gates procurement, so it must be able to OPEN the sheet it is signing.
+    /// The registry screen gates procurement, so it must be able to OPEN the sheet behind a row.
     /// The id is served, not derived by the caller: re-implementing DedupKey's normalisation in the
     /// browser would put the same rule in a second language, where drift shows up as a silent 404.
     [Fact]

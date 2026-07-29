@@ -10,14 +10,16 @@ public class ToolBoxTests
         Smx.Domain.IKnowledgeStore? knowledge = null,
         Smx.Domain.Tools.ILearnedConclusionsSearch? learnedConclusions = null,
         Smx.Domain.Tools.IWebSearch? web = null,
-        bool useHostedWebSearch = false)
+        bool useHostedWebSearch = false,
+        Smx.Domain.Tools.ISdsAcquisition? acquisition = null)
     {
         var search = new FakeSearch();
         return new ToolBox(
             new FakeCatalogLookup(), new FakeCompatibilityLookup(), search, search, search,
             knowledge ?? new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore(),
             learnedConclusions ?? new FakeLearnedConclusionsSearch(),
-            _ => web ?? new FakeWebSearch(), useHostedWebSearch);
+            _ => web ?? new FakeWebSearch(), useHostedWebSearch,
+            acquisition ?? new FakeSdsAcquisition());
     }
 
     [Fact]
@@ -97,8 +99,97 @@ public class ToolBoxTests
     public void RegulatoryTools_ExposeRegulatorySdsReference_NoCompatibility()
     {
         var names = Box().RegulatoryTools().Select(t => t.Name).OrderBy(x => x).ToArray();
-        Assert.Equal(["search_reference", "search_regulatory", "search_sds"], names);
+        Assert.Equal(["ensure_sds", "search_reference", "search_regulatory", "search_sds"], names);
         Assert.DoesNotContain("lookup_compatibility", names);
+    }
+
+    // ---- ensure_sds (2026-07-29 design §7) ------------------------------------------------------------
+
+    // The Regulatory agent owns the hazard/CLP layer, so it is the agent that DISCOVERS a sheet is missing.
+    // Before this it could only report the hole; now it can close it.
+    [Fact]
+    public void TheRegulatoryAgentCanFetchAMissingSheet()
+        => Assert.Contains(Box().RegulatoryTools(), t => t.Name == "ensure_sds");
+
+    // The rule that chat turns never trigger egress is deliberately bent for this ONE tool: an SDS fetch
+    // keyed by CAS reveals no project, and "get me the sheet for X" is what an operator says out loud.
+    [Fact]
+    public void TheChatSurfaceCanFetchAMissingSheetToo()
+        => Assert.Contains(Box().ReadToolsFor(Smx.Domain.Records.Stages.Regulatory), t => t.Name == "ensure_sds");
+
+    // ...and bending it must not smuggle a GENERAL web tool into chat. Discovery's chat surface is the one
+    // that would leak a project if it had one — its read set is exactly DiscoveryTools MINUS search_web.
+    [Fact]
+    public void ChatStillHasNoWebSearch()
+    {
+        foreach (var stage in new[]
+                 {
+                     Smx.Domain.Records.Stages.Intake, Smx.Domain.Records.Stages.Pool,
+                     Smx.Domain.Records.Stages.Discovery, Smx.Domain.Records.Stages.Regulatory,
+                     Smx.Domain.Records.Stages.Dosing, Smx.Domain.Records.Stages.Decision,
+                     Smx.Domain.Records.Stages.Cost,
+                 })
+            Assert.DoesNotContain(Box().ReadToolsFor(stage), t => t.Name == "search_web");
+    }
+
+    // A HOST that never wired the acquisition client offers no tool at all, rather than one that always
+    // fails. Fail-closed, the same rule ReadToolsFor applies to an unknown stage.
+    [Fact]
+    public void WithNoAcquisitionClient_TheToolIsAbsentRatherThanBroken()
+    {
+        var search = new FakeSearch();
+        var box = new ToolBox(
+            new FakeCatalogLookup(), new FakeCompatibilityLookup(), search, search, search,
+            new Smx.Domain.Tests.Fakes.InMemoryKnowledgeStore(), new FakeLearnedConclusionsSearch(),
+            _ => new FakeWebSearch(), useHostedWebSearch: false, acquisition: null);
+        Assert.DoesNotContain(box.RegulatoryTools(), t => t.Name == "ensure_sds");
+    }
+
+    [Fact]
+    public async Task EnsureSds_PassesTheCasElementAndFormThrough_AndReportsWhatItGot()
+    {
+        var acquisition = new FakeSdsAcquisition
+        {
+            Result = new Smx.Domain.Tools.SdsEnsureResult(
+                Smx.Domain.Tools.SdsEnsureStatus.Fetched, RegistryId: "sds-77", Supplier: "Fisher",
+                RevisionDate: "2025-03-01"),
+        };
+
+        var json = await Box(acquisition: acquisition).EnsureSdsAsync("1310-73-2", "Na", "hydroxide", default);
+
+        Assert.Equal(("1310-73-2", "Na", "hydroxide"), Assert.Single(acquisition.Ensured));
+        Assert.Contains("fetched", json);
+        Assert.Contains("Fisher", json);
+        Assert.Contains("2025-03-01", json);
+    }
+
+    // THE POINT OF THE ATTEMPTS. Without them the agent cannot tell "this supplier is bot-walled" from "no
+    // sheet exists for this substance" — and it would report the second when only the first is true, which
+    // is a claim about the world that was never tested.
+    [Fact]
+    public async Task EnsureSds_WhenUnavailable_SurfacesTheReasonAndEveryAttempt()
+    {
+        var acquisition = new FakeSdsAcquisition
+        {
+            Result = new Smx.Domain.Tools.SdsEnsureResult(
+                Smx.Domain.Tools.SdsEnsureStatus.Unavailable,
+                Reason: "no candidate document validated",
+                Attempted:
+                [
+                    new("https://fisher.example/msds/1310-73-2", "Fisher", "403 — blocked"),
+                    new("https://alfa.example/sds.pdf", "Alfa", "rejected: CAS not in document"),
+                ]),
+        };
+
+        var json = await Box(acquisition: acquisition).EnsureSdsAsync("1310-73-2", "Na", "hydroxide", default);
+
+        Assert.Contains("unavailable", json);
+        Assert.Contains("no candidate document validated", json);
+        Assert.Contains("https://fisher.example/msds/1310-73-2", json);
+        Assert.Contains("403", json);
+        Assert.Contains("rejected: CAS not in document", json);
+        // "we could not get it" is NOT "it does not exist" — the agent must not read the first as the second.
+        Assert.Contains("does not prove", json, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

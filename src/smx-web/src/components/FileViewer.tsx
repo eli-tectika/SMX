@@ -4,6 +4,7 @@ import type { DocumentBytes, DocumentChunk, DocumentDetail, DocumentSummary } fr
 import { DocumentContent } from './DocumentContent';
 import { DocumentText } from './DocumentText';
 import { ProvenanceRail } from './ProvenanceRail';
+import { SdsActions } from './SdsActions';
 import { ErrorScreen, Loading } from './Loading';
 import { EmptyState } from './ui/Primitives';
 
@@ -69,6 +70,11 @@ export function FileViewer({
   const [missing, setMissing] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [body, setBody] = useState<Body | null>(null);
+  // Bumped after an acquisition, so the effect below re-reads. A fetched sheet does not turn a gap
+  // id into a sheet id — the gap row keeps its own identity — but its status, attempt count and
+  // next-attempt date all change, and leaving the old ones on screen would report a stale absence.
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = () => setReloadKey((k) => k + 1);
   // Arriving from a citation means the anchor is the reason you are here, and it only exists
   // on the chunk view.
   const [tab, setTab] = useState<Tab>(anchorEntry || anchorOrdinal != null ? 'agent' : 'original');
@@ -118,7 +124,7 @@ export function FileViewer({
     return () => {
       live = false;
     };
-  }, [documentId]);
+  }, [documentId, reloadKey]);
 
   if (missing) {
     return <EmptyState title="Document not found" body="No document has that identifier." />;
@@ -172,9 +178,20 @@ export function FileViewer({
       )}
 
       {!detail.summary.available && (
-        <p className="fv-banner fv-banner-warn">
-          {detail.unavailableDetail ?? 'No file is stored for this document.'}
-        </p>
+        <div className="fv-banner fv-banner-warn">
+          <p style={{ margin: 0 }}>
+            {detail.unavailableDetail ?? 'No file is stored for this document.'}
+          </p>
+          {/*
+            The reader is where an operator lands from a citation or a blocked order, and until now
+            it could only report the absence. A missing safety sheet is the one absence in this
+            system with a remedy, so the remedy belongs here rather than only back on the list the
+            operator has already left. `cas` is served, never parsed out of the subtitle.
+          */}
+          {detail.summary.kind === 'sds' && detail.summary.cas && (
+            <SdsActions cas={detail.summary.cas} hasSheet={false} onDone={reload} />
+          )}
+        </div>
       )}
 
       <div className="fv-tabs" role="tablist">

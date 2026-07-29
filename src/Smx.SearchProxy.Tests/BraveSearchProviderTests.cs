@@ -128,4 +128,30 @@ public class BraveSearchProviderTests
         Assert.NotNull(hits);
         Assert.Empty(hits);
     }
+
+    /// The oversize cutoff is the OPERATOR'S, read from PROXY_MAX_RESPONSE_BYTES — and this is the test that
+    /// makes it real, in the shape of StructuralGuardTests' PROXY_MAX_RESULTS guard. Without it the ceiling
+    /// is provably enforced but not provably configurable, which is how a knob dies.
+    [Fact]
+    public async Task ResponseOverTheConfiguredCeiling_IsRefused()
+    {
+        var body = Ok("""{"web":{"results":[]}}""");   // ~22 bytes, well under the shipped 2 MiB default
+        var provider = new BraveSearchProvider(
+            new HttpClient(new StubHandler(body)),
+            new ProxyOptions { ApiKey = "test-key", MaxResponseBytes = 8 },
+            NullLogger<BraveSearchProvider>.Instance);
+
+        Assert.Null(await provider.SearchAsync("x", 10, null, default));
+    }
+
+    [Fact]
+    public async Task ResponseUnderTheConfiguredCeiling_IsAccepted()
+    {
+        var provider = new BraveSearchProvider(
+            new HttpClient(new StubHandler(Ok("""{"web":{"results":[]}}"""))),
+            new ProxyOptions { ApiKey = "test-key", MaxResponseBytes = 4096 },
+            NullLogger<BraveSearchProvider>.Instance);
+
+        Assert.NotNull(await provider.SearchAsync("x", 10, null, default));
+    }
 }

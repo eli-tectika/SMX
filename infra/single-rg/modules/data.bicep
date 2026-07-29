@@ -149,6 +149,18 @@ resource sdsRegistry 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/contain
   }
 }
 
+// SDS suppliers — the learned supplier catalogue (seeded from the bundled list); partitioned by host.
+resource sdsSuppliers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  parent: cosmosDb
+  name: 'sds-suppliers'
+  properties: {
+    resource: {
+      id: 'sds-suppliers'
+      partitionKey: { paths: [ '/domain' ], kind: 'Hash' }
+    }
+  }
+}
+
 // Regulatory Sync (Reg subsystem) containers. The workload identity has Cosmos data-plane rights only and
 // cannot create containers at runtime, so they are provisioned here (SDS design D3). See project_files spec §15.
 var regContainers = [

@@ -10,7 +10,7 @@ public sealed class CasTemplateStrategy : ISourceStrategy
         AllowlistEntry entry, SubstanceKey key, EgressFetch fetch, CancellationToken ct)
     {
         var url = new Uri(entry.SdsUrlTemplate.Replace("{cas}", key.Cas));
-        IReadOnlyList<SourceCandidate> result = new[] { new SourceCandidate(entry.Supplier, entry.Domain, url) };
+        IReadOnlyList<SourceCandidate> result = new[] { new SourceCandidate(entry.Supplier, entry.Domain, url, "casTemplate") };
         return Task.FromResult(result);
     }
 }

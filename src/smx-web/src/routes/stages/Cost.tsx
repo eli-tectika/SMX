@@ -13,20 +13,27 @@ const usd = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFr
  * What the registry says about one substance's safety data sheet. Four states, and `unknown` is the
  * load-bearing one.
  *
- * A reviewed sheet is a hard precondition for a purchase order, so this screen must be able to say
+ * A sheet ON FILE is a hard precondition for a purchase order, so this screen must be able to say
  * "no sheet" — but only from a registry it actually read. Telling the operator a substance has no
  * safety sheet when we merely could not check is a fabricated claim about an absence, made on the
  * screen where the order is decided. So a registry that did not load yields `unknown` for every
  * substance, and `unknown` is never folded into either "blocked" or "cleared".
+ *
+ * The predicate is the SHEET'S EXISTENCE, not a signature over it: the review signature was deleted
+ * in the 2026-07-29 design (D8/D9) and `MsdsEntry.reviewStatus` went with it. `no-sheet` is the row
+ * that survives that change — a governance-only entry with no `documentId`, which has a registry
+ * line but nothing behind it, and which the backend's order endpoint refuses exactly as if the row
+ * were absent. It is kept distinct from `missing` because the two send the operator to different
+ * places: one sheet has to be obtained, the other has to be linked.
  */
 type SheetState =
   | { kind: 'unknown' }
-  | { kind: 'reviewed' }
-  | { kind: 'not-reviewed'; status: string }
+  | { kind: 'on-file' }
+  | { kind: 'no-sheet' }
   | { kind: 'missing' };
 
 /** The two states that stop a purchase order. `unknown` is deliberately not one of them. */
-const blocksOrder = (s: SheetState) => s.kind === 'not-reviewed' || s.kind === 'missing';
+const blocksOrder = (s: SheetState) => s.kind === 'no-sheet' || s.kind === 'missing';
 
 /**
  * A price, or a stated reason there is none. Three cases, because two would lose one of them.
@@ -165,9 +172,7 @@ export function Cost({ project }: ScreenProps) {
       if (sheetsFailed) return { kind: 'unknown' };
       const sheet = sheets.find((s) => s.cas === cas);
       if (!sheet) return { kind: 'missing' };
-      return sheet.reviewStatus === 'reviewed'
-        ? { kind: 'reviewed' }
-        : { kind: 'not-reviewed', status: String(sheet.reviewStatus) };
+      return sheet.documentId ? { kind: 'on-file' } : { kind: 'no-sheet' };
     },
     [sheets, sheetsFailed],
   );
@@ -268,7 +273,7 @@ export function Cost({ project }: ScreenProps) {
               label="Not orderable"
               value={blocked.length}
               tone={blocked.length > 0 ? 'danger' : undefined}
-              hint="no reviewed safety data sheet"
+              hint="no safety data sheet on file"
             />
           )}
         </div>
@@ -306,7 +311,7 @@ export function Cost({ project }: ScreenProps) {
                 The safety-sheet registry did not load, so every sheet status below is unknown, not
                 cleared.
               </b>{' '}
-              A reviewed safety data sheet is a hard precondition for an order, and this screen cannot
+              A safety data sheet on file is a hard precondition for an order, and this screen cannot
               say which substances have one. <Link to="/msds-registry">Check the registry directly</Link>{' '}
               before ordering anything.
             </div>
@@ -315,7 +320,7 @@ export function Cost({ project }: ScreenProps) {
           <OrderBlocker blocked={blocked} sheetState={sheetState} />
         ) : audits.length > 0 ? (
           <p className="prose" style={{ margin: 0 }}>
-            Every substance below has a reviewed safety data sheet, so nothing here is blocked on
+            Every substance below has a safety data sheet on file, so nothing here is blocked on
             safety grounds.
           </p>
         ) : null}
@@ -388,7 +393,7 @@ function OrderBlocker({
           : `${blocked.length} substances cannot be ordered.`}
       </p>
       <p className="prose" style={{ margin: 'var(--s3) 0 0', color: 'var(--text-danger)' }}>
-        A reviewed safety data sheet is a hard precondition for an order, and these do not have one:
+        A safety data sheet on file is a hard precondition for an order, and these do not have one:
       </p>
       <ul className="prose" style={{ margin: 'var(--s2) 0 0', paddingLeft: '1.2em' }}>
         {blocked.map((a) => {
@@ -396,10 +401,8 @@ function OrderBlocker({
           return (
             <li key={`${a.cas}|${a.element}`} style={{ color: 'var(--text-danger)' }}>
               <b>{a.element}</b> <Data kind="cas">{a.cas}</Data> —{' '}
-              {s.kind === 'not-reviewed' ? (
-                <>
-                  its sheet is <b>{s.status}</b>, not reviewed
-                </>
+              {s.kind === 'no-sheet' ? (
+                <>its registry entry has no sheet behind it</>
               ) : (
                 <>no sheet is on file</>
               )}
@@ -450,10 +453,10 @@ function SubstanceAudit({ audit, sheet }: { audit: SupplierAudit; sheet: SheetSt
               &nbsp;no MSDS on file
             </span>
           )}
-          {sheet.kind === 'not-reviewed' && (
+          {sheet.kind === 'no-sheet' && (
             <span className="chip x">
               <i className="ti ti-file-alert" aria-hidden="true" />
-              &nbsp;MSDS {sheet.status}
+              &nbsp;no MSDS document
             </span>
           )}
           {sheet.kind === 'unknown' && (
