@@ -107,10 +107,10 @@ public class InMemoryKnowledgeStoreTests
         var store = new InMemoryKnowledgeStore();
         await store.UpsertMsdsAsync(new MsdsRegistryDoc { Id = KnowledgeIds.Msds("c1"), Cas = "c1", Supplier = "Acme", Version = "1", Date = "d" });
 
-        (await store.GetMsdsAsync("c1"))!.ReviewStatus = MsdsReviewStatus.Reviewed;   // no upsert follows
+        (await store.GetMsdsAsync("c1"))!.LinkedProjects.Add("p1");   // no upsert follows
 
-        // In Cosmos this MSDS is still unreviewed — and it gates procurement.
-        Assert.Equal(MsdsReviewStatus.Unreviewed, (await store.GetMsdsAsync("c1"))!.ReviewStatus);
+        // In Cosmos this MSDS still links no project.
+        Assert.Empty((await store.GetMsdsAsync("c1"))!.LinkedProjects);
     }
 }
 

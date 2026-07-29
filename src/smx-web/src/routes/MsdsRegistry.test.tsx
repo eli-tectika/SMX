@@ -10,49 +10,58 @@ const SHEET = {
   supplier: 'Sigma-Aldrich',
   version: '',
   date: '2024-03-11',
-  reviewStatus: 'unreviewed',
-  reviewedAt: null,
   linkedProjects: [],
   documentId: 'sds_Nzc2MS04OC04fHNpZ21hLWFsZHJpY2h8MjAyNC0wMy0xMQ',
 };
 
 // A governance-only row: manual/legacy, no corpus sheet behind it, so the backend sends no
-// documentId at all (Json.Options omits nulls).
+// documentId at all (Json.Options omits nulls). This is exactly the row the order gate refuses.
 const NO_SHEET = {
   id: 'msds:999-99-9',
   cas: '999-99-9',
   supplier: 'Manual entry',
   version: '1',
   date: '2020-01-01',
-  reviewStatus: 'reviewed',
-  reviewedAt: '2026-01-05T00:00:00Z',
   linkedProjects: [],
 };
 
-const stub = (rows: unknown[], onReview?: () => unknown) =>
+/**
+ * Rows on GET, and a scripted answer on any POST. `calls` records the POST urls so a test can
+ * assert what the button actually asked for — the CAS is the whole payload, and a wrong one fetches
+ * a safety sheet for the wrong substance.
+ */
+const stub = (rows: unknown[], onPost?: () => unknown) => {
+  const calls: string[] = [];
   vi.stubGlobal(
     'fetch',
-    vi.fn((_url: string, init?: RequestInit) => {
-      if (init?.method === 'POST')
+    vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        calls.push(url);
         return Promise.resolve(
-          new Response(JSON.stringify(onReview?.() ?? {}), {
+          new Response(JSON.stringify(onPost?.() ?? { status: 'fetched' }), {
             headers: { 'Content-Type': 'application/json' },
           }),
         );
+      }
       return Promise.resolve(
         new Response(JSON.stringify(rows), { headers: { 'Content-Type': 'application/json' } }),
       );
     }),
   );
+  return calls;
+};
 
 const view = () => render(<MsdsRegistry />, { wrapper: MemoryRouter });
 
+const pdf = () =>
+  new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], 'sheet.pdf', { type: 'application/pdf' });
+
 afterEach(() => vi.unstubAllGlobals());
 
-describe('MsdsRegistry — the sheet behind the signature', () => {
+describe('MsdsRegistry — the sheet, and getting one', () => {
   /**
-   * This screen gates procurement: an order stays blocked until its sheet is reviewed. Until
-   * now the operator signed that review on a screen that could not display the sheet.
+   * This screen gates procurement: an order stays blocked until a sheet exists. Until the file
+   * viewer shipped, the operator signed off a sheet the screen could not display.
    */
   it('opens the sheet the row was composed from', async () => {
     stub([SHEET]);
@@ -73,25 +82,80 @@ describe('MsdsRegistry — the sheet behind the signature', () => {
   });
 
   /**
-   * Signing the review returns a RECEIPT — cas, status, timestamp — not a whole row. Replacing
-   * the row with it drops the supplier, the revision date and the sheet link, which is both a
-   * crash on `date` and a signed row that can no longer open what was signed.
+   * D8: the review signature is gone. What replaces it is not a smaller signature but the opposite
+   * kind of control — the operator used to attest to a document the system already had, and can now
+   * go and get one it does not.
    */
-  it('keeps the row intact after the review is signed', async () => {
-    stub([SHEET], () => ({
-      cas: SHEET.cas,
-      reviewStatus: 'reviewed',
-      reviewedAt: '2026-07-22T09:00:00Z',
+  it('offers to fetch a sheet that is missing, and no longer offers a review signature', async () => {
+    const calls = stub([NO_SHEET]);
+    view();
+
+    await userEvent.click(await screen.findByRole('button', { name: /fetch now/i }));
+
+    await waitFor(() => expect(calls).toEqual(['/api/msds/999-99-9/fetch']));
+    expect(screen.queryByRole('button', { name: /review/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /mark reviewed/i })).toBeNull();
+  });
+
+  /** A row that HAS a sheet still offers acquisition — as a refresh, since a revision may exist. */
+  it('offers a refresh rather than a fetch when the sheet is already on file', async () => {
+    stub([SHEET]);
+    view();
+    expect(await screen.findByRole('button', { name: /refresh/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /fetch now/i })).toBeNull();
+  });
+
+  /**
+   * The point of the whole contract. "Could not get it" is a dead end; naming each host and what it
+   * served is the beginning of an operator knowing which supplier to go and ask.
+   */
+  it('shows what was tried when no sheet could be obtained', async () => {
+    stub([NO_SHEET], () => ({
+      status: 'unavailable',
+      reason: 'no candidate validated',
+      attempted: [
+        { url: 'https://a.test/x.pdf', supplier: 'Alfa', outcome: 'rejected: CAS not in document' },
+        { url: 'https://b.test/y.pdf', supplier: 'Fisher', outcome: 'timed out' },
+      ],
     }));
     view();
 
-    await userEvent.click(await screen.findByRole('button', { name: /mark reviewed/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /fetch now/i }));
 
-    await waitFor(() => expect(screen.getByText('reviewed')).toBeInTheDocument());
-    expect(screen.getByText('Sigma-Aldrich')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /open sheet/i })).toHaveAttribute(
-      'href',
-      `/docs/${SHEET.documentId}`,
+    await waitFor(() => expect(screen.getByText(/no sheet could be obtained/i)).toBeInTheDocument());
+    expect(screen.getByText(/rejected: CAS not in document/)).toBeInTheDocument();
+    expect(screen.getByText(/timed out/)).toBeInTheDocument();
+  });
+
+  /**
+   * The upload fallback, which has never existed. Supplier and revision date are refused-on-blank
+   * because with the CAS they ARE the sheet's identity in the registry — a sheet stored without
+   * them gets an id nothing can decode, so it would be listed and permanently un-openable.
+   */
+  it('will not upload a sheet with no supplier or revision date', async () => {
+    const calls = stub([NO_SHEET]);
+    view();
+
+    await userEvent.click(await screen.findByRole('button', { name: /^upload$/i }));
+    await userEvent.upload(screen.getByLabelText(/safety sheet pdf/i), pdf());
+    await userEvent.click(screen.getByRole('button', { name: /upload sheet/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/supplier and a revision date/i)).toBeInTheDocument(),
     );
+    expect(calls).toEqual([]); // nothing left the browser
+  });
+
+  it('uploads a sheet once it has an identity', async () => {
+    const calls = stub([NO_SHEET], () => ({ ok: true, registryId: '999-99-9|acme|2026-05-01' }));
+    view();
+
+    await userEvent.click(await screen.findByRole('button', { name: /^upload$/i }));
+    await userEvent.upload(screen.getByLabelText(/safety sheet pdf/i), pdf());
+    await userEvent.type(screen.getByLabelText(/supplier for/i), 'Acme');
+    await userEvent.type(screen.getByLabelText(/revision date for/i), '2026-05-01');
+    await userEvent.click(screen.getByRole('button', { name: /upload sheet/i }));
+
+    await waitFor(() => expect(calls).toEqual(['/api/msds/999-99-9/upload']));
   });
 });

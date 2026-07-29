@@ -25,6 +25,14 @@ public sealed class SdsAcquisitionClient(
     private sealed record EnsureRequest(string Cas, string? Element, string? Form, bool Force = false);
     private sealed record AppendRequest(string Element, string Form, string Cas);
 
+    /// Mirrors OperatorUploadRequest in the Functions app. MasterListId is deliberately empty: the
+    /// operator uploads against a CAS, and inventing an `{element}_{form}` key here — in a second place,
+    /// from data the browser does not have — is how a link to the master list ends up pointing at a row
+    /// that does not exist.
+    private sealed record UploadRequest(
+        string Cas, string Supplier, string ProductName, string RevisionDate,
+        string? Region, string? Language, string MasterListId, string PdfBase64);
+
     public async Task<SdsEnsureResult> EnsureAsync(string cas, string? element, string? form, CancellationToken ct)
     {
         try
@@ -68,6 +76,33 @@ public sealed class SdsAcquisitionClient(
         catch (Exception ex)
         {
             log.LogWarning(ex, "SDS ledger append failed for {Element}/{Form} ({Cas})", element, form, cas);
+        }
+    }
+
+    public async Task<SdsUploadResult> UploadAsync(SdsUpload upload, CancellationToken ct)
+    {
+        try
+        {
+            using var resp = await SendAsync("sds/upload", new UploadRequest(
+                upload.Cas, upload.Supplier, upload.ProductName, upload.RevisionDate,
+                Region: null, Language: null, MasterListId: "",
+                PdfBase64: Convert.ToBase64String(upload.Pdf)), ct);
+
+            // 422 is the pipeline's own verdict on the file and carries a reason worth relaying; any
+            // other non-success is a statement about the transport and must not be dressed up as one
+            // about the document.
+            var body = await resp.Content.ReadFromJsonAsync<SdsUploadResult>(Json, ct);
+            if (body is not null) return body;
+
+            log.LogWarning("SDS upload → {Status} for CAS {Cas}", (int)resp.StatusCode, upload.Cas);
+            return new SdsUploadResult(false, $"the SDS service returned {(int)resp.StatusCode}");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "SDS upload failed for CAS {Cas}", upload.Cas);
+            return new SdsUploadResult(false,
+                $"the SDS service is unreachable ({ex.Message}) — the file was NOT stored");
         }
     }
 

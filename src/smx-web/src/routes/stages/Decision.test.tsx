@@ -106,15 +106,22 @@ const dosing: DosingDoc = {
 
 const armed: VpGate = { status: 'locked', armable: true, blockers: [] };
 
-const msds = (reviewStatus: string): MsdsEntry => ({
+/**
+ * A registry row. `documentId` is what says a corpus sheet exists behind it — which since
+ * 2026-07-29 (D9) is exactly the MSDS-before-order predicate: the gate asks whether a validated,
+ * indexed sheet exists, not whether a human signed one. Omit it for a row that blocks an order.
+ */
+const msds = (documentId?: string): MsdsEntry => ({
   id: 'msds|1314-36-9',
   cas: '1314-36-9',
   supplier: 'Sigma-Aldrich',
   version: '4.1',
   date: '2025-11-02',
-  reviewStatus,
   linkedProjects: [],
+  documentId,
 });
+
+const SHEET_ID = 'sds_MTMxNC0zNi05fHNpZ21hfDIwMjUtMTEtMDI';
 
 const view = () =>
   render(
@@ -128,7 +135,7 @@ beforeEach(() => {
   vi.mocked(api.getDecision).mockResolvedValue(decision());
   vi.mocked(api.getVpGate).mockResolvedValue(armed);
   vi.mocked(api.getDosing).mockResolvedValue(dosing);
-  vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds('reviewed')]);
+  vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds(SHEET_ID)]);
   vi.mocked(api.recordVpDetermination).mockResolvedValue({ status: 'approved' });
 });
 
@@ -285,8 +292,8 @@ describe('Decision', () => {
     expect(screen.getAllByText(/checking/i).length).toBe(2);
     for (const b of screen.getAllByRole('button', { name: /^order$/i })) expect(b).toBeDisabled();
 
-    // ...and once it lands the record speaks: Y has a reviewed sheet, Zr genuinely has none.
-    land([msds('reviewed')]);
+    // ...and once it lands the record speaks: Y has a sheet on file, Zr genuinely has none.
+    land([msds(SHEET_ID)]);
     await waitFor(() => expect(screen.getByText(/no sheet on file/)).toBeInTheDocument());
     const buttons = screen.getAllByRole('button', { name: /^order$/i });
     expect(buttons[0]).toBeEnabled();
@@ -313,7 +320,7 @@ describe('Decision', () => {
 
   /** MSDS gates ORDERS, not the gate. Listing it as a gate requirement invents a precondition. */
   it('does not make MSDS a requirement of the VP gate', async () => {
-    vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds('pending')]);
+    vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds()]);
     view();
     await waitFor(() => expect(screen.getByText(/1314-36-9/)).toBeInTheDocument());
     const gate = screen.getByLabelText('VP R&D gate');
@@ -437,18 +444,18 @@ describe('Decision', () => {
     expect(screen.queryByRole('button', { name: /order/i })).not.toBeInTheDocument();
   });
 
-  it('offers an order per confirmed marker once released, blocked without a reviewed MSDS', async () => {
+  it('offers an order per confirmed marker once released, blocked without an MSDS', async () => {
     vi.mocked(api.getDecision).mockResolvedValue(
       decision({
         components: [component({ confirmedCode: 'Y:Zr = 1.00:0.50', confirmedBy: 'VP R&D' })],
         procurement: { status: 'released', orderedCas: [] },
       }),
     );
-    vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds('reviewed')]); // Y only; Zr has none
+    vi.mocked(api.getMsdsRegistry).mockResolvedValue([msds(SHEET_ID)]); // Y only; Zr has none
     view();
     await waitFor(() => expect(screen.getAllByRole('button', { name: /order/i }).length).toBe(2));
     const buttons = screen.getAllByRole('button', { name: /order/i });
-    expect(buttons[0]).toBeEnabled(); // Y — reviewed sheet on file
+    expect(buttons[0]).toBeEnabled(); // Y — a sheet is on file
     expect(buttons[1]).toBeDisabled(); // Zr — no sheet at all
   });
 

@@ -42,7 +42,15 @@ public sealed record DocumentSummary(
     string State,
     string? ContentType,
     string? OfficialDate,
-    string? IngestedUtc);
+    string? IngestedUtc,
+    /// The substance this row is about, for `sds` rows only — served, never derived by the caller.
+    ///
+    /// It exists because a gap row now carries an ACTION ("fetch this sheet"), and an action needs the
+    /// CAS. The subtitle has always contained it, and the browser could scrape it out of there; that
+    /// is precisely the mistake the citation chips refuse to make. A parsed CAS is right until the
+    /// subtitle's wording changes, and then it fetches a sheet for the wrong substance — on the
+    /// surface whose entire job is that a missing safety sheet is visible and actionable.
+    string? Cas = null);
 
 /// A labelled provenance line. A LIST rather than a fixed record because SDS and regulatory provenance
 /// genuinely differ in shape, and the rail renders whatever it is handed.

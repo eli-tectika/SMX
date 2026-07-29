@@ -34,6 +34,7 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
     private readonly InMemoryKnowledgeStore _knowledge = new();
     private readonly FakeCatalogLookup _catalog = new();
     private readonly FakeAgentRuns _agents = new();
+    private readonly InMemorySdsCorpusReader _corpus = new();
     private readonly HttpClient _client;
     private readonly PipelineRunner _dispatcher;
 
@@ -46,11 +47,10 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
         {
             s.AddSingleton<IRecordStore>(_store);
             s.AddSingleton<IKnowledgeStore>(_knowledge);
-            // The MSDS review endpoint composes the signed sheet from the SDS corpus (design §6.3 —
-            // reference, don't duplicate), so it takes an ISdsCorpusReader. An empty in-memory corpus is
-            // enough here: this test pre-uploads the MsdsRegistryDoc it signs, so GetLatestForCasAsync
-            // returning null just leaves that already-present row to be reviewed.
-            s.AddSingleton<ISdsCorpusReader>(new InMemorySdsCorpusReader());
+            // MSDS-before-order asks the SDS corpus whether a validated sheet exists (design 2026-07-29,
+            // D9), so the corpus is now an INPUT to this journey rather than a bystander: the test starts
+            // it empty, watches the order be refused, then puts the sheet in and watches it release.
+            s.AddSingleton<ISdsCorpusReader>(_corpus);
         })).CreateClient();
         var conclusions = new LearnedConclusionWriter(_knowledge, new FakeLearnedConclusionsIndex(),
             new FakeEmbedder(), NullLogger<LearnedConclusionWriter>.Instance);
@@ -221,19 +221,17 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
         Assert.NotNull(conclusion);
         Assert.Contains(ratio, conclusion!.Finding);       // the close conclusion names the confirmed ratio
 
-        // 4. MSDS-before-order: released procurement is NOT an order. Without a reviewed MSDS the order
-        //    must not exist; the review over the REAL endpoint is what unlocks it.
+        // 4. MSDS-before-order: released procurement is NOT an order. With no safety sheet for the
+        //    substance the order must not exist; a sheet arriving in the corpus is what unlocks it.
+        //    Since 2026-07-29 the gate's predicate is the SHEET's existence and not a signature over it
+        //    (D9), so nothing here is signed — and the order still had to be refused first.
         var refused = await _client.PostAsync($"/projects/{P}/orders/cas-zr", null);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, refused.StatusCode);
         Assert.Contains("MSDS-before-order", await refused.Content.ReadAsStringAsync());
         Assert.Empty((await _store.GetDecisionAsync(P))!.Procurement.OrderedCas);
 
-        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc
-        {
-            Id = KnowledgeIds.Msds("cas-zr"), Cas = "cas-zr", Supplier = "Acme Chemicals",
-            Version = "3.1", Date = "2026-05-01",          // ReviewStatus defaults to unreviewed
-        });
-        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync("/msds-registry/cas-zr/review", null)).StatusCode);
+        _corpus.Sheets.Add(new SdsCorpusSheet("cas-zr", "Acme Chemicals", "Zr neodecanoate",
+            "2026-05-01", "2026-05-02T00:00:00Z"));
 
         var ordered = await _client.PostAsync($"/projects/{P}/orders/cas-zr", null);
         Assert.Equal(HttpStatusCode.Accepted, ordered.StatusCode);

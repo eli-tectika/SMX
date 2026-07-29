@@ -24,7 +24,6 @@ import type {
   MarkerLibraryEntry,
   MatrixDoc,
   MsdsEntry,
-  MsdsReviewReceipt,
   PoolDoc,
   ProjectListItem,
   ProjectSummary,
@@ -33,6 +32,8 @@ import type {
   ReviseAccepted,
   ReviseRequest,
   RevisionDoc,
+  SdsEnsureResult,
+  SdsUploadResult,
   SessionAttachment,
   VpDeterminationRequest,
   VpGate,
@@ -360,23 +361,51 @@ export async function getMsdsRegistry(search?: string): Promise<MsdsEntry[]> {
 }
 
 /**
- * Sign the MSDS review for one substance.
+ * Fetch the safety data sheet for one substance, now.
  *
- * This is an operator-signed record, not a UI flag: the MSDS-before-order hard precondition
- * (spec §5) reads it, and an order stays blocked until its sheet is current AND reviewed.
- * The backend stamps `reviewedAt` so that *when* it was signed stays recoverable.
+ * This replaces `reviewMsds`. The review signature is gone (design 2026-07-29, D8) and what stands
+ * in its place is not a smaller version of it but the opposite kind of control: the operator used
+ * to attest to a document the system already had, and can now go and get one it does not.
  *
- * It answers with a RECEIPT — cas, status, timestamp — and not the row. A caller that swaps the
- * receipt in for the row loses the supplier, the revision date and the link to the sheet, on the
- * row it has just signed.
+ * It resolves — it does not reject — when the answer is `unavailable`. That is a truthful result
+ * about the world, and it arrives with `attempted[]`, the list of what was tried and why each
+ * candidate failed. Throwing it away onto an error path would discard the only part of the answer
+ * the operator can act on.
  */
-export async function reviewMsds(cas: string): Promise<MsdsReviewReceipt | NotFound> {
-  const res = await authorizedFetch(`${BASE}/msds-registry/${encodeURIComponent(cas)}/review`, {
+export async function fetchSds(cas: string): Promise<SdsEnsureResult> {
+  const res = await authorizedFetch(`${BASE}/msds/${encodeURIComponent(cas)}/fetch`, {
     method: 'POST',
   });
-  if (res.status === 404) return NotFound;
   if (!res.ok) throw await failure(res);
-  return (await res.json()) as MsdsReviewReceipt;
+  return (await res.json()) as SdsEnsureResult;
+}
+
+/**
+ * Hand the system a sheet it could not find.
+ *
+ * The fallback that has never existed — until now the only exit from a missing sheet was a
+ * hand-rolled HTTP POST with a base64 PDF. There is no gate behind it: nothing is approved by
+ * uploading, and the file faces the same content validation a fetched sheet does.
+ *
+ * `supplier` and `revisionDate` are required by the backend because, with the CAS, they ARE the
+ * sheet's identity in the registry. A sheet stored without them can never be opened again.
+ */
+export async function uploadSds(
+  cas: string,
+  file: File,
+  supplier: string,
+  revisionDate: string,
+): Promise<SdsUploadResult> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('supplier', supplier);
+  form.append('revisionDate', revisionDate);
+  const res = await authorizedFetch(`${BASE}/msds/${encodeURIComponent(cas)}/upload`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) throw await failure(res);
+  return (await res.json()) as SdsUploadResult;
 }
 
 /* ---------------------------------------------------------------------------

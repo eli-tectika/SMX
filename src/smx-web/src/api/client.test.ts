@@ -569,7 +569,7 @@ describe('orderSubstance', () => {
 
   it("surfaces the server's 422 for MSDS-before-order verbatim", async () => {
     stubFetch(() =>
-      json({ error: "MSDS-before-order: no reviewed MSDS on file for '1314-36-9' — review it via POST /msds-registry/1314-36-9/review first" }, 422),
+      json({ error: "MSDS-before-order: no safety sheet on file for '1314-36-9' — fetch one via POST /msds/1314-36-9/fetch (or upload one) before ordering" }, 422),
     );
     await expect(orderSubstance('p1', '1314-36-9')).rejects.toThrow('MSDS-before-order');
   });

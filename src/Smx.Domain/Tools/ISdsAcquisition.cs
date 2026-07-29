@@ -23,6 +23,18 @@ public sealed record SdsEnsureResult(
     public bool Have => Status is SdsEnsureStatus.AlreadyHad or SdsEnsureStatus.Fetched;
 }
 
+/// One sheet the operator supplied by hand, on its way to the same ingestion pipeline every fetched
+/// sheet goes through. Supplier and revision date are NOT decoration: they are two thirds of the
+/// registry's compound key, and a blank one mints an id that nothing can ever open again.
+public sealed record SdsUpload(
+    string Cas, string Supplier, string ProductName, string RevisionDate, byte[] Pdf);
+
+/// The upload's verdict. `Ok: false` is a normal answer — the same content validation every fetched
+/// sheet faces (the requested CAS appears in the text, ≥10 GHS sections parse) applies to an
+/// operator's file too. An upload is a fallback, not an override: a document that is not a safety
+/// sheet for this substance does not become one by arriving through a file picker.
+public sealed record SdsUploadResult(bool Ok, string? Reason = null, string? RegistryId = null);
+
 /// The backend's half of SDS acquisition. The `regsync` Function App does the fetching — it sits on the
 /// only subnet with a NAT gateway and holds the Bronze / AI Search / Cosmos write grants — and this is the
 /// line to it.
@@ -40,4 +52,10 @@ public interface ISdsAcquisition
     /// Record that a substance is in play, so the scheduled sweep will chase its sheet even if nobody asks
     /// for it now. Bookkeeping: it must never fail a caller, so implementations swallow and log.
     Task AppendAsync(string element, string form, string cas, CancellationToken ct);
+
+    /// Ingest a sheet the operator supplied. The fallback for the substance nobody publishes a fetchable
+    /// PDF for — never a gate, and never a way around one: the uploaded file is validated by content
+    /// exactly like a fetched one. Like EnsureAsync, a failure comes back as a result rather than an
+    /// exception; only cancellation throws.
+    Task<SdsUploadResult> UploadAsync(SdsUpload upload, CancellationToken ct);
 }

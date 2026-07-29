@@ -15,8 +15,9 @@ public class SdsDocumentProviderTests
             "2026-07-16T00:00:00Z", superseded, masterId);
 
     private static SdsMasterRow Master(string element, string form, string cas, string status,
-        int attempts = 0, string? masterId = null) =>
-        new(masterId ?? $"{element}_{form}", element, form, cas, status, attempts > 0 ? "2026-07-18T00:00:00Z" : null, attempts);
+        int attempts = 0, string? masterId = null, string? nextAttempt = null) =>
+        new(masterId ?? $"{element}_{form}", element, form, cas, status,
+            attempts > 0 ? "2026-07-18T00:00:00Z" : null, attempts, nextAttempt);
 
     [Fact]
     public async Task ListsSheetsAsAvailable()
@@ -43,6 +44,56 @@ public class SdsDocumentProviderTests
         Assert.Equal(DocumentStates.Missing, row.State);
         Assert.Equal(DocumentKinds.Sds, row.Kind);          // facet is sds — a MISSING sheet is still a sheet
         Assert.StartsWith("sdsgap_", row.Id);                // but the id resolves against a different container
+    }
+
+    /// A failed row now names WHEN it will be tried again.
+    ///
+    /// Before 2026-07-29 a row that had burned its three attempts went to `awaiting_operator`, and the
+    /// subtitle read "awaiting operator upload — no automated source" — which was, on the day it was
+    /// written, true, and which the redesign makes a lie in both halves: there IS an automated source,
+    /// and the system will chase it on its own. Backoff means nothing is terminal, so the honest
+    /// subtitle is a date.
+    [Fact]
+    public async Task AFailedGapNamesItsNextAttempt()
+    {
+        _source.Master.Add(Master("Nd", "oxide", "1313-97-9", "failed", attempts: 3,
+            nextAttempt: "2026-08-15T03:00:00Z"));
+
+        var row = Assert.Single(await Provider.ListAsync());
+
+        Assert.Contains("2026-08-15", row.Subtitle);
+        Assert.Contains("3 fetch attempt", row.Subtitle);   // the diagnostic survives as a diagnostic
+        Assert.DoesNotContain("awaiting operator", row.Subtitle);
+    }
+
+    /// The scheduler is the source of the date, and it may not have stamped one yet (a row failed by
+    /// an older build, or written between the migration and the first sweep). Saying "soon" is not a
+    /// hedge — it is the only true thing available, and inventing a date would be worse.
+    [Fact]
+    public async Task AFailedGapWithNoScheduledRetrySaysSo()
+    {
+        _source.Master.Add(Master("Nd", "oxide", "1313-97-9", "failed", attempts: 1));
+
+        var row = Assert.Single(await Provider.ListAsync());
+
+        Assert.Contains("1 fetch attempt", row.Subtitle);
+        Assert.DoesNotContain("next attempt ", row.Subtitle);
+    }
+
+    /// `awaiting_operator` is deleted, and a migration rewrites the rows that hold it — but a read can
+    /// land before that migration runs, and the catalog must not render a raw status token at the
+    /// operator. The legacy branch is kept deliberately, and it now tells the truth about the new
+    /// world: the sweep will retry this on its own.
+    [Fact]
+    public async Task ALegacyAwaitingOperatorRowStillRendersSensibly()
+    {
+        _source.Master.Add(Master("Nd", "oxide", "1313-97-9", "awaiting_operator", attempts: 3));
+
+        var row = Assert.Single(await Provider.ListAsync());
+
+        Assert.DoesNotContain("awaiting_operator", row.Subtitle);           // never the raw token
+        Assert.DoesNotContain("no automated source", row.Subtitle);         // no longer true
+        Assert.Contains("retry", row.Subtitle, StringComparison.OrdinalIgnoreCase);
     }
 
     // A substance that HAS a sheet must not also appear as a gap; otherwise every fetched substance

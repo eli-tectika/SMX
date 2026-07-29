@@ -17,6 +17,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
 {
     private readonly InMemoryRecordStore _store = new();
     private readonly InMemoryKnowledgeStore _knowledge = new();
+    private readonly InMemorySdsCorpusReader _corpus = new();
     private readonly HttpClient _client;
     private const string P = "proj-vp-1";
 
@@ -25,6 +26,9 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         {
             s.AddSingleton<IRecordStore>(_store);
             s.AddSingleton<IKnowledgeStore>(_knowledge);
+            // MSDS-before-order now asks the SDS corpus whether a validated, indexed sheet exists —
+            // not whether a human signed one (design 2026-07-29, D9). The corpus IS the gate's input.
+            s.AddSingleton<ISdsCorpusReader>(_corpus);
         })).CreateClient();
 
     // ---- fixtures --------------------------------------------------------------------------------------
@@ -525,12 +529,11 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         await _store.UpsertDecisionAsync(decision);
     }
 
-    private async Task SeedReviewedMsdsAsync(string cas) =>
-        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc
-        {
-            Id = KnowledgeIds.Msds(cas), Cas = cas, Supplier = "Acme Chemicals", Version = "3.1",
-            Date = "2026-05-01", ReviewStatus = MsdsReviewStatus.Reviewed, ReviewedAt = "2026-07-15T00:00:00Z",
-        });
+    /// A validated, indexed sheet in the corpus — and nothing else. No signature, because there is no
+    /// longer such a thing: the gate's predicate is "a sheet exists", not "a human signed one".
+    private void GivenSheetInCorpus(string cas) =>
+        _corpus.Sheets.Add(new SdsCorpusSheet(cas, "Acme Chemicals", "product", "2026-05-01",
+            "2026-05-02T00:00:00Z"));
 
     [Fact]
     public async Task PostOrder_BeforeTheVpGate_Is422()
@@ -538,7 +541,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         // Procurement is a state flag (§4) and only the close dispatch releases it — an order before the
         // VP signature is an order for a product nobody approved.
         await SeedAwaitingVpAsync();   // decision exists, procurement still unreleased
-        await SeedReviewedMsdsAsync("cas-zr");
+        GivenSheetInCorpus("cas-zr");
 
         var res = await _client.PostAsync($"/projects/{P}/orders/cas-zr", null);
 
@@ -547,18 +550,28 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         Assert.Empty((await _store.GetDecisionAsync(P))!.Procurement.OrderedCas);
     }
 
+    /// D8/D9: the signature is gone, the gate is not. A sheet that was fetched and indexed but that no
+    /// human ever countersigned releases the order — because what protects the person opening the drum is
+    /// the existence of the safety sheet, not a checkbox somebody ticked next to it.
     [Fact]
-    public async Task PostOrder_WithoutAReviewedMsds_Is422()
+    public async Task PostOrder_ReleasesOnAValidatedSheetWithNoSignature()
     {
-        // THE hard precondition (§4: MSDS-before-order gates an individual order). No MsdsRegistryDoc, or
-        // one still unreviewed — either way the order must not exist. 422 names the cas and the rule.
         await SeedReleasedAsync();
-        // an entry EXISTS but nobody signed the review — currency is the operator's signature, not the file
-        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc
-        {
-            Id = KnowledgeIds.Msds("cas-zr"), Cas = "cas-zr", Supplier = "Acme Chemicals", Version = "3.1",
-            Date = "2026-05-01", ReviewStatus = MsdsReviewStatus.Unreviewed,
-        });
+        GivenSheetInCorpus("cas-zr");            // fetched + indexed, never signed
+
+        var res = await _client.PostAsync($"/projects/{P}/orders/cas-zr", null);
+
+        Assert.Equal(HttpStatusCode.Accepted, res.StatusCode);
+        Assert.Equal(["cas-zr"], (await _store.GetDecisionAsync(P))!.Procurement.OrderedCas);
+    }
+
+    [Fact]
+    public async Task PostOrder_WithNoSheetAtAll_Is422()
+    {
+        // THE hard precondition survives (§4, and D9 of the 2026-07-29 design): MSDS-before-order still
+        // gates an individual order. Only its predicate moved — from "signed" to "exists". An empty
+        // corpus means nobody has a safety sheet for this substance, so the order must not exist.
+        await SeedReleasedAsync();
 
         var res = await _client.PostAsync($"/projects/{P}/orders/cas-zr", null);
 
@@ -566,9 +579,18 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         var body = await res.Content.ReadAsStringAsync();
         Assert.Contains("cas-zr", body);
         Assert.Contains("MSDS-before-order", body);
+        Assert.Contains("no safety sheet", body);
+        // The 422 is actionable for the first time: fetching is now something the operator can do.
+        Assert.Contains("fetch", body);
         Assert.Empty((await _store.GetDecisionAsync(P))!.Procurement.OrderedCas);
 
-        // and an entirely ABSENT registry entry blocks identically
+        // A governance row with linked projects is NOT a sheet — the overlay never satisfied the gate
+        // and must not start to now that the signature it used to carry is gone.
+        await _knowledge.UpsertMsdsAsync(new MsdsRegistryDoc
+        {
+            Id = KnowledgeIds.Msds("cas-y"), Cas = "cas-y", Supplier = "Acme Chemicals", Version = "3.1",
+            Date = "2026-05-01", LinkedProjects = [P],
+        });
         var res2 = await _client.PostAsync($"/projects/{P}/orders/cas-y", null);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, res2.StatusCode);
         Assert.Empty((await _store.GetDecisionAsync(P))!.Procurement.OrderedCas);
@@ -577,9 +599,9 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task PostOrder_ForACasOutsideTheConfirmedCodes_Is422()
     {
-        // You cannot order what the VP did not sign — even with a perfectly reviewed MSDS on file.
+        // You cannot order what the VP did not sign — even with a perfectly good MSDS on file.
         await SeedReleasedAsync();
-        await SeedReviewedMsdsAsync("cas-ba");   // reviewed, but in NO confirmed code
+        GivenSheetInCorpus("cas-ba");   // a real sheet, but in NO confirmed code
 
         var res = await _client.PostAsync($"/projects/{P}/orders/cas-ba", null);
 
@@ -589,10 +611,10 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     }
 
     [Fact]
-    public async Task PostOrder_WithReviewedMsds_RecordsTheOrder()
+    public async Task PostOrder_WithASheetOnFile_RecordsTheOrder()
     {
         await SeedReleasedAsync();
-        await SeedReviewedMsdsAsync("cas-zr");
+        GivenSheetInCorpus("cas-zr");
 
         var res = await _client.PostAsync($"/projects/{P}/orders/cas-zr", null);
         Assert.Equal(HttpStatusCode.Accepted, res.StatusCode);

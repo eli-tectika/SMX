@@ -137,7 +137,10 @@ export function Finder() {
                 title: m.cas,
                 sub: `${m.supplier} · v${m.version} · ${m.date.slice(0, 10)}`,
                 to: '/msds-registry',
-                badge: m.reviewStatus,
+                // The row's own summary of whether it blocks an order. A governance-only row
+                // carries no documentId because no sheet exists behind it (design 2026-07-29, D8:
+                // the gate asks the corpus for a sheet, not the operator for a signature).
+                badge: m.documentId ? 'on file' : 'no sheet',
               });
             }
           }

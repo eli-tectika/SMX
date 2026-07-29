@@ -8,10 +8,16 @@ public sealed record SdsSheetRow(
     string IngestedUtc, string? SupersededBy, string? MasterListId);
 
 /// A row of `sds-master-list` (PK /element) — a substance the system knows it needs a sheet for.
-/// Status is pending | fetched | failed | awaiting_operator (SdsStatus in the Functions app).
+/// Status is pending | fetched | failed (SdsStatus in the Functions app). `awaiting_operator` was
+/// deleted on 2026-07-29 (D5) and a migration rewrites the rows that carried it; a read can still
+/// land before that migration runs, which is why the catalog keeps a branch for it.
+///
+/// `NextAttemptUtc` is nullable because it is the SCHEDULER's stamp, not the row's identity: a row
+/// written before the backoff existed, or between the migration and the first sweep, genuinely has
+/// no scheduled retry, and the surface must say that rather than invent one.
 public sealed record SdsMasterRow(
     string Id, string Element, string Form, string Cas, string Status,
-    string? LastAttemptUtc, int AttemptCount);
+    string? LastAttemptUtc, int AttemptCount, string? NextAttemptUtc = null);
 
 /// A row of `reg-state` (PK /sourceId, id = docId) — per-document change-detection state.
 public sealed record RegDocRow(

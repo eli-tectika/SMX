@@ -23,8 +23,8 @@ const usd = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFr
  * time (Cost has no such concept at all). Drawing either would have been the exact failure this screen
  * exists to prevent.
  *
- * The MSDS registry is joined in on CAS. Spec §5 makes a current, reviewed sheet a hard precondition for
- * an order, and this is the screen where the order is decided — a substance whose sheet is missing should
+ * The MSDS registry is joined in on CAS. Spec §5 makes a safety sheet a hard precondition for
+ * an order — the sheet's EXISTENCE, since the 2026-07-29 redesign deleted the review signature — and this is the screen where the order is decided — a substance whose sheet is missing should
  * say so here, not only on a registry page nobody is looking at. Note the system does not itself block
  * procurement (that gate is not built): this states the rule against the real record.
  */
@@ -86,7 +86,7 @@ export function Cost({ project }: ScreenProps) {
   /** The sheet for a substance, by CAS — the record's own key, not a reconstructed display string. */
   const sheetFor = (cas: string) => sheets.find((s) => s.cas === cas);
   // Unknown when the registry did not load: we only assert "not orderable" from a sheet we actually read.
-  const orderable = (cas: string) => (sheetsFailed ? true : sheetFor(cas)?.reviewStatus === 'reviewed');
+  const orderable = (cas: string) => (sheetsFailed ? true : Boolean(sheetFor(cas)?.documentId));
 
   if (phase === 'loading') return <Loading what="the cost audit" />;
 
@@ -152,7 +152,7 @@ export function Cost({ project }: ScreenProps) {
           label="Not orderable"
           value={blocked}
           tone={blocked > 0 ? 'danger' : undefined}
-          hint="no reviewed MSDS"
+          hint="no MSDS on file"
         />
       </div>
 
@@ -161,7 +161,7 @@ export function Cost({ project }: ScreenProps) {
           <i className="ti ti-alert-triangle" aria-hidden="true" />
           <div>
             The MSDS registry did not load — the safety-sheet status below is <b>unknown</b>, not cleared.
-            Spec §5 requires a reviewed sheet before ordering; check the registry directly.
+            Spec §5 requires a safety sheet before ordering; check the registry directly.
           </div>
         </div>
       )}
@@ -189,7 +189,9 @@ function SubstanceAudit({
   sheetUnknown: boolean;
 }) {
   const q = audit.bestQuote;
-  const reviewed = sheetUnknown || sheet?.reviewStatus === 'reviewed';
+  // The gate's predicate since 2026-07-29 (D9): a validated, indexed sheet EXISTS. A row with
+  // no documentId has no corpus sheet behind it and is what the order endpoint's 422 refuses.
+  const onFile = sheetUnknown || Boolean(sheet?.documentId);
 
   return (
     <div style={{ marginBottom: 'var(--s5)' }}>
@@ -198,10 +200,10 @@ function SubstanceAudit({
         hint={audit.cas}
         actions={
           <>
-            {!reviewed && (
-              <span className="chip x" title="Spec §5 — a reviewed MSDS is a hard precondition for an order">
+            {!onFile && (
+              <span className="chip x" title="Spec §5 — a safety data sheet is a hard precondition for an order">
                 <i className="ti ti-file-alert" aria-hidden="true" />
-                &nbsp;{sheet ? `MSDS ${sheet.reviewStatus}` : 'no MSDS on file'}
+                &nbsp;no MSDS on file
               </span>
             )}
             {audit.risks.map((r) => (
@@ -259,21 +261,13 @@ function SubstanceAudit({
         </div>
       </div>
 
-      {!reviewed && (
+      {!onFile && (
         <div className="banner danger" style={{ margin: '8px 0 0' }}>
           <i className="ti ti-file-alert" aria-hidden="true" />
           <div>
-            <b>Not orderable yet.</b> Spec §5 requires a reviewed safety data sheet before an order.{' '}
-            {sheet ? (
-              <>
-                The sheet for <span className="data">{audit.cas}</span> is <b>{sheet.reviewStatus}</b>, not
-                reviewed.
-              </>
-            ) : (
-              <>
-                No sheet is on file for <span className="data">{audit.cas}</span>.
-              </>
-            )}{' '}
+            <b>Not orderable yet.</b> Spec §5 requires a safety data sheet before an order, and none
+            has been obtained for <span className="data">{audit.cas}</span>. Fetching one is now
+            something you can do from the registry.{' '}
             <Link to="/msds-registry">Open the MSDS registry →</Link>
           </div>
         </div>

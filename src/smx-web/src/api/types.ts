@@ -797,7 +797,8 @@ export interface VpDeterminationRequest {
    These three surfaces rendered fixture data behind a MockBadge, on the stated grounds
    that the backend had no endpoint for them. That has not been true for some time:
    `KnowledgeEndpoints.cs` serves GET /marker-library, /learned-conclusions and
-   /msds-registry — each taking a `?search=` parameter — plus POST /msds-registry/{cas}/review.
+   /msds-registry — each taking a `?search=` parameter — plus POST /msds/{cas}/fetch and
+   POST /msds/{cas}/upload, which acquire a safety sheet rather than sign one off.
 
    Mirrors the C# records in src/Smx.Domain/Records/.
    --------------------------------------------------------------------------- */
@@ -850,6 +851,14 @@ export interface LearnedConclusion {
 /**
  * MsdsRegistryRow — the governance layer that gates procurement, composed at read time over the
  * SDS corpus (`KnowledgeEndpoints.cs`). Everything but `documentId` is the stored governance doc.
+ *
+ * `reviewStatus` / `reviewedAt` are gone (design 2026-07-29, D8). MSDS-before-order survives — an
+ * order still cannot proceed without a safety sheet — but its predicate is now *a validated,
+ * indexed sheet exists*, which is a fact of the corpus. Reading it off a signature the operator had
+ * to remember to record made the gate depend on the clerical act rather than on the document, and
+ * left 40 substances stuck behind a checkbox nobody could tick.
+ *
+ * Which means the one thing this row now says about procurement is whether it has a `documentId`.
  */
 export interface MsdsEntry {
   id: string;
@@ -857,28 +866,52 @@ export interface MsdsEntry {
   supplier: string;
   version: string;
   date: string;
-  reviewStatus: string;
-  reviewedAt?: string | null;
   linkedProjects: string[];
   /**
    * The `sds` document id of the corpus sheet this row was composed from — served, never derived
    * here. Absent for a governance-only row (manual/legacy), which has no sheet behind it and so
-   * nothing to open.
+   * nothing to open — and which is exactly the row the order gate now refuses.
    */
   documentId?: string | null;
 }
 
+/* ---------------------------------------------------------------------------
+   SDS acquisition — `POST /msds/{cas}/fetch` and `POST /msds/{cas}/upload`.
+   Mirrors src/Smx.Domain/Tools/ISdsAcquisition.cs.
+   --------------------------------------------------------------------------- */
+
+/** One candidate the fetch tried, and what became of it. */
+export interface SdsAttempt {
+  url: string;
+  supplier: string;
+  outcome: string;
+}
+
 /**
- * What signing an MSDS review answers with: a receipt, not a row.
+ * What a fetch answers with.
  *
- * `POST /msds-registry/{cas}/review` returns only what the signature changed. Typing it as a
- * whole MsdsEntry invited callers to substitute it for one, which silently dropped the supplier,
- * the revision date and the sheet link from a row that had just been signed.
+ * `unavailable` is an ANSWER, not an error — the request succeeded and the truthful result is that
+ * no sheet could be obtained right now. `attempted` is the point of the whole contract: the
+ * operator is owed what was tried and why each candidate failed, not merely that it did not work.
  */
-export interface MsdsReviewReceipt {
-  cas: string;
-  reviewStatus: string;
-  reviewedAt?: string | null;
+export interface SdsEnsureResult {
+  status: 'already-had' | 'fetched' | 'unavailable';
+  registryId?: string | null;
+  supplier?: string | null;
+  revisionDate?: string | null;
+  reason?: string | null;
+  attempted?: SdsAttempt[] | null;
+}
+
+/**
+ * What an upload answers with. `ok: false` is the validator's verdict on the file — an upload is a
+ * fallback, never an override, so a document that is not a safety sheet for this substance does not
+ * become one by arriving through a file picker.
+ */
+export interface SdsUploadResult {
+  ok: boolean;
+  reason?: string | null;
+  registryId?: string | null;
 }
 
 /* ---------------------------------------------------------------------------
@@ -902,6 +935,14 @@ export interface DocumentSummary {
   contentType: string | null;
   officialDate: string | null;
   ingestedUtc: string | null;
+  /**
+   * The substance an `sds` row is about — served by the backend, never scraped out of `subtitle`.
+   *
+   * A gap row now carries an action ("fetch this sheet"), and the action needs a CAS. Parsing one
+   * out of the subtitle is the mistake the citation chips deliberately refuse to make: it is right
+   * until the wording changes, and then it fetches a sheet for the wrong substance.
+   */
+  cas?: string | null;
 }
 
 export interface ProvenanceField {
