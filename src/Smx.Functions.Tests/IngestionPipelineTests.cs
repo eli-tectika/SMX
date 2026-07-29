@@ -15,7 +15,7 @@ public class IngestionPipelineTests
         bronze = new FakeBronzeStore(); reg = new InMemoryRegistryStore(); search = new FakeSearchClient();
         domains = new HashSet<string> { "sigmaaldrich.com" };
         return new IngestionPipeline(bronze, new SdsValidator(10), new TextExtractor(), new GhsChunker(),
-            new FakeEmbedder(), search, new RegistryRepo(reg), domains, new SdsOptions());
+            new FakeEmbedder(), search, new RegistryRepo(reg), new SdsOptions());
     }
 
     private static SdsMetadata Meta() => new("1310-73-2", "Sigma-Aldrich", "Sodium hydroxide",
@@ -26,7 +26,7 @@ public class IngestionPipelineTests
     {
         var pipe = Build(out var bronze, out var reg, out var search, out _);
         var pdf = File.ReadAllBytes("Resources/sample_sds.txt");
-        var r = await pipe.IngestAsync(pdf, Meta(), "sigmaaldrich.com", default);
+        var r = await pipe.IngestAsync(pdf, Meta(), default);
 
         Assert.True(r.Ok);
         Assert.Single(bronze.Blobs);
@@ -43,7 +43,7 @@ public class IngestionPipelineTests
     {
         var pipe = Build(out _, out var reg, out var search, out _);
         var pdf = File.ReadAllBytes("Resources/sample_sds.txt");
-        var r = await pipe.IngestAsync(pdf, Meta() with { Cas = "7440-02-0" }, "sigmaaldrich.com", default);
+        var r = await pipe.IngestAsync(pdf, Meta() with { Cas = "7440-02-0" }, default);
         Assert.False(r.Ok);
         Assert.Empty(search.Pushed);
         Assert.Empty(reg.Items);

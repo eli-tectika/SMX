@@ -67,8 +67,8 @@ public sealed class SdsSweep
                     if (fetched is null) continue;
 
                     var meta = new SdsMetadata(entry.Cas, candidate.Supplier, entry.Form, nowUtc[..10],
-                        null, null, candidate.Url.ToString(), entry.Id);
-                    var result = await _pipeline.IngestAsync(fetched.Content, meta, candidate.Domain, ct);
+                        null, null, candidate.Url.ToString(), entry.Id, candidate.Strategy);
+                    var result = await _pipeline.IngestAsync(fetched.Content, meta, ct);
                     if (result.Ok) { ingested = true; break; }
                     _log.LogInformation("Candidate {Url} rejected: {Reason}", candidate.Url, result.Reason);
                 }

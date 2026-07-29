@@ -42,11 +42,7 @@ public class NatEgressClientTests
     public async Task Fetch_returns_null_within_the_fetch_timeout_when_the_body_read_tarpits()
     {
         var opts = new SdsOptions { FetchTimeoutSeconds = 1 };
-        var allow = AllowlistProvider.FromJson("""
-          [ { "supplier":"S","domain":"tarpit.example","priority":1,"strategy":"casTemplate",
-              "sdsUrlTemplate":"https://tarpit.example/{cas}.pdf" } ]
-        """);
-        var client = new NatEgressClient(new HttpClient(new TarpitHandler()), allow, opts,
+        var client = new NatEgressClient(new HttpClient(new TarpitHandler()), opts,
             NullLogger<NatEgressClient>.Instance);
 
         var fetch = client.FetchAsync(new Uri("https://tarpit.example/1310-73-2.pdf"), default);
@@ -54,5 +50,72 @@ public class NatEgressClientTests
 
         Assert.Same(fetch, winner);           // fetch must complete on its own, not hang
         Assert.Null(await fetch);             // and report a miss, not throw
+    }
+
+    // ---- what the allowlist gate was replaced by ----
+
+    private sealed class OkHandler : HttpMessageHandler
+    {
+        public int Calls;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Interlocked.Increment(ref Calls);
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                RequestMessage = request,
+                Content = new ByteArrayContent("%PDF-1.4 pretend sheet"u8.ToArray()),
+            });
+        }
+    }
+
+    private static NatEgressClient Client(OkHandler handler, params string[] denylist)
+        => new(new HttpClient(handler), new SdsOptions { Denylist = denylist }, NullLogger<NatEgressClient>.Instance);
+
+    // THE change: a host nobody curated is now fetched. Coverage used to equal the size of a
+    // hand-maintained dictionary; correctness is carried by SdsValidator reading the document instead.
+    [Fact]
+    public async Task An_uncurated_host_is_fetched()
+    {
+        var handler = new OkHandler();
+        Assert.NotNull(await Client(handler).FetchAsync(new Uri("https://never-curated.example/x.pdf"), default));
+        Assert.Equal(1, handler.Calls);
+    }
+
+    // Rails that survive, because they are robustness rather than policy. Each asserts the request was
+    // never made — refusing after egress would defeat the point.
+    [Fact]
+    public async Task Plain_http_is_refused()
+    {
+        var handler = new OkHandler();
+        Assert.Null(await Client(handler).FetchAsync(new Uri("http://example.com/x.pdf"), default));
+        Assert.Equal(0, handler.Calls);
+    }
+
+    [Fact]
+    public async Task A_denylisted_host_is_refused()
+    {
+        var handler = new OkHandler();
+        Assert.Null(await Client(handler, "tarpit.example")
+            .FetchAsync(new Uri("https://tarpit.example/x.pdf"), default));
+        Assert.Equal(0, handler.Calls);
+    }
+
+    // A denylist entry covers its subdomains, or evading it would be a matter of prefixing a label.
+    [Fact]
+    public async Task A_denylisted_hosts_subdomains_are_refused_too()
+    {
+        var handler = new OkHandler();
+        Assert.Null(await Client(handler, "tarpit.example")
+            .FetchAsync(new Uri("https://cdn.tarpit.example/x.pdf"), default));
+        Assert.Equal(0, handler.Calls);
+    }
+
+    // ...but it must not swallow a host that merely ENDS with the same letters.
+    [Fact]
+    public async Task A_lookalike_host_is_not_denylisted()
+    {
+        var handler = new OkHandler();
+        Assert.NotNull(await Client(handler, "tarpit.example")
+            .FetchAsync(new Uri("https://nottarpit.example/x.pdf"), default));
     }
 }

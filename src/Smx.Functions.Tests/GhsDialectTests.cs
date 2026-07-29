@@ -33,7 +33,7 @@ public class GhsDialectTests
     public void Validator_accepts_numbered_dot_dialect()
     {
         var allow = (IReadOnlySet<string>)new HashSet<string> { "fishersci.com" };
-        var r = new SdsValidator(10).Validate(NumberedDotSds(), "1313-97-9", "fishersci.com", allow);
+        var r = new SdsValidator(10).Validate(NumberedDotSds(), "1313-97-9");
         Assert.True(r.Ok, r.Reason);
     }
 
@@ -55,7 +55,7 @@ public class GhsDialectTests
         var text = new PdfTextExtractor().Extract(pdf);
 
         var allow = (IReadOnlySet<string>)new HashSet<string> { "fishersci.com" };
-        var v = new SdsValidator(10).Validate(text, "1313-97-9", "fishersci.com", allow);
+        var v = new SdsValidator(10).Validate(text, "1313-97-9");
         Assert.True(v.Ok, v.Reason);
 
         var chunks = new GhsChunker().Chunk(text);

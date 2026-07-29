@@ -22,7 +22,8 @@ public sealed record MasterListEntry(
 public sealed record RegistryPointer(
     string Id, string Cas, string Supplier, string ProductName, string RevisionDate,
     string? Region, string? Language, string SourceUrl, string BlobPath, bool Indexed,
-    IReadOnlyList<string> IndexDocIds, string IngestedUtc, string? SupersededBy, string MasterListId);
+    IReadOnlyList<string> IndexDocIds, string IngestedUtc, string? SupersededBy, string MasterListId,
+    string? SourceStrategy = null);
 
 public sealed record SdsChunk(
     string Id, string Cas, string Supplier, string ProductName, string RevisionDate,
@@ -36,11 +37,15 @@ public sealed record AllowlistEntry(
 
 public sealed record SubstanceKey(string Element, string Form, string Cas);
 
-public sealed record SourceCandidate(string Supplier, string Domain, Uri Url);
+// Strategy records HOW this candidate was found (staticMap / productLookup / casTemplate /
+// webDiscovery). With the domain allowlist no longer gating egress, this is what keeps a curated hit
+// and a discovered hit distinguishable on the record forever after.
+public sealed record SourceCandidate(string Supplier, string Domain, Uri Url, string Strategy = "");
 
 public sealed record SdsMetadata(
     string Cas, string Supplier, string ProductName, string RevisionDate,
-    string? Region, string? Language, string SourceUrl, string MasterListId);
+    string? Region, string? Language, string SourceUrl, string MasterListId,
+    string? SourceStrategy = null);
 
 public sealed record EgressResult(byte[] Content, string ContentType, Uri FinalUrl);
 

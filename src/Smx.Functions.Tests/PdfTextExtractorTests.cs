@@ -13,8 +13,7 @@ public class PdfTextExtractorTests
         var pdf = File.ReadAllBytes("Resources/real-sds-nd2o3.pdf");
         var text = new PdfTextExtractor().Extract(pdf);
 
-        var result = new SdsValidator(10).Validate(
-            text, "1313-97-9", "chemblink.com", new HashSet<string> { "chemblink.com" });
+        var result = new SdsValidator(10).Validate(text, "1313-97-9");
 
         Assert.True(result.Ok, result.Reason);
     }

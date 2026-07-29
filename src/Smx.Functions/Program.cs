@@ -86,8 +86,7 @@ var host = new HostBuilder()
             sp.GetRequiredService<IBronzeStore>(), sp.GetRequiredService<SdsValidator>(),
             sp.GetRequiredService<IPdfTextExtractor>(), sp.GetRequiredService<GhsChunker>(),
             sp.GetRequiredService<IEmbedder>(), sp.GetRequiredService<ISdsSearchClient>(),
-            sp.GetRequiredService<RegistryRepo>(),
-            sp.GetRequiredService<AllowlistProvider>().Domains, opts));
+            sp.GetRequiredService<RegistryRepo>(), opts));
 
         // Egress — real (NAT) or dry-run. Only SdsSweep consumes IEgressClient.
         if (opts.DryRun)
@@ -97,7 +96,7 @@ var host = new HostBuilder()
             services.AddHttpClient();
             services.AddSingleton<IEgressClient>(sp => new NatEgressClient(
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
-                sp.GetRequiredService<AllowlistProvider>(), opts,
+                opts,
                 sp.GetRequiredService<ILogger<NatEgressClient>>()));
         }
 

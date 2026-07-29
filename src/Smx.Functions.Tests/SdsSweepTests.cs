@@ -29,9 +29,8 @@ public class SdsSweepTests
         var egress = DryRunEgressClient.Default(cannedPdf);
 
         var search = new FakeSearchClient(); var reg = new InMemoryRegistryStore();
-        var domains = allow.Domains;
         var pipe = new IngestionPipeline(new FakeBronzeStore(), new SdsValidator(10), new TextExtractor(),
-            new GhsChunker(), new FakeEmbedder(), search, new RegistryRepo(reg), domains, new SdsOptions());
+            new GhsChunker(), new FakeEmbedder(), search, new RegistryRepo(reg), new SdsOptions());
 
         var sweep = new SdsSweep(mlRepo, resolver, egress, pipe, new SdsOptions(), NullLogger<SdsSweep>.Instance);
         await sweep.RunSweepAsync("2026-07-07T00:00:00Z", default);
@@ -74,7 +73,7 @@ public class SdsSweepTests
         var reg = new InMemoryRegistryStore();
         var pipe = new IngestionPipeline(new FakeBronzeStore(), new SdsValidator(10), new BoomExtractor(),
             new GhsChunker(), new FakeEmbedder(), new FakeSearchClient(), new RegistryRepo(reg),
-            allow.Domains, new SdsOptions());
+            new SdsOptions());
         return (new MasterListRepo(store), store, pipe, reg, allow);
     }
 
