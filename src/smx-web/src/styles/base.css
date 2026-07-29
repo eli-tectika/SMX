@@ -596,8 +596,14 @@ textarea {
      rule's own 0.07em tracking) needs ~64.6px — the same as the box, i.e. no margin at
      all. --rail-w is already 76px and .rail has no horizontal padding, so the rail was
      quietly reserving 12px this item never used; spending it here restores real headroom
-     without widening anything outside this rule. */
-  width: var(--rail-w);
+     without widening anything outside this rule.
+
+     Minus one hairline: .rail's border-box IS --rail-w, but it carries a 1px border-right,
+     so the lane its children actually sit in is --rail-w minus that. A bare var(--rail-w)
+     here makes the item 1px wider than the space it occupies — inert in practice, because
+     flex-shrink absorbs it, but wrong in a way that would compound if anything nested
+     inside ever measured against it. */
+  width: calc(var(--rail-w) - var(--hair));
   padding: 6px 0 5px;
   border-radius: var(--r2);
   color: rgba(255, 255, 255, 0.62);
