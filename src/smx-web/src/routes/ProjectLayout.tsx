@@ -3,6 +3,7 @@ import { AgentPanel } from '../components/AgentPanel';
 import { ErrorScreen, Loading } from '../components/Loading';
 import { NextAction } from '../components/shell/NextAction';
 import { ProjectHeader } from '../components/shell/ProjectHeader';
+import { StageErrorBoundary } from '../components/shell/StageErrorBoundary';
 import { StageStepper } from '../components/shell/StageStepper';
 import { WorkArea } from '../components/shell/WorkArea';
 import { Timeline } from '../components/timeline/Timeline';
@@ -62,7 +63,16 @@ export function ProjectLayout() {
   const Screen = def ? SCREENS[def.slug] : undefined;
   if (!def || !Screen) return <Navigate to={`/p/${projectId}/intake`} replace />;
 
-  const screen = <Screen project={state.project} refreshProject={refresh} />;
+  /*
+   * Keyed by stage slug so a caught throw does not survive a navigation: without the key, React
+   * would reuse the same StageErrorBoundary instance (same `caught` state) across a stage change,
+   * leaving the operator stuck on the old error instead of seeing the new stage render.
+   */
+  const screen = (
+    <StageErrorBoundary key={def.slug} stageLabel={def.label}>
+      <Screen project={state.project} refreshProject={refresh} />
+    </StageErrorBoundary>
+  );
 
   /*
    * `background` gets null here, not its XRF form. The spec puts XrfEntry in this column — the

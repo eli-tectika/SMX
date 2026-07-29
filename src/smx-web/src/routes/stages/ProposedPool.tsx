@@ -41,6 +41,20 @@ export function ProposedPool({ projectId, hint }: { projectId: string; hint?: st
       </div>
     );
 
+  /*
+   * `GET /projects/{id}/pool` has been observed to come back list-shaped instead of a PoolDoc —
+   * a bare `[]` in place of `{ projectId, suggestions: [] }` — which used to call `.map` on
+   * `undefined` here and, uncaught, unmount the whole project shell around this one hint. This is
+   * the one runtime shape check in this file, not a general schema-validation layer: it exists to
+   * keep a malformed pool confined to its own region instead of taking the screen down with it.
+   */
+  if (!Array.isArray(pool.suggestions))
+    return (
+      <div className="tiny muted" role="alert">
+        <i className="ti ti-alert-triangle" aria-hidden="true" /> Could not read the proposed pool.
+      </div>
+    );
+
   const components = [...new Set(pool.suggestions.map((s) => s.component))];
 
   return (

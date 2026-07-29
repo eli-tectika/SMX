@@ -41,6 +41,28 @@ describe('ProposedPool', () => {
     );
   });
 
+  /**
+   * The verified bug: `GET /projects/{id}/pool` returning a bare list instead of
+   * `{ projectId, suggestions: [] }` used to make this component call `.map` on `undefined` and
+   * take the whole screen down with it. It now degrades to a message inside its own region.
+   */
+  it('degrades to a message when the payload is a bare list, not a PoolDoc', async () => {
+    vi.mocked(api.getPool).mockResolvedValue([] as never);
+    render(<ProposedPool projectId="proj-1" />);
+    await waitFor(() =>
+      expect(screen.getByText(/could not read the proposed pool/i)).toBeInTheDocument(),
+    );
+  });
+
+  /** Same failure mode, one field short: an object with no `suggestions` array at all. */
+  it('degrades to a message when suggestions is missing from the payload', async () => {
+    vi.mocked(api.getPool).mockResolvedValue({ projectId: 'proj-1' } as never);
+    render(<ProposedPool projectId="proj-1" />);
+    await waitFor(() =>
+      expect(screen.getByText(/could not read the proposed pool/i)).toBeInTheDocument(),
+    );
+  });
+
   /** An uncited suggestion is visible as uncited — execution-core-design §9 flags rather than fails. */
   it('flags a suggestion that rests on no retrieved source', async () => {
     vi.mocked(api.getPool).mockResolvedValue({
