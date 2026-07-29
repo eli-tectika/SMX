@@ -24,6 +24,29 @@ export interface MatrixSummary {
   flagged: string[];
 }
 
+/**
+ * Cell keys whose RECORD is defective — inconsistent, or carrying a dimension that cites nothing.
+ *
+ * A subset of `flagged`, and deliberately a narrower one: a Fail, a Conditional or a
+ * low-confidence verdict is a weak ANSWER, which is the matrix doing its job. These are cells
+ * where the matrix contradicts itself or rests on nothing, which outranks any verdict in it — so
+ * the screen gives them their own queue, at the top.
+ *
+ * A function rather than another field on MatrixSummary: that interface is also built by hand in
+ * `blocking.test.ts` and consumed by `blocking.ts` and `useProjectsOverview.ts`, none of which
+ * asked for this, and a required field would make all three carry it.
+ */
+export function faultyCells(doc: MatrixDoc): string[] {
+  const keys: string[] = [];
+  for (const cell of Array.isArray(doc.cells) ? doc.cells : []) {
+    const dims = Array.isArray(cell.dimensions) ? cell.dimensions : [];
+    if (isInconsistent(cell) || dims.some((d) => !Array.isArray(d.citations) || d.citations.length === 0)) {
+      keys.push(`${cell.cas}|${cell.componentId}`);
+    }
+  }
+  return keys;
+}
+
 const emptyCounts = (): Record<VerdictStatus, number> => ({
   Pass: 0,
   Conditional: 0,
@@ -38,7 +61,9 @@ export function summarize(doc: MatrixDoc): MatrixSummary {
   let uncited = 0;
   let lowConfidence = 0;
 
-  for (const cell of doc.cells) {
+  // Typed as a list, not necessarily one on the wire. Read the doc through readMatrix (domain/
+  // matrix.ts) and this never fires; summarize still refuses to throw on a payload that skipped it.
+  for (const cell of Array.isArray(doc.cells) ? doc.cells : []) {
     counts[cell.overall] = (counts[cell.overall] ?? 0) + 1;
 
     const bad = isInconsistent(cell);
@@ -46,7 +71,7 @@ export function summarize(doc: MatrixDoc): MatrixSummary {
 
     let cellUncited = 0;
     let cellLow = 0;
-    for (const d of cell.dimensions) {
+    for (const d of Array.isArray(cell.dimensions) ? cell.dimensions : []) {
       if (d.citations.length === 0) cellUncited++;
       if (d.confidence < LOW_CONFIDENCE) cellLow++;
     }
@@ -61,9 +86,9 @@ export function summarize(doc: MatrixDoc): MatrixSummary {
 
   return {
     generatedAt: doc.generatedAt,
-    rows: doc.rows.length,
-    cols: doc.columns.length,
-    cells: doc.cells.length,
+    rows: Array.isArray(doc.rows) ? doc.rows.length : 0,
+    cols: Array.isArray(doc.columns) ? doc.columns.length : 0,
+    cells: Array.isArray(doc.cells) ? doc.cells.length : 0,
     counts,
     inconsistent,
     uncited,

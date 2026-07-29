@@ -232,10 +232,40 @@
    attached, not viewport attached — so each shadow paints only while there is content on that
    side still to scroll to. Reach the true edge and the shadow goes; scroll back and it returns. */
 
+/* The wrapper is a grid item beside the evidence panel, and it contains a box far wider than
+   itself. Without this its automatic minimum size is the table's, so the TRACK grows to the full
+   table and the pane never scrolls — the artifact column overflows sideways instead, and the grid
+   stops giving width back when the agent column collapses. `min-width: 0` puts the horizontal
+   scroll where it belongs: inside the pane. */
+.mxscroll {
+  min-width: 0;
+}
+
 .mxscroll__pane {
   overflow-x: auto;
   overflow-y: auto;
-  max-height: 70vh;
+  /* The height budget.
+
+     This was `70vh`, from when the matrix sat on a page that scrolled with the whole window. It
+     no longer does: the pane is inside `.work__artifact`, which is itself a scroller bounded to
+     what the project header and the stage stepper leave of the viewport. 70% of the VIEWPORT is
+     therefore measured against the wrong box — on a 1280x800 laptop it asks for 560px inside a
+     column of roughly 690px that also has to hold the faults block, the section header, the
+     verdict ribbon, the review tally and the legend. The result is two nested scrollers where the
+     OUTER one pushes the pane's own sticky header out of sight, which is exactly the guarantee
+     the sticky header exists to give.
+
+     So the budget is what the viewport leaves after the frame around it: ~110px of header and
+     stepper, 40px of artifact padding, and ~230px for this screen's own furniture above and below
+     the grid. Hence 380. The 280px floor is the more important half — below it the pane is a slit
+     showing four rows, and an operator who cannot see the shape of the matrix scrolls by feel;
+     past that point letting the artifact column scroll instead is the better trade.
+
+     `overflow-y` is not optional here and cannot simply be dropped to let the column scroll: a box
+     with `overflow-x: auto` computes `overflow-y: visible` to `auto` anyway, so the pane is a
+     scroll container in both axes whatever we ask for, and a scroll container with no height bound
+     grows to its content. */
+  max-height: max(280px, calc(100vh - 380px));
   background:
     linear-gradient(to left, var(--surface-0) 30%, transparent) right center / 24px 100% no-repeat,
     linear-gradient(to top, var(--surface-0) 30%, transparent) bottom center / 100% 24px no-repeat,
