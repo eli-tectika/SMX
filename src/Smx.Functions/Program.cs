@@ -116,6 +116,11 @@ var host = new HostBuilder()
             sp.GetRequiredService<IEmbedder>(), sp.GetRequiredService<ISdsSearchClient>(),
             sp.GetRequiredService<RegistryRepo>(), opts));
 
+        // The one acquisition path. SdsSweep, EnsureSds and RunSdsSync all go through it, which is what
+        // makes "the timer did it" and "an agent asked for it" the same operation.
+        services.AddSingleton<Smx.Functions.Sds.Acquisition.SdsAcquirer>();
+        services.AddSingleton<Smx.Functions.Sds.Triggers.SdsSweep>();
+
         // Egress — real (NAT) or dry-run. Only SdsSweep consumes IEgressClient.
         if (opts.DryRun)
             services.AddSingleton<IEgressClient>(_ => DryRunEgressClient.Default(Array.Empty<byte>()));
