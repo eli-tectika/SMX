@@ -79,7 +79,6 @@
      --dock-w / --dock-rail-w went with the dock. The chat column's width is a fixed measure
      stated where it is used (styles/shell.css) rather than a token, because exactly one rule
      and its one breakpoint read it. */
-  --appnav-h: 41px; /* nav tier: 11px padding × 2 + ~17px line + 1px rule */
   --canvas-max: 1600px; /* a CEILING — a 3000px table is distance, not density */
 
   /* radii. Ceiling is 8px — above that a corner reads consumer-app, not instrument.
