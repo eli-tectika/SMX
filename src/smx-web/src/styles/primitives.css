@@ -34,10 +34,12 @@
 .data {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  /* NOT 1em. Plex Mono is optically larger and wider than Plex Sans at the same px, so
-     mono set inline at full size bulges out of the sentence around it and reads as a
-     mistake. ~0.94 is the optical match. */
-  font-size: 0.94em;
+  /* 0.94em is an optical match — IBM Plex Mono runs visually larger than Plex Sans at the
+     same nominal size, so mono set inline mid-sentence needs a nudge down to sit level.
+     But a MULTIPLIER can walk under the floor: composed with .tiny (12px) it computes to
+     11.28px, and the token layer would still report 12. max() keeps the optical correction
+     wherever there is room for it and refuses to go below the floor. */
+  font-size: max(var(--t-small), 0.94em);
   letter-spacing: 0;
 }
 
