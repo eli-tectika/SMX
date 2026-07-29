@@ -110,9 +110,15 @@
   --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
 
-  --t-micro: 10px;
-  --t-tiny: 11px;
-  --t-small: 12px;
+  /* The floor is 12px. Below it, text stops being read and starts being skimmed — and this app
+     put primary information (a blocking reason, a citation, a confidence) at 10 and 11px on
+     every screen, which is why nothing on them could read as more important than anything else.
+
+     --t-tiny survives for ONE case: a dense table cell, where the column header already carries
+     the meaning and the row is scanned rather than read. It is never correct for prose, a label,
+     a status, or a control. --t-micro is gone; there is no size below --t-tiny. */
+  --t-tiny: 11px; /* dense table cells only */
+  --t-small: 12px; /* the floor for all other UI text */
   --t-body: 13px;
   --t-lead: 15px;
   --t-title: 20px;

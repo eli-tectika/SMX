@@ -357,7 +357,7 @@
 }
 
 .mini-spine__labels span {
-  font-size: var(--t-micro);
+  font-size: var(--t-small);
   color: var(--text-muted);
   text-align: center;
   overflow: hidden;
@@ -581,7 +581,7 @@
 
 /* The review ledger is browser-local. It must say so wherever it is used. */
 .gatebox__ledger-note {
-  font-size: var(--t-micro);
+  font-size: var(--t-small);
   color: var(--text-warning);
   opacity: 0.75;
   margin-top: var(--s2);
@@ -751,7 +751,7 @@
 .finder__kind {
   flex: none;
   width: 58px;
-  font-size: var(--t-micro);
+  font-size: var(--t-small);
   text-transform: uppercase;
   letter-spacing: var(--track-eyebrow);
   color: var(--text-muted);
@@ -836,14 +836,14 @@
 
 .prov-rail { width: 220px; flex-shrink: 0; border-left: 0.5px solid var(--border); padding: var(--s3); }
 .prov-field { margin-bottom: var(--s3); }
-.prov-label { font-size: var(--t-micro); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 2px; }
+.prov-label { font-size: var(--t-small); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 2px; }
 .prov-value { font-size: var(--t-small); word-break: break-all; line-height: 1.4; }
 .prov-hash { font-family: var(--font-mono); color: var(--text-secondary); }
 
 .doc-text-pane { height: 70vh; overflow: auto; padding: var(--s3); border: 0.5px solid var(--border); border-radius: var(--r2); }
 .chunk { border: 0.5px solid var(--border); border-radius: var(--r1); padding: var(--s2) var(--s3); margin-bottom: var(--s2); }
 .chunk-cited { border-color: var(--border-accent); border-width: 1px; background: var(--bg-accent); }
-.chunk-head { display: flex; justify-content: space-between; font-size: var(--t-micro); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px; }
+.chunk-head { display: flex; justify-content: space-between; font-size: var(--t-small); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px; }
 .chunk p { margin: 0; font-size: var(--t-small); line-height: 1.55; }
 .chunk-anchor-note { font-size: var(--t-small); color: var(--text-accent); border-left: 3px solid var(--border-accent); padding: var(--s2) var(--s3); margin: 0 0 var(--s3); }
 .chunk-anchor-miss { color: var(--text-warning); border-left-color: var(--border-warning); }

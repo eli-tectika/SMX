@@ -387,8 +387,12 @@ strong {
 .secondary {
   color: var(--text-secondary);
 }
+/* `.tiny` is the app's most-used type class (162 call sites) and it was 11px — below the floor.
+   It now resolves to --t-small. The CLASS keeps its name for now on purpose: renaming it to
+   `.detail` would touch every screen in one commit and collide with the screen rewrites in
+   Plans 2 and 3, which are rewriting those lines anyway. The rename happens there, per screen. */
 .tiny {
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
 }
 .small {
   font-size: var(--t-small);
@@ -598,7 +602,7 @@ textarea {
 /* The same treatment the operator chip at the foot of this rail already uses. Making the
    nav items match it is why the rail reads as one component instead of two. */
 .rail__label {
-  font-size: var(--t-micro);
+  font-size: var(--t-small);
   text-transform: uppercase;
   letter-spacing: var(--track-eyebrow);
   line-height: 1.1;
@@ -631,7 +635,7 @@ textarea {
   font-size: 18px;
 }
 .rail__operator-label {
-  font-size: var(--t-micro);
+  font-size: var(--t-small);
   text-transform: uppercase;
   letter-spacing: var(--track-eyebrow);
 }
@@ -658,7 +662,7 @@ textarea {
 .findbtn kbd {
   margin-left: auto;
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-small);
   color: var(--text-muted);
   background: var(--surface-0);
   border: var(--hair) solid var(--border);
@@ -898,7 +902,7 @@ select:focus {
    — the same reason a CAS number is mono. */
 .kbd {
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-small);
   color: var(--text-muted);
   background: var(--surface-2);
   border: var(--hair) solid var(--border);
