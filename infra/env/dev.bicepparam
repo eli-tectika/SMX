@@ -61,5 +61,5 @@ param apiClientId = ''
 // BUMP THESE with every `build-images.sh` whose result you intend to keep. `swap-images.sh` is
 // deliberately NOT enough — it mutates the live Container App only, and the next deploy reconciles it
 // back to whatever this file says.
-param frontendImage = 'acrsmxdevlmxnb.azurecr.io/smx-frontend:961a98f'
-param backendImage = 'acrsmxdevlmxnb.azurecr.io/smx-backend:961a98f'
+param frontendImage = 'acrsmxdevlmxnb.azurecr.io/smx-frontend:5eb3d74'
+param backendImage = 'acrsmxdevlmxnb.azurecr.io/smx-backend:5eb3d74'

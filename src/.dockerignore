@@ -1,8 +1,25 @@
 # The .NET images (Smx.Backend) use this whole `src/` tree as their build
 # context. Without this, az acr build uploads every bin/obj/node_modules folder — build output the
 # multi-stage Dockerfiles restore fresh anyway. (The frontend keeps its own smx-web/.dockerignore.)
-**/bin/
-**/obj/
-**/node_modules/
-**/dist/
-**/.vs/
+#
+# NO TRAILING SLASHES, and keep every form below. `az acr build` does not use docker's matcher: it
+# walks FILES and fnmatches each relative path against these patterns, so `**/node_modules/` matched
+# the directory entry and nothing inside it — every file under it was still uploaded. That is not
+# theoretical. It is why a 6 MB source tree went up as a 190 MiB tarball and timed the deploy out
+# on `Read timed out. (read timeout=300)`. The bare forms are the ones smx-web/.dockerignore has
+# always used, and that build has always been small.
+bin
+obj
+node_modules
+dist
+.vs
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/.vs
+**/bin/*
+**/obj/*
+**/node_modules/*
+**/dist/*
+**/.vs/*
