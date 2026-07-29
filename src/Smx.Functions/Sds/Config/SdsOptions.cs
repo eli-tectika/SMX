@@ -16,6 +16,9 @@ public sealed class SdsOptions
     public string EmbeddingDeployment { get; init; } = "text-embedding-3-large";
     public string? UamiClientId { get; init; }
     public int FetchTimeoutSeconds { get; init; } = 30;
+    // How many due entries the sweep processes at once. Bounded on purpose: unbounded fan-out would
+    // open a socket per due entry and hit every supplier as a burst.
+    public int SweepConcurrency { get; init; } = 5;
     public int RevisionRecheckDays { get; init; } = 90;
     public bool DryRun { get; init; }
     public string AllowlistPath { get; init; } = "Sds/Config/suppliers.allowlist.json";
@@ -37,6 +40,7 @@ public sealed class SdsOptions
         EmbeddingDeployment = c["EMBEDDING_DEPLOYMENT"] ?? "text-embedding-3-large",
         UamiClientId = c["WORKLOAD_UAMI_CLIENT_ID"],
         FetchTimeoutSeconds = int.TryParse(c["SDS_FETCH_TIMEOUT_SECONDS"], out var t) ? t : 30,
+        SweepConcurrency = int.TryParse(c["SDS_SWEEP_CONCURRENCY"], out var sc) ? sc : 5,
         RevisionRecheckDays = int.TryParse(c["SDS_REVISION_RECHECK_DAYS"], out var d) ? d : 90,
         DryRun = bool.TryParse(c["SDS_DRY_RUN"], out var dr) && dr,
         AllowlistPath = c["SDS_ALLOWLIST_PATH"] ?? "Sds/Config/suppliers.allowlist.json",

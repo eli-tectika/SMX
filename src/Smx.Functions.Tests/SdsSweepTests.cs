@@ -149,4 +149,78 @@ public class SdsSweepTests
         Assert.Equal(1, store.Items["Yy_resolverboom"].AttemptCount);
         Assert.Equal(SdsStatus.Fetched, store.Items["Na_hydroxide"].Status);
     }
+
+    // ---- concurrency ----
+
+    /// Egress that runs an arbitrary delegate, so a test can observe timing rather than only outcomes.
+    private sealed class DelegateEgressClient : IEgressClient
+    {
+        private readonly Func<Uri, CancellationToken, Task<EgressResult?>> _f;
+        public DelegateEgressClient(Func<Uri, CancellationToken, Task<EgressResult?>> f) => _f = f;
+        public Task<EgressResult?> FetchAsync(Uri url, CancellationToken ct) => _f(url, ct);
+    }
+
+    private static void RecordPeak(ref int target, int value)
+    {
+        int seen;
+        while (value > (seen = Volatile.Read(ref target)))
+            if (Interlocked.CompareExchange(ref target, value, seen) == seen) return;
+    }
+
+    // The 2026-07-16 sweep took 27 minutes against a 30-minute platform timeout because entries were
+    // processed strictly serially behind 30-second fetch timeouts — it came within three minutes of
+    // being killed mid-run. Concurrency is not an optimisation here; it is what keeps a full sweep
+    // inside the host's budget as the master list grows.
+    [Fact]
+    public async Task Entries_are_processed_concurrently()
+    {
+        var (repo, _, pipe, _, allow) = Rig("""
+          [ { "supplier":"Only","domain":"only.example","priority":10,"strategy":"casTemplate",
+              "sdsUrlTemplate":"https://only.example/{cas}.pdf" } ]
+        """);
+        for (var i = 0; i < 8; i++)
+            await repo.AppendAsync($"E{i}", "oxide", $"{i}-00-0", null, "sweep", "2020-01-01T00:00:00Z", default);
+
+        var inFlight = 0; var peak = 0;
+        var egress = new DelegateEgressClient(async (_, ct) =>
+        {
+            RecordPeak(ref peak, Interlocked.Increment(ref inFlight));
+            await Task.Delay(50, ct);
+            Interlocked.Decrement(ref inFlight);
+            return null;
+        });
+
+        var resolver = new SourceResolver(allow, new ISourceStrategy[] { new CasTemplateStrategy() });
+        var sweep = new SdsSweep(repo, resolver, egress, pipe, new SdsOptions(), NullLogger<SdsSweep>.Instance);
+        await sweep.RunSweepAsync("2026-07-29T00:00:00Z", default);
+
+        Assert.True(peak > 1, $"expected concurrent processing; peak in-flight was {peak}");
+    }
+
+    // Concurrency must not weaken the per-entry isolation the serial loop had: every entry still gets
+    // its own attempt recorded even when a neighbour's supplier explodes.
+    [Fact]
+    public async Task Concurrency_preserves_per_entry_isolation()
+    {
+        var (repo, store, pipe, _, allow) = Rig("""
+          [ { "supplier":"Only","domain":"only.example","priority":10,"strategy":"casTemplate",
+              "sdsUrlTemplate":"https://only.example/{cas}.pdf" } ]
+        """);
+        await repo.AppendAsync("Boom", "x", "9999-99-9", null, "sweep", "2020-01-01T00:00:00Z", default);
+        for (var i = 0; i < 4; i++)
+            await repo.AppendAsync($"E{i}", "oxide", $"{i}-00-0", null, "sweep", "2020-01-01T00:00:00Z", default);
+
+        var egress = new DelegateEgressClient((u, _) => u.AbsolutePath.Contains("9999-99-9")
+            ? throw new InvalidOperationException("supplier exploded")
+            : Task.FromResult<EgressResult?>(null));
+
+        var resolver = new SourceResolver(allow, new ISourceStrategy[] { new CasTemplateStrategy() });
+        var sweep = new SdsSweep(repo, resolver, egress, pipe, new SdsOptions(), NullLogger<SdsSweep>.Instance);
+        await sweep.RunSweepAsync("2026-07-29T00:00:00Z", default);   // must not throw
+
+        var all = await store.ListAllAsync(default);
+        Assert.Equal(5, all.Count);
+        Assert.All(all, e => Assert.Equal(SdsStatus.Failed, e.Status));
+        Assert.All(all, e => Assert.Equal(1, e.AttemptCount));
+    }
 }

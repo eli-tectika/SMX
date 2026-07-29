@@ -49,10 +49,12 @@ param foundryEndpoint string = ''
 param embeddingDeployment string = 'text-embedding-3-large'
 
 @description('SDS sweep knobs.')
-param sdsSweepCron string = '0 0 3 * * 1' // weekly, Monday 03:00 UTC
-param sdsRetryCap int = 3
+param sdsSweepCron string = '0 0 3 * * *' // daily, 03:00 UTC — per-entry backoff does the pacing
+param sdsSweepConcurrency int = 5
 param sdsFetchTimeoutSeconds int = 30
 param sdsRevisionRecheckDays int = 90
+param sdsEnsureBudgetSeconds int = 45
+param sdsDenylist string = '' // comma-separated hosts refused at egress; default is allow
 param sdsDryRun bool = false
 param sdsSearchIndex string = 'sds-index'
 
@@ -305,6 +307,10 @@ resource regSyncApp 'Microsoft.Web/sites@2024-04-01' = {
     virtualNetworkSubnetId: functionsSubnetId
     httpsOnly: true
     publicNetworkAccess: publicNetworkAccess
+    // Same reason as the proxy: no system-assigned identity here, so a Key Vault reference
+    // (SDS_SEARCH_API_KEY) would resolve as one and fail. Point it at the workload UAMI, which
+    // already holds Key Vault Secrets User on the vault (security.bicep).
+    keyVaultReferenceIdentity: workloadUamiId
     functionAppConfig: {
       deployment: {
         storage: {
@@ -344,11 +350,17 @@ resource regSyncApp 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'EMBEDDING_DEPLOYMENT', value: embeddingDeployment }
         { name: 'WORKLOAD_UAMI_CLIENT_ID', value: workloadUamiClientId }
         { name: 'SDS_SWEEP_CRON', value: sdsSweepCron }
-        { name: 'SDS_RETRY_CAP', value: string(sdsRetryCap) }
+        { name: 'SDS_SWEEP_CONCURRENCY', value: string(sdsSweepConcurrency) }
         { name: 'SDS_FETCH_TIMEOUT_SECONDS', value: string(sdsFetchTimeoutSeconds) }
         { name: 'SDS_REVISION_RECHECK_DAYS', value: string(sdsRevisionRecheckDays) }
+        { name: 'SDS_ENSURE_BUDGET_SECONDS', value: string(sdsEnsureBudgetSeconds) }
+        { name: 'SDS_DENYLIST', value: sdsDenylist }
         { name: 'SDS_DRY_RUN', value: string(sdsDryRun) }
         { name: 'SDS_ALLOWLIST_PATH', value: 'Sds/Config/suppliers.allowlist.json' }
+        // The SAME search-provider secret the proxy reads — on-demand acquisition searches for a
+        // sheet the same way, so it needs the same key. A Key Vault reference, never a literal;
+        // empty until set-search-key.sh creates the secret and the redeploy passes its URI.
+        { name: 'SDS_SEARCH_API_KEY', value: empty(proxySearchKeySecretUri) ? '' : '@Microsoft.KeyVault(SecretUri=${proxySearchKeySecretUri})' }
         // Regulatory Sync (Reg subsystem) — same app, same identity/endpoints; its own containers + index.
         { name: 'REG_SYNC_CRON', value: regSyncCron }
         { name: 'REG_SEARCH_INDEX', value: regSearchIndex }

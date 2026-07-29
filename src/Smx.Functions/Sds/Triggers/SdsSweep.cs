@@ -31,48 +31,62 @@ public sealed class SdsSweep
         var due = await _masterList.QueryDueAsync(_opts.RevisionRecheckDays, nowUtc, ct);
         _log.LogInformation("SDS sweep: {Count} due entries", due.Count);
 
+        // Bounded parallelism. The 2026-07-16 sweep took 27 minutes against a 30-minute platform
+        // timeout because this was a serial loop behind 30-second fetch timeouts — three minutes from
+        // being killed mid-run, with the tail of the batch never attempted. The bound matters as much
+        // as the parallelism: an unbounded fan-out would open one socket per due entry and arrive at
+        // every supplier as a burst.
+        var gate = new SemaphoreSlim(Math.Max(1, _opts.SweepConcurrency));
+        await Task.WhenAll(due.Select(async entry =>
+        {
+            await gate.WaitAsync(ct);
+            try { await ProcessEntryAsync(entry, nowUtc, ct); }
+            finally { gate.Release(); }
+        }));
+    }
+
+    // One entry, start to finish. Its two catch blocks are what keep a single bad supplier response or
+    // resolver blow-up costing only that entry rather than the rest of the run; that isolation is the
+    // reason the batch always completes, and it survives the move to concurrent execution unchanged.
+    // Cancellation still aborts the sweep.
+    private async Task ProcessEntryAsync(MasterListEntry entry, string nowUtc, CancellationToken ct)
+    {
         EgressFetch fetch = (url, c) => _egress.FetchAsync(url, c);
 
-        // Batch robustness: a single bad supplier response or resolver blow-up must cost only that
-        // candidate/entry, never the rest of the bulk run — the bulk-and-scheduled property is the
-        // leak mitigation, so the batch must always complete. Cancellation still aborts the sweep.
-        foreach (var entry in due)
+        try
         {
-            try
-            {
-                var key = new SubstanceKey(entry.Element, entry.Form, entry.Cas);
-                var candidates = await _resolver.ResolveAsync(key, fetch, ct);
-                var ingested = false;
+            var key = new SubstanceKey(entry.Element, entry.Form, entry.Cas);
+            var candidates = await _resolver.ResolveAsync(key, fetch, ct);
+            var ingested = false;
 
-                foreach (var candidate in candidates)
+            foreach (var candidate in candidates)
+            {
+                try
                 {
-                    try
-                    {
-                        var fetched = await _egress.FetchAsync(candidate.Url, ct);
-                        if (fetched is null) continue;
+                    var fetched = await _egress.FetchAsync(candidate.Url, ct);
+                    if (fetched is null) continue;
 
-                        var meta = new SdsMetadata(entry.Cas, candidate.Supplier, entry.Form, nowUtc[..10],
-                            null, null, candidate.Url.ToString(), entry.Id);
-                        var result = await _pipeline.IngestAsync(fetched.Content, meta, candidate.Domain, ct);
-                        if (result.Ok) { ingested = true; break; }
-                        _log.LogInformation("Candidate {Url} rejected: {Reason}", candidate.Url, result.Reason);
-                    }
-                    catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-                    catch (Exception ex)
-                    {
-                        _log.LogWarning(ex, "Candidate {Url} threw; trying next supplier", candidate.Url);
-                    }
+                    var meta = new SdsMetadata(entry.Cas, candidate.Supplier, entry.Form, nowUtc[..10],
+                        null, null, candidate.Url.ToString(), entry.Id);
+                    var result = await _pipeline.IngestAsync(fetched.Content, meta, candidate.Domain, ct);
+                    if (result.Ok) { ingested = true; break; }
+                    _log.LogInformation("Candidate {Url} rejected: {Reason}", candidate.Url, result.Reason);
                 }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "Candidate {Url} threw; trying next supplier", candidate.Url);
+                }
+            }
 
-                if (ingested) await _masterList.MarkFetchedAsync(entry, nowUtc, ct);
-                else await _masterList.RecordFailureAsync(entry, nowUtc, ct);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, "Sweep entry {Id} threw; recording failure and continuing", entry.Id);
-                await _masterList.RecordFailureAsync(entry, nowUtc, ct);
-            }
+            if (ingested) await _masterList.MarkFetchedAsync(entry, nowUtc, ct);
+            else await _masterList.RecordFailureAsync(entry, nowUtc, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Sweep entry {Id} threw; recording failure and continuing", entry.Id);
+            await _masterList.RecordFailureAsync(entry, nowUtc, ct);
         }
     }
 }
