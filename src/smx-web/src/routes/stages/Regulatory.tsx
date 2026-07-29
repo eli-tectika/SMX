@@ -168,7 +168,7 @@ export function Regulatory({ project }: { project: ProjectSummary }) {
 
   return (
     <section className="screen">
-      <Head synced={g.approvedAt} />
+      <Head synced={g.approvedAt ?? undefined} />
 
       {approved ? (
         <div className="banner" style={{ background: 'var(--bg-teal)', borderColor: 'var(--border-teal)', color: 'var(--text-teal)' }}>

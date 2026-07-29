@@ -456,12 +456,14 @@ export interface RegulatoryGate {
   status: 'locked' | 'approved';
   armable: boolean;
   blockers: string[];
-  approvedAt?: string;
+  approvedAt?: string | null;
   /**
    * WHAT signed the gate. `null` on an approved gate means the record does not say — a gate
    * written before the backend recorded this. It must render as unknown provenance, NEVER as a
    * human determination; `'auto-approve'` means REGULATORY_AUTO_APPROVE signed it and no human
-   * reviewed anything.
+   * reviewed anything. An absent key (`undefined`) means the same as `null` — an older API build,
+   * or a deploy where the frontend and backend have skewed — and must be treated identically:
+   * never a human signature.
    */
   approvedBy?: 'operator' | 'auto-approve' | null;
 }

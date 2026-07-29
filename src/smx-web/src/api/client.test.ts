@@ -277,6 +277,17 @@ describe('regulatory gate signer', () => {
     const gate = await getRegulatoryGate('p1');
     expect(gate.approvedBy).toBe('auto-approve');
   });
+
+  /**
+   * The key absent entirely — an older API build, or a deploy where the two apps have skewed.
+   * `getRegulatoryGate` casts the response with no runtime validation, so this state is real and
+   * must survive the fetch wrapper unchanged. It means the same thing as null: not a human.
+   */
+  it('leaves an absent signer absent rather than inventing null', async () => {
+    stubFetch(() => json({ status: 'approved', armable: true, blockers: [] }));
+    const gate = await getRegulatoryGate('p1');
+    expect(gate.approvedBy).toBeUndefined();
+  });
 });
 
 describe('approveRegulatory', () => {
