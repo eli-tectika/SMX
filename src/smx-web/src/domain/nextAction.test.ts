@@ -49,4 +49,41 @@ describe('nextAction', () => {
     expect(a!.tone).toBe('danger');
     expect(a!.detail).toBe('search_web timed out');
   });
+
+  /**
+   * The ordering that `blocking.ts` defines and this function must not re-derive differently.
+   * An operator input the human can act on RIGHT NOW outranks a stage merely asking to be
+   * looked at — and an earlier draft of this file had it backwards, in a way no single-stage
+   * test could catch.
+   */
+  it('ranks an actionable operator park above a needs-review stage', () => {
+    const a = nextAction(
+      project({
+        discovery: { status: 'needs-review', attempts: 1 },
+        dosing: { status: 'awaiting-operator', attempts: 1 },
+      }),
+    );
+    expect(a!.title).toBe('Dosing needs an input');
+  });
+
+  it('ranks a halted stage above everything else', () => {
+    const a = nextAction(
+      project({
+        discovery: { status: 'failed', attempts: 2, error: 'search_web timed out' },
+        intake: { status: 'awaiting-confirmation', attempts: 1 },
+      }),
+    );
+    expect(a!.tone).toBe('danger');
+  });
+
+  /**
+   * `pool` has no spine slug of its own — it is folded into the `intake` pill, since intake
+   * transcribes the need and pool turns it into a hypothesis with no operator step between them.
+   * A `cta` built as `/p/{id}/{stageKey}` would point at a route that does not exist; it must
+   * resolve through `STAGES[].backedBy` instead, landing on the screen that actually shows it.
+   */
+  it('points a failed pool at the intake screen, not a /pool route that does not exist', () => {
+    const a = nextAction(project({ pool: { status: 'failed', attempts: 1, error: 'no candidates' } }));
+    expect(a!.cta?.to).toBe('/p/p1/intake');
+  });
 });
