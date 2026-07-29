@@ -114,7 +114,11 @@ describe('ProjectLayout — a throwing stage screen', () => {
 
     // Real Cost content, not just "some .screen exists" (the error fallback renders that class
     // too) — this is what proves the boundary actually reset rather than staying tripped.
-    await waitFor(() => expect(screen.getByText(/substances audited/i)).toBeInTheDocument());
+    // A Cost SECTION HEADING, not body copy: it is unique on the screen, it is structure the
+    // fallback has no way to produce, and it does not move when the empty-state wording changes.
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /what can be ordered/i })).toBeInTheDocument(),
+    );
     expect(screen.queryByText(/could not be rendered/i)).not.toBeInTheDocument();
     // The chrome never dropped out along the way.
     expect(document.querySelector('.phead')).toBeInTheDocument();
