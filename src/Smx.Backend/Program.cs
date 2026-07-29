@@ -21,6 +21,7 @@ using Smx.Domain.Documents;
 using Smx.Domain.Tools;
 using Smx.Infrastructure;
 using Smx.Infrastructure.Search;
+using Smx.Infrastructure.Sds;
 
 // `LearnedConclusionsIndex` is BOTH a type (the AI Search write side) and a BackendOptions property (the
 // index NAME). Alias the type so `new LcSearchIndex(client, opts.LearnedConclusionsIndex)` reads as what
@@ -306,6 +307,21 @@ public static class BackendHost
             opts.SearchProxyEndpoint,
             opts.SearchProxyAudience,
             sp.GetRequiredService<ILogger<SearchProxyClient>>()));
+
+        // SDS acquisition — the line to the regsync Function App, same shape as the proxy client above and
+        // for the same reason (two plain strings, so DI cannot construct it by type).
+        //
+        // Registered unconditionally and fail-safe by construction: with no endpoint configured the client
+        // simply cannot reach anything and reports every request as unavailable-with-a-reason, which is
+        // precisely the contract the callers already handle. A missing deployment degrades the ability to
+        // fetch a NEW sheet; it never blocks a stage and never breaks a run.
+        services.AddHttpClient(nameof(SdsAcquisitionClient));
+        services.AddSingleton<ISdsAcquisition>(sp => new SdsAcquisitionClient(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(SdsAcquisitionClient)),
+            sp.GetRequiredService<Azure.Core.TokenCredential>(),
+            opts.SdsServiceEndpoint,
+            opts.SdsServiceAudience,
+            sp.GetRequiredService<ILogger<SdsAcquisitionClient>>()));
 
         services.AddSingleton<Func<SensitiveTerms, IWebSearch>>(sp => terms => new WebSearchTool(
             sp.GetRequiredService<ISearchProxyClient>(),

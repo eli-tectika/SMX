@@ -36,6 +36,8 @@ public sealed record BackendOptions(
     // The anonymizing Search Proxy — Discovery's ONLY route to the public internet.
     string SearchProxyEndpoint,
     string SearchProxyAudience,
+    string SdsServiceEndpoint,
+    string SdsServiceAudience,
     bool WebSearchEnabled,
     int WebSearchMaxPerStage,
     // Discovery's web-search backend — two supported modes, switchable by config alone. "hosted" (default) =
@@ -108,6 +110,8 @@ public sealed record BackendOptions(
         OpenAiEndpoint: c["OPENAI_ENDPOINT"] ?? "",
         SearchProxyEndpoint: c["SEARCH_PROXY_ENDPOINT"] ?? "",
         SearchProxyAudience: c["SEARCH_PROXY_AUDIENCE"] ?? "",
+        SdsServiceEndpoint: c["SDS_SERVICE_ENDPOINT"] ?? "",
+        SdsServiceAudience: c["SDS_SERVICE_AUDIENCE"] ?? "",
         // The operator kill switch. Default ON, but an empty endpoint disables it anyway (see Program.cs) —
         // so a deployment that has not been given a proxy simply never searches the web, rather than failing.
         WebSearchEnabled: !bool.TryParse(c["WEB_SEARCH_ENABLED"], out var we) || we,
