@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
+using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
 using Smx.Backend.Pipeline;
@@ -15,7 +16,7 @@ namespace Smx.Backend.Tests;
 public class PipelineRunnerTests
 {
     private static (PipelineRunner Runner, InMemoryRecordStore Store, FakeAgentRuns Agents, InMemoryRunStore Runs)
-        Sut(int parallelism = 2)
+        Sut(int parallelism = 2, bool autoApprove = false)
     {
         var store = new InMemoryRecordStore();
         var agents = new FakeAgentRuns();
@@ -23,7 +24,8 @@ public class PipelineRunnerTests
         var conclusions = new LearnedConclusionWriter(
             new InMemoryKnowledgeStore(), new FakeLearnedConclusionsIndex(), new FakeEmbedder(),
             NullLogger<LearnedConclusionWriter>.Instance);
-        return (new PipelineRunner(store, runs, agents, new ThreadEventHub(), conclusions, parallelism),
+        return (new PipelineRunner(store, runs, agents, new ThreadEventHub(), conclusions, parallelism,
+                    regulatoryAutoApprove: autoApprove),
                 store, agents, runs);
     }
 
@@ -40,6 +42,57 @@ public class PipelineRunnerTests
         GateType = GateTypes.Regulatory, Status = status,
         ApprovedAt = status == "approved" ? "t" : null,
     };
+
+    // REGULATORY_AUTO_APPROVE — the human gate off. The pipeline adopts the agent's PROPOSED determination,
+    // marks every verdict reviewed, and signs the gate itself, so Regulatory reaches `done` (not awaiting-RE)
+    // and the compliant set is populated — all with no operator. This is the flag's whole point; the contrast
+    // (flag off ⇒ awaiting-RE, empty compliant set) is the default every other test in this file exercises.
+    [Fact]
+    public async Task RegulatoryAutoApprove_adopts_the_proposal_signs_the_gate_and_skips_the_human_park()
+    {
+        var (d, store, agents, _) = Sut(autoApprove: true);
+        // The agent PROPOSES recommended; without the flag this would only pre-fill ProposedDetermination and
+        // wait for the R.E. to confirm it.
+        agents.Regulatory = (c, cand, _) => Task.FromResult(Smx.Backend.Agents.AgentRunResult<VerdictDoc>.Ok(new VerdictDoc
+        {
+            Id = RecordIds.Verdict(c.ProjectId, cand.Cas, cand.ComponentId), ProjectId = c.ProjectId,
+            Cas = cand.Cas, ComponentId = cand.ComponentId, Element = cand.Element, Form = cand.Form,
+            Dimensions = [new("ElementGate", VerdictStatus.Pass, [new Citation("regulatory", "x", "t")], 0.9, "ok")],
+            ProposedDetermination = Determinations.Recommended,
+        }));
+        await Seed(store);
+        await d.RunAsync("p1", default);
+
+        var verdicts = await store.GetVerdictsAsync("p1");
+        Assert.NotEmpty(verdicts);
+        Assert.All(verdicts, v => Assert.True(v.EvidenceReviewed));                       // auto-reviewed
+        Assert.All(verdicts, v => Assert.Equal(Determinations.Recommended, v.Determination)); // proposal adopted
+        Assert.Equal("approved", (await store.GetGateAsync("p1", GateTypes.Regulatory))?.Status); // gate self-signed
+        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status); // no awaiting-RE
+        Assert.NotEmpty(CompliantSet.Of(verdicts));                                        // dosable set is non-empty
+    }
+
+    // A null proposal (the failed-verdict fallback) must NOT be auto-recommended — the safe asymmetry survives
+    // even with the human gate off: an un-screenable substance is excluded, never signed through.
+    [Fact]
+    public async Task RegulatoryAutoApprove_leaves_a_null_proposal_undetermined()
+    {
+        var (d, store, agents, _) = Sut(autoApprove: true);
+        agents.Regulatory = (c, cand, _) => Task.FromResult(Smx.Backend.Agents.AgentRunResult<VerdictDoc>.Ok(new VerdictDoc
+        {
+            Id = RecordIds.Verdict(c.ProjectId, cand.Cas, cand.ComponentId), ProjectId = c.ProjectId,
+            Cas = cand.Cas, ComponentId = cand.ComponentId, Element = cand.Element, Form = cand.Form,
+            Dimensions = [new("ElementGate", VerdictStatus.NeedsReview, [], 0, "no cited verdict")],
+            ProposedDetermination = null,
+        }));
+        await Seed(store);
+        await d.RunAsync("p1", default);
+
+        var verdicts = await store.GetVerdictsAsync("p1");
+        Assert.NotEmpty(verdicts);
+        Assert.All(verdicts, v => Assert.Null(v.Determination));   // not auto-recommended
+        Assert.Empty(CompliantSet.Of(verdicts));                   // nothing dosable
+    }
 
     // ---- the run trail --------------------------------------------------------------------------------
 
