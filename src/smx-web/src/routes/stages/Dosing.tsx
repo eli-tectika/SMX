@@ -3,34 +3,32 @@ import { NotFound, getDosing, reviewDosing, ApiError } from '../../api/client';
 import type { Bound, DosingDoc, MarkerCode, PpmWindow } from '../../api/types';
 import { LoadingEntryForm } from '../../components/LoadingEntryForm';
 import { Loading } from '../../components/Loading';
-import { ReviseForm, RevisionTrail } from '../../components/RevisionControls';
-import { StageStatusCard } from '../../components/StageStatusCard';
+import { PpmChart } from '../../components/PpmChart';
+import { RevisionTrail } from '../../components/RevisionControls';
 import { Data } from '../../components/ui/Data';
 import { Gate, type Requirement } from '../../components/ui/Gate';
 import { EmptyState, SectionHeader } from '../../components/ui/Primitives';
-import { byComponent, fmtLoading, fmtMass, fmtPpm } from '../../domain/dosing';
-import { axisMax, niceTicks } from '../../domain/ticks';
+import { byComponent, fmtLoading, fmtMass, fmtPpm, readDosing } from '../../domain/dosing';
 import type { ScreenProps } from '../ProjectLayout';
 
-const CHART_W = 620;
-const LABEL_W = 42;
-const ROW_H = 40;
-const PAD_TOP = 26;
-
 /**
- * Dosing & codes (spec §4.5) — real.
+ * Dosing & codes — how much of each marker goes in, in what ratio, per component, and what to order.
  *
- * Three things this screen exists to get right:
+ * Procurement acts on the numbers on this screen, so three things must stay right:
  *
- *  1. **The floor and the upper bound are not the same kind of claim.** The floor is MEASURED, from the
- *     physicist's XRF data, confidence 1.0. The upper bound is the agent's own `regulatory` or `estimate`
- *     — it may never be "measured", because an agent that could stamp its own guess as a measurement would
- *     launder it into the one field the operator trusts absolutely. They render differently, and each shows
- *     its basis and confidence, because the estimate is known to run low.
- *  2. **The recommended ppm is one scalar**, strictly inside the window. Not a band — a band would invent
- *     a tolerance nobody computed.
- *  3. **What you buy is the compound mass, not the element mass.** They are different numbers, and reading
- *     the wrong one under-doses an oxide by its non-metal fraction.
+ *  1. **The floor and the upper bound are not the same kind of claim.** The floor is MEASURED, from
+ *     the physicist's XRF data, confidence 1.0. The upper bound is the agent's own `regulatory` or
+ *     `estimate` — it may never be "measured", because an agent that could stamp its own guess as a
+ *     measurement would launder it into the one field the operator trusts absolutely. The chart
+ *     encodes that difference in FORM (see PpmChart), and the table below repeats the kind in words.
+ *  2. **The recommended ppm is one scalar**, strictly inside the window. Not a band — a band would
+ *     invent a tolerance nobody computed.
+ *  3. **What you buy is the compound mass, not the element mass.** They are different numbers, and
+ *     reading the wrong one under-doses an oxide by its non-metal fraction.
+ *
+ * The parks — awaiting the physicist's background, awaiting a metal loading — are stated once, at the
+ * top of the artifact column, by the next-action block. This screen does not repeat them; it carries
+ * the CONTROL that clears the one the operator can clear themselves.
  */
 export function Dosing({ project, refreshProject }: ScreenProps) {
   const stage = project.stages.dosing;
@@ -39,7 +37,6 @@ export function Dosing({ project, refreshProject }: ScreenProps) {
   const [doc, setDoc] = useState<DosingDoc | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'absent' | 'error'>('loading');
   const [errMsg, setErrMsg] = useState<string>();
-  const [reviseNonce, setReviseNonce] = useState(0);
   const [signBusy, setSignBusy] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
 
@@ -99,396 +96,363 @@ export function Dosing({ project, refreshProject }: ScreenProps) {
   if (phase === 'loading') return <Loading what="the dosing record" />;
 
   return (
-    <section className="screen">
-      <div className="cap">
-        <b>Dosing &amp; codes</b>
-        ppm windows + code combinations, per component
-      </div>
-
-      <StageStatusCard name="Dosing agent" state={stage} />
-
-      {/* The park the operator can clear themselves. The stage card above already carries the dispatcher's
-          verbatim instruction; this is the control that acts on it. */}
+    <>
+      {/* The one park the operator can clear here. The next-action block already says the record is
+          waiting; this is the control it sends them to, so it comes first. */}
       {status === 'awaiting-operator' && (
-        <LoadingEntryForm projectId={project.projectId} onEntered={refreshProject} />
-      )}
-
-      {status === 'awaiting-physics' && (
-        <EmptyState
-          icon="ti-player-pause"
-          title="Waiting on physics."
-          body={
-            <>
-              Dosing needs a measured XRF background from the physics team, entered at intake. There is
-              nothing to enter here — dosing resumes on its own once it arrives.
-            </>
-          }
-        />
+        <section className="screen">
+          <SectionHeader
+            title="The agent needs a number"
+            headingLevel={3}
+            hint="dosing starts over once it has one"
+          />
+          <LoadingEntryForm projectId={project.projectId} onEntered={refreshProject} />
+        </section>
       )}
 
       {phase === 'error' && (
-        <div className="banner danger">
-          <i className="ti ti-alert-triangle" aria-hidden="true" />
-          <div>
-            <b>Could not load the dosing record.</b>
-            <div style={{ marginTop: 3 }}>{errMsg}</div>
+        <section className="screen">
+          <div className="banner danger" role="alert">
+            <i className="ti ti-alert-triangle" aria-hidden="true" />
+            <div>
+              <b>Could not load the dosing record.</b>
+              <div className="small" style={{ marginTop: 3 }}>
+                {errMsg}
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
       )}
 
-      {phase === 'absent' && status !== 'awaiting-operator' && status !== 'awaiting-physics' && (
-        <EmptyState
-          icon="ti-flask"
-          title="No ppm windows yet."
-          body={<>Dosing runs once the regulatory gate is signed, on the substances it recommends.</>}
-        />
+      {phase === 'absent' && (
+        <section className="screen">
+          <EmptyState
+            icon="ti-flask"
+            title="No ppm windows yet."
+            body={
+              <>
+                Dosing runs on the substances the signed regulatory gate cleared, and writes a window
+                per marker element per component. Nothing has been written for this project.
+              </>
+            }
+          />
+        </section>
       )}
 
       {phase === 'ready' && doc && (
-        <DosingRecord
-          doc={doc}
-          projectId={project.projectId}
-          onSign={sign}
-          signBusy={signBusy}
-          signError={signError}
-          onRevised={() => setReviseNonce((n) => n + 1)}
-        />
+        <DosingRecord doc={doc} onSign={sign} signBusy={signBusy} signError={signError} />
       )}
 
-      <RevisionTrail projectId={project.projectId} refreshKey={reviseNonce} />
-    </section>
+      <RevisionTrail projectId={project.projectId} />
+    </>
   );
 }
 
 function DosingRecord({
   doc,
-  projectId,
   onSign,
   signBusy,
   signError,
-  onRevised,
 }: {
   doc: DosingDoc;
-  projectId: string;
   onSign: (note?: string) => void;
   signBusy: boolean;
   signError: string | null;
-  onRevised: () => void;
 }) {
+  /* Read the payload rather than trusting it. `getDosing` casts with `as` and validates nothing, so
+     an unreadable row reaches the chart as a NaN coordinate — and a mis-scaled dosing window is a
+     mis-dose. Anything dropped is counted and said out loud below. */
+  const { windows, codes, droppedWindows, droppedCodes } = readDosing(doc);
   const reviewed = Boolean(doc.reviewedAt);
-
-  // A soft checkpoint: it records that the PL/VP/physics review happened and unlocks NOTHING. The hard
-  // gates are Regulatory and VP; a third would dilute what a signature means.
-  const requirements: Requirement[] = [
-    {
-      id: 'windows',
-      label: 'A ppm window exists for every marker element',
-      met: doc.windows.length > 0,
-      detail: doc.windows.length > 0 ? [...new Set(doc.windows.map((w) => w.element))].join(', ') : undefined,
-    },
-    {
-      id: 'codes',
-      label: 'At least one code is finalized',
-      met: doc.codes.length > 0,
-      detail: doc.codes.length > 0 ? `${doc.codes.length} code(s)` : 'The agent produced no code.',
-    },
-  ];
 
   return (
     <>
-      {reviewed ? (
-        <div className="region" style={{ marginBottom: 'var(--s4)' }}>
-          <div style={{ fontSize: 13, fontWeight: 500 }}>
-            <i className="ti ti-check" style={{ color: 'var(--text-success)' }} aria-hidden="true" /> Code
-            finalization reviewed
-          </div>
-          <div className="tiny muted" style={{ marginTop: 3 }}>
-            {doc.reviewedAt?.slice(0, 10)} — a record that the review happened. It gates nothing.
-          </div>
-          <p className="small" style={{ margin: '6px 0 0' }}>
-            {doc.reviewNote}
-          </p>
-        </div>
-      ) : (
-        <Gate
-          kind="soft"
-          title="Code finalization"
-          records="PL / VP / physics review"
-          requirements={requirements}
-          signLabel="Mark review recorded"
-          onSign={onSign}
-          signBusy={signBusy}
-          signNote={{ placeholder: 'What was reviewed, and by whom. Required — the note is the record.' }}
+      <section className="screen">
+        <SectionHeader
+          title="How much goes in"
+          headingLevel={3}
+          hint="ppm — mg/kg, mass over mass"
         />
-      )}
 
-      {signError && (
-        <div className="banner danger">
-          <i className="ti ti-alert-triangle" aria-hidden="true" />
-          <div>{signError}</div>
-        </div>
-      )}
+        {droppedWindows > 0 && <Unreadable n={droppedWindows} what="ppm window" />}
 
-      {byComponent(doc.windows).map(([componentId, windows]) => (
-        <div key={componentId} style={{ marginBottom: 'var(--s5)' }}>
-          <SectionHeader
-            eyebrow="Component"
-            title={componentId}
-            count={windows.length}
-            hint="ppm windows — mg/kg, mass over mass"
-          />
-          <PpmChart windows={windows} />
-          {windows.map((w) => (
-            <BoundsDetail key={`${w.cas}|${w.element}`} window={w} />
-          ))}
-        </div>
-      ))}
+        {windows.length === 0 ? (
+          <p className="prose" style={{ margin: 0 }}>
+            The record holds no readable ppm window.
+          </p>
+        ) : (
+          byComponent(windows).map(([componentId, componentWindows]) => (
+            <div key={componentId} style={{ marginBottom: 'var(--s5)' }}>
+              {/* Per-component tracks are architectural, not cosmetic: there is no product-wide
+                  marker, so there is no product-wide dose either. */}
+              <SectionHeader
+                eyebrow="Component"
+                title={componentId}
+                headingLevel={4}
+                count={componentWindows.length}
+              />
+              {/* The chart is the answer; the table under it is the supporting detail. */}
+              <PpmChart windows={componentWindows} />
+              <BoundsTable windows={componentWindows} />
+            </div>
+          ))
+        )}
+      </section>
 
-      {byComponent(doc.codes).map(([componentId, codes]) => (
-        <div key={componentId} style={{ marginBottom: 'var(--s5)' }}>
-          <SectionHeader
-            eyebrow="Codes"
-            title={componentId}
-            count={codes.length}
-            hint="a code's identity is its ratio"
-          />
-          <div style={{ display: 'grid', gap: 'var(--s3)' }}>
-            {codes.map((c) => (
-              <CodeCard key={c.ratioSignature} code={c} projectId={projectId} onRevised={onRevised} />
-            ))}
+      <section className="screen">
+        <SectionHeader
+          title="What to order"
+          headingLevel={3}
+          hint="a code's identity is its ratio"
+        />
+
+        {droppedCodes > 0 && <Unreadable n={droppedCodes} what="code" />}
+
+        {codes.length === 0 ? (
+          <p className="prose" style={{ margin: 0 }}>
+            The record holds no readable code.
+          </p>
+        ) : (
+          byComponent(codes).map(([componentId, componentCodes]) => (
+            <div key={componentId} style={{ marginBottom: 'var(--s5)' }}>
+              <SectionHeader
+                eyebrow="Component"
+                title={componentId}
+                headingLevel={4}
+                count={componentCodes.length}
+              />
+              <div style={{ display: 'grid', gap: 'var(--s3)' }}>
+                {componentCodes.map((c) => (
+                  <CodeCard key={c.ratioSignature} code={c} />
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+
+      <section className="screen">
+        <SectionHeader
+          title="Recording the review"
+          headingLevel={3}
+          hint="a note that the review happened — it unlocks nothing"
+        />
+
+        {reviewed ? (
+          <div className="region">
+            <div className="small" style={{ fontWeight: 500 }}>
+              <i className="ti ti-check" style={{ color: 'var(--text-success)' }} aria-hidden="true" />{' '}
+              Reviewed {doc.reviewedAt?.slice(0, 10)}
+            </div>
+            <p className="prose" style={{ margin: '6px 0 0' }}>
+              {doc.reviewNote}
+            </p>
+            <p className="small secondary" style={{ margin: '6px 0 0' }}>
+              Nothing was unlocked by this. The hard signatures are the regulatory gate and VP R&amp;D's
+              final determination.
+            </p>
           </div>
-        </div>
-      ))}
+        ) : (
+          <ReviewGate windows={windows} codes={codes} onSign={onSign} signBusy={signBusy} />
+        )}
+
+        {signError && (
+          <div className="banner danger" role="alert" style={{ marginTop: 'var(--s3)' }}>
+            <i className="ti ti-alert-triangle" aria-hidden="true" />
+            <div>{signError}</div>
+          </div>
+        )}
+      </section>
     </>
   );
 }
 
 /**
- * The window geometry. The chart shows SHAPE; provenance is prose and lives in BoundsDetail below it —
- * a basis is a sentence, and cramming it into an SVG label would just truncate it.
+ * A row the record held and this screen refused to draw.
+ *
+ * Said out loud, and not quietly skipped: an operator counting three codes on a screen that received
+ * four is deciding against a record they cannot see.
  */
-function PpmChart({ windows }: { windows: PpmWindow[] }) {
-  const rawMax = Math.max(...windows.map((w) => w.upper.ppm));
-  const max = axisMax(rawMax * 1.05);
-  const ticks = niceTicks(rawMax * 1.05);
-  const scale = (v: number) => LABEL_W + (v / max) * (CHART_W - LABEL_W - 12);
-  const height = PAD_TOP + windows.length * ROW_H + 20;
-
+function Unreadable({ n, what }: { n: number; what: string }) {
   return (
-    <svg
-      viewBox={`0 0 ${CHART_W} ${height}`}
-      width="100%"
-      role="img"
-      aria-label="Dosable ppm window per marker element"
-      style={{ marginBottom: 10 }}
-    >
-      <title>Dosable ppm window per marker element</title>
-
-      {ticks.map((t) => (
-        <g key={t}>
-          <line
-            x1={scale(t)}
-            y1={PAD_TOP - 6}
-            x2={scale(t)}
-            y2={PAD_TOP + windows.length * ROW_H}
-            stroke="var(--border)"
-            strokeWidth="0.5"
-          />
-          <text
-            x={scale(t)}
-            y={PAD_TOP - 11}
-            fontSize="9"
-            fill="var(--text-muted)"
-            textAnchor="middle"
-            fontFamily="var(--font-mono)"
-          >
-            {t}
-          </text>
-        </g>
-      ))}
-      <text x={CHART_W - 4} y={height - 4} fontSize="9" fill="var(--text-muted)" textAnchor="end">
-        ppm
-      </text>
-
-      {windows.map((w, i) => {
-        const y = PAD_TOP + i * ROW_H + 6;
-        return (
-          <g key={`${w.cas}|${w.element}`}>
-            <text
-              x={0}
-              y={y + 10}
-              fontSize="11"
-              fill="var(--text-primary)"
-              fontWeight="500"
-              fontFamily="var(--font-mono)"
-            >
-              {w.element}
-            </text>
-
-            {/* The dosable range: floor -> upper. */}
-            <rect
-              x={scale(w.floor.ppm)}
-              y={y}
-              width={Math.max(0, scale(w.upper.ppm) - scale(w.floor.ppm))}
-              height={14}
-              rx={3}
-              fill="var(--surface-1)"
-            />
-
-            {/* Detection floor — MEASURED. Solid and hard, because it is the one bound that is not a claim. */}
-            <line
-              x1={scale(w.floor.ppm)}
-              y1={y - 3}
-              x2={scale(w.floor.ppm)}
-              y2={y + 17}
-              stroke="var(--text-danger)"
-              strokeWidth="1.5"
-            />
-
-            {/* Quantification — detectable below this, but not measurable. */}
-            <line
-              x1={scale(w.quantificationPpm)}
-              y1={y}
-              x2={scale(w.quantificationPpm)}
-              y2={y + 14}
-              stroke="var(--text-warning)"
-              strokeWidth="1"
-              strokeDasharray="2 2"
-            />
-
-            {/* Upper bound — the AGENT's claim. Dashed: it is asserted, not measured. */}
-            <line
-              x1={scale(w.upper.ppm)}
-              y1={y - 3}
-              x2={scale(w.upper.ppm)}
-              y2={y + 17}
-              stroke="var(--text-muted)"
-              strokeWidth="1.5"
-              strokeDasharray="3 2"
-            />
-
-            {/* The recommendation is ONE value, so it is one mark. */}
-            <circle cx={scale(w.recommendedPpm)} cy={y + 7} r={4} fill="var(--text-success)" />
-            <text
-              x={scale(w.recommendedPpm)}
-              y={y - 1}
-              fontSize="9"
-              fill="var(--text-success)"
-              textAnchor="middle"
-              fontFamily="var(--font-mono)"
-            >
-              {fmtPpm(w.recommendedPpm)}
-            </text>
-
-            <text
-              x={scale(w.floor.ppm)}
-              y={y + 27}
-              fontSize="8"
-              fill="var(--text-danger)"
-              textAnchor="middle"
-              fontFamily="var(--font-mono)"
-            >
-              {fmtPpm(w.floor.ppm)}
-            </text>
-            <text
-              x={scale(w.upper.ppm)}
-              y={y + 27}
-              fontSize="8"
-              fill="var(--text-muted)"
-              textAnchor="middle"
-              fontFamily="var(--font-mono)"
-            >
-              {fmtPpm(w.upper.ppm)}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-/** Spec §4.5's requirement, finally satisfiable: basis + confidence per bound, and they read differently. */
-function BoundsDetail({ window: w }: { window: PpmWindow }) {
-  return (
-    <div className="region" style={{ marginBottom: 'var(--s2)' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
-        <Data kind="element">
-          <b>{w.element}</b>
-        </Data>
-        <span className="tiny muted data">{w.cas}</span>
-        <span className="tiny muted" style={{ marginLeft: 'auto' }}>
-          recommended <b className="data">{fmtPpm(w.recommendedPpm)}</b> ppm · quantifiable above{' '}
-          <b className="data">{fmtPpm(w.quantificationPpm)}</b>
-        </span>
+    <div className="banner warn" role="alert" style={{ marginBottom: 'var(--s3)' }}>
+      <i className="ti ti-alert-triangle" aria-hidden="true" />
+      <div>
+        {n} {what}
+        {n === 1 ? '' : 's'} on the record could not be read and {n === 1 ? 'is' : 'are'} not shown
+        here. Nothing was guessed in {n === 1 ? 'its' : 'their'} place — ask the agent to re-run
+        dosing.
       </div>
-      <BoundRow label="Detection floor" bound={w.floor} />
-      <BoundRow label="Upper bound" bound={w.upper} />
     </div>
   );
 }
 
-function BoundRow({ label, bound }: { label: string; bound: Bound }) {
-  // "measured" is the physicist's, never the agent's. That distinction is the whole reason `kind` exists,
-  // so it is the most prominent thing about the row after the number itself.
+/**
+ * The soft checkpoint. It records that the PL/VP/physics review happened and unlocks NOTHING — the
+ * hard gates are Regulatory and VP R&D, and a third would dilute what a signature means here.
+ */
+function ReviewGate({
+  windows,
+  codes,
+  onSign,
+  signBusy,
+}: {
+  windows: PpmWindow[];
+  codes: MarkerCode[];
+  onSign: (note?: string) => void;
+  signBusy: boolean;
+}) {
+  const requirements: Requirement[] = [
+    {
+      id: 'windows',
+      label: 'A ppm window exists for every marker element',
+      met: windows.length > 0,
+      detail: windows.length > 0 ? [...new Set(windows.map((w) => w.element))].join(', ') : undefined,
+    },
+    {
+      id: 'codes',
+      label: 'At least one code is finalized',
+      met: codes.length > 0,
+      detail: codes.length > 0 ? `${codes.length} code(s)` : 'The agent produced no code.',
+    },
+  ];
+
+  return (
+    <Gate
+      kind="soft"
+      title="Code finalization"
+      records="PL / VP / physics review"
+      requirements={requirements}
+      signLabel="Mark review recorded"
+      onSign={onSign}
+      signBusy={signBusy}
+      signNote={{ placeholder: 'What was reviewed, and by whom. Required — the note is the record.' }}
+    />
+  );
+}
+
+/**
+ * The numbers behind the chart. Below it, deliberately: the chart is what the operator reads, this is
+ * what they check.
+ *
+ * `kind` is repeated in words per bound because the chart's encoding is geometric, and the
+ * measured/estimated distinction is too load-bearing to exist in only one modality. Basis prose goes
+ * one click away — it is a sentence, and a sentence in a table cell is a truncated sentence.
+ */
+function BoundsTable({ windows }: { windows: PpmWindow[] }) {
+  return (
+    <>
+      <table className="mx">
+        <thead>
+          <tr>
+            <th>Element</th>
+            <th>Detection floor</th>
+            <th>Upper bound</th>
+            <th>Recommended</th>
+            <th>Quantifiable above</th>
+          </tr>
+        </thead>
+        <tbody>
+          {windows.map((w) => (
+            <tr key={`${w.cas}|${w.element}`}>
+              <td>
+                <Data kind="element">{w.element}</Data>
+                <div className="tiny muted data">{w.cas}</div>
+              </td>
+              <td>
+                <span className="data">{fmtPpm(w.floor.ppm)}</span> <KindChip bound={w.floor} />
+              </td>
+              <td>
+                <span className="data">{fmtPpm(w.upper.ppm)}</span> <KindChip bound={w.upper} />
+              </td>
+              <td className="data" style={{ fontWeight: 600 }}>
+                {fmtPpm(w.recommendedPpm)}
+              </td>
+              <td className="data">{fmtPpm(w.quantificationPpm)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <details style={{ marginTop: 'var(--s2)' }}>
+        <summary className="small secondary" style={{ cursor: 'pointer' }}>
+          Where each bound comes from
+        </summary>
+        <div style={{ marginTop: 'var(--s2)' }}>
+          {windows.map((w) => (
+            <div key={`${w.cas}|${w.element}`} style={{ marginBottom: 'var(--s3)' }}>
+              <div className="small" style={{ fontWeight: 500 }}>
+                <Data kind="element">{w.element}</Data>
+              </div>
+              <BoundBasis label="Detection floor" bound={w.floor} />
+              <BoundBasis label="Upper bound" bound={w.upper} />
+            </div>
+          ))}
+        </div>
+      </details>
+    </>
+  );
+}
+
+function BoundBasis({ label, bound }: { label: string; bound: Bound }) {
+  return (
+    <p className="small secondary" style={{ margin: '2px 0 0' }}>
+      {label} — <span className="data">{fmtPpm(bound.ppm)} ppm</span>, confidence{' '}
+      <span className="data">{bound.confidence.toFixed(2)}</span>.{' '}
+      {bound.basis.trim() ? bound.basis : <span className="muted">No basis was recorded.</span>}
+    </p>
+  );
+}
+
+/**
+ * `measured` is the physicist's, never the agent's — DosingAgent rejects an agent-authored bound
+ * claiming it. That asymmetry is the whole reason `kind` exists, so this reads the RECORD'S kind and
+ * nothing else. It is never inferred from which end of the window the bound sits at, and never from a
+ * confidence of 1.00: either inference would let an estimate render as a measurement.
+ */
+function KindChip({ bound }: { bound: Bound }) {
   const measured = bound.kind === 'measured';
   return (
-    <div style={{ display: 'flex', gap: 8, padding: '4px 0', alignItems: 'baseline' }}>
-      <span className="tiny muted" style={{ minWidth: 88 }}>
-        {label}
-      </span>
-      <span className="data" style={{ minWidth: 62, fontWeight: 500 }}>
-        {fmtPpm(bound.ppm)} ppm
-      </span>
-      <span
-        className="chip"
-        style={{
-          fontSize: 10,
-          background: measured ? 'var(--bg-teal)' : 'var(--bg-warning)',
-          color: measured ? 'var(--text-teal)' : 'var(--text-warning)',
-        }}
-        title={
-          measured
-            ? "The physicist's measurement. The agent cannot author this kind."
-            : "The agent's own claim — not a measurement."
-        }
-      >
-        {bound.kind}
-      </span>
-      <span className="tiny muted data">conf {bound.confidence.toFixed(2)}</span>
-      <span className="tiny muted" style={{ flex: 1 }}>
-        {bound.basis}
-      </span>
-    </div>
+    <span
+      className="chip"
+      data-bound-kind={bound.kind}
+      style={{
+        background: measured ? 'var(--bg-teal)' : 'var(--surface-1)',
+        color: measured ? 'var(--text-teal)' : 'var(--text-secondary)',
+      }}
+      title={
+        measured
+          ? "The physicist's measurement. The agent cannot author this kind."
+          : "The agent's own claim — not a measurement."
+      }
+    >
+      {bound.kind}
+    </span>
   );
 }
 
-function CodeCard({
-  code,
-  projectId,
-  onRevised,
-}: {
-  code: MarkerCode;
-  projectId: string;
-  onRevised: () => void;
-}) {
+function CodeCard({ code }: { code: MarkerCode }) {
   return (
     <div className="card">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
         {/* A code has no name and no kind — its identity IS the ratio. */}
         <Data kind="code">
-          <span style={{ fontSize: 15, fontWeight: 600 }}>{code.ratioSignature}</span>
+          <span style={{ fontSize: 'var(--t-lead)', fontWeight: 600 }}>{code.ratioSignature}</span>
         </Data>
-        <span className="tiny muted">{code.markers.length} markers</span>
+        <span className="small muted">{code.markers.length} markers</span>
       </div>
 
-      <table className="mx" style={{ marginBottom: 8 }}>
+      <table className="mx">
         <thead>
           <tr>
             <th>Element</th>
             <th>ppm</th>
             <th>Loading</th>
-            <th>Element mass</th>
-            <th>Compound mass — order this</th>
+            <th data-order="element">Element mass — into the batch</th>
+            {/* Tinted and bold because this is the figure a purchase order is written from. */}
+            <th data-order="compound" style={{ background: 'var(--surface-1)' }}>
+              Compound mass — order this
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -501,10 +465,16 @@ function CodeCard({
               <td className="data">{fmtPpm(m.ppm)}</td>
               <td className="data">{fmtLoading(m.metalLoading)}</td>
               {/* What must END UP in the batch. */}
-              <td className="data muted">{fmtMass(m.elementMassMg)} mg</td>
+              <td className="data muted" data-order="element">
+                {fmtMass(m.elementMassMg)} mg
+              </td>
               {/* What you BUY. Heavier than the element mass by the compound's non-metal fraction —
                   ordering the element mass under-doses by exactly that. */}
-              <td className="data" style={{ fontWeight: 600 }}>
+              <td
+                className="data"
+                data-order="compound"
+                style={{ fontWeight: 600, background: 'var(--surface-1)' }}
+              >
                 {fmtMass(m.compoundMassMg)} mg
               </td>
             </tr>
@@ -512,18 +482,72 @@ function CodeCard({
         </tbody>
       </table>
 
-      <p className="tiny muted" style={{ margin: '0 0 8px' }}>
+      <p className="small secondary" style={{ margin: '8px 0 0' }}>
+        Order the compound mass. The element mass is what has to end up in the batch — buying that
+        figure instead under-doses by the compound's non-metal fraction.
+      </p>
+
+      <p className="prose" style={{ margin: '8px 0 0' }}>
         {code.rationale}
       </p>
 
-      {/* No direct edits (Law 4). A dosing revision does NOT void the regulatory gate — dosing is
-          downstream of the signature and consumes the already-signed compliant set. */}
-      <ReviseForm
-        projectId={projectId}
-        stage="dosing"
-        fixedTarget={`the ${code.ratioSignature} code on ${code.componentId}`}
-        onRequested={onRevised}
-      />
+      {/* No direct edits (Law 4). The operator never hand-mutates the agent's record: they tell the
+          agent what is wrong and why, and the agent applies the change and records the reason as a
+          Learned Conclusion. That conversation belongs in the agent column, not in a form buried in
+          a card — which is what this used to be. */}
+      <AskTheAgent about={`the ${code.ratioSignature} code on ${code.componentId}`} />
     </div>
   );
+}
+
+/**
+ * Hand this card over to the agent column.
+ *
+ * The composer lives inside `AgentPanel`, which this screen may not modify and which exposes no
+ * handoff API — so the draft is written into it through the DOM, using React's own value setter so a
+ * controlled input's state really changes rather than the value being painted on and lost at the next
+ * render. It is a bridge, not an architecture: the right fix is a shared handoff channel owned by the
+ * panel, and this should be replaced by one the moment it exists.
+ *
+ * When the composer is not on the page — the agent column is collapsible on this screen — the draft
+ * is shown here instead. A button that silently did nothing would be a lying affordance, which is
+ * exactly the failure mode this codebase spends its effort avoiding.
+ */
+function AskTheAgent({ about }: { about: string }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const text = `About ${about} — `;
+
+  return (
+    <div style={{ marginTop: 'var(--s3)' }}>
+      <button
+        type="button"
+        className="btn"
+        onClick={() => {
+          setDraft(handOffToChat(text) ? null : text);
+        }}
+      >
+        <i className="ti ti-message-2" aria-hidden="true" /> Ask the agent to change this — say why
+      </button>
+      {draft && (
+        <p className="small secondary" style={{ margin: '6px 0 0' }}>
+          The agent column is closed. Open it (Ctrl/Cmd + \) and start with:{' '}
+          <span className="data">{draft}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Returns false when there is no composer on the page — the caller must say so rather than pretend. */
+function handOffToChat(text: string): boolean {
+  const input = document.querySelector<HTMLInputElement>('input[aria-label^="Message the"]');
+  if (!input) return false;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  if (!setter) return false;
+  setter.call(input, text);
+  // React listens for the bubbling `input` event; without it the component's state never updates and
+  // the next render wipes what was just written.
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.focus();
+  return true;
 }
