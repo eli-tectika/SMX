@@ -98,3 +98,99 @@
 .stepper__step[data-status='awaiting-RE'] .stepper__bar,
 .stepper__step[data-status='awaiting-VP'] .stepper__bar,
 .stepper__step[data-status='awaiting-confirmation'] .stepper__bar { background: var(--text-warning); }
+
+/* ---- work area ----
+
+   Chat left at a fixed width; the artifact takes everything else.
+
+   `align-items` is left at its `stretch` default ON PURPOSE, and there is no `align-self` on
+   the columns. The chat column and the rail have to reach the full height of the row — the
+   panel inside sets `height: 100%` and needs a definite box to resolve against — and stretch
+   is what gives them one. An earlier draft said `align-items: flex-start` here and then bought
+   the height back with `align-self: stretch` on each child, which is the same layout written
+   as a rule plus two exceptions to it. */
+
+.work { display: flex; min-height: 0; }
+.work__chat {
+  /* Fixed. A conversation has a comfortable measure and gains nothing past it, while the
+     artifact beside it gains everything. */
+  width: 390px;
+  flex: none;
+  position: relative;
+  min-width: 0;
+  border-right: var(--hair) solid var(--border);
+  background: var(--surface-2);
+}
+.work__artifact { flex: 1; min-width: 0; padding: var(--s4); }
+.work[data-chat='none'] .work__artifact { padding-inline: var(--s5); }
+
+/* Collapsed: a rail, not an absence. The agent is the only surface the operator may instruct,
+   and an interface where it can be dismissed entirely invites working around it. */
+.work__rail {
+  width: 44px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s3);
+  border: 0;
+  border-right: var(--hair) solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: var(--s3) 0;
+}
+.work__rail:hover { color: var(--text-primary); background: var(--surface-1); }
+/* 12px vertical text sets its line box across the rail's 44px, not along it — the icon above it
+   is ~16px and both sit centred with room to spare. The length of the word runs down the rail,
+   which is stretched to the row, so "Agent" cannot clip. */
+.work__rail-label { writing-mode: vertical-rl; font-size: var(--t-small); letter-spacing: 0.06em; }
+
+/* Top-right of the chat column. The panel that goes there (AgentPanel's `PanelFrame`) puts its
+   sparkle + "<Stage> agent" title at the top LEFT and its scroller below, so this overlays
+   nothing; `z-index` is belt-and-braces for whatever else is ever mounted as the chat. */
+.work__collapse {
+  position: absolute;
+  top: var(--s2);
+  right: var(--s2);
+  z-index: 1;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: var(--s1);
+  line-height: 1;
+  border-radius: var(--r1);
+}
+.work__collapse:hover { color: var(--text-primary); background: var(--surface-1); }
+
+/* ---- next action ----
+
+   Every tone in NextAction's union is styled — all four, for the frame AND for the icon. Amber
+   is the base because it is the common case (every park is a warning), but "the base" is not a
+   silent fallback: `accent` and `muted` are unreachable from nextAction.ts today, and the day
+   one of them starts being returned it must not paint a blue banner with an amber glyph in it. */
+
+.next {
+  display: flex;
+  gap: var(--s3);
+  align-items: flex-start;
+  padding: var(--s4);
+  border: var(--hair) solid var(--border-warning);
+  background: var(--bg-warning);
+  border-radius: var(--r3);
+  margin-bottom: var(--s5);
+}
+.next[data-tone='danger'] { border-color: var(--border-danger); background: var(--bg-danger); }
+.next[data-tone='accent'] { border-color: var(--border-accent); background: var(--bg-accent); }
+.next[data-tone='muted'] { border-color: var(--border); background: var(--surface-2); }
+.next__icon { font-size: 20px; color: var(--text-warning); }
+.next[data-tone='danger'] .next__icon { color: var(--text-danger); }
+.next[data-tone='accent'] .next__icon { color: var(--text-accent); }
+.next[data-tone='muted'] .next__icon { color: var(--text-muted); }
+.next__body { min-width: 0; }
+.next__title { margin: 0; font-size: var(--t-lead); font-weight: var(--w-semibold); }
+.next__text { margin: var(--s1) 0 0; font-size: var(--t-body); color: var(--text-secondary); line-height: var(--lh-body); }
+.next__detail { margin: var(--s2) 0 0; font-size: var(--t-small); color: var(--text-secondary); }
+/* Fitts: the primary action of the screen is a 40px target, and it is always here. */
+.next__cta { margin-top: var(--s3); padding: 10px 16px; font-size: var(--t-body); }
