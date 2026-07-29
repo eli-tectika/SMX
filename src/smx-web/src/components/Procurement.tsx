@@ -1,6 +1,5 @@
 import type { ComponentDecision, DosingDoc, MsdsEntry } from '../api/types';
 import { Data } from './ui/Data';
-import { SectionHeader } from './ui/Primitives';
 
 /**
  * How much this screen actually knows about the MSDS registry.
@@ -20,9 +19,10 @@ export type SheetsState = 'unread' | 'ok' | 'failed';
  * Procurement — the Decision screen's post-close half, visible only once the record says `released`.
  *
  * The orderable set is the markers of CONFIRMED codes, never the decision rows and never a proposal:
- * "you cannot order what the VP did not sign". Each order is independently gated on a REVIEWED MSDS
- * (§5), and the button is disabled with the reason rather than hidden — a missing safety sheet is
- * what blocks an order, and hiding the control would hide the blocker with it.
+ * "you cannot order what the VP did not sign". Each order is independently gated on a REVIEWED MSDS,
+ * and the button is disabled with the reason rather than hidden — a missing safety sheet is what
+ * blocks an order, and hiding the control would hide the blocker with it. The precondition is stated
+ * in words HERE, where the order is placed, and not only on a registry page nobody is looking at.
  *
  * `sheetsState` is why this takes a state rather than just a list: an empty list means "no sheets" and
  * nothing else, and the two ways of not knowing — not read yet, could not be read — are not that. Only
@@ -51,21 +51,32 @@ export function Procurement({
   onOrder: (cas: string) => void;
 }) {
   const known = sheetsState === 'ok';
+  // `client.ts` casts every response with `as` and validates nothing, so neither array is assumed:
+  // a drifted DosingDoc must not turn the order table into a TypeError on the screen that buys.
+  const codes = Array.isArray(dosing?.codes) ? dosing!.codes : [];
+  const sheetList = Array.isArray(sheets) ? sheets : [];
   const markers = components
     .filter((c) => c.confirmedCode !== null)
     .flatMap((c) =>
-      (dosing?.codes ?? [])
+      codes
         .filter((k) => k.componentId === c.componentId && k.ratioSignature === c.confirmedCode)
-        .flatMap((k) => k.markers.map((m) => ({ ...m, componentId: c.componentId }))),
+        .flatMap((k) =>
+          (Array.isArray(k.markers) ? k.markers : []).map((m) => ({
+            ...m,
+            componentId: c.componentId,
+          })),
+        ),
     );
 
   return (
     <>
-      <SectionHeader
-        eyebrow="Procurement"
-        count={markers.length}
-        hint="the markers of the signed codes — each order gated on a reviewed MSDS"
-      />
+      <p className="prose" style={{ margin: '0 0 var(--s3)' }}>
+        <b>MSDS before order.</b> A substance cannot be ordered until a reviewed safety sheet is on
+        file for it — the button below stays dead until one is, and the row says why. These{' '}
+        {markers.length} substance{markers.length === 1 ? '' : 's'}{' '}
+        {markers.length === 1 ? 'is' : 'are'} the markers of the codes the VP signed; nothing else on
+        this project is orderable.
+      </p>
 
       {error && (
         <div className="banner warn" role="alert" style={{ marginBottom: 8 }}>
@@ -85,8 +96,8 @@ export function Procurement({
           <div>
             <b>The MSDS registry did not load.</b>
             <div className="tiny" style={{ marginTop: 3 }}>
-              Every safety-sheet status below is <b>unknown</b> — not cleared, and not missing. Spec §5
-              makes a reviewed sheet a hard precondition for an order, so ordering is withheld until the
+              Every safety-sheet status below is <b>unknown</b> — not cleared, and not missing. A
+              reviewed sheet is a hard precondition for an order, so ordering is withheld until the
               registry can be read. Reload, or open the registry directly.
             </div>
           </div>
@@ -108,7 +119,7 @@ export function Procurement({
         </thead>
         <tbody>
           {markers.map((m) => {
-            const sheet = known ? sheets.find((s) => s.cas === m.cas) : undefined;
+            const sheet = known ? sheetList.find((s) => s.cas === m.cas) : undefined;
             const reviewed = known && sheet?.reviewStatus === 'reviewed';
             const isOrdered = ordered.includes(m.cas);
             return (
