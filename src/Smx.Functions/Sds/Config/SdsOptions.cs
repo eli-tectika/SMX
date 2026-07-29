@@ -24,6 +24,9 @@ public sealed class SdsOptions
     // Hosts to refuse outright. A denylist, not an allowlist: the default for an unknown host is now
     // ALLOW, and this exists only for hosts we have learned are tarpits or serve junk.
     public IReadOnlyList<string> Denylist { get; init; } = [];
+    // Brave key for webDiscovery. Empty is a supported state, not a misconfiguration: without it the
+    // dry-run search is wired instead and discovery simply contributes nothing.
+    public string SearchApiKey { get; init; } = "";
     public string AllowlistPath { get; init; } = "Sds/Config/suppliers.allowlist.json";
     public string SeedCatalogPath { get; init; } = "Reference/Seed/catalog-products.json";
     public int MaxPdfBytes { get; init; } = 25 * 1024 * 1024;
@@ -49,6 +52,7 @@ public sealed class SdsOptions
         Denylist = (c["SDS_DENYLIST"] ?? "")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(d => d.ToLowerInvariant()).ToList(),
+        SearchApiKey = c["SDS_SEARCH_API_KEY"] ?? "",
         AllowlistPath = c["SDS_ALLOWLIST_PATH"] ?? "Sds/Config/suppliers.allowlist.json",
         SeedCatalogPath = c["SDS_SEED_CATALOG_PATH"] ?? "Reference/Seed/catalog-products.json",
     };
