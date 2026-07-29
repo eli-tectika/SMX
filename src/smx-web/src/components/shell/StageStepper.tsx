@@ -1,6 +1,25 @@
 import { NavLink } from 'react-router-dom';
-import type { ProjectSummary } from '../../api/types';
+import type { ProjectSummary, StageStatus } from '../../api/types';
 import { STAGES, backendStages, foldStatus, stageIcon } from '../../domain/stages';
+
+/**
+ * What each status is called out loud. The visible stepper says the state in colour and glyph,
+ * both of which are invisible to a screen reader, so the accessible name has to carry it in words
+ * — and the words name the PERSON where there is one, because "awaiting-RE" is a record value and
+ * "waiting on the Regulatory Expert" is what the operator actually needs to hear.
+ */
+const STATUS_TEXT: Record<StageStatus, string> = {
+  done: 'done',
+  running: 'running now',
+  failed: 'halted',
+  'needs-review': 'needs review',
+  pending: 'not started',
+  'awaiting-confirmation': 'waiting for you to start it',
+  'awaiting-operator': 'waiting on you',
+  'awaiting-physics': 'waiting on the physics team',
+  'awaiting-RE': 'waiting on the Regulatory Expert',
+  'awaiting-VP': 'waiting on VP R&D',
+};
 
 /**
  * The eight stages, horizontal, as a stepper.
@@ -29,6 +48,10 @@ export function StageStepper({ project }: { project: ProjectSummary }) {
           to={`/p/${project.projectId}/${stage.slug}`}
           data-stage={stage.slug}
           data-status={status}
+          /* The icon is aria-hidden and the bar is decorative, so without this a screen reader
+             gets eight bare stage names and no states — a regression on the spine this replaces,
+             which carried the same fact in a `title`. The visible label stays the label. */
+          aria-label={`${stage.label} — ${STATUS_TEXT[status]}`}
           className={({ isActive }) => (isActive ? 'stepper__step on' : 'stepper__step')}
           /* NavLink applies this ONLY when the link is active (react-router-dom 6.26 defaults it
              to "page"). A stepper's current item is a step, not a page. */

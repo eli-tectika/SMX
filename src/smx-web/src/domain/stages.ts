@@ -236,9 +236,11 @@ export function pillClass(stage: StageDef, status: StageStatus | undefined): str
       break;
     // A status with no case of its own would render as a bare `pill` — no tone at all, quieter
     // than the `mut` a merely-pending stage gets. That is how every park in this file used to
-    // render. The never-check turns the next unhandled status into a compile error.
+    // render. The never-check turns the next unhandled status into a compile error; the runtime
+    // fallback (for an old bundle meeting a new API, which the compiler cannot see) takes the
+    // gate tone for the same reason stageIcon takes the alert glyph — loud is the safe direction.
     default:
-      return unhandledStatus(status, cls.join(' '));
+      return unhandledStatus(status, [...cls, 'gate'].join(' '));
   }
   return cls.join(' ');
 }
@@ -274,7 +276,13 @@ export function stageIcon(status: StageStatus | undefined, gate?: boolean): stri
     // same glyph, which said "nothing to see here" about states that badly needed a person.
     case 'pending':
       return 'ti-point';
+    // An unhandled status falls to the LOUD reading, not the quiet one. Five of the ten statuses
+    // are already parks, so a status this enum grows is likelier to be a sixth park than a new
+    // idle state — and `ti-point` is the glyph `pending` owns, meaning "not reached yet". Landing
+    // there would recreate, in the one branch built to prevent it, the exact bug this file was
+    // fixed for. Attention beats completion; over-flagging costs a glance, under-flagging hides
+    // a person who is waiting.
     default:
-      return unhandledStatus(status, 'ti-point');
+      return unhandledStatus(status, 'ti-eye-exclamation');
   }
 }
