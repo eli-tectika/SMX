@@ -258,6 +258,27 @@ describe('getRegulatoryGate', () => {
   });
 });
 
+describe('regulatory gate signer', () => {
+  /**
+   * Three states, and the third is the one that matters: an approved gate with no recorded
+   * signer is UNKNOWN provenance. Defaulting it to "operator" would launder every gate that
+   * REGULATORY_AUTO_APPROVE signed before the field existed into a human determination.
+   */
+  it('carries a null signer through as null', async () => {
+    stubFetch(() => json({ status: 'approved', armable: true, blockers: [], approvedBy: null }));
+    const gate = await getRegulatoryGate('p1');
+    expect(gate.approvedBy).toBeNull();
+  });
+
+  it('carries a machine signature through as a machine signature', async () => {
+    stubFetch(() =>
+      json({ status: 'approved', armable: true, blockers: [], approvedBy: 'auto-approve' }),
+    );
+    const gate = await getRegulatoryGate('p1');
+    expect(gate.approvedBy).toBe('auto-approve');
+  });
+});
+
 describe('approveRegulatory', () => {
   it('POSTs to the approve endpoint and returns the approved status', async () => {
     let seen: { url: string; init?: RequestInit } | undefined;

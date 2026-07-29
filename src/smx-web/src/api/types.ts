@@ -449,13 +449,21 @@ export interface ReviewRequest {
  * `armable` is computed server-side (RegulatoryGate.Armable): true only when every LIVE non-Pass cell
  * has had its evidence reviewed. The sign button reads THIS, never a browser-side tally. Each blocker is
  * the string "unreviewed: {cas}|{componentId} ({Overall})" — parse it, never display it raw.
- * `approvedAt` is omitted (not null) until the gate is signed.
+ * `approvedAt` and `approvedBy` are sent as explicit JSON null (not omitted) until the gate is signed,
+ * so the client can tell "unknown provenance" from "old API that doesn't send this field at all".
  */
 export interface RegulatoryGate {
   status: 'locked' | 'approved';
   armable: boolean;
   blockers: string[];
   approvedAt?: string;
+  /**
+   * WHAT signed the gate. `null` on an approved gate means the record does not say — a gate
+   * written before the backend recorded this. It must render as unknown provenance, NEVER as a
+   * human determination; `'auto-approve'` means REGULATORY_AUTO_APPROVE signed it and no human
+   * reviewed anything.
+   */
+  approvedBy?: 'operator' | 'auto-approve' | null;
 }
 
 /** ChatToolCall — ChatDocs.cs. `recordId` is set when the call WROTE something: the audit link. */
