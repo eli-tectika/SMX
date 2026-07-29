@@ -62,6 +62,53 @@ public class HostWiringTests
         Assert.IsType<BlobQuotaStore>(sp.GetRequiredService<IQuotaStore>());
     }
 
+    // The live path builds a blob URI from the account name. An empty one yields "https://.blob.core.windows.net",
+    // and `new Uri` answers that with "Invalid URI: The hostname could not be parsed" — thrown from
+    // ConfigureServices, so the WHOLE HOST fails to build and the app crash-loops with a message that names
+    // neither the app setting nor the app. Name the setting instead (the BRONZE_ACCOUNT_NAME pattern).
+    [Fact]
+    public void Live_WithNoStorageAccount_FailsAtStartupNamingTheSetting()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() => Build(
+            ("PROXY_DRY_RUN", "false"),
+            ("PROXY_SEARCH_API_KEY", "k")));
+
+        Assert.Contains("AzureWebJobsStorage__accountName", ex.Message);
+        Assert.Contains("PROXY_DRY_RUN", ex.Message);
+    }
+
+    // The environment-variable spelling of the same setting must satisfy the guard too — this is the form
+    // the deployed app actually receives (functions.bicep:272), and the form the old binder could not read.
+    [Fact]
+    public void Live_AcceptsTheEnvironmentVariableSpellingOfTheStorageAccount()
+    {
+        var sp = Build(
+            ("PROXY_DRY_RUN", "false"),
+            ("PROXY_SEARCH_API_KEY", "k"),
+            ("AzureWebJobsStorage:accountName", "stfnspexample"));   // what the env provider produces
+        Assert.IsType<BlobSearchCache>(sp.GetRequiredService<ISearchCache>());
+    }
+
+    // ProxyHttpTests proves ProxyHttp.ConfigureClient applies the timeout. This proves the live registration
+    // actually calls it — the dead-knob half of the bug was not a wrong value, it was a value nothing read,
+    // so a configurator that ships unwired would leave PROXY_TIMEOUT_SECONDS just as dead as before.
+    //
+    // The client is resolved by the name the typed-client registration uses (the TClient type name), so this
+    // reaches the very client BraveSearchProvider is handed.
+    [Fact]
+    public void Live_AppliesTheConfiguredTimeoutToTheProvidersHttpClient()
+    {
+        var sp = Build(
+            ("PROXY_DRY_RUN", "false"),
+            ("PROXY_SEARCH_API_KEY", "k"),
+            ("PROXY_TIMEOUT_SECONDS", "9"),
+            ("AzureWebJobsStorage:accountName", "stfnspexample"));
+
+        using var client = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(ISearchProvider));
+
+        Assert.Equal(TimeSpan.FromSeconds(9), client.Timeout);
+    }
+
     // ── FIX C: the cover count and the corpus must be cross-checked, or the anonymity set shrinks in silence ──
 
     // CoverBatch draws its decoys with Take(CoverCount - 1), and Take() under-fills without complaint. Raise

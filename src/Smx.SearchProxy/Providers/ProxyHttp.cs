@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Smx.SearchProxy.Config;
 
 namespace Smx.SearchProxy.Providers;
 
@@ -29,4 +30,17 @@ public static class ProxyHttp
         // fails against a stale address until someone notices and restarts the app.
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
     };
+
+    /// Bounds a single provider call at PROXY_TIMEOUT_SECONDS.
+    ///
+    /// Without this the client keeps HttpClient's 100-second default, and BraveSearchProvider's retry loop
+    /// stacks that: 3 attempts plus backoff is ~300s against a platform HTTP ceiling near 230s, so a hung
+    /// provider produces a dropped request rather than the clean "provider_failed" the pipeline is written
+    /// to return — and the Discovery agent blocks for minutes on a search that will never answer.
+    ///
+    /// A non-positive value falls back to the shipped default: HttpClient throws on zero or negative, and a
+    /// typo in an app setting must not become a second host-startup crash loop.
+    public static void ConfigureClient(HttpClient client, ProxyOptions opts) =>
+        client.Timeout = TimeSpan.FromSeconds(
+            opts.TimeoutSeconds > 0 ? opts.TimeoutSeconds : new ProxyOptions().TimeoutSeconds);
 }

@@ -1,4 +1,5 @@
 using System.Net.Http;
+using Smx.SearchProxy.Config;
 using Smx.SearchProxy.Providers;
 using Xunit;
 
@@ -25,5 +26,39 @@ public class ProxyHttpTests
         Assert.NotEqual(Timeout.InfiniteTimeSpan, handler.PooledConnectionLifetime);
         Assert.True(handler.PooledConnectionLifetime > TimeSpan.Zero);
         Assert.True(handler.PooledConnectionLifetime <= TimeSpan.FromMinutes(15));
+    }
+
+    /// PROXY_TIMEOUT_SECONDS used to be read by nothing: ProxyOptions parsed it, and no line of code ever
+    /// touched the value. The client kept HttpClient's 100-second default, so a hung provider call burned
+    /// 100s per attempt and, across the retry loop, up to ~300s — past the platform's ~230s HTTP ceiling,
+    /// with the Discovery agent blocked the whole time. Same defect class as the hardcoded `> 20` that
+    /// PROXY_MAX_RESULTS used to hit (StructuralGuardTests).
+    ///
+    /// Lives on ProxyHttp, next to the handler, for the reason stated at the top of that file: the thing
+    /// under test must be the thing that ships. HostWiringTests then proves Program.cs actually calls it —
+    /// a correct configurator nobody invokes is still a dead knob.
+    [Fact]
+    public void TheShippedClient_UsesTheConfiguredTimeout_NotHttpClientsDefault()
+    {
+        using var client = new HttpClient();
+        Assert.Equal(TimeSpan.FromSeconds(100), client.Timeout);   // the default we must not keep
+
+        ProxyHttp.ConfigureClient(client, new ProxyOptions { TimeoutSeconds = 7 });
+
+        Assert.Equal(TimeSpan.FromSeconds(7), client.Timeout);
+    }
+
+    /// A zero or negative timeout is not a timeout — HttpClient throws on it, which would turn a typo in an
+    /// app setting into another host-startup crash loop. Fall back to the shipped default instead.
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void ANonPositiveTimeout_FallsBackToTheDefault_RatherThanThrowing(int configured)
+    {
+        using var client = new HttpClient();
+
+        ProxyHttp.ConfigureClient(client, new ProxyOptions { TimeoutSeconds = configured });
+
+        Assert.Equal(TimeSpan.FromSeconds(new ProxyOptions().TimeoutSeconds), client.Timeout);
     }
 }

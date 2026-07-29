@@ -48,12 +48,29 @@ public sealed class ProxyOptions
             MaxResults = int.TryParse(c["PROXY_MAX_RESULTS"], out var m) ? m : 20,
             TimeoutSeconds = int.TryParse(c["PROXY_TIMEOUT_SECONDS"], out var t) ? t : 15,
             Retries = int.TryParse(c["PROXY_RETRIES"], out var r) ? r : 3,
+            MaxResponseBytes = int.TryParse(c["PROXY_MAX_RESPONSE_BYTES"], out var mrb) ? mrb : 2 * 1024 * 1024,
             CacheTtlHours = int.TryParse(c["PROXY_CACHE_TTL_HOURS"], out var ttl) ? ttl : 168,
             CacheContainer = c["PROXY_CACHE_CONTAINER"] ?? "search-cache",
-            StorageAccount = c["AzureWebJobsStorage__accountName"] ?? "",
+            StorageAccount = StorageAccountFrom(c),
             MonthlyQueryCap = int.TryParse(c["PROXY_MONTHLY_QUERY_CAP"], out var cap) ? cap : 5000,
             RateLimitPerMinute = int.TryParse(c["PROXY_RATE_LIMIT_PER_MINUTE"], out var rl) ? rl : 30,
             UamiClientId = c["WORKLOAD_UAMI_CLIENT_ID"],
         };
     }
+
+    /// The one setting in this file whose name is not ours: Azure Functions' identity-based storage binding
+    /// owns it, and it is spelled `AzureWebJobsStorage__accountName` in functions.bicep and in the portal.
+    ///
+    /// But that spelling never survives the trip. .NET's EnvironmentVariablesConfigurationProvider rewrites
+    /// `__` to `:` as it builds each key, so an app setting delivered as an env var — which is every app
+    /// setting in Azure, and every `Values` entry that `func start` reads out of local.settings.json —
+    /// arrives as `AzureWebJobsStorage:accountName`. Asking for the literal `__` key read back empty in the
+    /// deployed app while every in-memory test stayed green, and an empty account name built the URI
+    /// `https://.blob.core.windows.net`, which crash-looped the host on an opaque UriFormatException.
+    ///
+    /// So read the normalized key first and keep the literal one as a fallback, for a provider that hands
+    /// the key over verbatim (a JSON file bound directly, an in-memory test config). Both must work: fixing
+    /// only one spelling would break the other.
+    private static string StorageAccountFrom(IConfiguration c) =>
+        c["AzureWebJobsStorage:accountName"] ?? c["AzureWebJobsStorage__accountName"] ?? "";
 }
