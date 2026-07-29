@@ -1,0 +1,103 @@
+/* The in-project shell: header, stepper, work area.
+
+   Two frames used to fight here — a sticky context bar that measured itself at runtime and a
+   dock pinned beneath it. Both are gone. The shell is an ordinary grid: nothing measures
+   anything, and there is no --ctxbar-h to keep in sync. */
+
+.phead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-bottom: var(--hair) solid var(--border);
+}
+.phead__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--t-small);
+  color: var(--text-secondary);
+  text-decoration: none;
+  /* Fitts: the back link is a 32px target, not a 12px word. */
+  padding: var(--s2) var(--s2) var(--s2) 0;
+}
+.phead__back:hover { color: var(--ink); }
+.phead__product {
+  margin: 0;
+  font-size: var(--t-lead);
+  font-weight: var(--w-semibold);
+  letter-spacing: -0.005em;
+}
+.phead__client { font-size: var(--t-small); color: var(--text-muted); }
+.phead__end { margin-left: auto; }
+
+/* ---- stepper ---- */
+
+.stepper {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 var(--s4);
+  border-bottom: var(--hair) solid var(--border);
+}
+.stepper__step {
+  flex: 1;
+  min-width: 0;
+  padding: var(--s2) 0 var(--s3);
+  text-decoration: none;
+  color: var(--text-muted);
+  font-size: var(--t-small);
+  border-bottom: 2px solid transparent;
+}
+.stepper__step:hover { color: var(--text-secondary); }
+.stepper__step.on { color: var(--ink); font-weight: var(--w-semibold); border-bottom-color: var(--ink); }
+.stepper__bar {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  margin-bottom: var(--s2);
+}
+.stepper__label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+/* The ellipsis lives on the TEXT box, not on `.stepper__label`: `text-overflow` truncates the
+   inline content of a block box and does nothing on a flex container, so putting it up there
+   would clip "Intake & pool" mid-letter and never draw the ellipsis it promised. */
+.stepper__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stepper__done {
+  /* Explicitly rigid. It sits in a row of `flex: 1` steps, and it is a count of eight things,
+     not a ninth thing — it takes its text width and the steps divide what is left. */
+  flex: none;
+  align-self: center;
+  padding-left: var(--s3);
+  font-size: var(--t-small);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Status colours are the verdict palette and nothing else — a stage bar is a state, which is
+   exactly what this palette means. Pending stays achromatic: "not reached yet" is not a claim.
+
+   The park states are listed even though `foldStatus` cannot currently emit one (it collapses
+   every `awaiting-*` to `pending` — see the note in StageStepper.tsx). They are the colours a
+   parked stage must take the day that fold is fixed, and leaving one out is how `awaiting-VP`
+   — the VP park, the highest-consequence wait in the journey — ends up painted as "not reached
+   yet" for a second time in this codebase. */
+.stepper__step[data-status='done'] .stepper__bar { background: var(--text-success); }
+.stepper__step[data-status='running'] .stepper__bar { background: var(--text-accent); }
+.stepper__step[data-status='failed'] .stepper__bar { background: var(--text-danger); }
+.stepper__step[data-status='needs-review'] .stepper__bar,
+.stepper__step[data-status='awaiting-operator'] .stepper__bar,
+.stepper__step[data-status='awaiting-physics'] .stepper__bar,
+.stepper__step[data-status='awaiting-RE'] .stepper__bar,
+.stepper__step[data-status='awaiting-VP'] .stepper__bar,
+.stepper__step[data-status='awaiting-confirmation'] .stepper__bar { background: var(--text-warning); }

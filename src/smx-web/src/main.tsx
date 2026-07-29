@@ -21,6 +21,7 @@ import './styles/tokens.css';
 import './styles/base.css';
 import './styles/craft.css';
 import './styles/primitives.css';
+import './styles/shell.css';
 import './styles/print.css';
 import { App } from './App';
 import { ensureAuthenticated } from './auth/msal';
