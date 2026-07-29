@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Smx.Backend.Pipeline;
 using Smx.Domain;
@@ -114,6 +115,9 @@ public static class ProjectEndpoints
                 Id = RecordIds.Gate(projectId, GateTypes.Regulatory), ProjectId = projectId,
                 GateType = GateTypes.Regulatory, Status = "approved",
                 ApprovedAt = existing?.Status == "approved" ? existing.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
+                // This endpoint is only reachable by the operator pressing Sign — there is no agent
+                // tool for it and there never will be.
+                ApprovedBy = existing?.Status == "approved" ? existing.ApprovedBy ?? "operator" : "operator",
             };
             await store.UpsertGateAsync(gate, ct);
 
@@ -146,12 +150,13 @@ public static class ProjectEndpoints
             var armable = complete && armed;
             var allBlockers = complete ? blockers : blockers.Prepend("incomplete: not every candidate has a verdict yet").ToList();
             var gate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
-            return Results.Json(new
+            return Results.Json(new RegulatoryGateResponse
             {
-                status = gate?.Status ?? "locked",
-                armable,
-                blockers = allBlockers,
-                approvedAt = gate?.ApprovedAt,
+                Status = gate?.Status ?? "locked",
+                Armable = armable,
+                Blockers = allBlockers,
+                ApprovedAt = gate?.ApprovedAt,
+                ApprovedBy = gate?.ApprovedBy,
             }, Json.Options);
         });
 
@@ -252,4 +257,17 @@ public static class ProjectEndpoints
 internal sealed class StartPreconditions
 {
     public List<ComponentSpec> Components { get; set; } = [];
+}
+
+/// GET /gate/regulatory's shape. A named record, not an anonymous object, because ApprovedAt and
+/// ApprovedBy must reach the client as `null` — present-and-null distinguishes "not yet approved"
+/// from "approved, signer unknown" — and <see cref="Json.Options"/> sets `DefaultIgnoreCondition =
+/// WhenWritingNull` globally, which would otherwise drop the key entirely and read as `undefined`.
+internal sealed record RegulatoryGateResponse
+{
+    public required string Status { get; init; }
+    public required bool Armable { get; init; }
+    public required IReadOnlyList<string> Blockers { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public string? ApprovedAt { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public string? ApprovedBy { get; init; }
 }

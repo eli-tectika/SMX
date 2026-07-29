@@ -323,4 +323,44 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
         Assert.Equal(StageStatus.AwaitingPhysics,
             (await store.GetProjectAsync("p1"))!.Stages[Stages.Dosing].Status);
     }
+
+    [Fact]
+    public async Task Approve_RecordsTheOperatorAsSigner()
+    {
+        await SeedVerdict("pApprovedBy", "cas1", VerdictStatus.Pass);
+        var resp = await _client.PostAsJsonAsync("/projects/pApprovedBy/regulatory/approve", new { });
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var gate = await _store.GetGateAsync("pApprovedBy", GateTypes.Regulatory);
+        Assert.Equal("operator", gate!.ApprovedBy);
+    }
+
+    /// The API must SAY who signed. Without this property the screen cannot tell a human
+    /// determination from REGULATORY_AUTO_APPROVE, and renders both as an approved gate.
+    [Fact]
+    public async Task GetGate_ReportsTheSigner()
+    {
+        await SeedVerdict("pSigner", "cas1", VerdictStatus.Pass);
+        await _client.PostAsJsonAsync("/projects/pSigner/regulatory/approve", new { });
+
+        var json = await _client.GetFromJsonAsync<JsonElement>("/projects/pSigner/gate/regulatory");
+        Assert.Equal("operator", json.GetProperty("approvedBy").GetString());
+    }
+
+    /// A gate written before this field existed must NOT be readable as human-signed. Null stays
+    /// null all the way to the client, which renders it as unknown provenance.
+    [Fact]
+    public async Task GetGate_LeavesAPreExistingSignatureUnattributed()
+    {
+        await SeedVerdict("pLegacy", "cas1", VerdictStatus.Pass);
+        await _store.UpsertGateAsync(new GateDoc
+        {
+            Id = RecordIds.Gate("pLegacy", GateTypes.Regulatory), ProjectId = "pLegacy",
+            GateType = GateTypes.Regulatory, Status = "approved",
+            ApprovedAt = "2026-01-01T00:00:00.0000000+00:00",
+        });
+
+        var json = await _client.GetFromJsonAsync<JsonElement>("/projects/pLegacy/gate/regulatory");
+        Assert.Equal(JsonValueKind.Null, json.GetProperty("approvedBy").ValueKind);
+    }
 }
