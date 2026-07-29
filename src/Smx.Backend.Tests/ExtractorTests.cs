@@ -81,6 +81,59 @@ public class ExtractorTests
             "ContentOrderTextExtractor");
     }
 
+    /// A PDF that embeds a SUBSET of a font carries only the glyphs it uses, and often no ToUnicode
+    /// map for them. Those glyphs extract as U+0000 — pypdf reproduces the same NULs on the same
+    /// file, so this is the document's encoding, not a PdfPig bug, and no library swap fixes it.
+    /// Found live on 2026-07-29: "first" arrived as "\0rst", "flag" as "\0ag", and a numbered list's
+    /// numerals were gone entirely — while the file was still reported `extracted` with no signal
+    /// that a single character had been lost.
+    [Fact]
+    public async Task Pdf_NeverHandsBackNulCharacters_WhenAFontSubsetHasNoUnicodeMap()
+    {
+        // A NUL is not merely ugly. It rides into the session document, into Cosmos, and into the
+        // agent's prompt, where it reads as "nothing was here" rather than "something was lost".
+        var result = await new PdfExtractor()
+            .ExtractAsync(File.OpenRead("Resources/subsetted-fonts.pdf"), default);
+
+        Assert.Equal(AttachmentStatus.Extracted, result.Status);
+        Assert.DoesNotContain('\0', result.Text);
+    }
+
+    [Fact]
+    public async Task Pdf_MarksEachUnmappableGlyph_SoALostCharacterCannotReadAsAWholeWord()
+    {
+        // Deleting them would turn "confirmed" into "conrmed" — a word that looks like a typo the
+        // reader should correct, rather than a character that is MISSING. U+FFFD is the standard
+        // "a character was here that could not be decoded", and it survives into the prompt as one.
+        var result = await new PdfExtractor()
+            .ExtractAsync(File.OpenRead("Resources/subsetted-fonts.pdf"), default);
+
+        Assert.Contains('�', result.Text);
+    }
+
+    [Fact]
+    public async Task Pdf_SaysHowManyCharactersItCouldNotMap_RatherThanLosingThemSilently()
+    {
+        // The same discipline as Truncate: a document that lost characters and looks complete is a
+        // document the agent will confidently reason about. Announced, so it can ask instead.
+        var result = await new PdfExtractor()
+            .ExtractAsync(File.OpenRead("Resources/subsetted-fonts.pdf"), default);
+
+        Assert.Contains("could not be mapped", result.Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Pdf_DoesNotCryUnmapped_OverAFileWhoseGlyphsAllResolved()
+    {
+        // The note has to mean something. A warning on every SDS is a warning the agent learns to
+        // ignore on the one file where it mattered.
+        var result = await new PdfExtractor()
+            .ExtractAsync(File.OpenRead("Resources/real-sds-nd2o3.pdf"), default);
+
+        Assert.DoesNotContain("could not be mapped", result.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain('�', result.Text);
+    }
+
     [Fact]
     public async Task Pdf_ReportsFailed_ForSomethingThatIsNotAPdf()
     {
@@ -90,6 +143,36 @@ public class ExtractorTests
 
         Assert.Equal(AttachmentStatus.Failed, result.Status);
         Assert.False(string.IsNullOrWhiteSpace(result.Error));
+    }
+
+    /// The `error` on a failed attachment is not a log line. The chip shows it to the operator and
+    /// RenderAttachments shows it to the agent, whose next move is to ask the operator about the
+    /// file — so the sentence has to describe something they can actually do.
+    [Fact]
+    public async Task Pdf_TellsTheOperatorAProtectedFileIsProtected_NotWhichPasswordItTried()
+    {
+        // PdfPig says "none of the provided passwords were the user or owner password", which reads
+        // as an invitation to supply one. There is no field to supply one in, and live on
+        // 2026-07-29 the agent duly offered to accept a "decryption password" it could not use.
+        var result = await new PdfExtractor()
+            .ExtractAsync(File.OpenRead("Resources/password-protected.pdf"), default);
+
+        Assert.Equal(AttachmentStatus.Failed, result.Status);
+        Assert.Contains("password-protected", result.Error!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("owner password", result.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Pdf_SaysAFileIsNotAPdf_RatherThanQuotingTheParserAtTheOperator()
+    {
+        // "Could not find the version header comment at the start of the document" describes the
+        // parser's disappointment. What the operator needs to know is that the thing they attached
+        // is not the kind of file its name claims.
+        var result = await new PdfExtractor().ExtractAsync(Utf8("this is not a pdf"), default);
+
+        Assert.Equal(AttachmentStatus.Failed, result.Status);
+        Assert.Contains("not a PDF", result.Error!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("version header", result.Error!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

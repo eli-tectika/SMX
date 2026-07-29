@@ -19,6 +19,25 @@ public class PdfTextExtractorTests
         Assert.True(result.Ok, result.Reason);
     }
 
+    /// TWIN of Smx.Backend.Tests.ExtractorTests.Pdf_NeverHandsBackNulCharacters. A PDF that embeds a
+    /// font SUBSET usually has no ToUnicode map for it, and those glyphs extract as U+0000 (pypdf
+    /// reproduces the same NULs — it is the document's encoding, not PdfPig). Here the text does not
+    /// go to an agent, it goes into the SDS corpus and on into the AI Search index, so a NUL becomes
+    /// a permanent artefact of a retrievable document — and a swallowed digit in an SDS is a
+    /// regulatory claim that cites something the source never said.
+    [Fact]
+    public void Extract_never_yields_nul_characters_from_a_subsetted_font()
+    {
+        var pdf = File.ReadAllBytes("Resources/subsetted-fonts.pdf");
+
+        var text = new PdfTextExtractor().Extract(pdf);
+
+        Assert.DoesNotContain('\0', text);
+        // Marked, not deleted: dropping them turns "confirmed" into "conrmed", which reads as a typo
+        // rather than as a character that is missing.
+        Assert.Contains('�', text);
+    }
+
     [Fact]
     public void Extract_yields_chunkable_ghs_sections_from_a_real_sds()
     {

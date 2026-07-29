@@ -19,5 +19,8 @@
     <None Update="Resources/**"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
     <!-- Real bundled catalog, linked in so the seeder smoke test catches schema drift. -->
     <Content Include="../Smx.Functions/Reference/Seed/catalog-products.json" Link="Resources/catalog-products.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The repo's own HLD, linked as a real specimen of a PDF whose subsetted fonts carry no
+         ToUnicode map — its fi/fl ligatures and list numerals extract as U+0000. -->
+    <Content Include="../../project_files/SMX_Final_HLD.pdf" Link="Resources/subsetted-fonts.pdf" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

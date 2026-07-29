@@ -30,6 +30,16 @@
          copied: one fixture, one place to update, and no new binary in the tree. -->
     <Content Include="../Smx.Functions.Tests/Resources/real-sds-nd2o3.pdf"
              Link="Resources/real-sds-nd2o3.pdf" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Linked, not copied: this is the repo's own HLD, and it happens to be a real specimen of a
+         PDF whose subsetted fonts carry no ToUnicode map for their fi/fl ligatures and list
+         numerals. Those glyphs come out of ANY extractor as U+0000 (pypdf reproduces it), so it is
+         the honest fixture for the unmapped-glyph tests below. -->
+    <Content Include="../../project_files/SMX_Final_HLD.pdf"
+             Link="Resources/subsetted-fonts.pdf" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Committed rather than generated in-test (unlike the docx/xlsx fixtures): PdfPig reads PDFs,
+         it does not write them, so there is no way to build an encrypted one from this test project.
+         5 KB, and it is the only way to pin the message an operator sees for a protected file. -->
+    <None Update="Resources/**"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
     <!-- Smx.Domain.Documents.SdsRegistryKey is a hand-copy of DedupKey.Norm/ForRegistry, because
          DedupKey lives in the OTHER solution (Smx.Functions.sln) and cannot be referenced from here.
          A copy that drifts silently empties the SDS text view, so the original is COMPILED INTO this

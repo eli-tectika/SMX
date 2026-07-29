@@ -15,6 +15,15 @@ import { coverage, createBlocker } from '../domain/intakeGate';
 import { useStickToBottom } from '../hooks/useStickToBottom';
 
 /**
+/**
+ * The server's own ceiling (`AttachmentLimits.MaxFileBytes`), repeated here so the operator is told
+ * before the bytes are sent rather than after. Keep the two in step: the server's is the one that
+ * is enforced, this one only decides how quickly — and how legibly — the operator hears about it.
+ */
+const MAX_ATTACHMENT_MB = 25;
+const MAX_ATTACHMENT_BYTES = MAX_ATTACHMENT_MB * 1024 * 1024;
+
+/**
  * "New project" is a conversation, not a form.
  *
  * The operator talks; the interview agent interrogates them against the question catalogue, records
@@ -184,18 +193,46 @@ export function Interview() {
     const list = files ? Array.from(files) : [];
     if (!sessionId || list.length === 0 || uploading) return;
     setUploading(true);
+    // Per FILE, not per selection. One bad file used to abort the whole loop from inside a single
+    // try, which lost the files behind it AND skipped the refresh — so a file the server had
+    // already stored and extracted showed no chip at all. The operator was then looking at a screen
+    // claiming less than the record held, about to be asked by the agent about a file they could
+    // not see. Each file now succeeds or fails on its own and the refresh always runs.
+    const failures: string[] = [];
+    for (const file of list) {
+      // Checked here as well as on the server. Past Kestrel's own 30 MB body limit the request
+      // never reaches the handler that writes the friendly message, and the operator gets a
+      // bodyless `413 Payload Too Large`; refusing it locally also saves them a minute of
+      // uploading bytes that were never going to be accepted.
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        failures.push(`${file.name} is larger than the ${MAX_ATTACHMENT_MB} MB limit`);
+        continue;
+      }
+      try {
+        // No optimistic chip: a file appears only once the server has stored it and tried to
+        // extract it, because the chip reports the EXTRACTION result — and a chip that appeared
+        // instantly and then changed status would have shown the operator a state the record
+        // never had.
+        await uploadAttachment(sessionId, file);
+      } catch (e) {
+        // Named — but only when the message does not already name it. A bare 413 has no body, so
+        // on its own it would be two words about no file in particular, useless when several were
+        // dropped at once; the server's own 422 already says which file, and prefixing that too
+        // just stutters the name back at the operator.
+        const message = e instanceof Error ? e.message : String(e);
+        failures.push(message.includes(file.name) ? message : `${file.name} — ${message}`);
+      }
+    }
     try {
-      // No optimistic chip: a file appears only once the server has stored it and tried to extract
-      // it, because the chip reports the EXTRACTION result — and a chip that appeared instantly and
-      // then changed status would have shown the operator a state the record never had.
-      for (const file of list) await uploadAttachment(sessionId, file);
       await refresh(sessionId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setUploading(false);
-      if (fileInput.current) fileInput.current.value = '';
+      failures.push(e instanceof Error ? e.message : String(e));
     }
+    setUploading(false);
+    if (fileInput.current) fileInput.current.value = '';
+    // Only on failure: `error` is shared with the turn banner, and blanking it after every
+    // successful upload would silently clear a failed turn the operator has not read yet.
+    if (failures.length > 0) setError(failures.join('; '));
   }
 
   function onDrop(e: DragEvent<HTMLDivElement>) {

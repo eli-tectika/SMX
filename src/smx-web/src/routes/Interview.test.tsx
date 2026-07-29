@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Interview } from './Interview';
 import { createBlocker } from '../domain/intakeGate';
-import type { IntakeSession } from '../api/types';
+import type { IntakeSession, SessionAttachment } from '../api/types';
 
 vi.mock('../api/client', () => ({
   NotFound: Symbol.for('NotFound'),
@@ -196,6 +196,117 @@ describe('Interview composer', () => {
 
     fireEvent.dragLeave(zone);
     expect(zone).toHaveAttribute('data-dragging', 'false');
+  });
+});
+
+/**
+ * Uploading is a LOOP over the operator's selection, and every test here is about what happens when
+ * one trip round that loop fails. Found live against deployed dev on 2026-07-29: dropping three
+ * files where the middle one was rejected uploaded two, stored one, and showed the operator zero —
+ * the screen claimed less than the record held, which is the same class of lie as claiming more.
+ */
+describe('Interview file upload', () => {
+  const stored = (filename: string): SessionAttachment => ({
+    fileId: `att-${filename}`, filename, contentType: 'application/pdf', sizeBytes: 10,
+    blobPath: `p/${filename}`, status: 'extracted', textBlobPath: 't',
+  });
+
+  /** A File whose `size` is whatever the test needs — real bytes would make the fixture enormous. */
+  const file = (name: string, size = 10): File => {
+    const f = new File(['x'], name, { type: 'application/pdf' });
+    Object.defineProperty(f, 'size', { value: size });
+    return f;
+  };
+
+  const drop = (zone: HTMLElement, files: File[]) =>
+    fireEvent.drop(zone, { dataTransfer: { files, types: ['Files'] } });
+
+  beforeEach(() => {
+    vi.mocked(api.uploadAttachment).mockReset();
+    vi.mocked(api.uploadAttachment).mockImplementation(async (_s, f) => stored(f.name));
+  });
+
+  it('uploads the rest of the selection after one file is rejected', async () => {
+    // The loop must not abandon the files behind the failure. Silently skipping them is worse than
+    // refusing them: the operator watched the file go in and has no reason to look for it again.
+    vi.mocked(api.uploadAttachment)
+      .mockImplementationOnce(async (_s, f) => stored(f.name))
+      .mockRejectedValueOnce(new Error("'huge.pdf' is larger than the 25 MB limit."))
+      .mockImplementationOnce(async (_s, f) => stored(f.name));
+    renderAt();
+    const zone = await screen.findByTestId('interview-dropzone');
+
+    drop(zone, [file('brief.pdf'), file('huge.pdf'), file('notes.txt')]);
+
+    await waitFor(() => expect(api.uploadAttachment).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(api.uploadAttachment).mock.calls.map((c) => c[1].name))
+      .toEqual(['brief.pdf', 'huge.pdf', 'notes.txt']);
+  });
+
+  it('shows a file the server did store even though another one failed', async () => {
+    // The refresh has to happen on the failing path too. Without it the chip list is never re-read,
+    // so a file that IS in the record — and that the agent will read — appears nowhere on screen.
+    vi.mocked(api.getIntakeSession).mockResolvedValue(session({ attachments: [stored('brief.pdf')] }));
+    vi.mocked(api.getIntakeSession).mockResolvedValueOnce(session());   // the mount read: still empty
+    vi.mocked(api.uploadAttachment)
+      .mockImplementationOnce(async (_s, f) => stored(f.name))
+      .mockRejectedValueOnce(new Error('Payload Too Large'));
+    renderAt();
+    const zone = await screen.findByTestId('interview-dropzone');
+
+    drop(zone, [file('brief.pdf'), file('huge.pdf')]);
+
+    expect(await screen.findByText('brief.pdf')).toBeInTheDocument();
+  });
+
+  it('names the file that failed, even when the server message does not', async () => {
+    // A bare `413 Payload Too Large` carries no body, so the message the operator would otherwise
+    // get is two words about no file in particular.
+    vi.mocked(api.uploadAttachment).mockRejectedValue(new Error('Payload Too Large'));
+    renderAt();
+    const zone = await screen.findByTestId('interview-dropzone');
+
+    drop(zone, [file('scan.pdf')]);
+
+    expect(await screen.findByText(/scan\.pdf/)).toBeInTheDocument();
+  });
+
+  it('does not say the filename twice when the server message already names it', async () => {
+    // The server's own 422 names the file ("'huge.pdf' is larger than the 25 MB limit."). Prefixing
+    // that unconditionally reads as a stutter, and a message that looks careless is a message the
+    // operator skims.
+    vi.mocked(api.uploadAttachment)
+      .mockRejectedValue(new Error("'scan.pdf' is larger than the 25 MB limit."));
+    renderAt();
+    const zone = await screen.findByTestId('interview-dropzone');
+
+    drop(zone, [file('scan.pdf')]);
+
+    const banner = await screen.findByText(/scan\.pdf/);
+    expect(banner.textContent!.match(/scan\.pdf/g)).toHaveLength(1);
+  });
+
+  it('refuses a file past the 25 MB ceiling without spending the upload', async () => {
+    // Checked here as well as on the server: past ~28.6 MB the request dies at Kestrel's own body
+    // limit and the operator gets a bodyless 413, so the friendly message never runs. Not sending
+    // the bytes at all is also the difference between an instant answer and a minute of waiting.
+    renderAt();
+    const zone = await screen.findByTestId('interview-dropzone');
+
+    drop(zone, [file('huge.pdf', 26 * 1024 * 1024)]);
+
+    expect(await screen.findByText(/huge\.pdf.*25 MB|25 MB.*huge\.pdf/)).toBeInTheDocument();
+    expect(api.uploadAttachment).not.toHaveBeenCalled();
+  });
+
+  it('still uploads the files that fit when one of the selection is too big', async () => {
+    renderAt();
+    const zone = await screen.findByTestId('interview-dropzone');
+
+    drop(zone, [file('huge.pdf', 26 * 1024 * 1024), file('brief.pdf')]);
+
+    await waitFor(() => expect(api.uploadAttachment).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.uploadAttachment).mock.calls[0][1].name).toBe('brief.pdf');
   });
 });
 
