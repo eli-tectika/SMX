@@ -220,6 +220,36 @@ The first application code now lives under `src/` (this is no longer a pure-infr
     navigating away recovers. It exists because `client.ts` casts every response with `as` and
     validates nothing: one malformed payload took the whole tree down (3 of 32 routes rendered).
     Screens should still guard their own payloads rather than lean on it.
+  - **All eight stage screens were rewritten onto the shell (2026-07-29).** Each opens on real
+    `<h3>` sections rather than a `cap` block repeating the project identity, the floating `Gate`
+    card is gone from both hard-gate screens (its requirements are now a checklist attached to the
+    button they govern), `StageStatusCard` is deleted, and no screen quotes a `spec §`. The
+    recurring shape of the work was **removing a second telling of something the shell already
+    says** — the header names the project, the stepper names the stage, and `NextAction` names the
+    block, so a screen that repeated any of them was spending its most valuable position on news.
+  - **Two screens changed what they are, not just how they look.** Background is now the *read-back*
+    only: the XRF entry form moved into the left column, because that stage has no agent and the
+    form is what belongs where the conversation would be. Dosing gained `components/PpmChart.tsx`,
+    which draws each element's window on a shared axis — and encodes provenance by **form, never
+    hue** (the teal/grey scheme failed CVD validation at ΔE 4.3 under protanopia). A *known* end —
+    measured, or a cited regulatory cap — is a solid capped rule; an *estimated* end has no rule at
+    all and the band dissolves. That conditional is load-bearing: while the fade was unconditional
+    it drew a legal migration limit as vaguely as a guess.
+  - **A gate must say what signed it.** `GateDoc.ApprovedBy` (`"operator" | "auto-approve" | null`)
+    is written by both hard gates and serialized with `JsonIgnore(Never)` so the UI reads "not
+    signed" off the wire instead of inferring it from a missing key. Approving is idempotent as a
+    **pair** — `ApprovedAt` and `ApprovedBy` move together or not at all, so re-affirming never
+    swaps a human signature for a machine one, and voiding a gate on revision clears both. Both
+    screens fold the signer through an **allow-list**, never `?? 'unknown'`: an unrecognised signer
+    reads as unknown provenance rather than as a person. `auto-approve` renders as an alarm — the
+    largest type on the screen — and marks every determination below as the machine's, because
+    auto-approve writes the same cell fields an operator's ruling writes.
+  - **Screens guard their own payloads; the boundary is the backstop, not the plan.** Every rewrite
+    added shape checks whose failure mode leans the safe way: an unreadable verdict becomes
+    `NeedsReview` and never `Pass`, a registry that returns a non-list is a *failed read* rather
+    than an empty one (cast to `[]` it would report every substance as having no safety sheet), a
+    malformed price is a third state rather than the absence path (`Intl.format` renders `null` as
+    `0.00`), and a "0 not orderable" tile goes absent rather than claiming a clearance.
   - **Citation chips do not link yet, deliberately.** `CitationChip` opens a document only when it
     is handed a `documentId`, and `Citation` (`ConstraintsDoc.cs`) carries none — `reference` is a
     free-text label the agent wrote. Deriving an id by parsing it would produce links that are
