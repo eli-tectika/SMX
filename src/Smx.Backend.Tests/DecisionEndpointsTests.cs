@@ -339,6 +339,76 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         Assert.Contains(blockers, b => b!.Contains("'pending'") && b.Contains("not 'awaiting-VP'"));
     }
 
+    // ---- who signed the LAST hard gate ----------------------------------------------------------------
+
+    [Fact]
+    public async Task PostDetermination_RecordsTheOperatorAsSigner()
+    {
+        await SeedAwaitingVpAsync();
+
+        var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
+            Approve("codes reviewed with the VP", ("bottle", Ratio("bottle"))));
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        var gate = await _store.GetGateAsync(P, GateTypes.Vp);
+        Assert.Equal("operator", gate!.ApprovedBy);
+    }
+
+    /// A refusal is not a signature. The invariant this file now shares with the regulatory gate is
+    /// that a signer is non-null iff a timestamp is — a locked gate carries neither.
+    [Fact]
+    public async Task PostDetermination_WhenRejected_LeavesTheGateUnsigned()
+    {
+        await SeedAwaitingVpAsync();
+
+        var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
+            new { determination = "rejected", reason = "the ratio is too close to project X's" });
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        var gate = await _store.GetGateAsync(P, GateTypes.Vp);
+        Assert.Equal("locked", gate!.Status);
+        Assert.Null(gate.ApprovedBy);
+        Assert.Null(gate.ApprovedAt);
+    }
+
+    /// The VP gate releases procurement and writes the Marker Library — it must be able to say who
+    /// signed at least as clearly as the regulatory gate before it. `Json.Options` ignores nulls, so
+    /// an anonymous response object would drop the key entirely and a client could not tell "the
+    /// record does not say" from "an older API that never sent this".
+    [Fact]
+    public async Task GetGateVp_ReportsTheSigner_AndSendsAnUnsignedOneAsNull()
+    {
+        await SeedAwaitingVpAsync();
+
+        var before = await _client.GetFromJsonAsync<JsonElement>($"/projects/{P}/gate/vp");
+        Assert.Equal(JsonValueKind.Null, before.GetProperty("approvedBy").ValueKind);
+        Assert.Equal(JsonValueKind.Null, before.GetProperty("approvedAt").ValueKind);
+
+        await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
+            Approve("codes reviewed with the VP", ("bottle", Ratio("bottle"))));
+
+        var after = await _client.GetFromJsonAsync<JsonElement>($"/projects/{P}/gate/vp");
+        Assert.Equal("operator", after.GetProperty("approvedBy").GetString());
+    }
+
+    /// A gate written before this field existed must not be readable as human-signed.
+    [Fact]
+    public async Task GetGateVp_LeavesAPreExistingSignatureUnattributed()
+    {
+        await SeedAwaitingVpAsync();
+        await _store.UpsertGateAsync(new GateDoc
+        {
+            Id = RecordIds.Gate(P, GateTypes.Vp), ProjectId = P,
+            GateType = GateTypes.Vp, Status = "approved",
+            ApprovedAt = "2026-01-01T00:00:00.0000000+00:00",
+        });
+
+        var g = await _client.GetFromJsonAsync<JsonElement>($"/projects/{P}/gate/vp");
+
+        Assert.Equal("approved", g.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, g.GetProperty("approvedBy").ValueKind);
+    }
+
     // ---- (F1 layer 3): a pending revision blocks the pen --------------------------------------------------
 
     private static RevisionDoc PendingRevision(string stage, string key = "r1") => new()

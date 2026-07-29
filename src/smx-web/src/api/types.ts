@@ -779,7 +779,16 @@ export interface VpGate {
   status: 'locked' | 'approved';
   armable: boolean;
   blockers: string[];
-  approvedAt?: string;
+  /** Explicit JSON null until signed, not omitted — same wire contract as RegulatoryGate. */
+  approvedAt?: string | null;
+  /**
+   * WHAT signed the last hard gate. `'operator'` is the human recording the VP's determination —
+   * the only writer this endpoint has. `null` on an APPROVED gate means the record does not say,
+   * which is a gate written before the field existed; it must render as unknown provenance and
+   * never as a person. There is no auto-approve path for the VP gate today, and if one is ever
+   * added it belongs in this union rather than in a second field.
+   */
+  approvedBy?: 'operator' | null;
 }
 
 /** One component's confirmed code. The VP may confirm the proposal or override with any REAL code. */

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Smx.Backend.Pipeline;
 using Smx.Domain;
@@ -83,6 +84,8 @@ public static class DecisionEndpoints
                 {
                     Id = RecordIds.Gate(projectId, GateTypes.Vp), ProjectId = projectId,
                     GateType = GateTypes.Vp, Status = "locked", Reason = req.Reason,
+                    // Deliberately no ApprovedAt/ApprovedBy: the invariant is that a signer is
+                    // non-null iff a timestamp is, and a refusal is not a signature.
                 }, ct);
                 return Results.Ok(new { status = "rejected" });
             }
@@ -111,11 +114,19 @@ public static class DecisionEndpoints
             await store.UpsertDecisionAsync(decision, ct);
 
             var existing = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
+            // ApprovedAt and ApprovedBy move together, for the reason the regulatory gate documents:
+            // updating them under different policies lets the pair describe an event that never
+            // happened. This is the LAST hard gate — it releases procurement and writes the Marker
+            // Library — so it must be able to say who signed at least as clearly as the gate before it.
+            var reaffirming = existing is { Status: "approved", ApprovedBy: "operator" };
             var gate = new GateDoc
             {
                 Id = RecordIds.Gate(projectId, GateTypes.Vp), ProjectId = projectId,
                 GateType = GateTypes.Vp, Status = "approved",
-                ApprovedAt = existing?.Status == "approved" ? existing.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
+                ApprovedAt = reaffirming ? existing!.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
+                // The operator recording the VP's offline determination. There is no agent tool for
+                // this endpoint and there never will be.
+                ApprovedBy = "operator",
             };
             await store.UpsertGateAsync(gate, ct);
 
@@ -212,18 +223,31 @@ public static class DecisionEndpoints
             var inFlight = VpGate.PendingRevisionBlocker(await store.GetRevisionsAsync(projectId, ct));
 
             var gate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
-            return Results.Json(new
-            {
-                status = gate?.Status ?? "locked",
-                armable = armed && uncovered.Count == 0 && notParked is null && inFlight is null,
-                blockers = blockers.Concat(uncovered)
+            return Results.Json(new VpGateResponse(
+                gate?.Status ?? "locked",
+                armed && uncovered.Count == 0 && notParked is null && inFlight is null,
+                blockers.Concat(uncovered)
                     .Concat(notParked is null ? [] : new[] { notParked })
                     .Concat(inFlight is null ? [] : new[] { inFlight }).ToList(),
-                approvedAt = gate?.ApprovedAt,
-            }, Json.Options);
+                gate?.ApprovedAt,
+                gate?.ApprovedBy), Json.Options);
         });
     }
 }
+
+/// The VP gate as the client reads it.
+///
+/// A named record rather than an anonymous object for one reason: `Json.Options` sets
+/// `DefaultIgnoreCondition = WhenWritingNull`, which would DROP `approvedAt`/`approvedBy` from the
+/// wire whenever they are null — and null is the meaningful case. A client cannot tell "the record
+/// does not say who signed" from "an older API that never sent this field" if the key simply
+/// vanishes. Same shape, and the same reasoning, as RegulatoryGateResponse in ProjectEndpoints.cs.
+internal sealed record VpGateResponse(
+    string Status,
+    bool Armable,
+    IReadOnlyList<string> Blockers,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? ApprovedAt,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? ApprovedBy);
 
 /// One component's confirmed code: `Code` is the ratio signature of the chosen MarkerCode (usually the
 /// proposal, but the VP may pick any code that exists in the DosingDoc for that component — an override is
