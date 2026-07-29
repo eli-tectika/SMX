@@ -21,6 +21,13 @@ public sealed class MasterListRepo
     public Task<MasterListEntry?> GetAsync(string element, string form, CancellationToken ct)
         => _store.GetAsync(DedupKey.ForMasterList(element, form), element, ct);
 
+    /// For a caller that has only a CAS. The row id is derived from element+form, so there is no key to
+    /// read by — this scans. That is affordable because the list is small (53 rows on 2026-07-29) and the
+    /// alternative is refusing to fetch a sheet somebody asked for by the one identifier they had.
+    public async Task<MasterListEntry?> FindByCasAsync(string cas, CancellationToken ct)
+        => (await _store.ListAllAsync(ct))
+            .FirstOrDefault(e => string.Equals(e.Cas, cas.Trim(), StringComparison.OrdinalIgnoreCase));
+
     public async Task<IReadOnlyList<MasterListEntry>> QueryDueAsync(
         int recheckDays, string nowUtc, CancellationToken ct)
     {

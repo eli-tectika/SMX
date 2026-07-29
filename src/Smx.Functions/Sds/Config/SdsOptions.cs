@@ -20,6 +20,8 @@ public sealed class SdsOptions
     // How many due entries the sweep processes at once. Bounded on purpose: unbounded fan-out would
     // open a socket per due entry and hit every supplier as a burst.
     public int SweepConcurrency { get; init; } = 5;
+    // The whole-attempt budget for one on-demand fetch. An agent is waiting on this call.
+    public int EnsureBudgetSeconds { get; init; } = 45;
     public int RevisionRecheckDays { get; init; } = 90;
     public bool DryRun { get; init; }
     // Hosts to refuse outright. A denylist, not an allowlist: the default for an unknown host is now
@@ -49,6 +51,7 @@ public sealed class SdsOptions
         UamiClientId = c["WORKLOAD_UAMI_CLIENT_ID"],
         FetchTimeoutSeconds = int.TryParse(c["SDS_FETCH_TIMEOUT_SECONDS"], out var t) ? t : 30,
         SweepConcurrency = int.TryParse(c["SDS_SWEEP_CONCURRENCY"], out var sc) ? sc : 5,
+        EnsureBudgetSeconds = int.TryParse(c["SDS_ENSURE_BUDGET_SECONDS"], out var eb) ? eb : 45,
         RevisionRecheckDays = int.TryParse(c["SDS_REVISION_RECHECK_DAYS"], out var d) ? d : 90,
         DryRun = bool.TryParse(c["SDS_DRY_RUN"], out var dr) && dr,
         Denylist = (c["SDS_DENYLIST"] ?? "")
