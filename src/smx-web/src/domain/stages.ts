@@ -1,4 +1,3 @@
-import { isAwaiting } from '../api/types';
 import type { StageState, StageStatus } from '../api/types';
 
 /**
@@ -119,15 +118,17 @@ export function canRevise(slug: string): boolean {
   return s !== undefined && REVISE_STAGES.includes(s);
 }
 
-/**
- * Terminal for polling purposes: nothing further will change without a human.
+/*
+ * `isTerminal` used to live here — "nothing further will change without a human", built on
+ * `isAwaiting`, which names only three of the five parks. So it answered FALSE for a VP-parked
+ * project, and a poll loop built on it would have spun forever against a record that cannot move
+ * until a person acts. It was exported with zero callers in the app and no mention in any plan.
  *
- * The three park states are terminal in exactly that sense — the record is stopped on a named person
- * (the operator, physics, the R.E.) and no amount of polling will move it until they act.
+ * Deleted rather than fixed. A corrected version would still have been an untested predicate
+ * overlapping `anyRunning` below — which is what the app actually polls on — and two functions
+ * answering "is this settled" differently is how the answers drift apart in the first place. The
+ * next caller who needs this should write it against the record they are polling, with a test.
  */
-export const isTerminal = (status: StageStatus) =>
-  status === 'done' || status === 'failed' || status === 'needs-review' || isAwaiting(status);
-
 export const anyRunning = (stages: Record<string, StageState>) =>
   Object.values(stages).some((s) => s.status === 'running' || s.status === 'pending');
 
@@ -155,6 +156,23 @@ const PARKED: Record<ParkedStatus, true> = {
 };
 const isParked = (s: StageStatus): s is ParkedStatus =>
   Object.prototype.hasOwnProperty.call(PARKED, s);
+
+/**
+ * Exhaustiveness with a soft landing, for the two functions below that turn a status into a
+ * rendering.
+ *
+ * `status: never` means an unhandled `StageStatus` is a BUILD error — the `PARKED` record above
+ * only forces a developer to visit this file, which is not the same as making them handle the
+ * value. What it deliberately does NOT do is throw: these run inside a render, and a status the
+ * enum grew is not a reason to put a blank screen in front of the operator. The compiler is where
+ * this gets caught; the fallback is only for a runtime that got a status TypeScript never saw
+ * (an older bundle against a newer API), and it is the quietest available reading rather than a
+ * confident wrong one.
+ */
+function unhandledStatus<T>(status: never, fallback: T): T {
+  void status;
+  return fallback;
+}
 
 /**
  * One pill from several stages, with ATTENTION BEATING COMPLETION.
@@ -216,6 +234,11 @@ export function pillClass(stage: StageDef, status: StageStatus | undefined): str
     case 'awaiting-confirmation':
       cls.push('gate');
       break;
+    // A status with no case of its own would render as a bare `pill` — no tone at all, quieter
+    // than the `mut` a merely-pending stage gets. That is how every park in this file used to
+    // render. The never-check turns the next unhandled status into a compile error.
+    default:
+      return unhandledStatus(status, cls.join(' '));
   }
   return cls.join(' ');
 }
@@ -245,7 +268,13 @@ export function stageIcon(status: StageStatus | undefined, gate?: boolean): stri
      */
     case 'awaiting-confirmation':
       return 'ti-player-play';
-    default:
+    // `pending` is the one status a bare point is the RIGHT answer for: the pipeline has not
+    // reached this stage, and there is genuinely nothing to see yet. It gets its own case so that
+    // the default below can be a never-check — an unhandled status used to fall through to this
+    // same glyph, which said "nothing to see here" about states that badly needed a person.
+    case 'pending':
       return 'ti-point';
+    default:
+      return unhandledStatus(status, 'ti-point');
   }
 }

@@ -125,6 +125,33 @@ describe('stageIcon — every park has an icon of its own', () => {
   });
 });
 
+/**
+ * A TRIPWIRE, not a preference. Do not "fix" this by updating the expectation.
+ *
+ * `foldStatus` and `whatsBlocking` (domain/blocking.ts) rank the same states in DIFFERENT orders.
+ * The fold is failed → needs-review → any park → running; `whatsBlocking` is failed →
+ * awaiting-confirmation → awaiting-operator → needs-review → awaiting-physics/RE → awaiting-VP →
+ * running. So the two disagree about whether `needs-review` or a park matters more, and about
+ * whether `awaiting-operator` outranks the other parks.
+ *
+ * That disagreement is invisible today for exactly one reason: a ladder only arbitrates when one
+ * pill folds two stages that hold different statuses, and `intake` (intake + pool) is the only
+ * entry that folds anything. Every other pill returns its single stage's own status whatever the
+ * order. It is further protected by the backend's write sites — `awaiting-confirmation` is written
+ * on `intake` at creation while `pool` is still pending, and `awaiting-operator` is a Dosing park —
+ * so even the one folding pill cannot currently hold a contested pair.
+ *
+ * If you are here because this test failed, you have added a second `backedBy` somewhere. The
+ * dashboard (`whatsBlocking`) and the workspace (`foldStatus`) are now free to disagree about the
+ * same project on the same screen. RECONCILE THE TWO LADDERS FIRST, then change this test.
+ */
+describe('the folding invariant that keeps foldStatus and whatsBlocking from contradicting', () => {
+  it('has exactly one spine entry that folds more than one backend stage', () => {
+    const folding = STAGES.filter((s) => (s.backedBy?.length ?? 0) > 1).map((s) => s.slug);
+    expect(folding).toEqual(['intake']);
+  });
+});
+
 describe('backendStages — the spine slug → backend stage keys map', () => {
   it('maps the five 1:1 slugs to their own key', () => {
     for (const slug of ['discovery', 'regulatory', 'matrix', 'dosing', 'cost']) {
