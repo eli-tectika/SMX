@@ -1123,7 +1123,10 @@ public sealed class PipelineRunner(
         if (await store.GetGateAsync(r.ProjectId, GateTypes.Regulatory, ct) is { Status: "approved" } gate)
         {
             gate.Status = "locked";
-            // Invariant: ApprovedBy is non-null iff ApprovedAt is non-null. A locked gate with a
+            // Invariant, for the REGULATORY gate: ApprovedBy is non-null iff ApprovedAt is non-null.
+            // It does not hold for the VP gate, which does not carry a signer yet (DecisionEndpoints
+            // writes an approved VP gate with ApprovedAt set and ApprovedBy null) — so do not read
+            // this as a rule to enforce across every GateDoc. A locked gate with a
             // signer standing would report `{status:"locked", approvedBy:"operator"}` — read by a
             // screen that renders the signer whenever non-null, that prints "signed by the
             // operator" on a gate this revision deliberately voided.
