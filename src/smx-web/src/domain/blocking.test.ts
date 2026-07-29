@@ -271,18 +271,16 @@ describe('bucketTone', () => {
   });
 });
 
-describe('whatsBlocking — where', () => {
+describe('whatsBlocking — a created project that was never started', () => {
   /**
-   * The same fact, addressed from two places. On the dashboard the operator has not opened the
-   * project yet, so the line tells them to; inside the project they are already there, and
-   * "open it and press Start Processing" would send them somewhere they are standing.
+   * This line is read on the DASHBOARD, where the operator has not opened the project yet — so it
+   * tells them to. It used to have a second phrasing for readers already inside the project, which
+   * `ContextBar` passed; that bar is gone and `NextAction` answers the in-project version of this
+   * question from `domain/nextAction.ts` instead, so the parameter went with it.
    */
-  it('drops the "open it" instruction when already inside the project', () => {
+  it('tells the operator to open it and start it', () => {
     const p = project('awaiting-confirmation', 'pending', 'pending', 'pending');
 
     expect(whatsBlocking(p)!.text).toMatch(/open it and press Start Processing/i);
-    expect(whatsBlocking(p, undefined, 0, 'project')!.text).toMatch(
-      /^Not started — press Start Processing/i,
-    );
   });
 });

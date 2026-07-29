@@ -65,18 +65,24 @@ function attemptSuffix(s: StageState): string {
   return s.attempts > 1 ? ` · attempt ${s.attempts}` : '';
 }
 
-/** Where the line will be read. Inside a project, an instruction to open the project is noise. */
-export type BlockingWhere = 'list' | 'project';
-
 /**
  * The single most important line on a project card. One tone, one icon, one
  * sentence — in strict priority order, worst first.
+ *
+ * This is the DASHBOARD's sentence. It used to take a `where: 'list' | 'project'` so the same
+ * function could also address an operator already inside a project, and `ContextBar` was the one
+ * caller that passed `'project'`. The 2026-07-29 redesign replaced that bar with `NextAction`,
+ * which asks a different question — not "what is blocking" but "what do I press" — and answers it
+ * from `domain/nextAction.ts` with its own copy. So the parameter had exactly zero callers and is
+ * gone rather than left as an option nobody exercises.
+ *
+ * The two files DO encode the same priority ladder twice; the tripwire in `stages.test.ts`
+ * documents the one invariant that keeps them from contradicting each other.
  */
 export function whatsBlocking(
   project: ProjectSummary,
   matrix?: MatrixSummary,
   unopenedFlagged = 0,
-  where: BlockingWhere = 'list',
 ): Blocking | null {
   const stages = project.stages;
   const entries = Object.entries(stages);
@@ -118,10 +124,7 @@ export function whatsBlocking(
     return {
       tone: 'warning',
       icon: 'ti-player-play',
-      text:
-        where === 'project'
-          ? 'Not started — press Start Processing to dispatch the agents'
-          : 'Created but not started — open it and press Start Processing to dispatch the agents',
+      text: 'Created but not started — open it and press Start Processing to dispatch the agents',
     };
   }
 
