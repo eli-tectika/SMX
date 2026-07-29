@@ -340,7 +340,11 @@ public static class BackendHost
             sp.GetRequiredService<IKnowledgeStore>(),
             sp.GetRequiredService<ILearnedConclusionsSearch>(),
             sp.GetRequiredService<Func<SensitiveTerms, IWebSearch>>(),
-            opts.UseHostedWebSearch));
+            opts.UseHostedWebSearch,
+            // Without this the ensure_sds tool is absent from every tool list and the feature is dead in
+            // production while its tests pass — the parameter is optional so the many test hosts that
+            // construct a ToolBox need not know about SDS acquisition at all.
+            sp.GetRequiredService<ISdsAcquisition>()));
         services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(sp =>
             FoundryChatClientFactory.CreateAsync(opts, credential).GetAwaiter().GetResult());
         services.AddSingleton<IAgentRuns, AgentRuns>();
@@ -376,7 +380,10 @@ public static class BackendHost
             sp.GetRequiredService<IAgentRuns>(), sp.GetRequiredService<ThreadEventHub>(),
             sp.GetRequiredService<ILearnedConclusionWriter>(), opts.RegulatoryParallelism,
             sp.GetRequiredService<ILogger<PipelineRunner>>(),
-            sp.GetRequiredService<IKnowledgeStore>(), sp.GetRequiredService<ICatalogLookup>()));
+            sp.GetRequiredService<IKnowledgeStore>(), sp.GetRequiredService<ICatalogLookup>(),
+            // Same reasoning: unpassed, the SDS ledger never learns about a substance a project put into
+            // play, which is the gap that made MSDS coverage look arbitrary in the first place.
+            sp.GetRequiredService<ISdsAcquisition>()));
 
         // ONE supervisor, resolved twice. The hosted-service registration MUST go through the container
         // rather than construct its own — `AddHostedService<PipelineSupervisor>()` would build a SECOND

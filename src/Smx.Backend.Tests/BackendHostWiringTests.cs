@@ -288,4 +288,29 @@ public class BackendHostWiringTests
         Assert.Empty(result.Hits);
         Assert.Contains("disabled", result.Note);
     }
+
+    /// The gap that hid for a whole implementation cycle: ToolBox and PipelineRunner both take
+    /// ISdsAcquisition as an OPTIONAL parameter, so the feature's own tests passed while the real host
+    /// never handed either of them the dependency — ensure_sds absent from every tool list, no substance
+    /// ever enrolled in the SDS ledger, and nothing anywhere failing.
+    ///
+    /// Optional parameters are how a test host avoids knowing about SDS acquisition; this asserts the
+    /// PRODUCTION host does not get the same discount.
+    [Fact]
+    public void TheHostHandsSdsAcquisitionToTheToolBox()
+    {
+        using var sp = Build(Config());
+        var toolBox = sp.GetRequiredService<ToolBox>();
+
+        Assert.NotNull(Captured<ISdsAcquisition>(toolBox));
+        Assert.Contains(toolBox.RegulatoryTools(), t => t.Name == "ensure_sds");
+    }
+
+    [Fact]
+    public void TheHostHandsSdsAcquisitionToThePipelineRunner()
+    {
+        using var sp = Build(Config());
+
+        Assert.NotNull(Captured<ISdsAcquisition>(sp.GetRequiredService<PipelineRunner>()));
+    }
 }
