@@ -13,12 +13,6 @@ import { STAGES, backendStages, foldStatus, stageIcon } from '../../domain/stage
  * Status still comes from the real record, folded attention-first across every backing stage
  * (`foldStatus`) — Intake & pool covers two, and a failed pool behind a done intake must read as
  * failed or the eye skips the thing that needs a human.
- *
- * NOTE on what the fold can currently say: `foldStatus` collapses every `awaiting-*` park to
- * `pending`, so a project stopped on the R.E. paints this stepper as "not reached yet". That is a
- * defect in the fold, not here — the stepper's stylesheet already has the park colours ready — and
- * fixing it changes the dashboard's MiniSpine too, so it is deliberately not fixed in this
- * component. The next-action block carries the park in words in the meantime.
  */
 export function StageStepper({ project }: { project: ProjectSummary }) {
   const states = STAGES.map((stage) => ({

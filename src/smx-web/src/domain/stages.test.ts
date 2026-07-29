@@ -8,6 +8,7 @@ import {
   canRevise,
   foldStatus,
   isChatStage,
+  stageIcon,
 } from './stages';
 
 /**
@@ -49,6 +50,78 @@ describe('Intake & pool', () => {
   /** `[].every` is true, so an unguarded fold would report an unbacked screen as complete. */
   it('treats no stages at all as pending, not done', () => {
     expect(foldStatus([])).toBe('pending');
+  });
+});
+
+/**
+ * A park is the record STOPPED ON A NAMED HUMAN. The fold used to drop all five of them on the
+ * floor — no branch mentioned an `awaiting-*`, so every one of them fell through to `pending` —
+ * and `pending` is the opposite claim: the pipeline has not reached this stage yet.
+ *
+ * That is the same failure this codebase has now found three times (`whatsBlocking` missing
+ * `awaiting-VP`, `bucket()` before it, this): work that needs a human rendered as work that has
+ * not started. It was never intended here either — `pillClass` and `stageIcon` have always
+ * carried complete park branches, and the fold simply never handed them one.
+ */
+describe('foldStatus — a park is not a pending stage', () => {
+  const PARKS = [
+    'awaiting-operator',
+    'awaiting-physics',
+    'awaiting-RE',
+    'awaiting-VP',
+    'awaiting-confirmation',
+  ] as const;
+
+  it('reports every park state as itself, never as pending', () => {
+    for (const park of PARKS) {
+      expect(foldStatus([s(park)])).toBe(park);
+    }
+  });
+
+  /**
+   * Attention-first, and this is the ordering decision the fold turns on: a running agent needs
+   * nothing from anybody and will move on its own; a parked one is stopped dead until a person
+   * acts. So the park wins the pill even though the other stage is visibly working.
+   */
+  it('ranks a park above a running sibling', () => {
+    expect(foldStatus([s('awaiting-operator'), s('running')])).toBe('awaiting-operator');
+  });
+
+  /** Failure still outranks everything: an agent that halted is the worse news. */
+  it('keeps failed above a park', () => {
+    expect(foldStatus([s('awaiting-RE'), s('failed')])).toBe('failed');
+    expect(foldStatus([s('awaiting-VP'), s('needs-review')])).toBe('needs-review');
+  });
+
+  /** A park is emphatically not completion — one parked stage stops the pill being done. */
+  it('never reads done while a backing stage is parked', () => {
+    expect(foldStatus([s('done'), s('awaiting-confirmation')])).toBe('awaiting-confirmation');
+  });
+
+  /** Two parks at once: pipeline order, which is the order `backendStages` hands them over. */
+  it('takes the first park in pipeline order when several are parked', () => {
+    expect(foldStatus([s('awaiting-physics'), s('awaiting-operator')])).toBe('awaiting-physics');
+  });
+});
+
+/**
+ * The icon is the attention channel. A park that fell through to `ti-point` would draw the same
+ * dot as a stage nobody has started — the bug above, one layer up.
+ */
+describe('stageIcon — every park has an icon of its own', () => {
+  it('draws the four mid-journey parks as stopped', () => {
+    for (const park of ['awaiting-operator', 'awaiting-physics', 'awaiting-RE', 'awaiting-VP'] as const) {
+      expect(stageIcon(park)).toBe('ti-player-pause');
+    }
+  });
+
+  /**
+   * `awaiting-confirmation` is the one park that is not a pause: nothing has run and nothing will
+   * until the operator presses Start Processing. `whatsBlocking` already draws that case with
+   * `ti-player-play` for exactly that reason, and the two surfaces should not disagree.
+   */
+  it('draws the unstarted project as a thing to press play on', () => {
+    expect(stageIcon('awaiting-confirmation')).toBe('ti-player-play');
   });
 });
 

@@ -29,7 +29,6 @@
   letter-spacing: -0.005em;
 }
 .phead__client { font-size: var(--t-small); color: var(--text-muted); }
-.phead__end { margin-left: auto; }
 
 /* ---- stepper ---- */
 
@@ -87,11 +86,9 @@
 /* Status colours are the verdict palette and nothing else — a stage bar is a state, which is
    exactly what this palette means. Pending stays achromatic: "not reached yet" is not a claim.
 
-   The park states are listed even though `foldStatus` cannot currently emit one (it collapses
-   every `awaiting-*` to `pending` — see the note in StageStepper.tsx). They are the colours a
-   parked stage must take the day that fold is fixed, and leaving one out is how `awaiting-VP`
-   — the VP park, the highest-consequence wait in the journey — ends up painted as "not reached
-   yet" for a second time in this codebase. */
+   All five parks are listed, and the list is the whole point: leaving one out is how `awaiting-VP`
+   — the VP determination, the highest-consequence wait in the journey — ends up painted as "not
+   reached yet", which is the bug this codebase has now fixed three times in three other places. */
 .stepper__step[data-status='done'] .stepper__bar { background: var(--text-success); }
 .stepper__step[data-status='running'] .stepper__bar { background: var(--text-accent); }
 .stepper__step[data-status='failed'] .stepper__bar { background: var(--text-danger); }

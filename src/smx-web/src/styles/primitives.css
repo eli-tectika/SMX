@@ -338,7 +338,17 @@
   border-color: var(--text-accent);
   animation: breathe 1.6s var(--ease-inout) infinite;
 }
-.mini-spine__node[data-status='needs-review'] {
+/* Stopped, and waiting on a human — whether the agent asked for review or the record is parked on
+   the operator, physics, the R.E. or the VP. One amber treatment for all six: at 9px there is no
+   room to distinguish which person is owed, and the card's blocking line names them anyway. What
+   the dot has to carry is the difference between STOPPED and NOT REACHED YET, and until the fold
+   in domain/stages.ts learned to emit a park, every one of these painted as the latter. */
+.mini-spine__node[data-status='needs-review'],
+.mini-spine__node[data-status='awaiting-operator'],
+.mini-spine__node[data-status='awaiting-physics'],
+.mini-spine__node[data-status='awaiting-RE'],
+.mini-spine__node[data-status='awaiting-VP'],
+.mini-spine__node[data-status='awaiting-confirmation'] {
   border-color: var(--text-warning);
   background: var(--bg-warning);
 }

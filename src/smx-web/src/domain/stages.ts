@@ -132,18 +132,55 @@ export const anyRunning = (stages: Record<string, StageState>) =>
   Object.values(stages).some((s) => s.status === 'running' || s.status === 'pending');
 
 /**
+ * Every park state in `StageStatus` — the record stopped on a named human.
+ *
+ * A RECORD rather than a list, and that is the point: `ParkedStatus` is derived from the union,
+ * so adding an eleventh `awaiting-*` to `StageStatus` fails to compile here until it is given a
+ * home. This codebase has now shipped the same bug three times (`whatsBlocking` missing
+ * `awaiting-VP`, `bucket()` before it, `foldStatus` below) — each one a park quietly falling
+ * through a branch nobody updated — so membership is checked by the compiler, not by review.
+ *
+ * Deliberately WIDER than `AWAITING_STATES` in api/types.ts. That constant means "a park whose
+ * dispatcher-written `error` there is something to surface", which is a narrower question and
+ * excludes `awaiting-VP` and `awaiting-confirmation` on purpose. Being stopped is not the same
+ * question as having an instruction to print.
+ */
+type ParkedStatus = Extract<StageStatus, `awaiting-${string}`>;
+const PARKED: Record<ParkedStatus, true> = {
+  'awaiting-operator': true,
+  'awaiting-physics': true,
+  'awaiting-RE': true,
+  'awaiting-VP': true,
+  'awaiting-confirmation': true,
+};
+const isParked = (s: StageStatus): s is ParkedStatus =>
+  Object.prototype.hasOwnProperty.call(PARKED, s);
+
+/**
  * One pill from several stages, with ATTENTION BEATING COMPLETION.
  *
  * Ordered by how much it wants to be noticed, not by pipeline position: a failed pool behind a
  * done intake must read as failed, or the operator's eye skips the one thing that needs them.
  * A missing stage is `pending`, never absent-therefore-fine — and that is also why an EMPTY list
  * is `pending` rather than what `[].every` would hand back, which is `done`.
+ *
+ * The ladder is failed → needs-review → any park → running → done/pending. A PARK OUTRANKS A
+ * RUNNING STAGE: a running agent needs nothing from anybody and will move on its own, while a
+ * parked one is stopped dead until a person acts. Until this was written the ladder mentioned no
+ * park at all, so all five collapsed to `pending` — a project stopped on the R.E. for eight days
+ * painted exactly like a stage the pipeline had not reached, on both the spine and the dashboard.
+ *
+ * Several stages parked at once resolves to the first in the array, i.e. pipeline order, since
+ * `backendStages` hands them over in that order.
  */
 export function foldStatus(states: (StageState | undefined)[]): StageStatus {
   if (states.length === 0) return 'pending';
   const statuses = states.map((s) => s?.status ?? 'pending');
-  for (const priority of ['failed', 'needs-review', 'running'] as const)
+  for (const priority of ['failed', 'needs-review'] as const)
     if (statuses.includes(priority)) return priority;
+  const parked = statuses.find(isParked);
+  if (parked) return parked;
+  if (statuses.includes('running')) return 'running';
   return statuses.every((s) => s === 'done') ? 'done' : 'pending';
 }
 
@@ -168,10 +205,15 @@ export function pillClass(stage: StageDef, status: StageStatus | undefined): str
     case 'pending':
       cls.push('mut');
       break;
-    // A park reads like a gate: stopped, waiting on a person, and it wants to be noticed.
+    // A park reads like a gate: stopped, waiting on a person, and it wants to be noticed. All
+    // FIVE of them — `awaiting-VP` and `awaiting-confirmation` are here now because `foldStatus`
+    // can finally emit them, and without a case they fell through to a bare `pill` with no tone
+    // at all, which is quieter than the `mut` a merely-pending stage gets.
     case 'awaiting-operator':
     case 'awaiting-physics':
     case 'awaiting-RE':
+    case 'awaiting-VP':
+    case 'awaiting-confirmation':
       cls.push('gate');
       break;
   }
@@ -193,7 +235,16 @@ export function stageIcon(status: StageStatus | undefined, gate?: boolean): stri
     case 'awaiting-operator':
     case 'awaiting-physics':
     case 'awaiting-RE':
+    case 'awaiting-VP':
       return 'ti-player-pause';
+    /*
+     * The one park that is not a pause. Nothing has run and nothing will until the operator
+     * presses Start Processing, so a pause glyph would claim an interrupted journey that never
+     * began. `whatsBlocking` draws this same case with `ti-player-play`; the two agree on
+     * purpose.
+     */
+    case 'awaiting-confirmation':
+      return 'ti-player-play';
     default:
       return 'ti-point';
   }
