@@ -1123,7 +1123,12 @@ public sealed class PipelineRunner(
         if (await store.GetGateAsync(r.ProjectId, GateTypes.Regulatory, ct) is { Status: "approved" } gate)
         {
             gate.Status = "locked";
+            // Invariant: ApprovedBy is non-null iff ApprovedAt is non-null. A locked gate with a
+            // signer standing would report `{status:"locked", approvedBy:"operator"}` — read by a
+            // screen that renders the signer whenever non-null, that prints "signed by the
+            // operator" on a gate this revision deliberately voided.
             gate.ApprovedAt = null;
+            gate.ApprovedBy = null;
             await store.UpsertGateAsync(gate, ct);
         }
         await SetStageAsync(r.ProjectId, Stages.Regulatory,

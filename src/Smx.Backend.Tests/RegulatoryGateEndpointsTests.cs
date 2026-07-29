@@ -363,4 +363,49 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
         var json = await _client.GetFromJsonAsync<JsonElement>("/projects/pLegacy/gate/regulatory");
         Assert.Equal(JsonValueKind.Null, json.GetProperty("approvedBy").ValueKind);
     }
+
+    /// Once REGULATORY_AUTO_APPROVE merges, this is the operator catching up on a gate the pipeline
+    /// signed itself: they review the evidence for real and press Sign. The machine's signature must
+    /// not survive that — both the signer AND the timestamp have to move, or the record keeps
+    /// asserting the machine's review covers the current analysis.
+    [Fact]
+    public async Task Approve_WhenTheStandingSignatureIsTheMachines_ReplacesItWithTheOperatorsAndAFreshTimestamp()
+    {
+        await SeedVerdict("pAutoApprove", "cas1", VerdictStatus.Pass);
+        await _store.UpsertGateAsync(new GateDoc
+        {
+            Id = RecordIds.Gate("pAutoApprove", GateTypes.Regulatory), ProjectId = "pAutoApprove",
+            GateType = GateTypes.Regulatory, Status = "approved",
+            ApprovedAt = "2026-01-01T00:00:00.0000000+00:00", ApprovedBy = "auto-approve",
+        });
+
+        var resp = await _client.PostAsJsonAsync("/projects/pAutoApprove/regulatory/approve", new { });
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var gate = await _store.GetGateAsync("pAutoApprove", GateTypes.Regulatory);
+        Assert.Equal("operator", gate!.ApprovedBy);
+        Assert.NotEqual("2026-01-01T00:00:00.0000000+00:00", gate.ApprovedAt);
+    }
+
+    /// A gate approved before ApprovedBy existed carries no signer at all — not "operator", just
+    /// unknown. An operator pressing Sign over it today is a real signature happening NOW, not a
+    /// retroactive claim on whoever (or whatever) approved it at the old timestamp.
+    [Fact]
+    public async Task Approve_WhenTheStandingSignatureIsUnattributed_AttributesItToTheOperatorWithAFreshTimestamp()
+    {
+        await SeedVerdict("pLegacyApprove", "cas1", VerdictStatus.Pass);
+        await _store.UpsertGateAsync(new GateDoc
+        {
+            Id = RecordIds.Gate("pLegacyApprove", GateTypes.Regulatory), ProjectId = "pLegacyApprove",
+            GateType = GateTypes.Regulatory, Status = "approved",
+            ApprovedAt = "2026-01-01T00:00:00.0000000+00:00",
+        });
+
+        var resp = await _client.PostAsJsonAsync("/projects/pLegacyApprove/regulatory/approve", new { });
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var gate = await _store.GetGateAsync("pLegacyApprove", GateTypes.Regulatory);
+        Assert.Equal("operator", gate!.ApprovedBy);
+        Assert.NotEqual("2026-01-01T00:00:00.0000000+00:00", gate.ApprovedAt);
+    }
 }

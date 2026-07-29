@@ -110,14 +110,20 @@ public static class ProjectEndpoints
             if (!ok)
                 return Results.UnprocessableEntity(new { error = "gate not armable — open the flagged items first", blockers });
             var existing = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
+            // A re-POST by the same signer is idempotent; a POST over a machine or unattributed
+            // signature is a NEW human signature and gets its own timestamp. The two fields move
+            // together or the record can describe an event that never happened: an operator
+            // signature stamped with the machine's timestamp, or a machine signature that
+            // survives the human review that was supposed to replace it.
+            var reaffirming = existing is { Status: "approved", ApprovedBy: "operator" };
             var gate = new GateDoc
             {
                 Id = RecordIds.Gate(projectId, GateTypes.Regulatory), ProjectId = projectId,
                 GateType = GateTypes.Regulatory, Status = "approved",
-                ApprovedAt = existing?.Status == "approved" ? existing.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
                 // This endpoint is only reachable by the operator pressing Sign — there is no agent
                 // tool for it and there never will be.
-                ApprovedBy = existing?.Status == "approved" ? existing.ApprovedBy ?? "operator" : "operator",
+                ApprovedAt = reaffirming ? existing!.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
+                ApprovedBy = "operator",
             };
             await store.UpsertGateAsync(gate, ct);
 
