@@ -1,30 +1,38 @@
+using Smx.Functions.Sds.Config;
 using Smx.Functions.Sds.Domain;
 
 namespace Smx.Functions.Sds.Sourcing;
 
 public sealed class SourceResolver
 {
-    private readonly AllowlistProvider _allowlist;
+    private readonly SupplierCatalog _suppliers;
     private readonly IReadOnlyDictionary<string, ISourceStrategy> _strategies;
     private readonly WebDiscoveryStrategy? _webDiscovery;
 
     // `webDiscovery` is optional because a dry run and a keyless local host have nothing to search with,
     // and the curated walk must still work without it.
-    public SourceResolver(AllowlistProvider allowlist, IEnumerable<ISourceStrategy> strategies,
+    public SourceResolver(SupplierCatalog suppliers, IEnumerable<ISourceStrategy> strategies,
         WebDiscoveryStrategy? webDiscovery = null)
     {
-        _allowlist = allowlist;
+        _suppliers = suppliers;
         _strategies = strategies.ToDictionary(s => s.Name, StringComparer.OrdinalIgnoreCase);
         _webDiscovery = webDiscovery;
     }
+
+    // A resolver over a supplier list that is already in hand.
+    public SourceResolver(AllowlistProvider allowlist, IEnumerable<ISourceStrategy> strategies,
+        WebDiscoveryStrategy? webDiscovery = null)
+        : this(SupplierCatalog.Fixed(allowlist), strategies, webDiscovery) { }
 
     // Walks the ordered allowlist and yields candidates per entry. productLookup entries may
     // egress via `fetch` here; the SDS PDF fetch itself happens in the sweep.
     public async Task<IReadOnlyList<SourceCandidate>> ResolveAsync(
         SubstanceKey key, EgressFetch fetch, CancellationToken ct)
     {
+        var allowlist = await _suppliers.GetAsync(ct);
+
         var candidates = new List<SourceCandidate>();
-        foreach (var entry in _allowlist.Ordered)
+        foreach (var entry in allowlist.Ordered)
         {
             if (!_strategies.TryGetValue(entry.Strategy, out var strat)) continue;
             candidates.AddRange(await strat.ResolveAsync(entry, key, fetch, ct));

@@ -342,6 +342,7 @@ resource regSyncApp 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'COSMOS_DATABASE', value: cosmosDatabaseName }
         { name: 'SDS_MASTER_CONTAINER', value: 'sds-master-list' }
         { name: 'SDS_REGISTRY_CONTAINER', value: 'sds-registry' }
+        { name: 'SDS_SUPPLIERS_CONTAINER', value: 'sds-suppliers' }
         { name: 'BRONZE_ACCOUNT_NAME', value: bronzeAccountName }
         { name: 'BRONZE_FILESYSTEM', value: 'bronze' }
         { name: 'SEARCH_ENDPOINT', value: searchEndpoint }

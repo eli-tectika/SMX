@@ -43,8 +43,8 @@ var host = new HostBuilder()
             : new ManagedIdentityCredential(opts.UamiClientId);
         services.AddSingleton(cred);
 
-        // Allowlist (single artifact) + strategies + resolver
-        services.AddSingleton(_ => AllowlistProvider.FromFile(opts.AllowlistPath));
+        // Suppliers + strategies + resolver. The supplier list lives in Cosmos (see SupplierCatalog for
+        // why it is loaded lazily rather than here); the bundled file is its seed and its fallback.
         services.AddSingleton<ISourceStrategy, CasTemplateStrategy>();
         services.AddSingleton<ISourceStrategy, ProductLookupStrategy>();
         services.AddSingleton<ISourceStrategy, StaticMapStrategy>();
@@ -67,7 +67,7 @@ var host = new HostBuilder()
         // Constructed by hand rather than by type: the built-in container does not honour a
         // default parameter value, so an implicit registration could never see the optional strategy.
         services.AddSingleton(sp => new SourceResolver(
-            sp.GetRequiredService<AllowlistProvider>(),
+            sp.GetRequiredService<SupplierCatalog>(),
             sp.GetServices<ISourceStrategy>(),
             sp.GetRequiredService<WebDiscoveryStrategy>()));
 
@@ -80,6 +80,13 @@ var host = new HostBuilder()
             sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.MasterContainer)));
         services.AddSingleton<IRegistryStore>(sp => new CosmosRegistryStore(
             sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.RegistryContainer)));
+        services.AddSingleton<ISupplierStore>(sp => new CosmosSupplierStore(
+            sp.GetRequiredService<CosmosClient>().GetContainer(opts.CosmosDatabase, opts.SuppliersContainer)));
+        // Lazily loaded: LoadAsync is async and DI is not. Blocking on .Result in a factory would starve
+        // the worker's thread pool and make a Cosmos round-trip a precondition of starting the app.
+        services.AddSingleton(sp => new SupplierCatalog(
+            sp.GetRequiredService<ISupplierStore>(), opts.AllowlistPath,
+            sp.GetRequiredService<ILogger<SupplierCatalog>>()));
         services.AddSingleton<MasterListRepo>();
         services.AddSingleton<RegistryRepo>();
         services.AddSingleton<Smx.Functions.Sds.Seeding.MasterListSeeder>();  // operator seed of the manifest

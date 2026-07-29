@@ -33,7 +33,12 @@ public sealed record SdsChunk(
 public sealed record AllowlistEntry(
     string Supplier, string Domain, int Priority, string Strategy,
     string SdsUrlTemplate, string? SearchUrlTemplate, string? ProductNumberRegex,
-    Dictionary<string, string>? CasMap = null);   // staticMap: curated CAS -> product number
+    Dictionary<string, string>? CasMap = null)   // staticMap: curated CAS -> product number
+{
+    // Cosmos identity, derived rather than supplied: a supplier IS its host. Two rows for one host
+    // would race to be the winner, and the bundled seed file has no id field to carry anyway.
+    public string Id => Domain.ToLowerInvariant();
+}
 
 public sealed record SubstanceKey(string Element, string Form, string Cas);
 

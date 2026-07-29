@@ -8,6 +8,7 @@ public sealed class SdsOptions
     public string CosmosDatabase { get; init; } = "smx";
     public string MasterContainer { get; init; } = "sds-master-list";
     public string RegistryContainer { get; init; } = "sds-registry";
+    public string SuppliersContainer { get; init; } = "sds-suppliers";
     public string BronzeAccount { get; init; } = "";
     public string BronzeFilesystem { get; init; } = "bronze";
     public string SearchEndpoint { get; init; } = "";
@@ -38,6 +39,7 @@ public sealed class SdsOptions
         CosmosDatabase = c["COSMOS_DATABASE"] ?? "smx",
         MasterContainer = c["SDS_MASTER_CONTAINER"] ?? "sds-master-list",
         RegistryContainer = c["SDS_REGISTRY_CONTAINER"] ?? "sds-registry",
+        SuppliersContainer = c["SDS_SUPPLIERS_CONTAINER"] ?? "sds-suppliers",
         BronzeAccount = c["BRONZE_ACCOUNT_NAME"] ?? "",
         BronzeFilesystem = c["BRONZE_FILESYSTEM"] ?? "bronze",
         SearchEndpoint = c["SEARCH_ENDPOINT"] ?? "",
