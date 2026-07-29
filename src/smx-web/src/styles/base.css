@@ -168,7 +168,7 @@ strong {
    selector here, rather than a font-size rule that never actually applies. */
 .ctxbar__detail.data {
   display: block;
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   margin-top: 2px;
 }
 
@@ -177,7 +177,7 @@ strong {
   align-items: center;
   gap: 6px;
   margin-bottom: var(--s2);
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   color: var(--text-muted);
 }
 
@@ -274,7 +274,7 @@ strong {
 
 .dock__rail-label {
   writing-mode: vertical-rl;
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   text-transform: uppercase;
   letter-spacing: var(--track-eyebrow);
 }
@@ -506,7 +506,7 @@ textarea {
 }
 
 .brand__system {
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   text-transform: uppercase;
   letter-spacing: var(--track-eyebrow);
   font-weight: var(--w-medium);
@@ -514,7 +514,7 @@ textarea {
 }
 
 .brand__tag {
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   color: var(--text-muted);
 }
 
@@ -526,7 +526,7 @@ textarea {
   display: flex;
   align-items: baseline;
   gap: var(--s2);
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   color: var(--text-muted);
 }
 
@@ -685,7 +685,7 @@ textarea {
   align-items: center;
   gap: 4px;
   justify-content: center;
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   padding: 6px 4px;
   border: 1px solid var(--border);
   border-radius: var(--r2);
@@ -818,7 +818,7 @@ textarea {
 
 .src {
   display: inline-block;
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   color: var(--text-muted);
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -838,7 +838,7 @@ textarea {
 }
 
 .name {
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   color: var(--text-muted);
   margin: 10px 0 3px;
 }
@@ -892,7 +892,7 @@ select:focus {
 /* A control that belongs beside a label rather than at the foot of a form. */
 .btn--quiet {
   padding: 2px 7px;
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1058,7 +1058,7 @@ select:focus {
 }
 .sheet__row kbd {
   font-family: var(--font-mono);
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   color: var(--text-secondary);
   background: var(--surface-2);
   border: var(--hair) solid var(--border);
@@ -1068,7 +1068,7 @@ select:focus {
 }
 .masthead__hint kbd {
   font-family: var(--font-mono);
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   color: var(--text-muted);
   border: var(--hair) solid var(--border);
   border-radius: var(--r1);

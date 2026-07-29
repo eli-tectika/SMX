@@ -19,7 +19,7 @@
 
 .chip--mono {
   font-family: var(--font-mono);
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
 }
 
 /* ---- data --------------------------------------------------------------------
@@ -127,7 +127,7 @@
 }
 
 .stat__label {
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   text-transform: uppercase;
   letter-spacing: var(--track-eyebrow);
   color: var(--text-muted);
@@ -135,7 +135,7 @@
 }
 
 .stat__hint {
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   color: var(--text-muted);
   margin-top: var(--s1);
 }
@@ -214,7 +214,7 @@
 
 .meter__num {
   font-variant-numeric: tabular-nums;
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   color: var(--text-secondary);
   min-width: 34px;
   text-align: right;
@@ -256,7 +256,7 @@
   flex-wrap: wrap;
   gap: var(--s3);
   margin-top: var(--s2);
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -384,7 +384,7 @@
 }
 
 .sec__eyebrow {
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   text-transform: uppercase;
   letter-spacing: var(--track-eyebrow);
   color: var(--text-muted);
@@ -400,7 +400,7 @@
 
 .sec__count {
   font-family: var(--font-mono);
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -547,7 +547,7 @@
 }
 
 .gatebox__sub {
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   color: var(--text-warning);
   opacity: 0.85;
 }
@@ -566,7 +566,7 @@
 }
 
 .gatebox__req-detail {
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   opacity: 0.9;
   margin-top: 2px;
 }
@@ -657,7 +657,7 @@
   transform: translateX(-50%);
   background: var(--ink);
   color: #fff;
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   font-weight: 400;
   padding: 4px 8px;
   border-radius: var(--r1);
@@ -717,7 +717,7 @@
    this box must not be mistaken for one that reaches further than it does. */
 .finder__scope {
   padding: var(--s2) var(--s4);
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   color: var(--text-muted);
   background: var(--surface-2);
   border-bottom: var(--hair) solid var(--border);
@@ -774,7 +774,7 @@
 }
 
 .finder__hit-sub {
-  font-size: var(--t-tiny);
+  font-size: var(--t-small);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;

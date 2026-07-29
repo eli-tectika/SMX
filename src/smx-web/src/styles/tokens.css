@@ -114,9 +114,11 @@
      put primary information (a blocking reason, a citation, a confidence) at 10 and 11px on
      every screen, which is why nothing on them could read as more important than anything else.
 
-     --t-tiny survives for ONE case: a dense table cell, where the column header already carries
-     the meaning and the row is scanned rather than read. It is never correct for prose, a label,
-     a status, or a control. --t-micro is gone; there is no size below --t-tiny. */
+     --t-tiny survives for exactly ONE selector in the stylesheets: `.mx th` in base.css, the
+     compatibility-matrix header, where the column header already carries the meaning and the
+     row is scanned rather than read. It is never correct for prose, a label, a status, or a
+     control — every other direct use has been raised to --t-small. --t-micro is gone; there is
+     no size below --t-tiny. */
   --t-tiny: 11px; /* dense table cells only */
   --t-small: 12px; /* the floor for all other UI text */
   --t-body: 13px;
