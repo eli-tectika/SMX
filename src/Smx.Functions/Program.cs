@@ -48,7 +48,28 @@ var host = new HostBuilder()
         services.AddSingleton<ISourceStrategy, CasTemplateStrategy>();
         services.AddSingleton<ISourceStrategy, ProductLookupStrategy>();
         services.AddSingleton<ISourceStrategy, StaticMapStrategy>();
-        services.AddSingleton<SourceResolver>();
+
+        // Web discovery — the fallback for substances no curated template covers. No key (or a dry run)
+        // is a supported state: the dry-run search finds nothing and the resolver degrades to the
+        // curated walk. Registered as itself, NOT as ISourceStrategy: it has no allowlist row, so being
+        // in that collection would only mean sitting in a dictionary nothing looks up.
+        services.AddHttpClient();
+        if (opts.DryRun || string.IsNullOrWhiteSpace(opts.SearchApiKey))
+            services.AddSingleton<ISdsWebSearch>(sp =>
+                new DryRunSdsWebSearch(sp.GetRequiredService<ILogger<DryRunSdsWebSearch>>()));
+        else
+            services.AddSingleton<ISdsWebSearch>(sp => new BraveSdsWebSearch(
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
+                opts.SearchApiKey,
+                sp.GetRequiredService<ILogger<BraveSdsWebSearch>>()));
+        services.AddSingleton(sp => new WebDiscoveryStrategy(sp.GetRequiredService<ISdsWebSearch>()));
+
+        // Constructed by hand rather than by type: the built-in container does not honour a
+        // default parameter value, so an implicit registration could never see the optional strategy.
+        services.AddSingleton(sp => new SourceResolver(
+            sp.GetRequiredService<AllowlistProvider>(),
+            sp.GetServices<ISourceStrategy>(),
+            sp.GetRequiredService<WebDiscoveryStrategy>()));
 
         // Cosmos (camelCase so records map to /element, /cas partition keys + registry field queries)
         services.AddSingleton(_ => new CosmosClient(opts.CosmosEndpoint, cred, new CosmosClientOptions
