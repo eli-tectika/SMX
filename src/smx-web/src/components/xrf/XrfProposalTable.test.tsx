@@ -114,6 +114,25 @@ describe('the XRF proposals table', () => {
     expect(screen.getByTestId('xrf-confirm-effect')).toHaveTextContent(/discovery/i);
   });
 
+  it('sets that sentence at reading size, without widening the grid', () => {
+    // "What pressing this does" is part of the decision, so it is READ. It sits in a block that
+    // sizes to the scroll box rather than to the table, so reading size costs wrapping, not width.
+    show([row()]);
+    const effect = screen.getByTestId('xrf-confirm-effect');
+    expect(effect.className).toContain('prose');
+    expect(effect.className).not.toContain('muted');
+  });
+
+  it('keeps the grid’s own labels at the floor', () => {
+    // Ten fixed-width columns inside a 340px column. Pool membership, units and row problems are
+    // identified at a glance, and enlarging any of them widens the horizontal scroll for nothing.
+    show([row({ status: 'L', signalNote: null, problems: ['needs a note'] })]);
+    const membership = within(rowFor('Ba')).getByText(/in the pool/);
+    expect(membership.className).toContain('tiny');
+    expect(membership.className).not.toContain('prose');
+    expect(within(rowFor('Ba')).getByTestId('xrf-row-problem').className).toContain('tiny');
+  });
+
   it('drops a row when the operator removes it', async () => {
     const onChange = vi.fn();
     show([row(), row({ element: 'Sr', rowNumber: 3 })], vi.fn(), onChange);

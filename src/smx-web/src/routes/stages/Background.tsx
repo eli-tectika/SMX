@@ -161,6 +161,7 @@ export function Background({ project }: ScreenProps) {
           headingLevel={3}
           hint="element × component, as recorded"
         />
+        <SectionRule />
 
         {phase === 'loading' && (
           <p className="prose" style={{ margin: 0 }}>
@@ -174,7 +175,11 @@ export function Background({ project }: ScreenProps) {
             <i className="ti ti-alert-triangle" aria-hidden="true" />
             <div>
               <b>The measurement could not be read.</b>
-              <div className="tiny" style={{ marginTop: 3 }}>
+              {/* The transport's own words, in mono, because that is what they are — a machine
+                  string the operator quotes into a bug report, not a sentence we wrote. `.data`
+                  is the mark for that, and inside a banner its 0.94em optical correction lands
+                  above the floor rather than shrinking the only diagnostic on screen. */}
+              <div className="data" style={{ marginTop: 3 }}>
                 {errMsg}
               </div>
             </div>
@@ -189,7 +194,9 @@ export function Background({ project }: ScreenProps) {
             <i className="ti ti-alert-triangle" aria-hidden="true" />
             <div>
               <b>The recorded measurement could not be read.</b>
-              <div className="tiny" style={{ marginTop: 3 }}>
+              {/* A sentence we wrote, explaining a defect — READ, so it wears `.prose`.
+                  `.banner .prose` defers the colour, so it stays the banner's warning ink. */}
+              <div className="prose" style={{ marginTop: 3 }}>
                 It came back in a shape this screen does not recognise, so nothing is shown rather
                 than something wrong.
               </div>
@@ -344,8 +351,14 @@ export function Background({ project }: ScreenProps) {
 
             {/* Four states and the lock, all five spelled out. The legend is the only place the
                 difference between "measured and present" and "never measured" is stated in words,
-                so it stays at reading size (`.tiny` is 12px, the floor) rather than shrinking to
-                fit the table it explains. */}
+                so it stays at the 12px floor (`.tiny`) rather than shrinking to fit the table it
+                explains.
+
+                It does NOT go up to `.prose` with the sentences on this screen, and that is the
+                judgement, not an oversight: a legend is a key, glanced at to decode a chip and
+                then left alone — REFERENCED, not read. Setting it at reading size would make the
+                key of the matrix compete with the matrix, and it would wrap the five entries off
+                one line. Same for every cell, unit and tally in the table above. */}
             <div
               className="tiny muted"
               style={{ display: 'flex', gap: 12, margin: '10px 0 0', flexWrap: 'wrap' }}
@@ -371,7 +384,10 @@ export function Background({ project }: ScreenProps) {
             {/* Supporting detail, not two more sections. Both are readings of the same matrix: what
                 each component is left with, and the instrument the field reading has to happen on. */}
             <details style={{ marginTop: 14 }}>
-              <summary className="small secondary" style={{ cursor: 'pointer' }}>
+              {/* A disclosure summary is a LABEL for a control, not a sentence — it stays at the
+                  floor. What it gets instead of size is weight, which is what separates a thing
+                  you can press from the prose around it. */}
+              <summary className="small secondary" style={{ cursor: 'pointer', fontWeight: 500 }}>
                 What each component is left with
               </summary>
               <div
@@ -425,8 +441,14 @@ export function Background({ project }: ScreenProps) {
                       {/* A stated rule over recorded data, in the conditional tense — never a verdict
                           stamped into a cell. The agent decides usability; this only says what the
                           recorded objective implies. */}
+                      {/* The one sentence on this card, so it is the one thing on it set at
+                          reading size. The warning colour is inline and therefore survives
+                          `.prose`'s primary ink — a directly-set style beats a class. */}
                       {objective === 'quantification' && conditional.length > 0 && (
-                        <div className="tiny" style={{ color: 'var(--text-warning)', marginTop: 8 }}>
+                        <div
+                          className="prose"
+                          style={{ color: 'var(--text-warning)', marginTop: 8 }}
+                        >
                           Under quantification, {conditional.length} conditional element
                           {conditional.length === 1 ? '' : 's'} would not be usable.
                         </div>
@@ -439,15 +461,31 @@ export function Background({ project }: ScreenProps) {
 
             {xrf?.device && (
               <details style={{ marginTop: 8 }}>
-                <summary className="small secondary" style={{ cursor: 'pointer' }}>
+                {/* The summary names the device — a label. */}
+                <summary className="small secondary" style={{ cursor: 'pointer', fontWeight: 500 }}>
                   Measured on {xrf.device.model}
                 </summary>
-                <p className="prose small" style={{ margin: '6px 0 0' }}>
-                  The unit the marker must be read by in the field — the ppm floor targets it.{' '}
-                  {Array.isArray(xrf.device.lods) && xrf.device.lods.length > 0
-                    ? xrf.device.lods.map((l) => `${l.element} LOD ${l.lod} ${l.unit}`).join(' · ')
-                    : 'No per-element LODs recorded.'}
+                {/* Split, because one paragraph was carrying two different kinds of text. The
+                    first half is a sentence about why the device matters at all (READ); the
+                    second is a readout of per-element limits (REFERENCED), and running them
+                    together set the sentence at the size of the readout. `prose small` was also
+                    a contradiction the cascade already resolved — `.prose` is declared after
+                    `.small`, so the `small` was doing nothing but claiming otherwise. */}
+                <p className="prose" style={{ margin: '6px 0 0' }}>
+                  The unit the marker must be read by in the field — the ppm floor targets it.
                 </p>
+                {Array.isArray(xrf.device.lods) && xrf.device.lods.length > 0 ? (
+                  <div className="tiny muted" style={{ marginTop: 6 }}>
+                    {xrf.device.lods.map((l) => `${l.element} LOD ${l.lod} ${l.unit}`).join(' · ')}
+                  </div>
+                ) : (
+                  /* An absence, not a value — so it is not muted. The operator needs to know the
+                     device was recorded without limits, which is what makes a ppm floor unable to
+                     target it. */
+                  <div className="tiny" style={{ marginTop: 6 }}>
+                    No per-element LODs recorded.
+                  </div>
+                )}
               </details>
             )}
           </>
@@ -457,7 +495,7 @@ export function Background({ project }: ScreenProps) {
             pool belongs on the screen — but as the input it is, behind a disclosure, opened by
             default only while there is no matrix to read instead. */}
         <details open={phase !== 'ready' || elements.length === 0} style={{ marginTop: 14 }}>
-          <summary className="small secondary" style={{ cursor: 'pointer' }}>
+          <summary className="small secondary" style={{ cursor: 'pointer', fontWeight: 500 }}>
             The elements this measurement is filtering
           </summary>
           <div style={{ marginTop: 10 }}>
@@ -468,6 +506,7 @@ export function Background({ project }: ScreenProps) {
 
       <section className="screen">
         <SectionHeader title="What is waiting on this" headingLevel={3} />
+        <SectionRule />
 
         {/* The real downstream consequence: StageDispatcher parks Discovery with a plain-English
             reason when the project has no element pools. This reads the record rather than asserting
@@ -482,12 +521,41 @@ export function Background({ project }: ScreenProps) {
           (discovery.status === 'needs-review' || discovery.status === 'failed') && (
             <div className="banner warn" role="note" style={{ margin: '10px 0 0' }}>
               <i className="ti ti-player-pause" aria-hidden="true" />
-              {/* Verbatim, in mono. A paraphrased reason is a lost reason. */}
-              <div className="data small">{discovery.error}</div>
+              {/* Verbatim, in mono. A paraphrased reason is a lost reason.
+                  But the dispatcher writes this in plain English — it is the one thing on this
+                  screen that says why the project stopped, and it was set a step BELOW the
+                  sentence above it. `.prose` gives it reading size and measure; `.data` keeps the
+                  mono that marks it as the record's words rather than ours. Both are declared in
+                  primitives.css with `.prose` last, which is what makes the size the prose one;
+                  `small` was dead here for the same reason and is gone. */}
+              <div className="data prose">{discovery.error}</div>
             </div>
           )}
       </section>
     </>
+  );
+}
+
+/**
+ * The hairline that closes a section heading.
+ *
+ * A section title here is 15px (`--t-lead`); the prose inside it is now 14px (`--t-read`). One
+ * step is not enough on its own for the heading to read as the thing the section hangs from — and
+ * the next size up the scale is `--t-title`, which belongs to the project's own name. So the
+ * separation is drawn rather than sized: the rule closes the heading's block, and everything below
+ * it reads as being inside the section.
+ *
+ * Presentational only, and hidden from the accessibility tree. The heading itself is a real `<h3>`
+ * (SectionHeader's `headingLevel`), which is what a screen-reader user navigates by; a decorative
+ * box announcing itself as a separator would add a landmark where there is only a line.
+ */
+function SectionRule() {
+  return (
+    <div
+      data-testid="section-rule"
+      aria-hidden="true"
+      style={{ borderTop: '1px solid var(--border)', marginBottom: 16 }}
+    />
   );
 }
 

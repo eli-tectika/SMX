@@ -300,6 +300,94 @@ describe('Background — payloads it cannot read', () => {
   });
 });
 
+/**
+ * The scale, not the floor.
+ *
+ * Raising the floor to 12px flattened the scale: ~90% of the deployed app rendered at exactly
+ * 12px, so size stopped distinguishing a sentence from a unit label. `--t-read` / `.prose` is the
+ * step that was missing, and these cases pin the JUDGEMENT rather than the pixel — which text on
+ * this screen is parsed as sentences (READ) and which is identified at a glance (REFERENCED).
+ *
+ * Both halves are asserted deliberately. A test that only guarded the promotions would be passed
+ * by a find-and-replace that set the whole matrix at reading size, which on a dense instrument
+ * screen is the other way to destroy the hierarchy.
+ */
+describe('Background — read versus referenced', () => {
+  it('rules off both section headings', async () => {
+    const { container } = view();
+    await waitFor(() => expect(rowFor('Ba')).toBeInTheDocument());
+    // "What the measurement means" and "What is waiting on this". A 15px title over 14px prose
+    // needs the rule to read as the thing the section hangs from.
+    expect(container.querySelectorAll('[data-testid="section-rule"]')).toHaveLength(2);
+  });
+
+  it('sets the halted stage’s reason at reading size, still verbatim in mono', async () => {
+    view(project({ status: 'needs-review', error: 'no candidate corroborated in the catalog' }));
+    await waitFor(() => expect(rowFor('Ba')).toBeInTheDocument());
+    const reason = within(screen.getByRole('note')).getByText(/no candidate corroborated/);
+    // `.data` keeps it the record's words; `.prose` stops it being a step below the sentence
+    // above it, which is the one line saying why the project stopped.
+    expect(reason.className).toContain('data');
+    expect(reason.className).toContain('prose');
+    expect(reason.className).not.toContain('small');
+  });
+
+  it('states an unreadable payload as prose, never as a muted label', async () => {
+    vi.mocked(api.getXrfState).mockResolvedValue([] as never);
+    view();
+    const said = await screen.findByText(/shape this screen does not recognise/i);
+    expect(said.className).toContain('prose');
+    // Muting a sentence is muting the thing the sentence says.
+    expect(said.className).not.toContain('muted');
+    expect(said.className).not.toContain('tiny');
+  });
+
+  it('keeps the transport’s own error verbatim in mono rather than as prose we wrote', async () => {
+    vi.mocked(api.getXrfState).mockRejectedValue(new Error('502 upstream'));
+    view();
+    const raw = await screen.findByText(/502 upstream/);
+    expect(raw.className).toContain('data');
+    expect(raw.className).not.toContain('prose');
+  });
+
+  it('sets the quantification rule as prose and keeps its warning colour', async () => {
+    // bottle's recorded objective is quantification; make its one pooled element conditional.
+    vi.mocked(api.getXrfState).mockResolvedValue({
+      ...xrf,
+      elementPools: [
+        { component: 'bottle', element: 'Ba', line: 'Ka', status: 'L', signalNote: 'shoulder' },
+      ],
+    });
+    view();
+    const rule = await screen.findByText(/would not be usable/);
+    expect(rule.className).toContain('prose');
+    // An inline colour beats `.prose`'s primary ink — the sentence must not turn black.
+    expect(rule.style.color).toBe('var(--text-warning)');
+  });
+
+  it('reads the device sentence but not its LOD readout', async () => {
+    view();
+    const why = await screen.findByText(/The unit the marker must be read by/);
+    expect(why.className).toContain('prose');
+    // The limits themselves are a readout, glanced at per element — they stay at the floor.
+    const lods = screen.getByText(/Ba LOD 3 ppm/);
+    expect(lods.className).toContain('tiny');
+    expect(lods.className).not.toContain('prose');
+  });
+
+  it('leaves the matrix itself at the floor — cells, units and tallies', async () => {
+    view();
+    await waitFor(() => expect(rowFor('Ba')).toBeInTheDocument());
+    // A measured level is a value identified at a glance, not a sentence. Blanket enlargement
+    // here would push the four-state grid past the artifact column.
+    const level = screen.getByText(/940 ppm/).closest('div');
+    expect(level?.className).toContain('tiny');
+    expect(level?.className).not.toContain('prose');
+    const foot = screen.getByRole('row', { name: /usable \/ conditional \/ avoid \/ not measured/ });
+    expect(within(foot).getAllByRole('cell')[0].className).toContain('tiny');
+  });
+});
+
 describe('Background — type discipline', () => {
   /** Nothing below the 12px floor, and no inline `fontSize` sneaking under it. */
   it('sets no inline font size below the floor', async () => {

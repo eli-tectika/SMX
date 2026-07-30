@@ -192,14 +192,25 @@ export function XrfEntry({
      * header and the stepper already say which screen this is.
      */
     <section aria-label="XRF measurement">
-      <header style={{ marginBottom: 'var(--s3)' }}>
+      <header style={{ marginBottom: 'var(--s2)' }}>
         <h3 className="sec__title" style={{ margin: 0 }}>
           XRF measurement
         </h3>
+        {/* A one-line deck, and it stays at the floor on purpose. This column is 340–390px wide
+            and the title above it is 15px: a 14px sentence directly beneath a 15px heading in a
+            box this narrow reads as two headings, not as a heading and its caption. Separation
+            here comes from the rule below, not from size. */}
         <p className="small secondary" style={{ margin: '2px 0 0' }}>
           The physicist measures; you transcribe and confirm.
         </p>
       </header>
+      {/* The panel's own heading, closed off from the sections under it. Without this the h3 and
+          the first eyebrow are two labels 12px apart with nothing saying which contains which. */}
+      <div
+        data-testid="section-rule"
+        aria-hidden="true"
+        style={{ borderTop: '1px solid var(--border)', marginBottom: 'var(--s4)' }}
+      />
 
       {/* The one error slot. */}
       {error && (
@@ -226,7 +237,8 @@ export function XrfEntry({
         className="region"
         style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 'var(--s2)' }}
       >
-        <label htmlFor="xrf-file" className="small secondary">
+        {/* A field label — REFERENCED, so it keeps the floor and takes weight instead of size. */}
+        <label htmlFor="xrf-file" className="small secondary" style={{ fontWeight: 500 }}>
           Upload the physicist&rsquo;s result file
         </label>
         <input
@@ -254,7 +266,10 @@ export function XrfEntry({
           )}
           {busy && <span className="tiny muted">Working…</span>}
         </div>
-        <div className="tiny muted">
+        {/* The rule that governs everything above it, so it is read, not glanced at — and it was
+            the quietest text in the panel. Two sentences wrap to three lines inside a 292px
+            region at reading size; nothing here has a fixed width to overflow. */}
+        <div className="prose">
           Nothing is written until you confirm. Reading a file only proposes rows — you check them
           first.
         </div>
@@ -313,7 +328,7 @@ function ConfirmedSummary({ record }: { record: XrfState | 'absent' | 'unreadabl
   if (record === 'unreadable') {
     return (
       <div className="region" data-testid="xrf-confirmed-summary" style={{ marginBottom: 14 }}>
-        <div className="small secondary">
+        <div className="prose">
           <i className="ti ti-alert-triangle" aria-hidden="true" /> The recorded measurement came
           back in a shape this cannot read, so what is on the record is not shown. Entering a
           measurement still works.
@@ -325,7 +340,7 @@ function ConfirmedSummary({ record }: { record: XrfState | 'absent' | 'unreadabl
   if (record === 'absent') {
     return (
       <div className="region" data-testid="xrf-confirmed-summary" style={{ marginBottom: 14 }}>
-        <div className="small secondary">
+        <div className="prose">
           No XRF background has been recorded — this project has no constraints on the record yet, so
           there is nothing to compare a measurement against. Intake writes them when it runs.
         </div>
@@ -342,15 +357,19 @@ function ConfirmedSummary({ record }: { record: XrfState | 'absent' | 'unreadabl
 
   return (
     <div className="region" data-testid="xrf-confirmed-summary" style={{ marginBottom: 14 }}>
+      {/* Every branch of this summary is the same kind of text: a sentence explaining what the
+          record does or does not hold, and why the operator is looking at this panel. That is
+          READ, and all four branches used to be set at the floor in secondary ink — the quietest
+          type in the panel carrying the reason the project is parked. */}
       {record.elementPools.length === 0 ? (
-        <div className="small secondary">
+        <div className="prose">
           No XRF background has been recorded on this project yet. Discovery is waiting on it — it
           screens candidate elements against the measured background, and there is none to screen
           against.
         </div>
       ) : (
         <>
-          <div className="small secondary" style={{ marginBottom: 8 }}>
+          <div className="prose" style={{ marginBottom: 8 }}>
             Confirming again REPLACES this — it is a re-measure, not an addition.
           </div>
           {pooled.map((g) => (

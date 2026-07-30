@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { XrfEntry } from './XrfEntry';
@@ -116,5 +116,48 @@ describe('XRF entry', () => {
 
     await waitFor(() => expect(onConfirmed).toHaveBeenCalled());
     expect(api.getXrfState).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * This panel is the work area's LEFT column — 340px at a 1400px viewport, 390px above it, less
+ * 12px of padding each side. Size is therefore the expensive axis here and separation is the cheap
+ * one, so the promotions are limited to text that is genuinely parsed as sentences, and everything
+ * that identifies something at a glance keeps the floor and takes weight instead.
+ */
+describe('XRF entry — read versus referenced', () => {
+  it('rules the panel heading off from the sections under it', async () => {
+    const { container } = show();
+    await screen.findByTestId('xrf-confirmed-summary');
+    expect(container.querySelectorAll('[data-testid="section-rule"]')).toHaveLength(1);
+  });
+
+  it('sets the nothing-is-written-yet rule as prose', async () => {
+    // The one statement that governs the whole panel, and it was the quietest text in it.
+    show();
+    const rule = await screen.findByText(/Nothing is written until you confirm/);
+    expect(rule.className).toContain('prose');
+    expect(rule.className).not.toContain('muted');
+  });
+
+  it('explains an unrecorded background as prose, not as a caption', async () => {
+    show();
+    const said = await screen.findByText(/Discovery is waiting on it/);
+    expect(said.className).toContain('prose');
+    expect(said.className).not.toContain('secondary');
+  });
+
+  it('keeps the pool readout and its labels at the floor', async () => {
+    vi.mocked(api.getXrfState).mockResolvedValue({
+      ...EMPTY,
+      elementPools: [{ component: 'bottle', element: 'Ba', line: 'Ka', status: 'V' }],
+    });
+    show();
+    const summary = await screen.findByTestId('xrf-confirmed-summary');
+    // The component name is a label and the counts are counts — neither is read as a sentence,
+    // and at this width enlarging them would cost the chips their line.
+    const label = within(summary).getByText('bottle');
+    expect(label.className).toContain('tiny');
+    expect(within(summary).getByText(/element.*in the pool/).className).toContain('tiny');
   });
 });

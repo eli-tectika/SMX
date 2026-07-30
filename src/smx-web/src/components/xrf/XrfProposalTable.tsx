@@ -294,8 +294,11 @@ export function XrfProposalTable({
         >
           Confirm the background
         </button>
-        {/* Beside the button, because "what pressing this does" is part of the decision. */}
-        <span className="tiny muted" data-testid="xrf-confirm-effect">
+        {/* Beside the button, because "what pressing this does" is part of the decision — which
+            is exactly why it is READ and not a caption. It sits in a block that sizes to the
+            scroll box's own width, not the table's, so at reading size it wraps rather than
+            widening anything: the ten fixed-width columns above it are untouched. */}
+        <span className="prose" data-testid="xrf-confirm-effect">
           Confirming records this measurement on the project — the element pool, the measured
           backgrounds and the device — and starts Discovery.
         </span>
