@@ -432,18 +432,28 @@ export function Decision({ project, refreshProject }: ScreenProps) {
               />
             </div>
 
-            {components.map((c) => (
-              <ComponentBand
-                key={c.componentId}
-                component={c}
-                projectId={project.projectId}
-                codes={finalized(c.componentId)}
-                chosen={choice[c.componentId] ?? c.proposedCode?.ratioSignature ?? ''}
-                onChoose={(code) => setChoice((prev) => ({ ...prev, [c.componentId]: code }))}
-                expanded={expanded}
-                setExpanded={setExpanded}
-              />
-            ))}
+            {/*
+              The bands are per-component TRACKS, not a continuous list — there is no product-wide
+              marker, and reading one component's evidence as another's is the specific mistake
+              this layout has to make impossible. They ran together with nothing but whitespace
+              between them; each band now sits between hairlines, and the rule on this container
+              is the one that separates the first band from the strip above it.
+            */}
+            <div style={{ borderTop: '1px solid var(--border)' }}>
+              {components.map((c, i) => (
+                <ComponentBand
+                  key={c.componentId}
+                  component={c}
+                  projectId={project.projectId}
+                  codes={finalized(c.componentId)}
+                  chosen={choice[c.componentId] ?? c.proposedCode?.ratioSignature ?? ''}
+                  onChoose={(code) => setChoice((prev) => ({ ...prev, [c.componentId]: code }))}
+                  expanded={expanded}
+                  setExpanded={setExpanded}
+                  first={i === 0}
+                />
+              ))}
+            </div>
           </>
         )}
       </section>
@@ -726,8 +736,10 @@ function SignBlock({
         style={{
           width: '100%',
           font: 'inherit',
-          fontSize: 'var(--t-small)',
-          padding: '6px 8px',
+          // The operator WRITES prose here and it goes on the record verbatim, so it is set at
+          // reading size like every other sentence on this screen — not at label size.
+          fontSize: 'var(--t-read)',
+          padding: 'var(--s2)',
           border: '0.5px solid var(--border-strong)',
           borderRadius: 'var(--r1)',
           resize: 'vertical',
@@ -777,7 +789,8 @@ function SignBlock({
           <i className={`ti ${busy === 'reject' ? 'ti-loader' : 'ti-ban'}`} aria-hidden="true" />{' '}
           {busy === 'reject' ? 'Recording…' : 'Reject (requires a reason)'}
         </button>
-        <span className="small" style={{ color: 'var(--text-warning)' }}>
+        {/* READ: the sentence that says what the pen beside it will and will not do. */}
+        <span className="prose" style={{ color: 'var(--text-warning)' }}>
           {!armable
             ? 'Locked until the checks above pass — no determination can be recorded until then.'
             : !codesReady
@@ -817,11 +830,15 @@ function Check({
         style={{ color: met ? 'var(--text-muted)' : 'var(--text-warning)', marginTop: 2 }}
       />
       <span style={{ flex: 1, minWidth: 0 }}>
+        {/* REFERENCED: the criterion's name. It is scanned down the list, not parsed. */}
         <span className="small" style={{ color: met ? 'var(--text-muted)' : 'var(--text-primary)' }}>
           {label}
         </span>
+        {/* READ: why the criterion is not met — the server's sentence, or the list of its
+            blockers. It is what stands between the operator and the last hard gate, and it was
+            set at the floor in the same size as the label it explains. */}
         {detail && (
-          <span className="small" style={{ display: 'block', color: 'var(--text-warning)' }}>
+          <span className="prose" style={{ display: 'block', color: 'var(--text-warning)' }}>
             {detail}
           </span>
         )}
@@ -839,6 +856,7 @@ function ComponentBand({
   onChoose,
   expanded,
   setExpanded,
+  first,
 }: {
   component: ComponentDecision;
   projectId: string;
@@ -847,6 +865,8 @@ function ComponentBand({
   onChoose: (code: string) => void;
   expanded: string | null;
   setExpanded: (v: string | null) => void;
+  /** The band directly under the list's own rule — it must not draw a second one. */
+  first: boolean;
 }) {
   const signed = c.confirmedCode !== null;
   const rows = rowsOf(c);
@@ -855,22 +875,52 @@ function ComponentBand({
   const overridden = signed && proposal !== undefined && proposal !== c.confirmedCode;
 
   return (
-    <div style={{ marginBottom: 'var(--s5)' }}>
+    <div
+      data-band="component"
+      style={{
+        borderTop: first ? undefined : '1px solid var(--border)',
+        /* Only the foot. The head's air is the section header's own top margin (`.sec`), and
+           stacking a second --s5 on top of it put 48px between the rule and the name it labels. */
+        padding: '0 0 var(--s5)',
+      }}
+    >
+      {/*
+        The component NAMES the band, so it is the band's title — not its eyebrow. As an eyebrow
+        it rendered at the type floor in muted uppercase: a group heading smaller and lighter than
+        every sentence, code and table row underneath it, which is an inverted hierarchy on the
+        screen that signs the last hard gate. The eyebrow now carries the word "Component", which
+        is what an eyebrow is for — the kind of thing, above the thing.
+
+        h4 because the section above it is h3 (ProjectHeader owns h1, NextAction h2), and a
+        per-component track is a real subdivision of "What was decided" for anyone navigating by
+        heading rather than by eye.
+      */}
       <SectionHeader
-        eyebrow={c.componentId}
+        eyebrow="Component"
+        title={c.componentId}
+        headingLevel={4}
         count={rows.length}
         hint="substances in this decision"
       />
 
       {signed ? (
-        <div className="card" style={{ marginBottom: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div className="card" style={{ marginBottom: 'var(--s3)' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--s2)',
+              flexWrap: 'wrap',
+            }}
+          >
+            {/* REFERENCED: a field label, a code, a signer name — identified at a glance. */}
             <span className="small muted">Confirmed code</span>
             <span className="chip chip--neutral chip--mono">{c.confirmedCode}</span>
             {c.confirmedBy && <span className="small muted">signed by {c.confirmedBy}</span>}
           </div>
+          {/* READ: the VP's own words for why this code was signed. The reason IS the record. */}
           {c.confirmedReason && (
-            <p className="prose" style={{ margin: '6px 0 0' }}>
+            <p className="prose" style={{ margin: 'var(--s2) 0 0' }}>
               {c.confirmedReason}
             </p>
           )}
@@ -881,16 +931,42 @@ function ComponentBand({
             to make. Muted and labelled — it is a past offer, not a live one.
           */}
           {proposal !== undefined && (
-            <p className="small muted" style={{ margin: '8px 0 0' }}>
-              {overridden ? 'Overrode the agent’s proposal ' : 'The agent proposed '}
-              <span className="chip chip--mono">{proposal}</span>
-              {c.proposedCode?.rationale ? ` — ${c.proposedCode.rationale}` : ''}
-            </p>
+            <div style={{ marginTop: 'var(--s3)' }}>
+              {/* The framing is REFERENCED — a label and a code chip. It stays quiet: this is a
+                  past offer, not a live one. */}
+              <p className="small muted" style={{ margin: 0 }}>
+                {overridden ? 'Overrode the agent’s proposal ' : 'The agent proposed '}
+                <span className="chip chip--mono">{proposal}</span>
+              </p>
+              {/*
+                The rationale itself is READ — it is the reasoning the signature agreed with or
+                overrode, and comparing the two is the only reason this record keeps the proposal
+                at all. It was a clause appended to a 12px muted label, which is where an argument
+                goes to be skimmed. Prose, at reading size, in SECONDARY ink: history is quieter
+                than the signature above it without being unreadable. Not `.muted` — muting a
+                sentence mutes what the sentence says.
+              */}
+              {c.proposedCode?.rationale && (
+                <p
+                  className="prose"
+                  style={{ margin: 'var(--s1) 0 0', color: 'var(--text-secondary)' }}
+                >
+                  {c.proposedCode.rationale}
+                </p>
+              )}
+            </div>
           )}
         </div>
       ) : (
-        <div className="card" style={{ marginBottom: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div className="card" style={{ marginBottom: 'var(--s3)' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: 'var(--s2)',
+              flexWrap: 'wrap',
+            }}
+          >
             <span className="small muted">Proposed by the agent</span>
             {/*
               The signature appears ONCE, and where the decision is actually made: inside the picker,
@@ -900,7 +976,9 @@ function ComponentBand({
               signature. The chip is therefore the FALLBACK, for when dosing offers nothing to pick.
             */}
             {!c.proposedCode ? (
-              <span className="small" style={{ color: 'var(--text-danger)' }}>
+              /* READ: a blocking reason, not a label. It says why this component can never reach
+                 a signature, and it is the whole content of the line it sits on. */
+              <span className="prose" style={{ color: 'var(--text-danger)' }}>
                 no proposed code — this component cannot be signed
               </span>
             ) : (
@@ -911,20 +989,29 @@ function ComponentBand({
               )
             )}
           </div>
+          {/* READ: the agent's argument for the code it is offering — the thing the operator is
+              being asked to agree with, so it is set to be agreed with rather than skimmed. */}
           {c.proposedCode && (
-            <p className="prose" style={{ margin: '6px 0 8px' }}>
+            <p className="prose" style={{ margin: 'var(--s2) 0 var(--s3)' }}>
               {c.proposedCode.rationale}
             </p>
           )}
           {/* The wrapping <label> IS the accessible name. An identical `aria-label` on the select was
               a second, competing source for the same string — one label, not two. */}
           {codes.length > 0 && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--s2)',
+                flexWrap: 'wrap',
+              }}
+            >
               <span className="small muted">Code to confirm for {c.componentId}</span>
               <select
                 value={chosen}
                 onChange={(e) => onChoose(e.target.value)}
-                style={{ font: 'inherit', fontSize: 'var(--t-small)', padding: '4px 6px' }}
+                style={{ font: 'inherit', fontSize: 'var(--t-body)', padding: '4px 6px' }}
               >
                 {codes.map((code) => (
                   <option key={code} value={code}>
@@ -965,7 +1052,7 @@ function ComponentBand({
               <Fragment key={key}>
                 <tr style={isOpen ? { background: 'var(--surface-2)' } : undefined}>
                   <td>
-                    <span style={{ fontWeight: 500 }}>{r.element}</span>{' '}
+                    <span style={{ fontWeight: 'var(--w-medium)' }}>{r.element}</span>{' '}
                     <span className="tiny muted">
                       <Data kind="code">{r.cas}</Data>
                     </span>
@@ -1010,7 +1097,10 @@ function ComponentBand({
                       <div
                         style={{ borderLeft: '2px solid var(--text-accent)', padding: 'var(--s3)' }}
                       >
-                        <div className="small muted" style={{ marginBottom: 6 }}>
+                        {/* READ: it tells the operator what the ids below are and what they are
+                            NOT — that this screen is a copy and the record is the truth. That is
+                            an argument about provenance, not a caption. */}
+                        <div className="prose" style={{ marginBottom: 'var(--s2)' }}>
                           Each criterion is owned by the stage that produced it. The record id is
                           what the claim was read from — the record is the truth, not this copy of it.
                         </div>

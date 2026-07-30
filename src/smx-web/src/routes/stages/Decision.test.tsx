@@ -666,9 +666,10 @@ describe('Decision — procurement', () => {
     view();
     await waitFor(() => expect(screen.getAllByRole('button', { name: /^order$/i })).toHaveLength(2));
     expect(screen.getByText(/msds before order/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/cannot be ordered until a safety sheet for it is on file/i),
-    ).toBeInTheDocument();
+    const precondition = screen.getByText(/cannot be ordered until a safety sheet for it is on file/i);
+    expect(precondition).toBeInTheDocument();
+    // ...and it is READ, not glanced at: it is the rule the disabled buttons below are obeying.
+    expect(precondition).toHaveClass('prose');
   });
 
   it('offers an order per confirmed marker once released, and refuses one with no reviewed MSDS', async () => {
@@ -818,5 +819,113 @@ describe('Decision — a record it cannot read', () => {
     await waitFor(() => expect(screen.getByText(/1314-36-9/)).toBeInTheDocument());
     expect(container.querySelector('[data-provenance]')).toBeNull();
     expect(screen.queryByText(/Mock data/i)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The reading layer — which text on this screen is PARSED and which is merely IDENTIFIED.
+ *
+ * Measured on the deployed app, 99 of Decision's 131 text elements rendered at exactly 12px and 21
+ * more at 11px: the type floor was cleared and the scale flattened in the same move, so size
+ * distinguished nothing and colour was the only signal left. On the screen that signs the last hard
+ * gate, the things a human must actually READ — a rationale, a blocking reason, a refusal — were
+ * the same size as a unit label, and the component name heading a whole track was SMALLER.
+ */
+describe('Decision — the reading layer', () => {
+  /**
+   * A group heading may never be smaller or lighter than what sits under it. The component name
+   * was an eyebrow: 12px, muted, uppercase — over a band containing 14px prose, a code, a picker
+   * and a table. It is the band's title, and h4 under the section's h3 so it is also navigable.
+   */
+  it('names the component as the band’s title rather than a floor-size eyebrow', async () => {
+    view();
+    await waitFor(() => expect(screen.getByText(/proposed by the agent/i)).toBeInTheDocument());
+    const heading = screen.getByRole('heading', { name: 'bottle' });
+    expect(heading.tagName).toBe('H4');
+    expect(heading).toHaveClass('sec__title');
+    expect(heading.className).not.toMatch(/sec__eyebrow/);
+  });
+
+  /**
+   * Per-component tracks are independent — background, marker form, ppm and codes are decided per
+   * component and there is no product-wide marker — so reading one band's evidence as another's is
+   * the specific mistake this layout must make impossible. Whitespace alone was doing that job.
+   */
+  it('rules the per-component bands apart so two tracks cannot run together', async () => {
+    vi.mocked(api.getDecision).mockResolvedValue(
+      decision({ components: [component(), component({ componentId: 'lid' })] }),
+    );
+    const { container } = view();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'lid' })).toBeInTheDocument());
+    const bands = [...container.querySelectorAll<HTMLElement>('[data-band="component"]')];
+    expect(bands).toHaveLength(2);
+    expect(bands[0].style.borderTop).toBe('');
+    expect(bands[1].style.borderTop).toBe('1px solid var(--border)');
+    expect(bands[0].parentElement?.style.borderTop).toBe('1px solid var(--border)');
+  });
+
+  /**
+   * The proposal is history, and history is quieter — but it is still an ARGUMENT, and comparing it
+   * with what the VP signed is the only reason the record keeps it. It was a clause appended to a
+   * 12px muted label, which is where reasoning goes to be skimmed. Prose, in secondary ink.
+   */
+  it('keeps the agent’s rationale readable beside the signature instead of muting it to a clause', async () => {
+    vi.mocked(api.getDecision).mockResolvedValue(
+      signedDecision({ confirmedCode: 'Y:Zr = 1.00:0.33' }),
+    );
+    view();
+    await waitFor(() => expect(screen.getByText(/overrode the agent/i)).toBeInTheDocument());
+    const rationale = screen.getByText(/readable at the floor/i);
+    expect(rationale).toHaveClass('prose');
+    expect(rationale.className).not.toMatch(/\b(muted|tiny|small)\b/);
+  });
+
+  /** The VP's own words for a signed code are the record. They are read, not glanced at. */
+  it('sets a confirmation reason as prose', async () => {
+    vi.mocked(api.getDecision).mockResolvedValue(signedDecision());
+    view();
+    await waitFor(() => expect(screen.getByText(/confirmed code/i)).toBeInTheDocument());
+    const reason = screen.getByText('Approved on the evidence.');
+    expect(reason).toHaveClass('prose');
+    expect(reason.className).not.toMatch(/\b(muted|tiny|small)\b/);
+  });
+
+  /**
+   * A precondition's LABEL is referenced — it is scanned down a list. Its DETAIL is what stands
+   * between the operator and the last hard gate, and it was set at the label's size.
+   */
+  it('sets a precondition’s explanation as prose while its label stays referenced', async () => {
+    vi.mocked(api.getVpGate).mockResolvedValue({ status: 'locked', armable: false, blockers: [] });
+    view();
+    await waitFor(() =>
+      expect(screen.getByText(/the server will not arm this gate/i)).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/the server will not arm this gate/i)).toHaveClass('prose');
+    expect(screen.getByText('Every gate condition met')).toHaveClass('small');
+  });
+
+  /**
+   * Procurement's refusal message is the server's reason an order did not happen, on the screen
+   * that placed it. It was the smallest text on the screen, inside a banner set at reading size.
+   */
+  it('states a refused order in prose rather than at the smallest size on the screen', async () => {
+    vi.mocked(api.getDecision).mockResolvedValue(signedDecision());
+    vi.mocked(api.orderSubstance).mockRejectedValue(
+      new api.ApiError(422, 'MSDS-before-order: no sheet on file for 1314-36-9'),
+    );
+    view();
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^order$/i })).toHaveLength(2));
+    await userEvent.click(screen.getAllByRole('button', { name: /^order$/i })[0]);
+    const msg = await screen.findByText(/no sheet on file for 1314-36-9/);
+    expect(msg).toHaveClass('prose');
+  });
+
+  /** The registry-failed passage distinguishes unknown from cleared from missing. It is read. */
+  it('sets the registry-did-not-load explanation as prose', async () => {
+    vi.mocked(api.getDecision).mockResolvedValue(signedDecision());
+    vi.mocked(api.getMsdsRegistry).mockRejectedValue(new Error('registry unavailable'));
+    view();
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^order$/i })).toHaveLength(2));
+    expect(screen.getByText(/ordering is withheld until the/i)).toHaveClass('prose');
   });
 });

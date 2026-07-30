@@ -374,3 +374,76 @@ describe('Cost — guarding its own payload', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/503 Service Unavailable/);
   });
 });
+
+/**
+ * The reading layer — which text on this screen is PARSED and which is merely IDENTIFIED.
+ *
+ * Measured on the deployed app, ~90% of every text element rendered at exactly 12px: the floor was
+ * cleared and the scale was flattened in the same move, so size stopped distinguishing anything and
+ * the only signal left was colour. These tests pin the two judgements that matter most here — the
+ * sentence explaining an ABSENT price is read, and the rows a price belongs to are ruled apart.
+ */
+describe('Cost — the reading layer', () => {
+  /**
+   * The single most consequential sentence on this screen. It is what stops procurement acting on
+   * a number that is not there, and it sat at the type floor in muted grey, beside a "No price" it
+   * exists to explain. `.prose` is the reading class; pairing it with `muted` would undo it.
+   */
+  it('sets the note explaining an absent price as prose, never as floor-size chrome', async () => {
+    vi.mocked(api.getCost).mockResolvedValue(
+      costDoc([audit({ bestQuote: undefined, priceNote: 'price is free text on this listing' })]),
+    );
+    renderCost();
+    await ready();
+    const note = screen.getByText('price is free text on this listing');
+    expect(note).toHaveClass('prose');
+    expect(note.className).not.toMatch(/\b(tiny|small|muted)\b/);
+  });
+
+  /** The third state gets the same treatment: it is an explanation, not a status word. */
+  it('sets the unreadable-quote explanation as prose too', async () => {
+    vi.mocked(api.getCost).mockResolvedValue(
+      costDoc([audit({ bestQuote: { ...quote(), usdPerGram: null as unknown as number } })]),
+    );
+    renderCost();
+    await ready();
+    expect(screen.getByText(/figure could not be read/i)).toHaveClass('prose');
+  });
+
+  /**
+   * Two substances used to run together with nothing between them. Each row after the first draws
+   * its own hairline; the first draws none, because the list's own rule is already directly above
+   * it — separating it from the heading — and a doubled rule reads as a seam rather than a divide.
+   */
+  it('rules the substance rows apart, and does not double the rule under the heading', async () => {
+    vi.mocked(api.getCost).mockResolvedValue(
+      costDoc([audit(), audit({ cas: '1314-13-2', element: 'Zn' })]),
+    );
+    const { container } = renderCost();
+    await ready();
+    const rows = [...container.querySelectorAll<HTMLElement>('[data-row="substance"]')];
+    expect(rows).toHaveLength(2);
+    expect(rows[0].style.borderTop).toBe('');
+    expect(rows[1].style.borderTop).toBe('1px solid var(--border)');
+    expect(rows[0].parentElement?.style.borderTop).toBe('1px solid var(--border)');
+  });
+
+  /**
+   * The blocker block claims its red ONCE, on the container, and everything inside inherits it —
+   * which is what `.hatch-danger .prose { color: inherit }` in the shared layer is for. A list that
+   * had to repaint every `<li>` was one forgotten declaration away from grey text on a red ground,
+   * on the loudest element of the screen that decides a purchase order.
+   */
+  it('claims the blocker red once, on the container, rather than per item', async () => {
+    vi.mocked(api.getMsdsRegistry).mockResolvedValue([]);
+    const { container } = renderCost();
+    await ready();
+    const block = container.querySelector<HTMLElement>('.hatch-danger') as HTMLElement;
+    expect(block.style.color).toBe('var(--text-danger)');
+    const list = within(block).getByRole('list');
+    expect(list).toHaveClass('prose');
+    for (const li of within(block).getAllByRole('listitem')) {
+      expect((li as HTMLElement).style.color).toBe('');
+    }
+  });
+});

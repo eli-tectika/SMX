@@ -82,11 +82,16 @@ export function Procurement({
       </p>
 
       {error && (
-        <div className="banner warn" role="alert" style={{ marginBottom: 8 }}>
+        <div className="banner warn" role="alert" style={{ marginBottom: 'var(--s2)' }}>
           <i className="ti ti-alert-triangle" aria-hidden="true" />
           <div>
             <b>The order was refused.</b>
-            <div className="tiny" style={{ marginTop: 3 }}>{error}</div>
+            {/* READ: the server's own words for why it refused. It was set below the banner it
+                sits in — the smallest text on screen carrying the reason the order did not
+                happen. `.prose` in a banner keeps the banner's colour by design. */}
+            <div className="prose" style={{ marginTop: 'var(--s1)' }}>
+              {error}
+            </div>
           </div>
         </div>
       )}
@@ -94,11 +99,13 @@ export function Procurement({
       {/* Scoped to 'failed' alone. A banner during 'unread' would announce an incident that has not
           happened — the loading state's own false claim, in the opposite direction. */}
       {sheetsState === 'failed' && (
-        <div className="banner warn" role="alert" style={{ marginBottom: 8 }}>
+        <div className="banner warn" role="alert" style={{ marginBottom: 'var(--s2)' }}>
           <i className="ti ti-file-alert" aria-hidden="true" />
           <div>
             <b>The MSDS registry did not load.</b>
-            <div className="tiny" style={{ marginTop: 3 }}>
+            {/* READ: three sentences distinguishing unknown from cleared from missing, on the
+                screen that places the order. This is the passage that must not be skimmed. */}
+            <div className="prose" style={{ marginTop: 'var(--s1)' }}>
               Every safety-sheet status below is <b>unknown</b> — not cleared, and not missing. A
               sheet on file is a hard precondition for an order, so ordering is withheld until the
               registry can be read. Reload, or open the registry directly.
@@ -133,7 +140,7 @@ export function Procurement({
             return (
               <tr key={`${m.componentId}|${m.cas}`}>
                 <td>
-                  <span style={{ fontWeight: 500 }}>{m.element}</span>{' '}
+                  <span style={{ fontWeight: 'var(--w-medium)' }}>{m.element}</span>{' '}
                   <span className="tiny muted">
                     <Data kind="code">{m.cas}</Data>
                   </span>

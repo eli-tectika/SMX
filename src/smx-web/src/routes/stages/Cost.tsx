@@ -341,9 +341,20 @@ export function Cost({ project }: ScreenProps) {
               : 'The audit carries no substances.'}
           </p>
         ) : (
-          <div className="card-list">
-            {audits.map((a) => (
-              <SubstanceAudit key={`${a.cas}|${a.element}`} audit={a} sheet={sheetState(a.cas)} />
+          /*
+           * A ruled ledger, not a stack of boxes. The rule on the container is what separates the
+           * heading from the first row — the heading owns a hairline it did not have — and every
+           * row after the first carries its own, so two substances can no longer run together.
+           * The first row takes none: a doubled rule under the heading is a seam, not a divide.
+           */
+          <div style={{ borderTop: '1px solid var(--border)' }}>
+            {audits.map((a, i) => (
+              <SubstanceAudit
+                key={`${a.cas}|${a.element}`}
+                audit={a}
+                sheet={sheetState(a.cas)}
+                first={i === 0}
+              />
             ))}
           </div>
         )}
@@ -375,6 +386,14 @@ function OrderBlocker({
         border: '1px solid var(--border-danger)',
         borderRadius: 'var(--r3)',
         padding: 'var(--s4)',
+        /*
+         * The red is claimed ONCE, here, and everything inside inherits it. `.prose` inside a
+         * hatched block defers its colour to the container by design (primitives.css) — which is
+         * exactly what makes the per-item `color:` declarations this block used to carry
+         * unnecessary. A list that had to repaint every <li> was one forgotten line away from
+         * grey text on a red ground.
+         */
+        color: 'var(--text-danger)',
       }}
     >
       <p
@@ -384,7 +403,6 @@ function OrderBlocker({
           fontSize: 'var(--t-title)',
           fontWeight: 'var(--w-semibold)',
           lineHeight: 'var(--lh-tight)',
-          color: 'var(--text-danger)',
         }}
       >
         <i className="ti ti-file-alert" aria-hidden="true" />{' '}
@@ -392,14 +410,14 @@ function OrderBlocker({
           ? '1 substance cannot be ordered.'
           : `${blocked.length} substances cannot be ordered.`}
       </p>
-      <p className="prose" style={{ margin: 'var(--s3) 0 0', color: 'var(--text-danger)' }}>
+      <p className="prose" style={{ margin: 'var(--s3) 0 0' }}>
         A safety data sheet on file is a hard precondition for an order, and these do not have one:
       </p>
       <ul className="prose" style={{ margin: 'var(--s2) 0 0', paddingLeft: '1.2em' }}>
         {blocked.map((a) => {
           const s = sheetState(a.cas);
           return (
-            <li key={`${a.cas}|${a.element}`} style={{ color: 'var(--text-danger)' }}>
+            <li key={`${a.cas}|${a.element}`}>
               <b>{a.element}</b> <Data kind="cas">{a.cas}</Data> —{' '}
               {s.kind === 'no-sheet' ? (
                 <>its registry entry has no sheet behind it</>
@@ -417,7 +435,16 @@ function OrderBlocker({
   );
 }
 
-function SubstanceAudit({ audit, sheet }: { audit: SupplierAudit; sheet: SheetState }) {
+function SubstanceAudit({
+  audit,
+  sheet,
+  first,
+}: {
+  audit: SupplierAudit;
+  sheet: SheetState;
+  /** The row directly under the list's own rule — it must not draw a second one. */
+  first: boolean;
+}) {
   const price = priceOf(audit);
   // Names only — the catalog carries no per-supplier price, so there is nothing to rank.
   const suppliers = Array.isArray(audit.suppliers)
@@ -432,8 +459,15 @@ function SubstanceAudit({ audit, sheet }: { audit: SupplierAudit; sheet: SheetSt
     : [];
 
   return (
-    <div className="card">
+    <div
+      data-row="substance"
+      style={{
+        borderTop: first ? undefined : '1px solid var(--border)',
+        padding: 'var(--s4) 0',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--s2)', flexWrap: 'wrap' }}>
+        {/* The row's own heading. Nothing below it may be larger or heavier — see the price. */}
         <span style={{ fontSize: 'var(--t-lead)', fontWeight: 'var(--w-medium)' }}>
           {audit.element}
         </span>
@@ -480,8 +514,14 @@ function SubstanceAudit({ audit, sheet }: { audit: SupplierAudit; sheet: SheetSt
             marginTop: 'var(--s3)',
           }}
         >
+          {/*
+            A figure that is REFERENCED, not read: it is identified at a glance and acted on, and
+            it is already set apart by being the only mono value on the line. It sits at the row
+            heading's weight and no higher — a price heavier than the heading of the row it
+            belongs to, and heavier than the section title above both, is how a scale inverts.
+          */}
           <Data kind="price">
-            <span style={{ fontSize: 'var(--t-lead)', fontWeight: 'var(--w-semibold)' }}>
+            <span style={{ fontSize: 'var(--t-lead)', fontWeight: 'var(--w-medium)' }}>
               {price.quote.currency} {usd.format(price.quote.usdPerGram)}
             </span>
           </Data>
@@ -509,13 +549,19 @@ function SubstanceAudit({ audit, sheet }: { audit: SupplierAudit; sheet: SheetSt
           }}
         >
           <span style={{ fontSize: 'var(--t-lead)', color: 'var(--text-muted)' }}>No price</span>
-          <span className="small secondary" style={{ flex: 1 }}>
+          {/*
+            READ, and the one line on this row that has to be. It is the sentence that stops
+            procurement acting on a number that is not there — the record's own words for why
+            there is no figure, or the reason the figure could not be read. It sat at the floor in
+            muted grey, which is where the eye goes last, next to a "No price" it was explaining.
+          */}
+          <p className="prose" style={{ flex: 1, margin: 0 }}>
             {price.kind === 'unreadable'
               ? 'A quote is on the record but its figure could not be read, so no price is shown.'
               : typeof audit.priceNote === 'string' && audit.priceNote.length > 0
                 ? audit.priceNote
                 : 'Nothing parseable was on file, and the record gives no reason.'}
-          </span>
+          </p>
         </div>
       )}
 
