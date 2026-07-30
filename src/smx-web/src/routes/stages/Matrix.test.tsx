@@ -229,6 +229,46 @@ describe('Matrix — the record faults block', () => {
     expect(faults()).toBeNull();
   });
 
+  /**
+   * The one thing on this instrument that is parsed as sentences rather than scanned. `.next__text`
+   * sets 13px in secondary grey — the matrix's own chrome weight — for the explanation of why every
+   * verdict below it is suspect.
+   *
+   * `.prose` INSTEAD OF, not alongside: shell.css loads after primitives.css and the two selectors
+   * are of equal specificity, so keeping both would let `.next__text` win and undo the promotion
+   * without anything failing.
+   */
+  it('reads the faults as prose, not as the block’s chrome text', async () => {
+    // Both payloads, and that is the point: the block is three independent branches, and only two
+    // of them render on a well-formed record. Asserting against the default fixture alone let a
+    // demotion of the third — the one that says the RECORD ITSELF could not be read — survive.
+    const malformed = {
+      ...doc(),
+      rows: [{ element: 'Ag', form: 'silver nitrate', cas: AG }, { element: 'Nb', form: 'oxide' }],
+    } as unknown as MatrixDoc;
+
+    const seen: string[] = [];
+    for (const payload of [doc(), malformed]) {
+      vi.mocked(api.getMatrix).mockResolvedValue(payload);
+      const { unmount } = mount();
+      await grid();
+
+      const bodies = [...faults()!.querySelectorAll('p')];
+      expect(bodies.length).toBeGreaterThan(0);
+      for (const body of bodies) {
+        expect(body).toHaveClass('prose');
+        expect(body).not.toHaveClass('next__text');
+      }
+      seen.push(...bodies.map((b) => b.textContent ?? ''));
+      unmount();
+    }
+
+    // All three sentences really were rendered and checked, not two of them twice.
+    expect(seen.some((t) => /disagree/i.test(t))).toBe(true);
+    expect(seen.some((t) => /cites? no source/i.test(t))).toBe(true);
+    expect(seen.some((t) => /could not be read/i.test(t))).toBe(true);
+  });
+
   it('jumps to the first DEFECTIVE cell, which is not the first flagged one', async () => {
     mount();
     await grid();
@@ -380,6 +420,35 @@ describe('Matrix — the review ledger admission', () => {
     const said = screen.getAllByText(/kept in this browser only/i);
     expect(said).toHaveLength(1);
     expect(said[0]).toHaveTextContent(/not part of the signed record/i);
+  });
+
+  /**
+   * "In a readable size" is the load-bearing half of that sentence. Two sentences correcting a
+   * belief the meter beside them invites are READ; at 12px in secondary grey they were the small
+   * print they are trying not to be.
+   */
+  it('sets the caveat as prose rather than as small print', async () => {
+    mount();
+    await grid();
+
+    const said = screen.getByText(/kept in this browser only/i);
+    expect(said).toHaveClass('prose');
+    expect(said).not.toHaveClass('small');
+    expect(said).not.toHaveClass('secondary');
+  });
+
+  /**
+   * And the instrument around it stays an instrument. The tally is a value glanced at, the legend
+   * is a key — both REFERENCED, both at the floor. Promoting them would cost width the matrix
+   * genuinely needs; this screen is one of the two that collapse the agent column to a rail
+   * precisely because it is width-starved.
+   */
+  it('leaves the tally beside it referenced, at the floor', async () => {
+    mount();
+    await grid();
+
+    expect(tally().closest('div')).toHaveClass('small');
+    expect(tally().closest('div')).not.toHaveClass('prose');
   });
 });
 

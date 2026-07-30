@@ -421,6 +421,31 @@ describe('Dosing — the bounds table is supporting detail', () => {
     ).toBeInTheDocument();
   });
 
+  /**
+   * The disclosure holds two registers, and the whole reason it exists is the second one. The
+   * label, the ppm and the confidence are REFERENCED — glanced at to say which bound this is —
+   * and stay at the floor. The basis is READ: it is the sentence saying where the number came
+   * from. Running both at 12px in secondary grey made the sentence the same weight as the label
+   * pointing at it.
+   */
+  it('reads each bound’s basis as prose, and keeps the label pointing at it as chrome', async () => {
+    renderDosing();
+    await screen.findByRole('heading', { name: /how much goes in/i });
+    await userEvent.click(screen.getByText(/where each bound comes from/i));
+
+    const basis = screen.getByText('Vanta M LOD for Y', { selector: 'p' });
+    expect(basis).toHaveClass('prose');
+    // `.prose` is primary ink by definition; pairing it with a muting class is the exact failure
+    // the class was introduced to end.
+    expect(basis).not.toHaveClass('muted');
+    expect(basis).not.toHaveClass('secondary');
+    expect(basis).not.toHaveClass('small');
+
+    const label = basis.previousElementSibling as HTMLElement;
+    expect(label).toHaveClass('small');
+    expect(label.textContent).toMatch(/Detection floor — 4\.2 ppm, confidence 1\.00/);
+  });
+
   it('says so when a bound carries no basis at all, rather than showing a blank', async () => {
     vi.mocked(api.getDosing).mockResolvedValue(
       doc({ windows: [{ ...WINDOW, upper: { ...WINDOW.upper, basis: '  ' } }] as never }),
@@ -538,11 +563,53 @@ describe('Dosing — what to order', () => {
     ).toBeInTheDocument();
   });
 
+  /**
+   * And states it in a size somebody reads. Both of these are sentences a human parses — the
+   * standing caution that prevents this screen's headline failure, and the agent's own reasoning
+   * for the ratio. Neither is a label, and both used to render at the size of one.
+   */
+  it('reads the compound-mass caution and the code’s reasoning as prose, not as chrome', async () => {
+    renderDosing();
+    await screen.findByRole('heading', { name: /what to order/i });
+    const order = section(/what to order/i);
+
+    const caution = order.getByText(/under-doses by the compound's non-metal fraction/i);
+    expect(caution).toHaveClass('prose');
+    expect(caution).not.toHaveClass('secondary');
+
+    expect(order.getByText('Two lines that do not overlap on this substrate.')).toHaveClass('prose');
+  });
+
   /** A code has no name and no kind — its identity IS the ratio, at 2dp, exactly as recorded. */
   it('identifies a code by its ratio signature', async () => {
     renderDosing();
     await screen.findByRole('heading', { name: /what to order/i });
     expect(section(/what to order/i).getByText('Y:Zr = 1.00:0.50')).toBeInTheDocument();
+  });
+
+  /**
+   * A heading lighter than its own children is a caption on the first item, not a container
+   * around all of them — and on the deployed screen that is what it was: `bottle` at weight 500
+   * above element symbols at 600, with nothing but whitespace between one component's chart and
+   * the next one's. On a screen whose numbers are dosed per component, two components reading as
+   * one list is how a dose lands on the wrong part.
+   */
+  it('heads each component block with a rule, above rows it outweighs', async () => {
+    renderDosing();
+    await screen.findByRole('heading', { name: /what to order/i });
+
+    const heads = [...document.querySelectorAll<HTMLElement>('[data-component-heading]')];
+    expect(heads.length).toBeGreaterThan(0);
+    for (const head of heads) {
+      // The rule is what turns a group into a container.
+      expect(head.style.borderBottomStyle).toBe('solid');
+      expect(head.style.borderBottomWidth).toBe('var(--hair)');
+      const h4 = head.querySelector('h4') as HTMLElement;
+      // `.mx` rows are --t-small; the heading is a step up, and heavier, and in the brand face.
+      expect(h4.style.fontSize).toBe('var(--t-lead)');
+      expect(h4.style.fontWeight).toBe('var(--w-semibold)');
+      expect(h4.style.fontFamily).toBe('var(--font-serif)');
+    }
   });
 
   /** Per-component tracks are architectural: there is no product-wide marker, so no product-wide code. */
@@ -650,7 +717,9 @@ describe('Dosing — the soft review', () => {
     );
     expect(review.getByText(/2026-07-21/)).toBeInTheDocument();
     expect(review.getByText('PL + VP walked the ratios.')).toBeInTheDocument();
-    expect(review.getByText(/nothing was unlocked by this/i)).toBeInTheDocument();
+    // What a signature does and does not do is the whole point of a SOFT checkpoint, so it is
+    // read, not glanced at.
+    expect(review.getByText(/nothing was unlocked by this/i)).toHaveClass('prose');
     // The old self-explaining phrasing.
     expect(screen.queryByText(/it gates nothing/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /mark review recorded/i })).not.toBeInTheDocument();
@@ -663,6 +732,34 @@ describe('Dosing — the soft review', () => {
     await userEvent.type(screen.getByLabelText(/code finalization — note/i), 'x');
     await userEvent.click(screen.getByRole('button', { name: /mark review recorded/i }));
     expect(await screen.findByText(/Cosmos said no/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * The floor is 12px, and `.mx th` in the stylesheet is its one sanctioned exception. An inline
+ * `fontSize` in TSX — or a `font-size` attribute on an SVG mark, which no stylesheet governs —
+ * bypasses the token layer entirely, which is how the sub-12px sites survived every earlier pass.
+ * The chart is the SVG case: its tick values and its recommended-dose label are drawn text.
+ */
+describe('Dosing — the type floor', () => {
+  it('sets no inline font size below 12px anywhere on the screen', async () => {
+    const { container } = renderDosing();
+    await screen.findByRole('heading', { name: /what to order/i });
+
+    const small = [...container.querySelectorAll<HTMLElement>('[style]')]
+      .map((el) => el.style.fontSize)
+      .filter((size) => size.endsWith('px') && Number.parseFloat(size) < 12);
+    expect(small).toEqual([]);
+  });
+
+  it('draws no chart text below the floor either', async () => {
+    const { container } = renderDosing();
+    await screen.findByRole('img', { name: /^Y: recommended/ });
+
+    const drawn = [...container.querySelectorAll('[font-size]')]
+      .map((el) => Number.parseFloat(el.getAttribute('font-size') ?? ''))
+      .filter((size) => Number.isFinite(size) && size < 12);
+    expect(drawn).toEqual([]);
   });
 });
 

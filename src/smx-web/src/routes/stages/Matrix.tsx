@@ -42,6 +42,12 @@ const key = (cas: string, componentId: string) => `${cas}|${componentId}`;
  * thing on the matrix that needs a human before anything else does, and the operator has already
  * learned that a danger-toned block in this position is what to do next. `NextAction` itself
  * cannot carry it — that block reads the PROJECT record, and these faults are in the matrix.
+ *
+ * The bodies wear `.prose`, NOT `.next__text`. They are the one thing on this instrument that is
+ * parsed as sentences rather than scanned, and `.next__text` sets 13px in secondary grey — the
+ * matrix's own chrome weight — for an explanation of why every verdict beneath it is suspect.
+ * `.prose` and not both: shell.css loads after primitives.css and the two selectors are of equal
+ * specificity, so `.next__text` would simply win and the promotion would be silently undone.
  */
 function RecordFaults({
   inconsistent,
@@ -64,7 +70,7 @@ function RecordFaults({
           Read these before you read a verdict
         </h3>
         {inconsistent > 0 && (
-          <p className="next__text">
+          <p className="prose" style={{ margin: 'var(--s2) 0 0' }}>
             <b>
               {inconsistent === 1
                 ? '1 cell disagrees with its own dimensions.'
@@ -74,7 +80,7 @@ function RecordFaults({
           </p>
         )}
         {uncited > 0 && (
-          <p className="next__text">
+          <p className="prose" style={{ margin: 'var(--s2) 0 0' }}>
             <b>
               {uncited === 1 ? '1 verdict cites no source.' : `${uncited} verdicts cite no source.`}
             </b>{' '}
@@ -82,7 +88,7 @@ function RecordFaults({
           </p>
         )}
         {malformed && (
-          <p className="next__text">
+          <p className="prose" style={{ margin: 'var(--s2) 0 0' }}>
             <b>Part of this matrix could not be read.</b> What could not be read is not shown below,
             and what was repaired is shown at its most cautious reading.
           </p>
@@ -407,8 +413,12 @@ export function Matrix({ project }: ScreenProps) {
                   colleague reading the same project sees zero of the same cells opened. Said
                   plainly here because the alternative is an operator who believes their reading
                   was recorded. What the gate actually reads is the server's per-cell
-                  `evidenceReviewed`, which the evidence panel states on every cell. */}
-              <p className="small secondary" style={{ margin: '6px 0 0' }}>
+                  `evidenceReviewed`, which the evidence panel states on every cell.
+
+                  READ, therefore `.prose`: it is two sentences correcting a belief the meter
+                  beside it invites, and at 12px in secondary grey it WAS the small print it is
+                  trying not to be. The tally, the legend and the cells stay referenced. */}
+              <p className="prose" style={{ margin: 'var(--s2) 0 0' }}>
                 This tally is kept in this browser only. It is not part of the signed record and it
                 does not travel with the project.
               </p>
