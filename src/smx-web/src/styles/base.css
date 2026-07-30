@@ -141,10 +141,16 @@ strong {
 .secondary {
   color: var(--text-secondary);
 }
-/* `.tiny` is the app's most-used type class (162 call sites) and it was 11px — below the floor.
-   It now resolves to --t-small. The CLASS keeps its name for now on purpose: renaming it to
-   `.detail` would touch every screen in one commit and collide with the screen rewrites in
-   Plans 2 and 3, which are rewriting those lines anyway. The rename happens there, per screen. */
+/* `.tiny` was 11px — below the floor — and now resolves to --t-small.
+   Its NAME is a size; its MEANING is a role, and the two came apart. It was applied to prose at
+   most of its call sites, which is how the reading layer collapsed: everything a human read ended
+   up at the floor, in muted grey, indistinguishable from a unit label.
+
+   What it means now: REFERENCED text. A label, a chip, a unit, a timestamp, a dense table cell —
+   something identified at a glance rather than parsed. Sentences wear `.prose` (primitives.css).
+   The rename to `.detail` is still worth doing; it is deliberately not bundled with the audit,
+   because a rename touching 131 sites in the same commit as a semantic change would make the
+   semantic change unreviewable. */
 .tiny {
   font-size: var(--t-small);
 }
@@ -633,16 +639,23 @@ select:focus {
 
 /* ---- banners ------------------------------------------------------------- */
 
+/* A banner is the canonical READ surface: it exists to say why something is blocked, and the
+   operator has to parse the sentence. It sat at the 12px floor, which is why a blocking reason
+   looked exactly like a unit label. --lh-prose was already documented as "banners, gate
+   rationale, evidence" — the size simply never followed the line-height.
+
+   This also removes a mixed-size hazard: a `.prose` child inside a 12px banner would now render
+   two steps apart inside one box. */
 .banner {
   display: flex;
   align-items: flex-start;
   gap: 8px;
   border-radius: var(--r2);
   padding: 10px 12px;
-  font-size: var(--t-small);
+  font-size: var(--t-read);
   margin: 0 0 14px;
   border: var(--hair) solid;
-  line-height: var(--lh-body);
+  line-height: var(--lh-prose);
 }
 
 /* The instrument frame runs to 1600px. A banner that stretched the full width would put

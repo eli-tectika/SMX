@@ -119,10 +119,27 @@
      compatibility-matrix header, where the column header already carries the meaning and the
      row is scanned rather than read. It is never correct for prose, a label, a status, or a
      control — every other direct use has been raised to --t-small. --t-micro is gone; there is
-     no size below --t-tiny. */
+     no size below --t-tiny.
+
+     THE FLOOR IS NOT THE CEILING. Raising everything TO 12px cleared the floor and flattened the
+     scale in the same move: measured on the deployed app, 90% of every text element on Discovery
+     (429 of 478) rendered at exactly 12px, and a screen with 478 pieces of text used three sizes.
+     With size no longer distinguishing anything, the only signal left was colour — so the agent's
+     own reasoning, the one thing on the screen a human has to READ, ended up as `.tiny muted`:
+     the smallest and lowest-contrast text in the panel.
+
+     --t-read is the step that was missing. The rule that goes with it:
+
+       READ      → --t-read, primary ink, measured (`.prose`). Sentences a human parses.
+       REFERENCED→ --t-small, and it may be muted. Labels, chips, units, timestamps, cells.
+
+     Deciding which of the two a given string is, is the whole of the work — it is a judgement per
+     site, never a find-and-replace. 14px and not 15px on purpose: 15 collapses the gap to
+     --t-lead and would drag every section title up with it. */
   --t-tiny: 11px; /* dense table cells only */
-  --t-small: 12px; /* the floor for all other UI text */
-  --t-body: 13px;
+  --t-small: 12px; /* the floor — chrome only: labels, chips, units, timestamps */
+  --t-body: 13px; /* row content and named values */
+  --t-read: 14px; /* PROSE. Anything read as sentences — see `.prose` */
   --t-lead: 15px;
   --t-title: 20px;
   --t-display: 28px;

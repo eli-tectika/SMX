@@ -51,13 +51,53 @@
 }
 
 /* ---- prose ---------------------------------------------------------------------
-   The instrument frame runs to 1600px. Unmeasured, that gives a banner a 200-character
-   line, which is unreadable — and would make the WIDER layout feel worse than the narrow
-   one it replaced. Tables get the full width; prose never does. */
+   THE reading class. If a human parses it as sentences, it wears this — a rationale, a
+   blocking reason, gate copy, evidence, a banner body. If they glance at it to identify
+   something — a label, a unit, a CAS, a timestamp — it does not, and `.tiny` is correct.
+
+   Three properties, and each one is answering a measured failure on the deployed app:
+
+   SIZE. It was inheriting whatever its container set, which in practice was `.tiny`
+   (12px) at most call sites. So the agent's reasoning was the same size as a unit label,
+   and the screen had no way to say which mattered more. --t-read exists for this.
+
+   COLOUR. Prose was routinely `.tiny muted` — #5c6b7d on white, the lowest-contrast text
+   on the screen, carrying the highest-value content. `.prose` sets primary ink and means
+   it: do not pair this class with `.muted`. Muting a sentence is muting the thing the
+   sentence says.
+
+   MEASURE. 72ch was already here and already right; what was missing is that reading text
+   was not wearing the class at all. The widest prose block on Discovery measured 876px
+   holding 159 characters — 2.4x the comfortable measure — because it was a `.tiny` div,
+   not a `.prose` one. Tables and the compatibility matrix still get the full width; a
+   table is not prose. */
 
 .prose {
+  font-size: var(--t-read);
+  color: var(--text-primary);
   max-width: 72ch;
   line-height: var(--lh-prose);
+}
+
+/* A semantic container has ALREADY said what colour its words are, and it says so by
+   inheritance — `.banner.danger` sets colour on the banner, not on the paragraph. An
+   inherited value loses to any directly-matching declaration, so `.prose` setting primary
+   ink would beat it and quietly drain the red out of every banner body in the app. It is
+   the exact cascade collision that makes a stylesheet stop meaning what it says.
+
+   So inside anything that has claimed a colour, prose takes the claim. Size and measure
+   still apply — only the colour defers.
+
+   The hatched blocks are here for a subtler version of the same thing: they set their red
+   INLINE on the container, and Cost's blocker list is a bare `<ul class="prose">` that
+   relies on inheriting it. An inline style wins only on the element it sits on — inherited
+   from it, it is still just inheritance, and still loses to this class. Without this rule
+   that list turns grey on a red hatched ground. */
+.banner .prose,
+.hatch-danger .prose,
+.hatch-lock .prose,
+.fv-banner-warn .prose {
+  color: inherit;
 }
 
 /* ---- card --------------------------------------------------------------------
