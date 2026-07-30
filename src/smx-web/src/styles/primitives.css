@@ -108,6 +108,27 @@
   color: inherit;
 }
 
+/* THE SAME CLASS OF BUG, ON A DIFFERENT PROPERTY.
+   A chat bubble is prose — it is literally a sentence somebody said — so it wears `.prose`. But a
+   bubble also carries its own colour and its own measure, and `.prose` was overriding both:
+
+   COLOUR. `.bu` tints the operator's bubble with --text-accent. primitives.css loads after
+   base.css, so `.prose`'s primary ink won and the tint drained.
+
+   MEASURE. `.bub` caps at 90% and `.prose` at 72ch. In the 390px agent column 72ch is far wider
+   than the column, so `.prose` did not tighten the bubble — it RELAXED it to the full width, which
+   defeats `margin-left: auto` and silently un-right-aligns every operator bubble. A `max-width`
+   that is larger than its container is not a cap, it is a removal.
+
+   So a bubble keeps its own colour and its own measure; it takes only the SIZE and the leading. */
+.bub.prose,
+.msg.prose {
+  color: inherit;
+  max-width: unset;
+}
+.bub.prose { max-width: 90%; }
+.msg--operator.prose { max-width: 78%; }
+
 /* ---- card --------------------------------------------------------------------
    A ruled area on a page, not a tile floating over one. No shadow: the card does not
    hover above the plane, so claiming it does is a lie the eye notices even when the

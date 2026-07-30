@@ -103,14 +103,18 @@ strong {
   background: var(--surface-0);
 }
 
-/* The page head. `.cap b` is the SCREEN TITLE — every stage and cross-project surface
-   opens with one. It used to render at 14px, one step above the 12px prose beside it,
-   which is why no screen in the app read as having a heading at all. Promoting it to
-   --t-title (20px) on its own line, with the description beneath, is the single largest
-   gain in hierarchy available here — and it costs nothing but this rule. */
+/* The page head. `.cap b` is the SCREEN TITLE — every stage and cross-project surface opens with
+   one. It used to render at 14px, one step above the 12px prose beside it, which is why no screen
+   in the app read as having a heading at all. Promoting it to --t-title (20px) on its own line,
+   with the description beneath, is the single largest gain in hierarchy available here.
+
+   `.cap` itself is that description — the sentence explaining what the screen is for. It was at
+   the floor in muted grey, which is exactly the pairing this change exists to undo. Secondary
+   rather than primary ink because it IS subordinate to the title above it: the size says "this is
+   a sentence", the colour says "and it is not the headline". */
 .cap {
-  font-size: var(--t-small);
-  color: var(--text-muted);
+  font-size: var(--t-read);
+  color: var(--text-secondary);
   margin: 0 0 var(--s4);
   border-bottom: 1px solid var(--border);
   padding-bottom: var(--s3);
