@@ -23,17 +23,33 @@ export function SdsActions({
   cas,
   hasSheet,
   onDone,
+  collapsed = false,
 }: {
   cas: string;
   /** A row that already has a sheet offers to REFRESH it — a revision may have been published. */
   hasSheet: boolean;
   /** Called after anything that could have changed the record, so the surface can re-read. */
   onDone?: () => void;
+  /**
+   * Start as ONE control that opens the pair, rather than the pair itself.
+   *
+   * The document library repeats this component down a list — 163 rows on the deployed app, of
+   * which 41 were gaps, each printing the identical `Fetch now` + `Upload`. Two controls repeated
+   * 41 times are not two affordances, they are wallpaper: the eye stops reading them and the list
+   * stops having a shape. Collapsed, a row carries one quiet control and the list can be scanned.
+   *
+   * It hides nothing: opening it yields exactly the same two controls, so the ability to act on a
+   * single substance — including the upload fallback, which is the only exit for a sheet no host
+   * will serve — survives intact. The registry, whose rows are a table with a column set aside for
+   * this, leaves it expanded.
+   */
+  collapsed?: boolean;
 }) {
   const [busy, setBusy] = useState<'fetch' | 'upload' | null>(null);
   const [result, setResult] = useState<SdsEnsureResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [open, setOpen] = useState(!collapsed);
 
   async function runFetch() {
     setBusy('fetch');
@@ -50,6 +66,27 @@ export function SdsActions({
     } finally {
       setBusy(null);
     }
+  }
+
+  if (!open) {
+    return (
+      <div className="sds-actions">
+        <button
+          type="button"
+          className="btn btn--quiet"
+          onClick={() => setOpen(true)}
+          aria-expanded={false}
+          title={
+            hasSheet
+              ? 'Look for a newer revision of this sheet, or supply one yourself.'
+              : 'Search for this substance’s safety data sheet, or upload one you already hold. Nothing is signed by doing this.'
+          }
+        >
+          <i className="ti ti-file-search" aria-hidden="true" />
+          {hasSheet ? 'Sheet actions' : 'Get sheet'}
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -114,6 +151,94 @@ export function SdsActions({
 
       {result && <FetchOutcome result={result} />}
     </div>
+  );
+}
+
+/**
+ * The one control that belongs to the GROUP rather than to a row: go and get every missing sheet.
+ *
+ * A list of 41 gaps, each offering "fetch this one", asks the operator to press 41 buttons and
+ * remember which of them answered. The gap is a property of the group — "41 substances cannot be
+ * ordered" — so the bulk attempt belongs beside that sentence, and the per-row control stays for
+ * the substance the operator has a particular reason to chase.
+ *
+ * Sequential on purpose: these are outbound fetches against third-party supplier hosts, and 41 of
+ * them in parallel is indistinguishable from an attack. `Stop` is offered because a run over a long
+ * list is minutes of work, and an operator who changes their mind should not have to close the tab.
+ *
+ * The summary counts what actually came back. It is never a "done" — a sheet that no host would
+ * serve is still missing, and the reloaded list is what says so.
+ */
+export function FetchAllSheets({
+  cases,
+  onDone,
+}: {
+  /** The CAS numbers this group is missing, served by the backend — never parsed out of a label. */
+  cases: readonly string[];
+  onDone?: () => void;
+}) {
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [outcome, setOutcome] = useState<{
+    obtained: number;
+    unavailable: number;
+    errored: number;
+  } | null>(null);
+  const stop = useRef(false);
+
+  async function runAll() {
+    stop.current = false;
+    setOutcome(null);
+    setProgress({ done: 0, total: cases.length });
+    let obtained = 0;
+    let unavailable = 0;
+    let errored = 0;
+    let done = 0;
+    for (const cas of cases) {
+      if (stop.current) break;
+      try {
+        const r = await fetchSds(cas);
+        if (r.status === 'unavailable') unavailable += 1;
+        else obtained += 1;
+      } catch {
+        errored += 1;
+      }
+      done += 1;
+      setProgress({ done, total: cases.length });
+    }
+    setProgress(null);
+    setOutcome({ obtained, unavailable, errored });
+    // Re-read only when something arrived. A run that obtained nothing changed no record, and
+    // re-reading would blank the summary the operator is still reading.
+    if (obtained > 0) onDone?.();
+  }
+
+  // No CAS, no request that could be made. An enabled button here would be a promise we cannot keep.
+  if (cases.length === 0) return null;
+
+  return (
+    <span className="msds-actions">
+      <button
+        type="button"
+        className="btn btn--quiet"
+        onClick={() => void runAll()}
+        disabled={progress !== null}
+        title={`Ask for each of these ${cases.length} sheets in turn, one at a time. Nothing is signed by doing this.`}
+      >
+        <i className="ti ti-download" aria-hidden="true" />
+        {progress ? `Fetching ${progress.done} of ${progress.total}…` : `Fetch all ${cases.length}`}
+      </button>
+      {progress !== null && (
+        <button type="button" className="btn btn--quiet" onClick={() => (stop.current = true)}>
+          Stop
+        </button>
+      )}
+      {outcome && (
+        <span className="tiny muted" role="status">
+          {outcome.obtained} obtained · {outcome.unavailable} still unavailable
+          {outcome.errored > 0 ? ` · ${outcome.errored} errored` : ''}
+        </span>
+      )}
+    </span>
   );
 }
 

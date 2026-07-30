@@ -2,7 +2,7 @@ import { getLearnedConclusions } from '../api/client';
 import type { ConclusionScope, LearnedConclusion } from '../api/types';
 import { Data } from '../components/ui/Data';
 import { Meter } from '../components/ui/Meter';
-import { EmptyState, SearchInput, SectionHeader } from '../components/ui/Primitives';
+import { EmptyState, SearchInput } from '../components/ui/Primitives';
 import { useKnowledge } from '../hooks/useKnowledge';
 import { useQueryParam } from '../hooks/useQueryParam';
 
@@ -110,8 +110,6 @@ export function LearnedConclusions() {
         </div>
       )}
 
-      <SectionHeader eyebrow="Conclusions" count={shown.length} />
-
       {shown.length === 0 ? (
         <EmptyState
           icon="ti-bulb-off"
@@ -129,53 +127,120 @@ export function LearnedConclusions() {
           }
         />
       ) : (
-        <div className="card-list">
-          {shown.map((e) => (
-            <article className="card" key={e.id}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span className="chip chip--neutral">
-                  <i className={`ti ${iconFor(e.kind)}`} aria-hidden="true" />
-                  &nbsp;{e.kind}
-                </span>
-                <span className="tiny muted">{scopeText(e.scope)}</span>
-                <span className="tiny muted" style={{ marginLeft: 'auto' }}>
-                  <Data kind="date">{e.createdAt.slice(0, 10)}</Data>
-                </span>
-              </div>
+        // Grouped by kind, in first-appearance order: an XRF background finding and a regulatory
+        // judgment are not the same sort of claim, and a flat run of cards made the operator read
+        // the chip on every card to find that out. The kind chip stays on the card anyway — a card
+        // that travels (a screenshot, a scroll past the heading) must still say what it is.
+        groupByKind(shown).map(([groupKind, group]) => (
+          <section key={groupKind} aria-labelledby={`lc-${slug(groupKind)}`}>
+            <GroupHead
+              id={`lc-${slug(groupKind)}`}
+              icon={iconFor(groupKind)}
+              title={groupKind}
+              count={group.length}
+            />
+            <div className="card-list">
+              {group.map((e) => (
+                <article className="card" key={e.id}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span className="chip chip--neutral">
+                      <i className={`ti ${iconFor(e.kind)}`} aria-hidden="true" />
+                      &nbsp;{e.kind}
+                    </span>
+                    <span className="tiny muted">{scopeText(e.scope)}</span>
+                    <span className="tiny muted" style={{ marginLeft: 'auto' }}>
+                      <Data kind="date">{e.createdAt.slice(0, 10)}</Data>
+                    </span>
+                  </div>
 
-              <p className="prose" style={{ margin: '0 0 8px' }}>
-                {e.finding}
-              </p>
+                  <p className="prose" style={{ margin: '0 0 8px' }}>
+                    {e.finding}
+                  </p>
 
-              <div style={{ maxWidth: 260, marginBottom: 6 }}>
-                <div className="tiny muted" style={{ marginBottom: 3 }}>
-                  Confidence
-                </div>
-                <Meter value={e.confidence} />
-              </div>
+                  <div style={{ maxWidth: 260, marginBottom: 6 }}>
+                    <div className="tiny muted" style={{ marginBottom: 3 }}>
+                      Confidence
+                    </div>
+                    <Meter value={e.confidence} />
+                  </div>
 
-              <div className="tiny muted">
-                {e.provenance.sourceProjects.length > 0 ? (
-                  <>
-                    from{' '}
-                    {e.provenance.sourceProjects.map((p) => (
-                      <span className="src data" key={p}>
-                        {p}
-                      </span>
-                    ))}
-                  </>
-                ) : (
-                  <span>no source project recorded</span>
-                )}
-                {e.supersedes && (
-                  <span> · refines <Data kind="id">{e.supersedes}</Data></span>
-                )}
-              </div>
-            </article>
-          ))}
-        </div>
+                  <div className="tiny muted">
+                    {e.provenance.sourceProjects.length > 0 ? (
+                      <>
+                        from{' '}
+                        {e.provenance.sourceProjects.map((p) => (
+                          <span className="src data" key={p}>
+                            {p}
+                          </span>
+                        ))}
+                      </>
+                    ) : (
+                      <span>no source project recorded</span>
+                    )}
+                    {e.supersedes && (
+                      <span> · refines <Data kind="id">{e.supersedes}</Data></span>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ))
       )}
     </section>
+  );
+}
+
+/** First-appearance order, so the server's ordering survives the grouping. */
+function groupByKind(items: LearnedConclusion[]): [string, LearnedConclusion[]][] {
+  const groups = new Map<string, LearnedConclusion[]>();
+  for (const e of items) {
+    // A conclusion the record left unkinded is not silently filed under someone else's heading.
+    const key = e.kind?.trim() || 'unclassified';
+    const group = groups.get(key);
+    if (group) group.push(e);
+    else groups.set(key, [e]);
+  }
+  return [...groups.entries()];
+}
+
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+/**
+ * A group heading has to outweigh its rows, or grouping is decoration: the serif lead face at
+ * --t-lead/500 over card text, closed by a hairline, with the count stated beside it.
+ */
+function GroupHead({
+  id,
+  title,
+  count,
+  icon,
+}: {
+  id: string;
+  title: string;
+  count: number;
+  icon?: string;
+}) {
+  return (
+    <div
+      className="sec"
+      style={{
+        borderBottom: 'var(--hair) solid var(--border-strong)',
+        padding: '0 0 var(--s2)',
+        flexWrap: 'wrap',
+      }}
+    >
+      {icon && <i className={`ti ${icon}`} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />}
+      <h2 className="sec__title" id={id}>
+        {title}
+      </h2>
+      <span
+        className="sec__count"
+        style={{ fontSize: 'var(--t-body)', fontWeight: 600, color: 'var(--text-secondary)' }}
+      >
+        {count}
+      </span>
+    </div>
   );
 }
 

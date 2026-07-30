@@ -1,7 +1,7 @@
 import { getMarkerLibrary } from '../api/client';
 import type { MarkerLibraryEntry } from '../api/types';
 import { Data } from '../components/ui/Data';
-import { BarRow, EmptyState, SearchInput, SectionHeader, StatCard } from '../components/ui/Primitives';
+import { BarRow, EmptyState, SearchInput, StatCard } from '../components/ui/Primitives';
 import { useKnowledge } from '../hooks/useKnowledge';
 import { useQueryParam } from '../hooks/useQueryParam';
 
@@ -54,20 +54,22 @@ export function MarkerLibrary() {
   }
 
   const entries = state.items;
-  const approved = entries.filter((e) => isApproved(e)).length;
-  const retired = entries.length - approved;
+  const approvedRows = entries.filter((e) => isApproved(e));
+  const retiredRows = entries.filter((e) => !isApproved(e));
   const totalReuse = entries.reduce((n, e) => n + e.reuseCount, 0);
   const maxReuse = Math.max(1, ...entries.map((e) => e.reuseCount));
 
-  const shown = entries.filter((e) => showRetired || isApproved(e));
+  // Retired codes are behind a toggle, so the strip is where their existence is stated at all —
+  // it is not a second copy of the group counts, it is the reason to press the toggle.
+  const shown = showRetired ? [...approvedRows, ...retiredRows] : approvedRows;
 
   return (
     <section className="screen">
       <Head />
 
       <div className="stat-strip">
-        <StatCard label="Approved" value={approved} hint="reusable today" />
-        <StatCard label="Retired" value={retired} hint="not for new projects" />
+        <StatCard label="Approved" value={approvedRows.length} hint="reusable today" />
+        <StatCard label="Retired" value={retiredRows.length} hint="not for new projects" />
         <StatCard label="Total reuses" value={totalReuse} hint="projects that skipped discovery" />
       </div>
 
@@ -90,77 +92,154 @@ export function MarkerLibrary() {
         </button>
       </div>
 
-      <SectionHeader eyebrow="Codes" count={shown.length} />
-
       {shown.length === 0 ? (
         <EmptyState
           icon="ti-library-off"
-          title={q ? 'Nothing matches.' : 'The library is empty.'}
+          title={q ? 'Nothing matches.' : entries.length > 0 ? 'No approved code.' : 'The library is empty.'}
           body={
-            q ? (
-              <>
-                No approved code matches “{q}” — only codes that passed the VP R&amp;D gate are
-                written here.
-              </>
-            ) : (
-              <>No project has passed the VP R&amp;D gate yet. Signing it writes a code here.</>
-            )
+            <>
+              {q ? (
+                <>
+                  No approved code matches “{q}” — only codes that passed the VP R&amp;D gate are
+                  written here.
+                </>
+              ) : entries.length === 0 ? (
+                <>No project has passed the VP R&amp;D gate yet. Signing it writes a code here.</>
+              ) : (
+                <>Nothing here is approved for reuse.</>
+              )}
+              {/* Held but hidden is not the same as absent, and the toggle is the only thing
+                  standing between the two. The number is counted from what was read. */}
+              {!showRetired && retiredRows.length > 0 && (
+                <>
+                  {' '}
+                  {retiredRows.length} retired code{retiredRows.length === 1 ? ' is' : 's are'} held
+                  and hidden — press <b>Retired</b> to see {retiredRows.length === 1 ? 'it' : 'them'}
+                  .
+                </>
+              )}
+            </>
           }
         />
       ) : (
-        <table className="mx">
-          <thead>
-            <tr>
-              <th>Markers</th>
-              <th>Ratio</th>
-              <th>ppm</th>
-              <th>Validated for</th>
-              <th>Source project</th>
-              <th>Reuse</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((e) => (
-              <tr key={e.id}>
-                <td>
-                  {/* A marker element is not a verdict — green here would read as "Pass". */}
-                  {e.composition.markers.map((m) => (
-                    <span className="chip chip--neutral" key={m} style={{ marginRight: 3 }}>
-                      <Data kind="element">{m}</Data>
-                    </span>
-                  ))}
-                </td>
-                <td>
-                  <Data kind="code">{e.composition.ratio}</Data>
-                </td>
-                <td>
-                  <Data kind="ppm">{e.composition.ppm}</Data>
-                </td>
-                <td className="secondary small">
-                  {e.validatedFor.material} · {e.validatedFor.application}
-                  <div className="tiny muted">{e.validatedFor.objective}</div>
-                </td>
-                <td className="tiny muted">
-                  <Data kind="id">{e.sourceProject}</Data>
-                </td>
-                <td style={{ minWidth: 140 }}>
-                  <BarRow
-                    label=""
-                    value={e.reuseCount}
-                    max={maxReuse}
-                    display={`${e.reuseCount}×`}
-                  />
-                </td>
-                <td>
-                  <span className={`chip ${isApproved(e) ? 'v' : 'chip--neutral'}`}>{e.status}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <>
+          {approvedRows.length > 0 && (
+            <section aria-labelledby="lib-approved">
+              <GroupHead
+                id="lib-approved"
+                title="Approved"
+                count={approvedRows.length}
+                hint="reusable on a new project today"
+              />
+              <CodeTable rows={approvedRows} maxReuse={maxReuse} />
+            </section>
+          )}
+          {/* Retired codes appear only when asked for, and when they do they are a group of their
+              own — a retired code sorted into the same table as an approved one is a code somebody
+              reuses. */}
+          {showRetired && retiredRows.length > 0 && (
+            <section aria-labelledby="lib-retired">
+              <GroupHead
+                id="lib-retired"
+                title="Retired"
+                count={retiredRows.length}
+                hint="not for new projects"
+              />
+              <CodeTable rows={retiredRows} maxReuse={maxReuse} />
+            </section>
+          )}
+        </>
       )}
     </section>
+  );
+}
+
+function CodeTable({ rows, maxReuse }: { rows: MarkerLibraryEntry[]; maxReuse: number }) {
+  return (
+    <table className="mx">
+      <thead>
+        <tr>
+          <th>Markers</th>
+          <th>Ratio</th>
+          <th>ppm</th>
+          <th>Validated for</th>
+          <th>Source project</th>
+          <th>Reuse</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((e) => (
+          <tr key={e.id}>
+            <td>
+              {/* A marker element is not a verdict — green here would read as "Pass". */}
+              {e.composition.markers.map((m) => (
+                <span className="chip chip--neutral" key={m} style={{ marginRight: 3 }}>
+                  <Data kind="element">{m}</Data>
+                </span>
+              ))}
+            </td>
+            <td>
+              <Data kind="code">{e.composition.ratio}</Data>
+            </td>
+            <td>
+              <Data kind="ppm">{e.composition.ppm}</Data>
+            </td>
+            <td className="secondary small">
+              {e.validatedFor.material} · {e.validatedFor.application}
+              <div className="tiny muted">{e.validatedFor.objective}</div>
+            </td>
+            <td className="tiny muted">
+              <Data kind="id">{e.sourceProject}</Data>
+            </td>
+            <td style={{ minWidth: 140 }}>
+              <BarRow label="" value={e.reuseCount} max={maxReuse} display={`${e.reuseCount}×`} />
+            </td>
+            <td>
+              <span className={`chip ${isApproved(e) ? 'v' : 'chip--neutral'}`}>{e.status}</span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/**
+ * A group heading has to outweigh its rows, or grouping is decoration: the serif lead face at
+ * --t-lead/500 over rows at --t-body, closed by a hairline, with the count stated beside it.
+ */
+function GroupHead({
+  id,
+  title,
+  count,
+  hint,
+}: {
+  id: string;
+  title: string;
+  count: number;
+  hint?: string;
+}) {
+  return (
+    <div
+      className="sec"
+      style={{
+        borderBottom: 'var(--hair) solid var(--border-strong)',
+        padding: '0 0 var(--s2)',
+        flexWrap: 'wrap',
+      }}
+    >
+      <h2 className="sec__title" id={id}>
+        {title}
+      </h2>
+      <span
+        className="sec__count"
+        style={{ fontSize: 'var(--t-body)', fontWeight: 600, color: 'var(--text-secondary)' }}
+      >
+        {count}
+      </span>
+      {hint && <span className="sec__hint">{hint}</span>}
+    </div>
   );
 }
 

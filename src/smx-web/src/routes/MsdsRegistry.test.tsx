@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -56,7 +56,63 @@ const view = () => render(<MsdsRegistry />, { wrapper: MemoryRouter });
 const pdf = () =>
   new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], 'sheet.pdf', { type: 'application/pdf' });
 
+/** The count stated in a group's header. */
+const countUnder = (heading: string | RegExp) =>
+  screen
+    .getByRole('heading', { name: heading })
+    .parentElement!.querySelector('.sec__count')!.textContent;
+
 afterEach(() => vi.unstubAllGlobals());
+
+describe('MsdsRegistry — the groups', () => {
+  /**
+   * The blockers used to be a sort order inside one table, every one of them red-hatched. The
+   * count — how many substances an order is actually stuck behind — had to be read off a stat
+   * tile that repeated it. It is now stated on the group that holds exactly those rows.
+   */
+  it('states the count of each group in its heading', async () => {
+    stub([SHEET, NO_SHEET]);
+    view();
+    await screen.findByText('999-99-9');
+    expect(countUnder('Blocking an order')).toBe('1');
+    expect(countUnder('Sheets on file')).toBe('1');
+  });
+
+  /**
+   * Moving the alarm to the group must not let a blocker read as filed: the row loses the hatch
+   * and keeps its "no sheet" chip, and it is still a row in the group that counts it.
+   */
+  it('keeps a blocking row marked after losing its hatched ground', async () => {
+    stub([SHEET, NO_SHEET]);
+    view();
+    const row = (await screen.findByText('999-99-9')).closest('tr')!;
+    expect(row.className).not.toMatch(/hatch/);
+    expect(row).toHaveAttribute('data-missing', 'true');
+    expect(within(row).getByText(/no sheet/i)).toBeInTheDocument();
+
+    const group = within(screen.getByRole('region', { name: /blocking an order/i }));
+    expect(group.getByText('999-99-9')).toBeInTheDocument();
+    // The filed row is in the other group, not quietly folded in with the blockers.
+    expect(group.queryByText('7761-88-8')).toBeNull();
+  });
+
+  /** One control for the group, asking for every CAS the group is missing. */
+  it('offers a bulk fetch on the blocking group', async () => {
+    const calls = stub([SHEET, NO_SHEET]);
+    view();
+    await userEvent.click(await screen.findByRole('button', { name: /fetch all 1/i }));
+    await waitFor(() => expect(calls).toEqual(['/api/msds/999-99-9/fetch']));
+  });
+
+  /** Nothing blocking, nothing to head: a group with no rows prints nothing, never a "0". */
+  it('prints no blocking group when nothing is blocking', async () => {
+    stub([SHEET]);
+    view();
+    await screen.findByText('7761-88-8');
+    expect(screen.queryByRole('heading', { name: /blocking an order/i })).toBeNull();
+    expect(countUnder('Sheets on file')).toBe('1');
+  });
+});
 
 describe('MsdsRegistry — the sheet, and getting one', () => {
   /**
