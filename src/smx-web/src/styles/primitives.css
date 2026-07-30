@@ -92,7 +92,15 @@
    INLINE on the container, and Cost's blocker list is a bare `<ul class="prose">` that
    relies on inheriting it. An inline style wins only on the element it sits on — inherited
    from it, it is still just inheritance, and still loses to this class. Without this rule
-   that list turns grey on a red hatched ground. */
+   that list turns grey on a red hatched ground.
+
+   NOTE, because it looks like an omission and is not: `.hatch-danger` and `.hatch-lock`
+   (craft.css) set a background gradient and NO colour. So `inherit` inside them resolves to
+   whatever the container was given — the inline red where a screen set one, and page-primary
+   ink where it did not. Giving those classes a colour here would be the tidy-looking fix and
+   is WRONG: Regulatory puts `.hatch-danger` on a `<tr>` to flag a blocking row, and colouring
+   the row would claim every value in it — substance, CAS, component — is itself a failure.
+   The screens that need red inside a hatched block state it inline, and their tests pin it. */
 .banner .prose,
 .hatch-danger .prose,
 .hatch-lock .prose,
@@ -1011,7 +1019,8 @@
 .doc-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: var(--s2) var(--s3); border-bottom: 0.5px solid var(--border); }
 .doc-row-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .doc-row-meta { display: flex; align-items: center; gap: var(--s2); flex: none; }
-.doc-row-gap { background: var(--bg-warning); }
+/* .doc-row-gap is gone: the amber ground moved to the SECTION header, because 163 amber rows
+   said nothing that one amber heading with a count does not say better. A row keeps a dot. */
 .doc-gap-title { color: var(--text-warning); font-weight: var(--w-semibold); }
 
 .fv-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; }

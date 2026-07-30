@@ -22,11 +22,18 @@
   padding: var(--s2) var(--s2) var(--s2) 0;
 }
 .phead__back:hover { color: var(--ink); }
+/* The page's h1 — the project this whole screen is about.
+   It was --t-lead, which is ALSO what `.next__title` (the h2) and `.sec__title` (every section
+   heading) use. Three levels of the document outline at one size: the subject of the page could
+   not outrank a section inside it, and two independent passes over other screens hit the same
+   ceiling and had to buy hierarchy with weight because there was no size left to spend.
+   --t-title had exactly one consumer in the app. This is what it is for. */
 .phead__product {
   margin: 0;
-  font-size: var(--t-lead);
+  font-size: var(--t-title);
   font-weight: var(--w-semibold);
-  letter-spacing: -0.005em;
+  letter-spacing: -0.012em; /* 20px wants a little more negative tracking than 15px did */
+  line-height: var(--lh-tight);
 }
 .phead__client { font-size: var(--t-small); color: var(--text-muted); }
 
@@ -219,7 +226,9 @@
 .next[data-tone='muted'] .next__icon { color: var(--text-muted); }
 .next__body { min-width: 0; }
 .next__title { margin: 0; font-size: var(--t-lead); font-weight: var(--w-semibold); }
-.next__text { margin: var(--s1) 0 0; font-size: var(--t-body); color: var(--text-secondary); line-height: var(--lh-body); }
+/* The sentence saying what needs a human. It is the most-read line in the shell and it sat one
+   step under the reading size; it also ran the full artifact width unmeasured. */
+.next__text { margin: var(--s1) 0 0; font-size: var(--t-read); color: var(--text-secondary); line-height: var(--lh-prose); max-width: 72ch; }
 .next__detail { margin: var(--s2) 0 0; font-size: var(--t-small); color: var(--text-secondary); }
 /* Fitts: the primary action of the screen is a 40px target, and it is always here.
 
