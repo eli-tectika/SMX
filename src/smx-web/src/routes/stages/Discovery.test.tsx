@@ -85,6 +85,29 @@ beforeEach(() => {
   vi.mocked(api.getCandidates).mockResolvedValue(doc);
 });
 
+/**
+ * The type scale, ranked. The assertions below are about HIERARCHY — is this bigger than that —
+ * not about a pixel value, which lives in tokens.css and is not this file's business. jsdom keeps
+ * `var(--t-lead)` verbatim in the style attribute, so the token itself is what is compared.
+ */
+const SIZE_RANK: Record<string, number> = {
+  'var(--t-small)': 1,
+  'var(--t-body)': 2,
+  'var(--t-read)': 3,
+  'var(--t-lead)': 4,
+  'var(--t-title)': 5,
+};
+const WEIGHT_RANK: Record<string, number> = {
+  'var(--w-regular)': 1,
+  'var(--w-medium)': 2,
+  'var(--w-semibold)': 3,
+};
+const rank = (table: Record<string, number>, value: string, what: string) => {
+  const r = table[value];
+  if (r === undefined) throw new Error(`${what} is not a scale token: ${JSON.stringify(value)}`);
+  return r;
+};
+
 describe('Discovery', () => {
   it('renders each candidate from the record, grouped by component', async () => {
     view();
@@ -167,7 +190,7 @@ describe('Discovery', () => {
 
     const preferredChips = screen.getAllByText('preferred');
     expect(preferredChips).toHaveLength(1);
-    const card = preferredChips[0].closest('.card');
+    const card = preferredChips[0].closest('[data-candidate]');
     expect(card?.textContent).toContain('2222-22-2');
     expect(card?.textContent).not.toContain('1111-11-1');
     void container;
@@ -212,6 +235,75 @@ describe('Discovery', () => {
     await waitFor(() => expect(screen.getByText('bottle')).toBeInTheDocument());
     const button = screen.getByRole('button', { name: 'Revise Y oxide in chat' });
     expect(() => fireEvent.click(button)).not.toThrow();
+  });
+
+  /**
+   * The rationale is the agent's own reasoning — the one thing on this screen a human has to READ.
+   * It shipped as `tiny muted`: 12px in the lowest-contrast ink on the panel, the smallest text
+   * carrying the highest-value content. `.prose` is the reading class (14px, primary ink, 72ch),
+   * and pairing it with `.muted` would put the colour half of that regression straight back.
+   */
+  it("renders the candidate's rationale as prose, never as muted chrome", async () => {
+    view();
+    // Both fixture candidates carry the same rationale — every one of them must read as prose.
+    const rationales = await screen.findAllByText('Corroborated by two catalog entries.');
+    expect(rationales).toHaveLength(2);
+    for (const rationale of rationales) {
+      expect(rationale).toHaveClass('prose');
+      expect(rationale.className).not.toMatch(/\btiny\b/);
+      expect(rationale.className).not.toMatch(/\bmuted\b/);
+    }
+  });
+
+  /**
+   * The per-component grouping is the load-bearing structure of this screen — there is no
+   * product-wide pool — and it was invisible because the group heading was LIGHTER and no bigger
+   * than the candidate names inside it. A heading a child outweighs is not a heading.
+   */
+  it('sets each component heading above the candidates inside it on the type scale', async () => {
+    view();
+    const heading = await screen.findByRole('heading', { name: 'bottle' });
+    const title = screen.getByText('Y oxide');
+
+    expect(rank(SIZE_RANK, heading.style.fontSize, 'the component heading')).toBeGreaterThan(
+      rank(SIZE_RANK, title.style.fontSize, 'the candidate title'),
+    );
+    expect(
+      rank(WEIGHT_RANK, heading.style.fontWeight, 'the component heading'),
+    ).toBeGreaterThanOrEqual(rank(WEIGHT_RANK, title.style.fontWeight, 'the candidate title'));
+  });
+
+  /** A group heading that is not closed off is a caption on the first item, not a container. */
+  it('rules a hairline under each component heading', async () => {
+    const { container } = view();
+    await waitFor(() => expect(screen.getByText('bottle')).toBeInTheDocument());
+    const headings = container.querySelectorAll('[data-component-heading]');
+    expect(headings).toHaveLength(2); // bottle, lid
+    for (const h of headings) {
+      expect(h.getAttribute('style')).toMatch(/border-bottom:[^;]*var\(--border-strong\)/);
+    }
+  });
+
+  /**
+   * Nothing separated one candidate from the next: no hairlines anywhere, so Ce, La, Eu and Y ran
+   * together as one wall of symbol / prose / chips. The first item in a group takes none — its
+   * heading's own rule is already the line above it.
+   */
+  it('rules a hairline between candidates in a group, and none above the first', async () => {
+    const twoOnOneComponent: CandidatesDoc = {
+      ...doc,
+      substances: [candidate({ cas: '1111-11-1' }), candidate({ cas: '2222-22-2' })],
+    };
+    vi.mocked(api.getCandidates).mockResolvedValue(twoOnOneComponent);
+    const { container } = view();
+    await waitFor(() => expect(screen.getByText(/2222-22-2/)).toBeInTheDocument());
+
+    const items = container.querySelectorAll('[data-candidate]');
+    expect(items).toHaveLength(2);
+    expect(items[0].getAttribute('style')).not.toMatch(/border-top/);
+    expect(items[1].getAttribute('style')).toMatch(/border-top:[^;]*var\(--border\)/);
+    // Real vertical air, from the spacing scale — a rule with no padding is a squashed row.
+    expect(items[1].getAttribute('style')).toMatch(/padding:\s*var\(--s\d\)/);
   });
 
   /** The old per-card form and its endpoint are gone; revising happens in the docked chat instead. */

@@ -3,7 +3,7 @@ import { NotFound, getCandidates } from '../../api/client';
 import type { CandidateSubstance, CandidatesDoc, Citation } from '../../api/types';
 import { Loading } from '../../components/Loading';
 import { RevisionTrail } from '../../components/RevisionControls';
-import { ProposedPool } from './ProposedPool';
+import { ComponentHeading, ProposedPool } from './ProposedPool';
 import { Data } from '../../components/ui/Data';
 import { CitationList, EmptyState, SectionHeader } from '../../components/ui/Primitives';
 import { byComponent } from '../../domain/dosing';
@@ -105,10 +105,10 @@ function normalizeCandidate(raw: unknown): CandidateSubstance | null {
  * at tier B and can never be preferred (DiscoveryAgent.Validate), so a preferred row is a claim about
  * corpus evidence — never something this screen infers from tier or ranking.
  *
- * No per-card form any more. The agent now lives in a permanent left column for the whole stage, so
- * "no direct edits — instruct the agent with a reason" is a conversation there, not a form buried at
- * the foot of a card: each card's button only focuses that composer with the candidate named, and the
- * operator finishes the sentence — types why — and sends it like any other message.
+ * No per-candidate form any more. The agent now lives in a permanent left column for the whole
+ * stage, so "no direct edits — instruct the agent with a reason" is a conversation there, not a form
+ * buried at the foot of an item: each item's button only focuses that composer with the candidate
+ * named, and the operator finishes the sentence — types why — and sends it like any other message.
  */
 export function Discovery({ project }: ScreenProps) {
   const stage = project.stages.discovery;
@@ -178,7 +178,13 @@ export function Discovery({ project }: ScreenProps) {
           <i className="ti ti-alert-triangle" aria-hidden="true" />
           <div>
             <b>The candidate pool could not be read.</b>
-            <div className="tiny" style={{ marginTop: 3 }}>{errMsg}</div>
+            {/* READ, not chrome: this is the only thing on the screen that says WHY the read
+                failed, and the operator has to parse it to know whether to retry or report it.
+                `.banner .prose` keeps the banner's own ink, so the sentence stays in the
+                banner's colour and only gains the reading size and measure. */}
+            <div className="prose" style={{ marginTop: 'var(--s1)' }}>
+              {errMsg}
+            </div>
           </div>
         </div>
       )}
@@ -213,15 +219,20 @@ export function Discovery({ project }: ScreenProps) {
         byComponent(substances).map(([component, rows]) => {
           // Stable sort: within a tier the agent's own order is a ranking it chose, and the UI
           // must not re-rank it. Only the tier bucket (A before B before C) is imposed here, so the
-          // ribbon above (drawn A/B/C left to right) and the card list below are never out of step.
+          // ribbon above (drawn A/B/C left to right) and the candidate list below are never out of
+          // step.
           // `.slice()` first — byComponent hands back the arrays it built internally, and sorting
           // one in place would mutate its return value.
           const forComponent = rows.slice().sort((a, b) => TIERS.indexOf(a.tier) - TIERS.indexOf(b.tier));
           return (
-            <div key={component} style={{ marginBottom: 18 }}>
-              <SectionHeader
-                title={component}
-                headingLevel={4}
+            <div key={component} style={{ marginBottom: 'var(--s5)' }}>
+              {/* Not `SectionHeader`: its title is weight 500, which is LIGHTER than the semibold
+                  element symbol on every candidate below it — the per-component grouping is the
+                  load-bearing structure of this screen (there is no product-wide pool), and a
+                  heading outweighed by its own children makes that structure read as decoration.
+                  `ComponentHeading` is heavier, in the brand face, and ruled off underneath. */}
+              <ComponentHeading
+                component={component}
                 count={forComponent.length}
                 hint="candidates on this component's own track"
               />
@@ -257,8 +268,8 @@ export function Discovery({ project }: ScreenProps) {
                 </div>
               </div>
 
-              {forComponent.map((c) => (
-                <CandidateCard key={`${c.componentId}|${c.cas}`} candidate={c} />
+              {forComponent.map((c, i) => (
+                <CandidateCard key={`${c.componentId}|${c.cas}`} candidate={c} first={i === 0} />
               ))}
             </div>
           );
@@ -274,10 +285,25 @@ export function Discovery({ project }: ScreenProps) {
   );
 }
 
-function CandidateCard({ candidate: c }: { candidate: CandidateSubstance }) {
+/**
+ * One candidate, as a ruled item rather than a tile.
+ *
+ * `first` suppresses the top rule: the group heading's own hairline is already the line above the
+ * first candidate, and a second rule immediately under it would read as an empty row. Everything
+ * below it gets one, because before this there was nothing at all between candidates — Ce, La, Eu
+ * and Y ran together as a single wall of bold-symbol / prose / chips and the eye had no way to
+ * tell where one ended and the next began.
+ */
+function CandidateCard({ candidate: c, first }: { candidate: CandidateSubstance; first: boolean }) {
   return (
-    <div className="card" style={{ marginBottom: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+    <article
+      data-candidate=""
+      style={{
+        borderTop: first ? undefined : 'var(--hair) solid var(--border)',
+        padding: 'var(--s4) 0',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--s3)', flexWrap: 'wrap' }}>
         {/* Tier is the loud element: the verdict palette, at lead size. */}
         <span
           className={`chip ${TIER_CLASS[c.tier]}`}
@@ -285,7 +311,10 @@ function CandidateCard({ candidate: c }: { candidate: CandidateSubstance }) {
         >
           {c.tier}
         </span>
-        <span style={{ fontSize: 'var(--t-lead)', fontWeight: 'var(--w-semibold)' }}>
+        {/* REFERENCED — a name identified at a glance, not read. One step under its group heading,
+            which is what keeps the per-component grouping visible; the tier chip beside it keeps
+            lead size because a verdict is the one thing in the row that should shout. */}
+        <span style={{ fontSize: 'var(--t-read)', fontWeight: 'var(--w-semibold)' }}>
           {c.element} {c.form}
         </span>
         <span className="tiny muted">
@@ -301,15 +330,21 @@ function CandidateCard({ candidate: c }: { candidate: CandidateSubstance }) {
         )}
       </div>
 
+      {/* REFERENCED — a measurement and a carrier, both glanced at against the row beside it.
+          These are values, not sentences, and 12px muted is the right register for them. */}
       {(c.particleSize || c.solvent) && (
-        <div className="tiny muted" style={{ marginTop: 4 }}>
+        <div className="tiny muted" style={{ marginTop: 'var(--s1)' }}>
           {c.particleSize && <>particle size {c.particleSize}</>}
           {c.particleSize && c.solvent && ' · '}
           {c.solvent && <>solvent {c.solvent}</>}
         </div>
       )}
 
-      <p className="prose" style={{ margin: '8px 0 6px' }}>
+      {/* READ — the agent's own reasoning, the one thing in this card a human has to parse, so it
+          carries `.prose` and never `.muted`: muting a sentence mutes what the sentence says. The
+          absence line stays muted on purpose — "no rationale recorded" is a note about a gap in
+          the record, not reasoning to read. */}
+      <p className="prose" style={{ margin: 'var(--s2) 0 var(--s2)' }}>
         {c.rationale || <span className="muted">No rationale recorded.</span>}
       </p>
 
@@ -319,7 +354,8 @@ function CandidateCard({ candidate: c }: { candidate: CandidateSubstance }) {
           total stays — it is the honest headline for a set that is now partly folded. */}
       <div>
         <CitationList citations={c.citations} />
-        <span className="tiny muted" style={{ marginLeft: 4 }}>
+        {/* REFERENCED — a running total beside the chips, counted rather than read. */}
+        <span className="tiny muted" style={{ marginLeft: 'var(--s1)' }}>
           {c.citations.length} source{c.citations.length === 1 ? '' : 's'}
         </span>
       </div>
@@ -330,7 +366,7 @@ function CandidateCard({ candidate: c }: { candidate: CandidateSubstance }) {
         named, so the real path (name the candidate, state the reason, the agent applies the change
         and records the reason as a Learned Conclusion) happens as a normal message, not a form.
       */}
-      <div style={{ marginTop: 10 }}>
+      <div style={{ marginTop: 'var(--s3)' }}>
         <button
           type="button"
           className="btn"
@@ -340,6 +376,6 @@ function CandidateCard({ candidate: c }: { candidate: CandidateSubstance }) {
           <i className="ti ti-message-2" aria-hidden="true" /> Revise in chat
         </button>
       </div>
-    </div>
+    </article>
   );
 }
