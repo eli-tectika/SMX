@@ -9,11 +9,21 @@ function seconds(run: RunSummary): string | null {
   return Number.isFinite(ms) ? `${Math.max(1, Math.round(ms / 1000))}s` : null;
 }
 
-/** The last `output` step is the run's own summary of what it produced — no better line exists. */
-function summary(run: RunSummary): string {
-  const output = [...run.steps].reverse().find((s) => s.kind === 'output');
-  if (output) return output.text;
-  if (run.error) return run.error;
+/**
+ * The last `output` step is the run's own summary of what it produced — no better line exists.
+ * It is a SENTENCE the server wrote about what happened, so it is READ: it renders as `.prose` on
+ * its own line, not as tail-text on the header beside the counters.
+ */
+function outputText(run: RunSummary): string | null {
+  return [...run.steps].reverse().find((s) => s.kind === 'output')?.text ?? null;
+}
+
+/**
+ * The header's status word. REFERENCED — one glance, alongside the duration and the child count,
+ * and deliberately never the output text: a whole sentence set at --t-small in muted grey, wedged
+ * between a middot and a duration, is the exact shape this pass exists to undo.
+ */
+function status(run: RunSummary): string {
   return isRunning(run) ? 'working' : run.outcome;
 }
 
@@ -48,6 +58,13 @@ export function RunGroup({
   const isChild = run.parentRunId !== null;
   const done = children.filter((c) => !isRunning(c)).length;
 
+  // What the run itself said. Preferring the output step and falling back to the error preserves
+  // exactly the precedence the old header summary had; what changes is where it is shown and how
+  // big. Collapsed only — expanded, the same words are already in the trail below, once as the
+  // `output` step row and once as the error line.
+  const output = outputText(run);
+  const said = output ?? run.error;
+
   return (
     <div className="runGroup" data-outcome={run.outcome}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -63,10 +80,19 @@ export function RunGroup({
             data-running={isRunning(run) ? '' : undefined}
             aria-hidden="true"
           />{' '}
-          <span style={{ fontWeight: 500 }}>{run.subject ?? label}</span>
+          {/* The group's heading, and it now outweighs the steps it heads: --t-body/semibold over
+              rows of --t-small. It inherits from `.btn`, which is --t-small, so before this the
+              run's NAME was the same size as every line inside it. No hairline here — a rule under
+              every group in a dense timeline would out-shout the runs themselves, and the group
+              already has a grouping device: the 2px left rail its steps hang off. */}
+          <span style={{ fontSize: 'var(--t-body)', fontWeight: 'var(--w-semibold)' }}>
+            {run.subject ?? label}
+          </span>
+          {/* REFERENCED, all of it — a child count, a progress count, an outcome word, a duration.
+              These are scanned. They stay at --t-small and they stay muted. */}
           <span className="tiny muted">
             {' · '}
-            {children.length > 0 ? `${children.length} substances — ${done} done` : summary(run)}
+            {children.length > 0 ? `${children.length} substances — ${done} done` : status(run)}
             {seconds(run) ? ` · ${seconds(run)}` : ''}
           </span>
         </button>
@@ -82,6 +108,19 @@ export function RunGroup({
           </button>
         )}
       </div>
+
+      {/* READ. Rule 2's exception: the trail is scanned — tool names, durations, step counts stay
+          at --t-small — but the run's own MESSAGE about what it produced is a sentence, and a
+          collapsed run is nothing but that sentence. Danger tone only when it IS the error, which
+          is what `output === null` means here. */}
+      {!open && said && (
+        <p
+          className="prose"
+          style={{ margin: '0 0 6px', color: output === null ? 'var(--text-danger)' : undefined }}
+        >
+          {said}
+        </p>
+      )}
 
       {open && (
         <div style={{ borderLeft: '2px solid var(--border)', paddingLeft: 12, margin: '2px 0 8px' }}>

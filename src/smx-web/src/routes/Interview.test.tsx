@@ -199,6 +199,85 @@ describe('Interview composer', () => {
   });
 });
 
+/**
+ * The interview IS the conversation, and its two sides are the only text on the screen a human
+ * actually parses. `.prose` is the reading class (--t-read, primary ink, 72ch); `.tiny`/`.muted` is
+ * for what is identified at a glance. These pin which is which, so a turn cannot quietly slide back
+ * to the size of a timestamp.
+ */
+describe('the interview screen — what is read and what is referenced', () => {
+  it('reads both sides of the transcript as prose', async () => {
+    vi.mocked(api.getIntakeSession).mockResolvedValue(session({
+      turns: [
+        { role: 'operator', text: 'Acme, PET bottles.', toolCalls: [], createdAt: '…10:00:00Z' },
+        { role: 'agent', text: 'What are the components?', toolCalls: [], createdAt: '…10:00:05Z' },
+      ],
+    }));
+    renderAt();
+
+    expect(await screen.findByText('Acme, PET bottles.')).toHaveClass('prose');
+    expect(screen.getByText('What are the components?')).toHaveClass('prose');
+  });
+
+  /**
+   * The opening instruction, and the only text on an empty interview. `.chat__empty` sets muted
+   * ink; `.prose` refuses it. `marginInline: auto` is not decoration — `.prose` caps the block at
+   * 72ch inside a 720px column, and `text-align: center` centres the words in the box, not the box
+   * in the column.
+   */
+  it('reads the opening instruction as prose, and keeps it centred once it is measured', async () => {
+    renderAt();
+    const said = await screen.findByText(/start with the client and the job/i);
+    expect(said).toHaveClass('prose');
+    expect(said.style.marginInline).toBe('auto');
+  });
+
+  /** A reply that resized the instant it finished streaming would be its own small horror. */
+  it('streams the reply at the size it will be read at', async () => {
+    vi.mocked(api.sendInterviewMessage).mockImplementation(() => new Promise(() => {}));
+    vi.mocked(api.getIntakeSession).mockResolvedValue(session());
+    renderAt();
+    await userEvent.type(await screen.findByRole('textbox'), 'Acme');
+    await userEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    expect(await screen.findByText('Acme')).toHaveClass('prose');
+  });
+
+  it('composes at reading size', async () => {
+    renderAt();
+    const box = await screen.findByLabelText(/message the interview agent/i);
+    expect(box.style.fontSize).toBe('var(--t-read)');
+  });
+
+  /** Interview questions are the interview. So is the reason each one is asked. */
+  it('reads the open questions and their reasons as prose, distinguished by weight not size', async () => {
+    renderAt();
+    await userEvent.click(await screen.findByRole('button', { name: /see what.s open/i }));
+
+    const prompt = screen.getByText('What QC tests?');
+    const why = screen.getByText('They constrain what is detectable.');
+    expect(prompt).toHaveClass('prose');
+    expect(why).toHaveClass('prose');
+    expect(why).not.toHaveClass('muted');
+    expect(prompt.style.fontWeight).toBe('var(--w-semibold)');
+    expect(why.style.color).toBe('var(--text-secondary)');
+  });
+
+  /** The one line standing between the operator and a project was set at the floor. */
+  it('reads the gate blocker as prose', async () => {
+    renderAt();
+    const reason = createBlocker(session(), QUESTIONS);
+    expect(await screen.findByText(reason as string)).toHaveClass('prose');
+  });
+
+  /** The other half of the rule — a counter is scanned, not parsed. */
+  it('leaves the coverage counter as referenced chrome', async () => {
+    renderAt();
+    const counter = await screen.findByText(/0 of 2 covered/i);
+    expect(counter).toHaveClass('tiny');
+    expect(counter).not.toHaveClass('prose');
+  });
+});
+
 describe('Interview live regions', () => {
   /**
    * Without this, an operator using a screen reader gets no signal at all that they are waiting:

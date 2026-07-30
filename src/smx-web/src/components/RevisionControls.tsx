@@ -80,6 +80,8 @@ export function ReviseForm({
         <button type="button" className="btn" onClick={() => setOpen(true)}>
           <i className="ti ti-message-2" aria-hidden="true" /> Ask the agent to revise (needs a reason)
         </button>
+        {/* REFERENCED — a confirmation flag on a control row, identified by its tick and its
+            colour. It is not the revision's content; the content is the reason, below. */}
         {done && (
           <span className="tiny" style={{ color: 'var(--text-success)', marginLeft: 8 }}>
             <i className="ti ti-check" aria-hidden="true" /> Requested — see the trail below.
@@ -91,6 +93,8 @@ export function ReviseForm({
 
   return (
     <form onSubmit={submit} style={{ marginTop: 'var(--s2)' }}>
+      {/* REFERENCED — a label and the name of the thing being changed, identified at a glance.
+          The `target` input below is the same judgement: what goes in it is a name, not prose. */}
       {fixedTarget ? (
         <div className="tiny muted" style={{ marginBottom: 4 }}>
           Revising: <b>{fixedTarget}</b>
@@ -105,6 +109,10 @@ export function ReviseForm({
           style={{ marginBottom: 6 }}
         />
       )}
+      {/* READ. The reason is the single most consequential piece of prose the operator writes in
+          this app — it is what the agent acts on and what becomes a Learned Conclusion — and it
+          was being composed at the 12px floor. --t-read with a prose leading. No fixed height to
+          audit: `rows={2}` sizes it intrinsically (~57px now, ~46px before) and it resizes. */}
       <textarea
         value={reason}
         onChange={(e) => setReason(e.target.value)}
@@ -114,7 +122,8 @@ export function ReviseForm({
         style={{
           width: '100%',
           font: 'inherit',
-          fontSize: 'var(--t-small)',
+          fontSize: 'var(--t-read)',
+          lineHeight: 'var(--lh-prose)',
           padding: '6px 8px',
           border: '0.5px solid var(--border-strong)',
           borderRadius: 'var(--r1)',
@@ -133,8 +142,9 @@ export function ReviseForm({
           Cancel
         </button>
       </div>
+      {/* READ — why the request did not go through, which is what the operator acts on next. */}
       {error && (
-        <div className="tiny" style={{ color: 'var(--text-danger)', marginTop: 'var(--s2)' }}>
+        <div className="prose" style={{ color: 'var(--text-danger)', marginTop: 'var(--s2)' }}>
           <i className="ti ti-alert-triangle" aria-hidden="true" /> {error}
         </div>
       )}
@@ -170,9 +180,21 @@ export function RevisionTrail({ projectId, refreshKey }: { projectId: string; re
 
   return (
     <div style={{ marginTop: 'var(--s4)' }}>
+      {/* The heading over the trail. It was --t-small/muted over rows that are themselves
+          --t-small, and now over reasons at --t-read — an eyebrow lighter and smaller than
+          everything beneath it is not a heading, it is a stray label. Size, weight, ink and a
+          hairline, which the group had none of. */}
       <div
-        className="tiny muted"
-        style={{ textTransform: 'uppercase', letterSpacing: 'var(--track-eyebrow)', marginBottom: 'var(--s2)' }}
+        className="secondary"
+        style={{
+          textTransform: 'uppercase',
+          letterSpacing: 'var(--track-eyebrow)',
+          fontSize: 'var(--t-body)',
+          fontWeight: 'var(--w-semibold)',
+          borderBottom: 'var(--hair) solid var(--border)',
+          paddingBottom: 'var(--s1)',
+          marginBottom: 'var(--s2)',
+        }}
       >
         Revision trail
       </div>
@@ -185,16 +207,21 @@ export function RevisionTrail({ projectId, refreshKey }: { projectId: string; re
             aria-hidden="true"
           />
           <div>
+            {/* REFERENCED — what was revised, on what substance, and where it got to. Scanned. */}
             <div className="small">
               <b>{r.target}</b>
               {r.cas && <span className="muted"> · {r.cas}</span>} — {r.status}
             </div>
-            <div className="tiny muted">{r.reason}</div>
+            {/* READ — the operator's stated WHY. This is the sentence the agent acted on and the
+                one that becomes a Learned Conclusion; it was the quietest text in the row. */}
+            <div className="prose">{r.reason}</div>
+            {/* READ — why it failed. */}
             {r.status === 'failed' && r.error && (
-              <div className="tiny" style={{ color: 'var(--text-danger)' }}>
+              <div className="prose" style={{ color: 'var(--text-danger)' }}>
                 {r.error}
               </div>
             )}
+            {/* REFERENCED — a provenance tag, glanced at. */}
             {r.conclusionId && (
               <div className="tiny muted">
                 <i className="ti ti-bulb" aria-hidden="true" /> recorded as a learned conclusion

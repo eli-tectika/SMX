@@ -135,3 +135,65 @@ describe('AgentPanel', () => {
     );
   });
 });
+
+/**
+ * The reading hierarchy.
+ *
+ * This panel is the operator's whole means of instructing the system, and it lives in a fixed 390px
+ * column. When everything in it sat at the 12px floor, size distinguished nothing and colour was the
+ * only signal left. These pin the READ/REFERENCED split itself, not a pixel value: `.prose` is the
+ * reading class (--t-read, primary ink, measured) and `.tiny`/`.muted` is the referenced one, so a
+ * sentence that loses `prose` — or gains `muted` — fails here rather than on the deployed app.
+ */
+describe('AgentPanel — what is read and what is referenced', () => {
+  it('reads the no-agent explanation as prose, and refuses to mute it', () => {
+    vi.mocked(useThread).mockReturnValue(ready());
+    render(<AgentPanel projectId="proj-test" stageSlug="background" stageLabel="Background" />);
+    const said = screen.getByText(/no agent on this stage/i);
+    expect(said).toHaveClass('prose');
+    expect(said).not.toHaveClass('muted');
+    expect(said).not.toHaveClass('tiny');
+  });
+
+  it('reads the empty state as prose — it explains the column, it does not label it', () => {
+    vi.mocked(useThread).mockReturnValue(ready());
+    render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
+    const said = screen.getByText(/this is where the discovery agent works/i);
+    expect(said).toHaveClass('prose');
+    expect(said).not.toHaveClass('muted');
+  });
+
+  /** The operator's own words were the smallest text in the column they were typed into. */
+  it('composes at reading size', () => {
+    vi.mocked(useThread).mockReturnValue(ready());
+    render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
+    const box = screen.getByLabelText(/message the discovery agent/i);
+    expect(box.style.fontSize).toBe('var(--t-read)');
+  });
+
+  /** A heading smaller and lighter than what it heads is not a heading. */
+  it('gives the panel heading more size and weight than the conversation under it', () => {
+    vi.mocked(useThread).mockReturnValue(ready());
+    render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
+    const heading = screen.getByText('Discovery agent');
+    expect(heading.style.fontSize).toBe('var(--t-lead)');
+    expect(heading.style.fontWeight).toBe('var(--w-semibold)');
+    // The hairline the group had none of.
+    expect(heading.parentElement?.style.borderBottom).toContain('var(--border)');
+  });
+
+  /** The other half of the rule: transport chrome is REFERENCED and stays at the floor. */
+  it('leaves the connection indicator as referenced chrome', () => {
+    vi.mocked(useThread).mockReturnValue({
+      entries: [],
+      live: false,
+      loading: false,
+      error: null,
+      refresh,
+    });
+    render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
+    const line = screen.getByText(/not live/i);
+    expect(line).toHaveClass('tiny');
+    expect(line).not.toHaveClass('prose');
+  });
+});

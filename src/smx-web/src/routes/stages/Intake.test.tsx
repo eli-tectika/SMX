@@ -330,3 +330,24 @@ describe("Intake — what's still missing", () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/503 Service Unavailable/);
   });
 });
+
+/**
+ * A `<summary>` heads the table inside its `<details>`, so it is a group heading. Both of these sat
+ * at --t-small — the same size as the `.mx td` cells they open — so nothing about the type said
+ * which was the heading and which was the content.
+ */
+describe('Intake — headings outweigh what they head', () => {
+  it('sizes the pools disclosure above the table it opens', async () => {
+    renderIntake(project({ payload: PAYLOAD }));
+    const summary = await screen.findByText(/pools already on the record/i);
+    expect(summary.style.fontSize).toBe('var(--t-body)');
+    expect(summary.style.fontWeight).toBe('var(--w-medium)');
+  });
+
+  it('sizes the physics disclosure above the table it opens', async () => {
+    renderIntake(project({ payload: { ...PAYLOAD, device: { model: 'Niton XL5', lods: [] } } }));
+    const summary = await screen.findByText(/what the physicist has given so far/i);
+    expect(summary.style.fontSize).toBe('var(--t-body)');
+    expect(summary.style.fontWeight).toBe('var(--w-medium)');
+  });
+});

@@ -50,9 +50,26 @@ function PanelFrame({ stageLabel, children }: { stageLabel: string; children: Re
       style={{ display: 'flex', flexDirection: 'column', background: 'var(--surface-1)', gap: 2, height: '100%' }}
       aria-label={`${stageLabel} agent`}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+      {/* The panel's one heading, and it now outweighs what it heads: the conversation below reads
+          at --t-read (14px), so a 13px/500 title was the SMALLEST thing in the column it named.
+          --t-lead + semibold + a hairline. `flexShrink: 0` because it is taller than it was and
+          `.work` gives this column a definite height — a squashed heading over a scroller is the
+          classic way a fixed-height flex column pays for a type change. */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          marginBottom: 10,
+          paddingBottom: 6,
+          borderBottom: 'var(--hair) solid var(--border)',
+          flexShrink: 0,
+        }}
+      >
         <i className="ti ti-sparkles" style={{ color: 'var(--text-accent)' }} aria-hidden="true" />
-        <span style={{ fontSize: 13, fontWeight: 500 }}>{stageLabel} agent</span>
+        <span style={{ fontSize: 'var(--t-lead)', fontWeight: 'var(--w-semibold)' }}>
+          {stageLabel} agent
+        </span>
       </div>
       {children}
     </aside>
@@ -63,7 +80,21 @@ function PanelFrame({ stageLabel, children }: { stageLabel: string; children: Re
 function ClosedPanel({ stageLabel }: { stageLabel: string }) {
   return (
     <PanelFrame stageLabel={stageLabel}>
-      <div className="tiny muted" style={{ marginTop: 'auto', marginBottom: 'auto', textAlign: 'center', padding: 12 }}>
+      {/* READ. This is the whole content of the column when a stage has no agent — an explanation
+          the operator parses once and then stops wondering about. `prose`, and deliberately not
+          also `muted`: muting the only sentence on the surface is muting the surface.
+          `marginInline: auto` because `.prose` caps at 72ch, and a centred 72ch block inside a
+          wider box is only centred if it is told to be. */}
+      <div
+        className="prose"
+        style={{
+          marginTop: 'auto',
+          marginBottom: 'auto',
+          marginInline: 'auto',
+          textAlign: 'center',
+          padding: 12,
+        }}
+      >
         <i className="ti ti-message-off" aria-hidden="true" style={{ fontSize: 20, display: 'block', marginBottom: 6 }} />
         {/* Background is the ONLY stage without an agent now, so this names the exception rather
             than enumerating the eight that have one. The spine cannot carry this fact: every pill is
@@ -170,18 +201,22 @@ function LiveChat({
         onScroll={scroller.onScroll}
         style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}
       >
+        {/* REFERENCED — a transient status word beside a spinner, glanced at, never parsed. */}
         {loading && (
           <div className="tiny muted" role="status" aria-live="polite">
             <i className="ti ti-loader" data-running="" aria-hidden="true" /> Loading…
           </div>
         )}
+        {/* READ — a failure the operator has to parse to know what to do next. The colour stays
+            inline, which also keeps it: an inline declaration outranks `.prose`'s primary ink. */}
         {error && (
-          <div className="tiny" style={{ color: 'var(--text-danger)' }} role="alert">
+          <div className="prose" style={{ color: 'var(--text-danger)' }} role="alert">
             <i className="ti ti-alert-triangle" aria-hidden="true" /> {error}
           </div>
         )}
+        {/* READ — the empty state is an explanation of what this column is for. */}
         {!loading && entries.length === 0 && (
-          <div className="tiny muted">
+          <div className="prose">
             Nothing yet. This is where the {stageLabel.toLowerCase()} agent works, and where you can
             talk to it.
           </div>
@@ -196,6 +231,8 @@ function LiveChat({
         {announcement}
       </span>
 
+      {/* REFERENCED — a connection indicator. It is read once, by its icon and its first two
+          words, and then only glanced at; it is chrome about the transport, not about the work. */}
       {!live && !loading && (
         <div className="tiny muted" style={{ margin: '4px 0' }}>
           <i className="ti ti-plug-connected-x" aria-hidden="true" /> Not live — refreshing
@@ -203,8 +240,9 @@ function LiveChat({
         </div>
       )}
 
+      {/* READ — this is what came back when the operator's own instruction failed to post. */}
       {sendError && (
-        <div className="tiny" style={{ color: 'var(--text-danger)', margin: '4px 0' }} role="alert">
+        <div className="prose" style={{ color: 'var(--text-danger)', margin: '4px 0' }} role="alert">
           <i className="ti ti-alert-triangle" aria-hidden="true" /> {sendError}
         </div>
       )}
@@ -252,7 +290,13 @@ function LiveChat({
           placeholder={`Message the ${stage} agent…`}
           aria-label={`Message the ${stage} agent`}
           disabled={busy}
-          style={{ border: 0, background: 'transparent', flex: 1, padding: 0 }}
+          /* READ. What the operator types here is the instruction half of the conversation, and it
+             was set at the 12px floor while the reply above it is now 14px — the operator's own
+             words were the smallest text in the column. Fits: the composer's content box is
+             ~364px − 30px for the send button, and the longest placeholder ("Message the
+             regulatory agent…", 29 chars) needs ~205px at --t-read. The row is intrinsically
+             sized, so the ~2px it gains comes out of the scroller above (flex: 1, min-height: 0). */
+          style={{ border: 0, background: 'transparent', flex: 1, padding: 0, fontSize: 'var(--t-read)' }}
         />
         <button
           type="submit"

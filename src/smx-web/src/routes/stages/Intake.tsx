@@ -141,7 +141,10 @@ export function Intake({ project }: ScreenProps) {
 
         {/* A client's exclusions, in mono because they are element symbols — and in no colour,
             because they are an input constraint the client handed us, not a verdict this system
-            reached. Red here would say "Fail", which is a claim nothing has made yet. */}
+            reached. Red here would say "Fail", which is a claim nothing has made yet.
+
+            REFERENCED — a label and a row of element symbols. Nobody parses this as a sentence;
+            they look for whether their element is in it. It stays at --t-small. */}
         {payload && payload.clientRestrictedList.length > 0 && (
           <p className="small secondary" style={{ margin: '12px 0 0' }}>
             Ruled out by the client:{' '}
@@ -166,9 +169,21 @@ export function Intake({ project }: ScreenProps) {
             component's own eyebrow underneath would be the same words twice. */}
         <ProposedPool projectId={project.projectId} heading={false} />
 
+        {/* A `<summary>` heads the table inside its `<details>`, so it is a group heading and has
+            to outweigh what it opens. It was --t-small — the same size as `.mx td` — so the
+            heading and its own contents were indistinguishable by size. --t-body + medium, and
+            the disclosure triangle is the group's hairline. Not `.prose`: it is a control naming
+            a table, not a sentence. */}
         {payload && payload.elementPools && payload.elementPools.length > 0 && (
           <details style={{ marginTop: 12 }}>
-            <summary className="small secondary" style={{ cursor: 'pointer' }}>
+            <summary
+              className="secondary"
+              style={{
+                cursor: 'pointer',
+                fontSize: 'var(--t-body)',
+                fontWeight: 'var(--w-medium)',
+              }}
+            >
               Pools already on the record, from the physicist ({payload.elementPools.length})
             </summary>
             <table className="mx" style={{ marginTop: 8 }}>
@@ -255,15 +270,28 @@ export function Intake({ project }: ScreenProps) {
           </p>
         )}
 
+        {/* Same judgement as the pools disclosure above — a heading over a table. */}
         {hasAnyPhysics && payload && (
           <details style={{ marginTop: 12 }}>
-            <summary className="small secondary" style={{ cursor: 'pointer' }}>
+            <summary
+              className="secondary"
+              style={{
+                cursor: 'pointer',
+                fontSize: 'var(--t-body)',
+                fontWeight: 'var(--w-medium)',
+              }}
+            >
               What the physicist has given so far
             </summary>
             <table className="mx" style={{ marginTop: 8 }}>
               <tbody>
                 {payload.measuredBackground.map((b) => (
                   <tr key={`${b.component}-${b.element}`}>
+                    {/* The one fixed dimension on this screen. It holds "<element> in <component>"
+                        at `.mx th`'s --t-tiny, which this pass does not touch — and `width` on a
+                        `th` is a preference the table layout may exceed, not a clip. Audited, and
+                        it is why nothing here was raised: raising `.mx th` would have made this
+                        160px a real constraint on a component name of unbounded length. */}
                     <th style={{ width: 160 }}>
                       {b.element} <span className="muted">in</span> {b.component}
                     </th>

@@ -101,3 +101,73 @@ describe('RunGroup', () => {
     expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument();
   });
 });
+
+describe('RunGroup — what is read and what is referenced', () => {
+  const withOutput = (text: string, over: Partial<RunSummary> = {}) =>
+    run({
+      steps: [
+        { seq: 1, at: 'x', kind: 'started', text: 'Screening 4 substances.' },
+        { seq: 2, at: 'x', kind: 'output', text },
+      ],
+      ...over,
+    });
+
+  /**
+   * The trail is scanned — tool names, durations, step counts. But the run's own account of what it
+   * produced is a SENTENCE, and it was set at --t-small in muted grey, wedged between a middot and
+   * a duration on the header line. A collapsed run is nothing but that sentence.
+   */
+  it('reads a collapsed run its own output sentence, as prose and on its own line', () => {
+    render(<RunGroup run={withOutput('Four candidates; two preferred.')} children={[]} {...noop} />);
+    const said = screen.getByText('Four candidates; two preferred.');
+    expect(said).toHaveClass('prose');
+    expect(said).not.toHaveClass('tiny');
+    // And out of the header, which is a control full of counters.
+    expect(screen.getByRole('button', { name: /discovery agent/i })).not.toHaveTextContent(
+      'Four candidates',
+    );
+  });
+
+  /** Expanded, the same words are already in the trail below — saying them twice is noise. */
+  it('does not repeat the output sentence while the trail is open', () => {
+    render(
+      <RunGroup
+        run={withOutput('Four candidates; two preferred.', { outcome: 'running', endedAt: null })}
+        children={[]}
+        {...noop}
+      />,
+    );
+    expect(screen.getAllByText('Four candidates; two preferred.')).toHaveLength(1);
+    expect(screen.getByText('Four candidates; two preferred.')).not.toHaveClass('prose');
+  });
+
+  /** A failure explains itself in the same place, in the failure tone. */
+  it('reads a collapsed failure its error, in the danger tone', () => {
+    render(
+      <RunGroup
+        run={run({ outcome: 'failed', error: 'the agent timed out' })}
+        children={[]}
+        {...noop}
+      />,
+    );
+    const said = screen.getByText('the agent timed out');
+    expect(said).toHaveClass('prose');
+    expect(said.style.color).toBe('var(--text-danger)');
+  });
+
+  /** The other half of the rule. Counters and durations are glanced at; they stay at the floor. */
+  it('leaves the outcome word and the duration as referenced chrome', () => {
+    render(<RunGroup run={withOutput('Four candidates; two preferred.')} children={[]} {...noop} />);
+    const meta = screen.getByText(/done · 38s/i);
+    expect(meta).toHaveClass('tiny');
+    expect(meta).toHaveClass('muted');
+  });
+
+  /** The run's name was inheriting `.btn`'s --t-small — the same size as every step it heads. */
+  it('gives the run label more size and weight than its steps', () => {
+    render(<RunGroup run={run()} children={[]} {...noop} />);
+    const label = screen.getByText('discovery agent');
+    expect(label.style.fontSize).toBe('var(--t-body)');
+    expect(label.style.fontWeight).toBe('var(--w-semibold)');
+  });
+});

@@ -69,3 +69,66 @@ describe('Timeline', () => {
     expect(screen.getByText(/it'll see this when it finishes/i)).toBeInTheDocument();
   });
 });
+
+describe('Timeline — what is read and what is referenced', () => {
+  // The message member specifically, not the union — the tests below spread it to vary `status`,
+  // and a `ThreadEntry` return type would make every spread ambiguous with the run member.
+  const said = (
+    role: 'agent' | 'operator',
+    text: string,
+  ): Extract<ThreadEntry, { kind: 'message' }> => ({
+    seq: 1,
+    at: 'x',
+    kind: 'message',
+    role,
+    text,
+    status: 'answered',
+    error: null,
+  });
+
+  /** The conversation is the product. It must not render at the floor on either side. */
+  it('reads both halves of the conversation as prose', () => {
+    render(
+      <Timeline
+        entries={[said('agent', 'Zr is out on REACH.'), { ...said('operator', 'Why?'), seq: 2 }]}
+        {...noop}
+      />,
+    );
+    expect(screen.getByText('Zr is out on REACH.')).toHaveClass('prose');
+    expect(screen.getByText('Why?')).toHaveClass('prose');
+  });
+
+  /**
+   * The cascade collision, pinned. `.prose` (primitives.css) loads after `.bub`/`.bu` (base.css)
+   * and would otherwise take BOTH the operator bubble's accent ink and its 90% cap — and losing
+   * the cap silently kills the `margin-left: auto` that right-aligns it, which is how a type
+   * change ships as a layout bug. Both are restated inline, where they outrank the class.
+   */
+  it('keeps the operator bubble tinted and capped after it takes the reading class', () => {
+    render(<Timeline entries={[said('operator', 'Why?')]} {...noop} />);
+    const bubble = screen.getByText('Why?');
+    expect(bubble.style.color).toBe('var(--text-accent)');
+    expect(bubble.style.maxWidth).toBe('90%');
+  });
+
+  it('keeps the agent bubble capped too, and does not tint it', () => {
+    render(<Timeline entries={[said('agent', 'Zr is out on REACH.')]} {...noop} />);
+    const bubble = screen.getByText('Zr is out on REACH.');
+    expect(bubble.style.maxWidth).toBe('90%');
+    expect(bubble.style.color).toBe('');
+  });
+
+  it('reads the queued and failed notes as prose — they are explanations, not labels', () => {
+    render(
+      <Timeline
+        entries={[
+          { ...said('operator', 'stop'), status: 'queued' },
+          { ...said('operator', 'again'), seq: 2, status: 'failed', error: 'the model timed out' },
+        ]}
+        {...noop}
+      />,
+    );
+    expect(screen.getByText(/it'll see this when it finishes/i)).toHaveClass('prose');
+    expect(screen.getByText(/the turn failed/i)).toHaveClass('prose');
+  });
+});

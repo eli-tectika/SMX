@@ -263,19 +263,35 @@ export function Interview() {
             {turnAnnouncement}
           </span>
           <div className="chat__thread" ref={scroller.ref} onScroll={scroller.onScroll}>
+            {/* READ — the opening instruction, and the only text on an empty interview.
+                `marginInline: auto` keeps it centred: `.prose` caps at 72ch inside a 720px column,
+                and `text-align: center` centres the words inside the box, not the box inside the
+                column. */}
             {session.turns.length === 0 && streaming === null && (
-              <div className="chat__empty">
+              <div className="chat__empty prose" style={{ marginInline: 'auto' }}>
                 Start with the client and the job. Drop any file you already have.
               </div>
             )}
 
+            {/* READ, on both sides. This IS the conversation: the agent's questions are the
+                interview, and the operator's answers are the record being built. They were at
+                --t-body; the reading step is --t-read, and `.prose` also brings the 72ch measure
+                the 720px column needed — 14px across the full column runs to ~100 characters.
+                `.msg--operator` keeps its `width: fit-content` and its auto left margin, so the
+                narrower cap (72ch ≈ 504px, was 78% ≈ 561px) only tightens a bubble that already
+                shrinks to its content. */}
             {session.turns.map((turn, i) => (
               <div key={i}>
-                <div className={`msg ${turn.role === 'agent' ? 'msg--agent' : 'msg--operator'}`}>
+                <div
+                  className={`msg prose ${turn.role === 'agent' ? 'msg--agent' : 'msg--operator'}`}
+                >
                   {turn.text}
                 </div>
                 {/* What the agent's tools DID this turn. The dossier is written by tool call, so this
-                    is the audit trail of how a recorded answer got there. */}
+                    is the audit trail of how a recorded answer got there.
+
+                    REFERENCED — a tool name and its subject, scanned to check that the right thing
+                    was written. It stays at `.step`'s --t-small. */}
                 {turn.toolCalls.length > 0 && (
                   <div style={{ borderLeft: '2px solid var(--border)', paddingLeft: 12, margin: '2px 0 8px' }}>
                     {turn.toolCalls.map((tc, j) => (
@@ -302,8 +318,11 @@ export function Interview() {
               lands, its own text sits in the transcript, calmly readable rather than shouted
               mid-arrival, and the sr-only beacon further down says, once, that it arrived.
             */}
-            {streaming !== null && <div className="msg msg--agent">{streaming}</div>}
+            {/* Same class list as a landed agent turn — it is the same turn, arriving. Anything
+                else would make the reply visibly resize the moment it finished. */}
+            {streaming !== null && <div className="msg prose msg--agent">{streaming}</div>}
 
+            {/* REFERENCED — a spinner's caption. */}
             {sending && streaming === null && (
               <div className="tiny muted" role="status" aria-live="polite">
                 <i className="ti ti-loader" data-running="" aria-hidden="true" /> Agent working…
@@ -360,6 +379,12 @@ export function Interview() {
               aria-label="Message the interview agent"
               rows={2}
               disabled={sending}
+              /* READ — the operator's half of the conversation, composed at the same size it will
+                 be read back at. Audited against the two fixed heights on `.composer textarea`:
+                 `min-height: 44px` (two rows at --t-read × --lh-prose is 44.8px, so the intrinsic
+                 height now just clears it rather than being propped up by it) and
+                 `max-height: 190px` (still 8 full lines before it scrolls). */
+              style={{ fontSize: 'var(--t-read)', lineHeight: 'var(--lh-prose)' }}
             />
             <div className="composer__row">
               <label className="composer__attach">
@@ -395,6 +420,7 @@ export function Interview() {
               PRESENTED as a checklist: the operator came here to avoid a form, and a visible list
               of fields is a form with extra steps. It opens only when they ask what is missing. */}
           <div className="chat__foot">
+            {/* REFERENCED — a counter. Read as two numbers, not as a sentence. */}
             <span className="tiny muted" role="status" aria-live="polite">
               {cov.covered} of {cov.total} covered
             </span>
@@ -421,20 +447,31 @@ export function Interview() {
             </button>
           </div>
 
+          {/* READ — it names what is standing between the operator and a project. The one line on
+              the screen they must actually parse to get unstuck was set at the floor. */}
           {blocker && (
-            <div className="tiny" style={{ color: 'var(--text-warning)', marginTop: 6 }}>
+            <div className="prose" style={{ color: 'var(--text-warning)', marginTop: 6 }}>
               <i className="ti ti-lock" aria-hidden="true" /> {blocker}
             </div>
           )}
 
+          {/* READ, both lines. These are interview QUESTIONS — the catalogue the agent is working
+              through — and the reason each one is asked. The hierarchy between them is carried by
+              weight and by ink, not by size: `.prose` refuses to be muted, and `--text-secondary`
+              is the step above muted, restated inline because `.prose` (primitives.css) loads
+              after `.secondary` (base.css) and would otherwise win. */}
           {openShown && cov.open.length > 0 && (
             <div className="chat__open">
               {cov.open.map((q) => (
                 <div className="step" key={q.id}>
                   <i className="ti ti-help-circle" aria-hidden="true" />
                   <div>
-                    <b>{q.prompt}</b>
-                    <div className="tiny muted">{q.why}</div>
+                    <div className="prose" style={{ fontWeight: 'var(--w-semibold)' }}>
+                      {q.prompt}
+                    </div>
+                    <div className="prose" style={{ color: 'var(--text-secondary)' }}>
+                      {q.why}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -445,11 +482,15 @@ export function Interview() {
               operator tells the agent why (Law 4); there is no field here to edit. */}
           {(session.summary.trim().length > 0 || session.proposedComponents.length > 0) && (
             <div className="chat__open">
+              {/* READ. `small` is dropped, not kept: it set --t-small and `.prose` (loaded after
+                  it) set --t-read, so the class was already doing nothing but claiming otherwise. */}
               {session.summary.trim().length > 0 && (
-                <p className="small prose" style={{ margin: '0 0 8px' }}>
+                <p className="prose" style={{ margin: '0 0 8px' }}>
                   {session.summary}
                 </p>
               )}
+              {/* REFERENCED — a component's id, material, application and markets are a spec line,
+                  identified field by field rather than parsed as a sentence. */}
               {session.proposedComponents.map((c) => (
                 <div className="step" key={c.id}>
                   <i className="ti ti-box" aria-hidden="true" />

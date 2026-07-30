@@ -64,9 +64,14 @@ export function LoadingEntryForm({
     }
   }
 
+  // `color` is explicit because every one of these inputs sits inside a `.tiny muted` label and
+  // these are bare `<input>`s — no `type` attribute, so base.css's `input[type='text']` rule never
+  // matches them and nothing was setting their ink. What the operator had typed was inheriting
+  // muted grey from the label naming it.
   const field = {
     width: '100%',
     font: 'inherit',
+    color: 'var(--text-primary)',
     fontSize: 'var(--t-small)',
     padding: '6px 8px',
     border: '0.5px solid var(--border-strong)',
@@ -75,13 +80,36 @@ export function LoadingEntryForm({
 
   return (
     <form onSubmit={submit} className="region" style={{ marginBottom: 'var(--s4)' }}>
-      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Enter the metal loading</div>
-      <p className="tiny muted" style={{ margin: '0 0 var(--s3)' }}>
+      {/* The form's heading. It was a raw `13`, which is not a token and was also lighter and
+          smaller than the paragraph it heads once that paragraph became prose. --t-lead, semibold,
+          and a hairline the group did not have — `.region`'s own border frames the form, it does
+          not separate the title from the fields. */}
+      <div
+        style={{
+          fontSize: 'var(--t-lead)',
+          fontWeight: 'var(--w-semibold)',
+          borderBottom: 'var(--hair) solid var(--border)',
+          paddingBottom: 'var(--s1)',
+          marginBottom: 'var(--s2)',
+        }}
+      >
+        Enter the metal loading
+      </div>
+      {/* READ — this is the explanation of a number the operator is being asked to source and
+          which will then be believed by every future project. It is the last thing that should
+          have been set in muted grey at the floor. */}
+      <p className="prose" style={{ margin: '0 0 var(--s3)' }}>
         The mass fraction of the marker element in the compound — Y<sub>2</sub>O<sub>3</sub> is 0.787.
         Dosing parked rather than guess it. This is stored against the CAS across every project, so it is
         asked once.
       </p>
 
+      {/* REFERENCED, every label in this grid — "CAS", "Element", "Form", "Metal loading (0–1]"
+          are identified at a glance, not parsed, so they stay at --t-small and stay muted. That is
+          also what keeps the grid honest: the columns are `minmax(140px, 1fr)`, and the longest
+          label needs ~112px at --t-small but ~131px at --t-read, which would leave 9px of slack in
+          a 140px track before any padding. The judgement and the layout agree here; where they had
+          not, the layout would have had to change, not the judgement. */}
       <div
         style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--s2)' }}
       >
@@ -134,12 +162,16 @@ export function LoadingEntryForm({
         </label>
       </div>
 
+      {/* READ — a correction, and one whose whole job is to be understood rather than noticed. */}
       {loading.trim() !== '' && !loadingOk && (
-        <div className="tiny" style={{ color: 'var(--text-danger)', marginTop: 4 }}>
+        <div className="prose" style={{ color: 'var(--text-danger)', marginTop: 4 }}>
           A metal loading is a mass fraction in (0, 1] — 0.787, not 78.7.
         </div>
       )}
 
+      {/* The LABEL is referenced; what gets typed under it is not. The basis is the operator's own
+          sentence justifying a number that every future project will then believe — the same kind
+          of writing as a revision reason, and it is set to match at --t-read. */}
       <label className="tiny muted" style={{ display: 'block', marginTop: 'var(--s2)' }}>
         Basis — required
         <textarea
@@ -148,7 +180,12 @@ export function LoadingEntryForm({
           placeholder="The source that makes this number checkable — e.g. 'Sigma-Aldrich CoA, lot #…' or 'stoichiometric Y2O3'."
           rows={2}
           aria-label="Basis"
-          style={{ ...field, resize: 'vertical' }}
+          style={{
+            ...field,
+            fontSize: 'var(--t-read)',
+            lineHeight: 'var(--lh-prose)',
+            resize: 'vertical',
+          }}
         />
       </label>
 
@@ -157,11 +194,14 @@ export function LoadingEntryForm({
           <i className={`ti ${busy ? 'ti-loader' : 'ti-player-play'}`} aria-hidden="true" /> Record it and
           re-run dosing
         </button>
-        <span className="tiny muted">The agent starts over with this value.</span>
+        {/* READ — it states the consequence of the press beside it: this is not an edit, the
+            stage re-runs. A helper sentence is helper text; it is still a sentence. */}
+        <span className="prose">The agent starts over with this value.</span>
       </div>
 
+      {/* READ — why the write did not land. */}
       {error && (
-        <div className="tiny" style={{ color: 'var(--text-danger)', marginTop: 'var(--s2)' }}>
+        <div className="prose" style={{ color: 'var(--text-danger)', marginTop: 'var(--s2)' }}>
           <i className="ti ti-alert-triangle" aria-hidden="true" /> {error}
         </div>
       )}
