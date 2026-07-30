@@ -493,6 +493,119 @@ describe('Regulatory — the verdict table', () => {
   });
 });
 
+/**
+ * The reading layer.
+ *
+ * Measured on the deployed app, 124 of the 138 text elements on this screen rendered at exactly
+ * 12px. Raising the floor to 12 and flattening the scale happened in one move, and this screen
+ * carries the app's most consequential prose — the gate's own copy, a blocker explanation, the
+ * auto-approve alarm. `.prose` is the reading class; `.tiny` now means REFERENCED and nothing else.
+ */
+const expectRead = (el: HTMLElement) => {
+  const classes = el.className.split(/\s+/);
+  expect(classes).toContain('prose');
+  // `.prose` loads after `.muted` in the cascade and would win on colour regardless, so a
+  // `prose muted` node is not quiet prose — it is a lie about which of the two was meant.
+  expect(classes).not.toContain('muted');
+  expect(classes).not.toContain('tiny');
+  expect(classes).not.toContain('small');
+};
+
+const expectReferenced = (el: HTMLElement) =>
+  expect(el.className.split(/\s+/)).not.toContain('prose');
+
+describe('Regulatory — the gate copy is read, the table cells are referenced', () => {
+  /** Why a hard gate will not arm is the single most important sentence on a locked screen. */
+  it('sets each arming requirement and its blocker explanation as prose', async () => {
+    renderScreen();
+    await settled();
+    expectRead(screen.getByText(/every flagged verdict opened and reviewed/i));
+    expectRead(screen.getByText(/1 still unopened/i));
+  });
+
+  /** What the press DOES — the last thing read before signing, and it sat at the floor. */
+  it('sets the consequence beside the Sign button as prose, still amber', async () => {
+    vi.mocked(api.getRegulatoryGate).mockResolvedValue(gate({ armable: true, blockers: [] }));
+    renderScreen();
+    await settled();
+    const consequence = screen.getByText(/releases the recommended substances/i);
+    expectRead(consequence);
+    // Amber is stated inline: this is a plain flex row, not a banner, so there is no semantic
+    // colour above it for `.prose` to inherit.
+    expect(consequence.getAttribute('style')).toContain('var(--text-warning)');
+  });
+
+  /**
+   * The counterweight. If everything became prose the scale would be flat at 14 instead of 12 —
+   * a CAS, a review state and a determination token are looked up, not read, and a thirty-row
+   * table set in reading type is not a table.
+   */
+  it('leaves the verdict rows as dense reference cells', async () => {
+    renderScreen();
+    await settled();
+    const v = section(/^verdicts$/i);
+    expectReferenced(v.getByText(CAS));
+    expectReferenced(v.getByText(/not reviewed/i));
+    expectReferenced(v.getByText(/unsigned/i));
+  });
+
+  /** A grouping heading must outweigh its rows; `.mx` cells are 12px, `.sec__title` is --t-lead. */
+  it('heads the verdicts with a real section title above the row type', async () => {
+    renderScreen();
+    await settled();
+    expect(screen.getByRole('heading', { name: /^verdicts$/i })).toHaveClass('sec__title');
+  });
+});
+
+/**
+ * `.hatch-danger` paints a BACKGROUND and sets no `color`, so `.hatch-danger .prose { color:
+ * inherit }` resolves to the page's primary ink rather than red. The inline colour on the alarm's
+ * body is therefore load-bearing, and a later pass that strips it as "redundant with the semantic
+ * container" would repaint the loudest thing in the product as ordinary body copy.
+ */
+describe('Regulatory — the auto-approve alarm keeps its tone', () => {
+  beforeEach(() => {
+    vi.mocked(api.getRegulatoryGate).mockResolvedValue(
+      gate({
+        status: 'approved',
+        armable: true,
+        blockers: [],
+        approvedAt: '2026-07-20T11:02:00Z',
+        approvedBy: 'auto-approve',
+      }),
+    );
+  });
+
+  it('states danger colour on every line of the alarm’s body', async () => {
+    renderScreen();
+    await settled();
+    const panel = document.querySelector('[data-signer="auto-approve"]') as HTMLElement;
+    const body = [...panel.querySelectorAll<HTMLElement>('p.prose')];
+    expect(body.length).toBeGreaterThan(0);
+    for (const p of body) expect(p.getAttribute('style')).toContain('var(--text-danger)');
+  });
+
+  /** The headline stays the largest type on the screen, and the body stays off the floor. */
+  it('keeps the headline above its own body copy', async () => {
+    renderScreen();
+    await settled();
+    const panel = document.querySelector('[data-signer="auto-approve"]') as HTMLElement;
+    const headline = screen.getByText(/signed by the machine/i);
+    expect(headline.getAttribute('style')).toContain('--t-title');
+    for (const p of panel.querySelectorAll<HTMLElement>('p.prose')) {
+      expect(p.getAttribute('style') ?? '').not.toContain('--t-title');
+    }
+  });
+
+  /** The alarm and the remedy for it are two things, and margin alone did not say so. */
+  it('rules a hairline between the standing signature and the block that would replace it', async () => {
+    renderScreen();
+    await settled();
+    const block = signButton().closest('div[style]')?.parentElement as HTMLElement;
+    expect(block.getAttribute('style')).toContain('border-top');
+  });
+});
+
 describe('Regulatory — a payload that does not arrive whole', () => {
   /**
    * `client.ts` casts every response with `as` and validates nothing, so shape drift between a

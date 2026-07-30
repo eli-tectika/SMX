@@ -513,6 +513,12 @@ function SignedPanel({ signer, when }: { signer: Signer; when: string | null }) 
           <i className="ti ti-robot" aria-hidden="true" /> Signed by the machine. No human reviewed
           anything.
         </p>
+        {/*
+          The red on these two is NOT redundant with `.hatch-danger .prose { color: inherit }`.
+          `.hatch-danger` paints a background and sets no colour, so `inherit` resolves to the
+          page's primary ink — dropping these would quietly repaint the loudest alarm in the
+          product as ordinary body copy. (`.banner.danger` DOES set colour; a hatch does not.)
+        */}
         <p className="prose" style={{ margin: 'var(--s3) 0 0', color: 'var(--text-danger)' }}>
           Automatic approval adopted the agent&rsquo;s proposed determinations as final and marked
           every verdict below as reviewed{when ? `, on ${when}` : ''}. No Regulatory Expert ruled on
@@ -578,7 +584,19 @@ function SignBlock({
   onOpenFirst?: () => void;
 }) {
   return (
-    <div style={{ marginTop: approved ? 'var(--s4)' : 0 }}>
+    /*
+      On an approved gate this block sits directly under the panel reporting the signature it would
+      REPLACE, and margin alone did not say they were two different things — the alarm and its
+      remedy ran together as one surface. A hairline draws the boundary. On a locked gate there is
+      no panel above, so there is nothing to divide and no rule is drawn.
+    */
+    <div
+      style={{
+        marginTop: approved ? 'var(--s4)' : 0,
+        paddingTop: approved ? 'var(--s4)' : 0,
+        borderTop: approved ? 'var(--hair) solid var(--border)' : undefined,
+      }}
+    >
       <p className="prose" style={{ margin: '0 0 var(--s3)' }}>
         {approved
           ? 'Signing records the Regulatory Expert’s determination under your name, and replaces the standing signature.'
@@ -622,7 +640,12 @@ function SignBlock({
           <i className={`ti ${busy ? 'ti-loader' : 'ti-signature'}`} aria-hidden="true" />{' '}
           {busy ? 'Signing…' : 'Sign the R.E. determination'}
         </button>
-        <span className="small" style={{ color: 'var(--text-warning)' }}>
+        {/*
+          READ. What pressing the button DOES — the consequence the operator is signing for, and
+          the last thing they read before signing. Amber stays stated inline: this sits in a plain
+          flex row, not a banner, so there is no semantic colour for `.prose` to inherit.
+        */}
+        <span className="prose" style={{ color: 'var(--text-warning)' }}>
           {armable
             ? 'This releases the recommended substances to dosing, cost and procurement.'
             : 'Locked until the checks above pass.'}
@@ -666,12 +689,22 @@ function Check({
         aria-label={met ? 'met' : 'not met'}
         style={{ color: met ? 'var(--text-muted)' : 'var(--text-warning)', marginTop: 2 }}
       />
+      {/*
+        READ, both lines. These are the hard gate's preconditions and the explanation of why one is
+        not met — the exact copy an operator has to parse before signing — and they lived at the
+        12px floor, the same size as a unit label.
+      */}
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span className="small" style={{ color: met ? 'var(--text-muted)' : 'var(--text-primary)' }}>
+        {/*
+          The met/unmet colour is a designed behaviour, not decoration: a met requirement recedes,
+          an unmet one does not. `.prose` sets primary ink, so the muted case is restated inline —
+          this is the one place prose is deliberately dimmed, and only ever when the check PASSES.
+        */}
+        <span className="prose" style={{ color: met ? 'var(--text-muted)' : 'var(--text-primary)' }}>
           {label}
         </span>
         {detail && (
-          <span className="small" style={{ display: 'block', color: 'var(--text-warning)' }}>
+          <span className="prose" style={{ display: 'block', color: 'var(--text-warning)' }}>
             {detail}
           </span>
         )}

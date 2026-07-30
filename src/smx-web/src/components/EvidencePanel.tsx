@@ -38,7 +38,11 @@ function CellReview({
   return (
     <div
       style={{
-        borderTop: '0.5px solid var(--border)',
+        // A hairline is --hair (1px). 0.5px is a sub-device-pixel rule: on a 1x display the
+        // browser rounds it to nothing, so the determination block ran straight on from the last
+        // dimension with no boundary at all — which is exactly the separation this section needs,
+        // because what follows is a signature and what precedes it is evidence.
+        borderTop: 'var(--hair) solid var(--border)',
         marginTop: 'var(--s4)',
         paddingTop: 'var(--s3)',
       }}
@@ -58,7 +62,7 @@ function CellReview({
       <div
         style={{
           background: 'var(--bg-pro)',
-          border: '0.5px solid var(--border-pro)',
+          border: 'var(--hair) solid var(--border-pro)',
           borderRadius: 'var(--r1)',
           padding: 'var(--s2)',
           marginBottom: 'var(--s2)',
@@ -85,18 +89,23 @@ function CellReview({
         </div>
         {proposal ? (
           <>
-            <p className="small secondary" style={{ margin: '6px 0 0' }}>
+            {/*
+              READ. The agent's reason for the determination it proposes — the operator has to
+              parse it to decide whether to confirm or overrule, so it is prose in primary ink,
+              not a secondary annotation on a chip.
+            */}
+            <p className="prose" style={{ margin: 'var(--s2) 0 0' }}>
               {proposal.reason}
             </p>
-            <div className="tiny muted" style={{ marginTop: 4 }}>
+            <p className="prose" style={{ margin: 'var(--s2) 0 0' }}>
               A proposal, not a determination. Nothing downstream reads it — only your determination
               below can let this substance be dosed.
-            </div>
+            </p>
           </>
         ) : (
-          <div className="tiny muted" style={{ marginTop: 4 }}>
+          <p className="prose" style={{ margin: 'var(--s2) 0 0' }}>
             The agent proposed nothing for this cell. Author the determination yourself.
-          </div>
+          </p>
         )}
       </div>
 
@@ -104,7 +113,9 @@ function CellReview({
       <div
         style={{
           background: signed ? 'var(--bg-teal)' : 'transparent',
-          border: signed ? '0.5px solid var(--border-teal)' : '1px dashed var(--border-strong)',
+          border: signed
+            ? 'var(--hair) solid var(--border-teal)'
+            : 'var(--hair) dashed var(--border-strong)',
           borderRadius: 'var(--r1)',
           padding: 'var(--s2)',
         }}
@@ -137,29 +148,39 @@ function CellReview({
         </div>
         {signed ? (
           <>
-            <p className="small secondary" style={{ margin: '6px 0 0' }}>
+            {/* READ. The operator's own reason — the sentence the record will be defended with. */}
+            <p className="prose" style={{ margin: 'var(--s2) 0 0' }}>
               {signed.reason}
             </p>
             {stance === 'overridden' && (
-              <div className="tiny" style={{ color: 'var(--text-warning)', marginTop: 4 }}>
+              /*
+                Amber is stated inline and NOT left to inheritance. This box is a plain div, not a
+                `.banner`/`.hatch-*`, so there is no semantic colour above it for `.prose` to
+                inherit — dropping this would silently repaint an override notice as ordinary ink.
+              */
+              <p className="prose" style={{ color: 'var(--text-warning)', margin: 'var(--s2) 0 0' }}>
                 <i className="ti ti-arrows-exchange" aria-hidden="true" /> You overruled the agent, which
                 proposed <b>{proposal?.determination}</b>. Both stay on the record.
-              </div>
+              </p>
             )}
           </>
         ) : (
-          <div className="tiny muted" style={{ marginTop: 4 }}>
+          <p className="prose" style={{ margin: 'var(--s2) 0 0' }}>
             Not signed. No determination is recorded for this cell, so it is in no compliant set —
             whatever the agent proposed above.
-          </div>
+          </p>
         )}
 
         {/* The write controls — confirm the proposal, or override with your own reason. */}
         <DeterminationForm projectId={projectId} cell={cell} onWrote={onWrote} />
       </div>
 
-      {/* Server truth about the evidence, distinct from the browser-local ledger on the matrix. */}
-      <div className="tiny muted" style={{ marginTop: 'var(--s2)' }}>
+      {/*
+        Server truth about the evidence, distinct from the browser-local ledger on the matrix.
+        READ: it is the sentence that tells the operator WHICH of two disagreeing records the gate
+        actually consults, and it spent its life as the smallest, faintest text in the panel.
+      */}
+      <p className="prose" style={{ margin: 'var(--s3) 0 0' }}>
         <i
           className={`ti ${cell.evidenceReviewed ? 'ti-eye-check' : 'ti-eye-exclamation'}`}
           aria-hidden="true"
@@ -167,7 +188,7 @@ function CellReview({
         Server record: evidence{' '}
         <b>{cell.evidenceReviewed ? 'reviewed' : 'not yet reviewed'}</b>. This is the one the gate reads;
         the review ledger beside the matrix is local to this browser.
-      </div>
+      </p>
     </div>
   );
 }
@@ -205,7 +226,12 @@ export function EvidencePanel({
   return (
     <div className="card" style={{ padding: 'var(--s4)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <span style={{ fontSize: 'var(--t-body)', fontWeight: 500 }}>
+        {/*
+          The panel's own heading, and it has to OUTWEIGH the dimension rows it groups. At
+          --t-body it sat one step above the 12px chrome and level with the dimension labels, so
+          the list read as a flat run of equals with no top to it.
+        */}
+        <span style={{ fontSize: 'var(--t-lead)', fontWeight: 500 }}>
           {substance ? `${substance.element} · ${substance.form}` : cell.cas}
         </span>
         <span className={`chip ${verdictClass(cell.overall)}`} style={{ marginLeft: 'auto' }}>
@@ -221,15 +247,20 @@ export function EvidencePanel({
         {cell.componentId}
       </div>
 
-      <p className="tiny muted" style={{ margin: '0 0 12px' }}>
+      {/* READ. The rule for reading everything below it — and it was the smallest text above it. */}
+      <p className="prose" style={{ margin: '0 0 var(--s3)' }}>
         The overall verdict is the worst of the dimensions below — a cell can never read greener than
         its weakest dimension.
       </p>
 
+      {/*
+        `.prose` inside a `.banner` inherits the banner's colour by design, so red and amber still
+        win here and no inline colour is needed — unlike the plain divs further down.
+      */}
       {isInconsistent(cell) && (
         <div className="banner danger">
           <i className="ti ti-alert-triangle" aria-hidden="true" />
-          <div>
+          <div className="prose">
             <b>Inconsistent record.</b> The server reported <b>{cell.overall}</b>, but folding these
             dimensions gives <b>{folded}</b>. Do not act on this cell — report it.
           </div>
@@ -239,7 +270,7 @@ export function EvidencePanel({
       {missing.length > 0 && (
         <div className="banner warn">
           <i className="ti ti-alert-triangle" aria-hidden="true" />
-          <div>
+          <div className="prose">
             No verdict recorded for <b>{missing.join(', ')}</b>. An unassessed dimension is not a pass.
           </div>
         </div>
@@ -258,22 +289,31 @@ export function EvidencePanel({
               marginTop: uncited ? 'var(--s2)' : undefined,
             }}
           >
+            {/*
+              REFERENCED, all three: the status chip, the dimension name and the confidence figure
+              are identified at a glance to locate a row, not parsed as sentences. They stay on the
+              chrome steps of the scale so that the one thing here that IS read — the rationale —
+              is the largest text in the block.
+            */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <span className={`chip ${verdictClass(d.status)}`}>{d.status}</span>
-              <span style={{ fontSize: 'var(--t-small)', fontWeight: 500 }}>{d.dimension}</span>
+              <span style={{ fontSize: 'var(--t-body)', fontWeight: 500 }}>{d.dimension}</span>
             </div>
 
             <div style={{ maxWidth: 240, marginBottom: 6 }}>
               <Meter value={d.confidence} label="confidence" />
             </div>
             {d.confidence < LOW_CONFIDENCE && (
-              <div className="tiny" style={{ color: 'var(--text-warning)', marginBottom: 6 }}>
+              /* Amber inline: the block around this is a plain div (or a hatch, which sets only a
+                 background), so there is no semantic colour for `.prose` to inherit. */
+              <p className="prose" style={{ color: 'var(--text-warning)', margin: '0 0 6px' }}>
                 <i className="ti ti-eye-exclamation" aria-hidden="true" /> Low confidence — this must
                 be opened before the gate can arm.
-              </div>
+              </p>
             )}
 
-            <p className="small secondary" style={{ margin: '0 0 6px' }}>
+            {/* READ. The reason this dimension reads the way it does — the whole point of opening. */}
+            <p className="prose" style={{ margin: '0 0 6px' }}>
               {d.rationale}
             </p>
 
@@ -283,10 +323,18 @@ export function EvidencePanel({
               of grey text.
             */}
             {uncited ? (
-              <div className="small" style={{ color: 'var(--text-danger)', fontWeight: 500 }}>
+              /*
+                Red is stated inline and must stay. `.hatch-danger` paints a BACKGROUND and sets no
+                colour, so `.hatch-danger .prose { color: inherit }` inherits page-primary here —
+                deleting this as "redundant" would turn the app's worst finding into ordinary ink.
+              */
+              <p
+                className="prose"
+                style={{ color: 'var(--text-danger)', fontWeight: 500, margin: 0 }}
+              >
                 <i className="ti ti-link-off" aria-hidden="true" /> No citation — this verdict traces
                 to no source and cannot be relied on.
-              </div>
+              </p>
             ) : (
               /*
                 These chips are inert on purpose, and this is the real citations panel — not a
