@@ -149,7 +149,11 @@ describe('ProposedPool', () => {
     ).toBeGreaterThanOrEqual(rank(WEIGHT_RANK, title.style.fontWeight, 'the suggestion title'));
 
     const head = container.querySelector('[data-component-heading]');
-    expect(head?.getAttribute('style')).toMatch(/border-bottom:[^;]*var\(--border-strong\)/);
+    // Longhands, read off the CSSOM. The shorthand form was asserted against the raw style
+    // ATTRIBUTE, which is the one place a var() shorthand survives — jsdom drops it from the
+    // CSSOM, so the rule was only ever checkable as a string. These round-trip properly.
+    expect((head! as HTMLElement).style.borderBottomStyle).toBe('solid');
+    expect((head! as HTMLElement).style.borderBottomColor).toBe('var(--border-strong)');
 
     const rows = container.querySelectorAll('[data-suggestion]');
     expect(rows).toHaveLength(2);

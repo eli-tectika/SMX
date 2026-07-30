@@ -280,7 +280,11 @@ describe('Discovery', () => {
     const headings = container.querySelectorAll('[data-component-heading]');
     expect(headings).toHaveLength(2); // bottle, lid
     for (const h of headings) {
-      expect(h.getAttribute('style')).toMatch(/border-bottom:[^;]*var\(--border-strong\)/);
+      // Longhands, read off the CSSOM. The shorthand form was asserted against the raw style
+    // ATTRIBUTE, which is the one place a var() shorthand survives — jsdom drops it from the
+    // CSSOM, so the rule was only ever checkable as a string. These round-trip properly.
+    expect((h as HTMLElement).style.borderBottomStyle).toBe('solid');
+    expect((h as HTMLElement).style.borderBottomColor).toBe('var(--border-strong)');
     }
   });
 

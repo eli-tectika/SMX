@@ -10,6 +10,7 @@ import { Gate, type Requirement } from '../../components/ui/Gate';
 import { EmptyState, SectionHeader } from '../../components/ui/Primitives';
 import { byComponent, fmtLoading, fmtMass, fmtPpm, readDosing } from '../../domain/dosing';
 import type { ScreenProps } from '../ProjectLayout';
+import { ComponentHeading } from './ProposedPool';
 
 /**
  * Dosing & codes — how much of each marker goes in, in what ratio, per component, and what to order.
@@ -183,7 +184,7 @@ function DosingRecord({
         ) : (
           byComponent(windows).map(([componentId, componentWindows]) => (
             <div key={componentId} style={{ marginBottom: 'var(--s6)' }}>
-              <ComponentHeading componentId={componentId} count={componentWindows.length} />
+              <ComponentHeading component={componentId} count={componentWindows.length} />
               {/* The chart is the answer; the table under it is the supporting detail. */}
               <PpmChart windows={componentWindows} />
               <BoundsTable windows={componentWindows} />
@@ -208,7 +209,7 @@ function DosingRecord({
         ) : (
           byComponent(codes).map(([componentId, componentCodes]) => (
             <div key={componentId} style={{ marginBottom: 'var(--s6)' }}>
-              <ComponentHeading componentId={componentId} count={componentCodes.length} />
+              <ComponentHeading component={componentId} count={componentCodes.length} />
               <div style={{ display: 'grid', gap: 'var(--s3)' }}>
                 {componentCodes.map((c) => (
                   <CodeCard key={c.ratioSignature} code={c} />
@@ -254,64 +255,6 @@ function DosingRecord({
         )}
       </section>
     </>
-  );
-}
-
-/**
- * A component's heading, and the rule that closes it off from what came before.
- *
- * Per-component tracks are architectural, not cosmetic: there is no product-wide marker, so there
- * is no product-wide dose either. On the deployed screen that boundary was carried by whitespace
- * alone — one component's chart and table ran into the next one's with nothing between them — and
- * the heading sat at `SectionHeader`'s weight 500 while the element symbols beneath it are
- * semibold. A heading lighter than its own children is a caption on the first item, not a
- * container around all of them, and two components then read as one long list. On a screen whose
- * numbers are dosed per component, that is the reading that puts a dose on the wrong part.
- *
- * It stays at `--t-lead` rather than `--t-title`: the section it sits inside is a `--t-lead` h3,
- * and a subordinate heading larger than its own parent inverts the hierarchy it exists to
- * clarify. The comparison that matters is against what it heads — 12px element rows — and it wins
- * that one on size, weight, face and colour at once.
- *
- * DUPLICATION, knowingly: `ProposedPool.tsx` exports a `ComponentHeading` of the same shape for
- * Discovery and the pool, arrived at independently in the same pass. The two are kept
- * pixel-identical here rather than shared, because that file is owned by another change in
- * flight; consolidating on the exported one is a follow-up, not a merge conflict waiting to
- * happen. If you touch either, touch both.
- */
-function ComponentHeading({ componentId, count }: { componentId: string; count: number }) {
-  return (
-    <div
-      data-component-heading=""
-      style={{
-        display: 'flex',
-        alignItems: 'baseline',
-        gap: 'var(--s2)',
-        flexWrap: 'wrap',
-        /* Longhands, not the `border-bottom` shorthand. jsdom's CSSOM drops a shorthand whose
-           value contains `var()` outright — the declaration simply vanishes — so the rule would
-           be unassertable in a test while looking correct in the source. The longhands round-trip
-           intact and render identically. */
-        borderBottomWidth: 'var(--hair)',
-        borderBottomStyle: 'solid',
-        borderBottomColor: 'var(--border-strong)',
-        paddingBottom: 'var(--s2)',
-        marginBottom: 'var(--s2)',
-      }}
-    >
-      <h4
-        style={{
-          margin: 0,
-          fontFamily: 'var(--font-serif)',
-          fontSize: 'var(--t-lead)',
-          fontWeight: 'var(--w-semibold)',
-          color: 'var(--brand-navy)',
-        }}
-      >
-        {componentId}
-      </h4>
-      <span className="sec__count">{count}</span>
-    </div>
   );
 }
 

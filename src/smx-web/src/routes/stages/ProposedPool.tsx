@@ -39,7 +39,13 @@ export function ComponentHeading({
         alignItems: 'baseline',
         gap: 'var(--s2)',
         flexWrap: 'wrap',
-        borderBottom: 'var(--hair) solid var(--border-strong)',
+        /* Longhands, not the `border-bottom` shorthand. jsdom's CSSOM drops a shorthand whose
+           value contains `var()` outright — the declaration simply vanishes — so the rule is
+           unassertable in a test while looking correct in the source. The longhands round-trip
+           intact and render identically. */
+        borderBottomWidth: 'var(--hair)',
+        borderBottomStyle: 'solid',
+        borderBottomColor: 'var(--border-strong)',
         paddingBottom: 'var(--s2)',
         marginBottom: 'var(--s2)',
       }}
