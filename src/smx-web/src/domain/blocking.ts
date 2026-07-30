@@ -284,3 +284,17 @@ export const BUCKET_LABEL: Record<Bucket, string> = {
   running: 'Running',
   settled: 'Settled',
 };
+
+/**
+ * What each pile MEANS, for the heading that names it.
+ *
+ * The label alone is a noun; on a dashboard of twenty-two visually identical cards the operator's
+ * question is not "what is this pile called" but "do I have to do something about it". These
+ * sentences answer that, once per pile, instead of the cards trying to answer it twenty-two times.
+ */
+export const BUCKET_HINT: Record<Bucket, string> = {
+  'needs-you': 'stopped, and it will not move until you act',
+  'not-started': 'the dossier is complete; no agent has been dispatched',
+  running: 'in flight — nothing to do but wait',
+  settled: 'finished. Nothing here is asking for anything',
+};

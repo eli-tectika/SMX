@@ -4,7 +4,7 @@ import type { ProjectListItem } from '../api/types';
 import { MiniSpine } from '../components/ui/MiniSpine';
 import { Card, EmptyState, SectionHeader, Skeleton, StatCard } from '../components/ui/Primitives';
 import { VerdictRibbon } from '../components/ui/VerdictRibbon';
-import { BUCKET_LABEL, bucket, bucketTone, whatsBlocking, type Bucket } from '../domain/blocking';
+import { BUCKET_HINT, BUCKET_LABEL, bucket, bucketTone, whatsBlocking, type Bucket } from '../domain/blocking';
 import { useProjectsOverview, type ProjectCard } from '../hooks/useProjectsOverview';
 
 /**
@@ -95,7 +95,17 @@ export function Projects() {
       {(['needs-you', 'not-started', 'running', 'settled'] as const).map((b) =>
         groups[b].length > 0 ? (
           <section key={b}>
-            <SectionHeader eyebrow={BUCKET_LABEL[b]} count={groups[b].length} />
+            {/* A real heading with a count, not an eyebrow. With 22 cards on the page the pile
+                boundary was a 12px muted line between two identical card stacks — smaller and
+                quieter than anything it contained, so the grouping that answers "which of these
+                is my problem" did not read at all. A heading may never be lighter than its
+                children. The count is the fact the operator actually wants: how many. */}
+            <SectionHeader
+              title={BUCKET_LABEL[b]}
+              count={groups[b].length}
+              hint={BUCKET_HINT[b]}
+              headingLevel={2}
+            />
             <div className="card-list">
               {groups[b].map((c) => (
                 <ProjectRow key={c.project.projectId} card={c} />
@@ -128,8 +138,13 @@ function ProjectRow({ card }: { card: ProjectCard }) {
       >
         <CardHead project={project} />
 
+        {/* Labels only where the journey is in motion. On a settled project the spine is eight
+            green ticks with eight words under them, and on an unstarted one eight empty circles
+            with the same eight words — the same 22 rows of text on every card, saying nothing
+            that the pile heading has not already said. The spine itself stays: its SHAPE is the
+            at-a-glance answer, and it is the labels that were the noise. */}
         <div style={{ margin: '14px 0 10px' }}>
-          <MiniSpine stages={project.stages} showLabels />
+          <MiniSpine stages={project.stages} showLabels={b === 'running' || b === 'needs-you'} />
         </div>
 
         {/* What is happening right now, in words. The spine says which stage; this says what it is
@@ -144,12 +159,17 @@ function ProjectRow({ card }: { card: ProjectCard }) {
         )}
 
         {blocking && (
+          /* The single most useful sentence on the card, and it was 12px under a spine. It is the
+             reason this project is in this pile; it gets the reading size. The tone still comes
+             from the record, so a danger reason is still red — size and colour are saying
+             different things and both are true. */
           <div
-            className="small"
             style={{
               display: 'flex',
               alignItems: 'flex-start',
               gap: 6,
+              fontSize: 'var(--t-read)',
+              lineHeight: 'var(--lh-body)',
               color: `var(--text-${blocking.tone === 'muted' ? 'muted' : blocking.tone})`,
               marginTop: 12,
             }}
@@ -163,7 +183,7 @@ function ProjectRow({ card }: { card: ProjectCard }) {
             <div>
               {blocking.text}
               {blocking.detail && (
-                <div className="data" style={{ fontSize: 11, marginTop: 3, opacity: 0.9 }}>
+                <div className="data tiny" style={{ marginTop: 3, opacity: 0.9 }}>
                   {blocking.detail}
                 </div>
               )}
