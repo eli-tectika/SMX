@@ -495,14 +495,25 @@
   vertical-align: -2px;
 }
 
+/* An empty state REPLACES the contents of a section, so it sits beneath that section's heading —
+   and it was set at --t-lead, the very same size. The inside of a region may not equal the heading
+   that names it, or the grouping stops reading as grouping.
+
+   One step down, and weight does the separating from the body beneath it rather than another size
+   step: there is nowhere left to go below --t-read without landing back on the floor, and the floor
+   is what this whole change exists to get prose off. */
 .empty__title {
-  font-size: var(--t-lead);
+  font-size: var(--t-read);
+  font-weight: var(--w-semibold);
   color: var(--text-primary);
   margin: 0 0 var(--s2);
 }
 
+/* The body of an empty state is the SENTENCE that says why the region is empty — which is the
+   single most useful thing on a screen that has nothing else on it. It sat at the floor. */
 .empty__body {
-  font-size: var(--t-small);
+  font-size: var(--t-read);
+  line-height: var(--lh-prose);
   color: var(--text-secondary);
   max-width: 46ch;
   margin: 0 auto var(--s4);
@@ -911,15 +922,20 @@
 .chunk { border: 0.5px solid var(--border); border-radius: var(--r1); padding: var(--s2) var(--s3); margin-bottom: var(--s2); }
 .chunk-cited { border-color: var(--border-accent); border-width: 1px; background: var(--bg-accent); }
 .chunk-head { display: flex; justify-content: space-between; font-size: var(--t-small); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px; }
-.chunk p { margin: 0; font-size: var(--t-small); line-height: 1.55; }
-.chunk-anchor-note { font-size: var(--t-small); color: var(--text-accent); border-left: 3px solid var(--border-accent); padding: var(--s2) var(--s3); margin: 0 0 var(--s3); }
+/* THE most-read text in the application: the actual passage of a regulation or a safety sheet, in
+   the reader built for reading it. It was set at the 12px floor — the same size as a chip. It also
+   gains a measure, because the pane runs the full frame and an unmeasured regulation is a
+   200-character line. */
+.chunk p { margin: 0; font-size: var(--t-read); line-height: var(--lh-prose); max-width: 72ch; }
+.chunk-anchor-note { font-size: var(--t-read); line-height: var(--lh-prose); color: var(--text-accent); border-left: 3px solid var(--border-accent); padding: var(--s2) var(--s3); margin: 0 0 var(--s3); }
 .chunk-anchor-miss { color: var(--text-warning); border-left-color: var(--border-warning); }
 
 .file-viewer { display: flex; flex-direction: column; gap: var(--s3); }
 .fv-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s3); }
 .fv-head h2 { margin: 0 0 2px; }
 .fv-head a[aria-disabled='true'] { color: var(--text-muted); pointer-events: none; }
-.fv-banner { margin: 0; padding: var(--s2) var(--s3); border-left: 3px solid var(--border-accent); background: var(--bg-accent); font-size: var(--t-small); }
+/* Read, like every other banner in the app — see the note on `.banner` in base.css. */
+.fv-banner { margin: 0; padding: var(--s2) var(--s3); border-left: 3px solid var(--border-accent); background: var(--bg-accent); font-size: var(--t-read); line-height: var(--lh-prose); }
 .fv-banner-warn { border-left-color: var(--border-warning); background: var(--bg-warning); color: var(--text-warning); }
 .fv-tabs { display: flex; gap: 2px; border-bottom: 0.5px solid var(--border); }
 .fv-tab { background: none; border: 0; border-bottom: 2px solid transparent; padding: var(--s2) var(--s3); font: inherit; font-size: var(--t-small); color: var(--text-secondary); cursor: pointer; }
