@@ -5,7 +5,7 @@ import { Loading } from '../../components/Loading';
 import { RevisionTrail } from '../../components/RevisionControls';
 import { ProposedPool } from './ProposedPool';
 import { Data } from '../../components/ui/Data';
-import { CitationChip, EmptyState, SectionHeader } from '../../components/ui/Primitives';
+import { CitationList, EmptyState, SectionHeader } from '../../components/ui/Primitives';
 import { byComponent } from '../../domain/dosing';
 import type { ScreenProps } from '../ProjectLayout';
 
@@ -313,16 +313,12 @@ function CandidateCard({ candidate: c }: { candidate: CandidateSubstance }) {
         {c.rationale || <span className="muted">No rationale recorded.</span>}
       </p>
 
+      {/* CitationList, not a map of chips: this screen showed four `web · turn0searchN` chips per
+          candidate, and a search-turn index is not a source anybody can check. It caps each source
+          at two and folds the rest into a count whose tooltip still lists every one. The running
+          total stays — it is the honest headline for a set that is now partly folded. */}
       <div>
-        {c.citations.map((cite) => (
-          <CitationChip
-            key={`${cite.source}|${cite.reference}`}
-            source={cite.source}
-            reference={cite.reference}
-            retrievedAt={cite.retrievedAt}
-            snippet={cite.snippet}
-          />
-        ))}
+        <CitationList citations={c.citations} />
         <span className="tiny muted" style={{ marginLeft: 4 }}>
           {c.citations.length} source{c.citations.length === 1 ? '' : 's'}
         </span>

@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import type { Citation } from '../../api/types';
 import { Data } from './Data';
 
 /** Card. A hairline border and a surface change on hover. Paper, not a game tile — it does
@@ -161,6 +162,56 @@ export function BarRow({
   );
 }
 
+/** The longest reference we will print. Past this the chip stops being read and starts being a wall. */
+const REF_MAX = 46;
+
+/**
+ * A reference, shortened to what a person can actually use.
+ *
+ * Measured on the deployed app, the longest chip printed 110 characters at 870px — WIDER than the
+ * rationale it was supporting, and in the identical colour, because the client brand direction
+ * pulled `--text-muted` to #5c6b7d. So the citation did not out-shout its own sentence by hue; it
+ * did it by MASS. Cutting the mass is the whole fix.
+ *
+ * Three cuts, each of which removes something no reader can use and NONE of which invents a label:
+ *
+ *   1. the path prefix — `smx-reference/` repeats the `source` word already printed beside it;
+ *   2. the trailing content hash — `-1f4f46959a` identifies a chunk to the indexer, nobody else;
+ *   3. the `chunk-` / `rule-` scaffolding the chunker prepends to every id it writes.
+ *
+ * What survives is the slug the corpus itself chose, in words. If that still runs long it is cut at
+ * a word boundary with an ellipsis, and `title` always carries the untouched original — so the full
+ * identifier is one hover away and is never destroyed. Deriving a *prettier* label than the slug
+ * would mean inventing one, which is the same failure as a chip that links to the wrong regulation.
+ *
+ * `exact` says whether the label IS the reference, character for character. Callers use it to decide
+ * whether the original still needs somewhere to live.
+ */
+export function shortenReference(reference: string): { label: string; exact: boolean } {
+  const last = reference.split('/').filter(Boolean).pop() ?? reference;
+  const stripped = last
+    .replace(/[-_][0-9a-f]{8,}$/i, '') // the trailing content hash
+    .replace(/^(?:chunk|entry)[-_](?:rule[-_])?/i, ''); // the chunker's scaffolding
+
+  const done = (label: string) => ({ label, exact: label === reference });
+
+  // Nothing usable survived the cuts — a reference that is a bare hash strips down to the word
+  // "chunk", which names our own plumbing and identifies nothing. Print what the record holds.
+  if (stripped.length === 0 || /^(?:chunk|entry|rule)$/i.test(stripped)) return done(reference);
+
+  // Short enough to print whole. A short reference is an IDENTIFIER — `reach-17`, `turn0search0` —
+  // and its punctuation is part of it. De-hyphenating "reach-17" into "reach 17" would corrupt the
+  // name of a regulation to save two pixels.
+  if (stripped.length <= REF_MAX) return done(stripped);
+
+  // Long enough that it is a slug meant to be read as words, so read it as words.
+  const words = stripped.replace(/[-_]+/g, ' ').trim();
+  if (words.length <= REF_MAX) return done(words);
+  const cut = words.slice(0, REF_MAX);
+  const atSpace = cut.lastIndexOf(' ');
+  return done(`${(atSpace > REF_MAX * 0.6 ? cut.slice(0, atSpace) : cut).trimEnd()}…`);
+}
+
 /** A citation. Every verdict must trace to one; a dimension without one is a defect. */
 export function CitationChip({
   source,
@@ -183,9 +234,14 @@ export function CitationChip({
   documentId?: string;
   entryId?: string;
 }) {
+  const short = shortenReference(reference);
+  // The untouched reference always survives in the tooltip, alongside the snippet if there is
+  // one. Shortening may never be the only copy of a value the operator might need to quote.
+  const hint = [short.exact ? null : reference, snippet].filter(Boolean).join('\n\n') || undefined;
+
   const body = (
     <>
-      {source} · <Data kind="code">{reference}</Data>
+      <span className="src__source">{source}</span> <Data kind="code">{short.label}</Data>
       {/* The corpus sync date is the load-bearing half of a citation: a regulation
           entry without the date it was retrieved is not a citation, it is a claim. */}
       <span className="muted">
@@ -197,7 +253,7 @@ export function CitationChip({
 
   if (!documentId) {
     return (
-      <span className="src" title={snippet ?? undefined}>
+      <span className="src" title={hint}>
         {body}
       </span>
     );
@@ -207,9 +263,75 @@ export function CitationChip({
     entryId ? `?entry=${encodeURIComponent(entryId)}` : ''
   }`;
   return (
-    <Link className="src src-link" to={href} title={snippet ?? undefined}>
+    <Link className="src src-link" to={href} title={hint}>
       {body}
     </Link>
+  );
+}
+
+/** How many chips one source may print before the rest fold into a count. */
+const PER_SOURCE_MAX = 2;
+
+/**
+ * A set of citations, capped per source.
+ *
+ * Discovery renders 24 of these. Four of them said `web · turn0search0`, `turn0search8`,
+ * `turn0search12`, `turn0search16` — a search-turn index is not a source anybody can check, so
+ * four chips carried the information of one plus a number.
+ *
+ * The rule is uniform and does not special-case `web`: a source shows its first two references and
+ * folds the remainder into a `+N more` chip whose tooltip lists every one of them, in full. That is
+ * a deliberate trade of stated provenance for legibility, approved 2026-07-30 — and it is bounded,
+ * because nothing is discarded. It also deviates from what was proposed: the proposal collapsed the
+ * whole group to `web · 3 sources`, and showing the first two keeps the references that *are*
+ * legible (a corpus slug) visible while still capping the mass.
+ *
+ * Grouping preserves first-appearance order, so the agent's own ordering survives.
+ */
+export function CitationList({
+  citations,
+  className,
+}: {
+  citations: readonly Citation[];
+  className?: string;
+}) {
+  // `client.ts` casts every response with `as` and validates nothing, so a drifted payload can put
+  // a non-array here. An empty list renders nothing, which is correct — absence of citations is a
+  // fact each screen reports itself, not something this component should editorialise.
+  const list = Array.isArray(citations) ? citations.filter((c) => c && typeof c.source === 'string') : [];
+  if (list.length === 0) return null;
+
+  const bySource = new Map<string, Citation[]>();
+  for (const c of list) {
+    const group = bySource.get(c.source);
+    if (group) group.push(c);
+    else bySource.set(c.source, [c]);
+  }
+
+  return (
+    <span className={className}>
+      {[...bySource.entries()].map(([source, group]) => {
+        const shown = group.slice(0, PER_SOURCE_MAX);
+        const rest = group.slice(PER_SOURCE_MAX);
+        return (
+          <Fragment key={source}>
+            {shown.map((c, i) => (
+              <CitationChip key={`${source}-${c.reference}-${i}`} {...c} />
+            ))}
+            {rest.length > 0 && (
+              <span
+                className="src"
+                title={rest
+                  .map((c) => `${c.source} · ${c.reference} · ${c.retrievedAt.slice(0, 10)}`)
+                  .join('\n')}
+              >
+                <span className="src__source">{source}</span> +{rest.length} more
+              </span>
+            )}
+          </Fragment>
+        );
+      })}
+    </span>
   );
 }
 

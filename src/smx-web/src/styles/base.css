@@ -551,6 +551,22 @@ textarea {
   border-radius: var(--r1);
   padding: 1px 6px;
   margin: 3px 4px 0 0;
+  /* A backstop, not the mechanism. `shortenReference` is what keeps a chip short; this stops a
+     reference that defeats it (one long unbroken token, no separators to cut on) from printing an
+     870px box beside a paragraph again. The full value is in the tooltip either way. */
+  max-width: 44ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* The source word is the half of a citation a person reads — "reference", "web",
+   "learned-conclusions" tells them whether to trust it before the identifier tells them which one
+   it is. It gets the weight; the identifier stays in the muted mono. */
+.src__source {
+  font-weight: var(--w-medium);
+  color: var(--text-secondary);
 }
 
 .qr {

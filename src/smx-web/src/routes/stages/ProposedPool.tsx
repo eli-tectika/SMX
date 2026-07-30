@@ -1,6 +1,6 @@
 import { NotFound, getPool } from '../../api/client';
 import { usePolling } from '../../hooks/usePolling';
-import { CitationChip, SectionHeader } from '../../components/ui/Primitives';
+import { CitationList, SectionHeader } from '../../components/ui/Primitives';
 
 /**
  * The pool agent's output. Real data from GET /projects/{id}/pool.
@@ -90,9 +90,7 @@ export function ProposedPool({
                   <strong>{s.element}</strong> · {s.formClass}
                   <div className="tiny muted">{s.rationale}</div>
                   <div>
-                    {s.citations.map((c, i) => (
-                      <CitationChip key={i} {...c} />
-                    ))}
+                    <CitationList citations={s.citations} />
                     {/* The pool agent may answer from model knowledge — §9 flags rather than
                         rejects. A flag the operator can see is the whole point; silently
                         rendering it like a cited suggestion is what would mislead. */}

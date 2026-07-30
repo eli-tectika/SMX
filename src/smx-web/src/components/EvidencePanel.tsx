@@ -5,7 +5,7 @@ import { LOW_CONFIDENCE } from '../domain/matrixSummary';
 import { agentProposal, operatorRuling, reviewStance } from '../domain/proposal';
 import { DeterminationForm } from './DeterminationForm';
 import { Meter } from './ui/Meter';
-import { CitationChip } from './ui/Primitives';
+import { CitationList } from './ui/Primitives';
 
 /**
  * The agent's PROPOSAL and the operator's DETERMINATION — two boxes, never one field.
@@ -303,9 +303,7 @@ export function EvidencePanel({
                 plan 2026-07-22-file-viewer-plan-2-viewer-ui.md, task 9.
               */
               <div>
-                {d.citations.map((c, i) => (
-                  <CitationChip key={`${c.source}-${c.reference}-${i}`} {...c} />
-                ))}
+                <CitationList citations={d.citations} />
               </div>
             )}
           </div>
