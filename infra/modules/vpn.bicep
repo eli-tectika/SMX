@@ -24,7 +24,11 @@ param rootCertData string = ''
 param revokedCertThumbprints array = []
 
 var gwName = 'vgw-${namePrefix}-hub-${regionShort}'
-var pipName = 'pip-${namePrefix}-hub-vgw-${regionShort}'
+// 'vpngw', not 'vgw': this name must match the ALREADY-DEPLOYED public IP. The gateway was built
+// out-of-band before this module existed, and a mismatched name here does not create a tidy second
+// resource — it creates a second public IP, repoints the gateway at it, and changes the address every
+// distributed client profile points to.
+var pipName = 'pip-${namePrefix}-hub-vpngw-${regionShort}'
 
 // Hoisted out of vpnClientConfiguration because Bicep rejects a for-expression inside a ternary (BCP138);
 // a variable declaration is one of the few contexts that accepts one.
@@ -54,10 +58,14 @@ resource vgw 'Microsoft.Network/virtualNetworkGateways@2024-05-01' = {
   properties: {
     gatewayType: 'Vpn'
     vpnType: 'RouteBased'
-    // VpnGw1 is the floor for Entra authentication: the Basic SKU supports neither OpenVPN nor Entra.
+    // VpnGw1AZ matches what is DEPLOYED. Do not "simplify" this to VpnGw1 to save ~$45/mo: Azure cannot
+    // resize between the zone-redundant (AZ) and non-AZ families, so that edit is not a resize — it is a
+    // delete and recreate, ~45 minutes of downtime, and a new public IP that invalidates every client
+    // profile. VpnGw1 is the floor for Entra auth (Basic supports neither OpenVPN nor Entra); AZ adds
+    // zone redundancy on top.
     sku: {
-      name: 'VpnGw1'
-      tier: 'VpnGw1'
+      name: 'VpnGw1AZ'
+      tier: 'VpnGw1AZ'
     }
     enableBgp: false
     activeActive: false

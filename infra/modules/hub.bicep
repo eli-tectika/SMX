@@ -128,7 +128,10 @@ resource hubVnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
         // else. /27 is comfortably above the /29 minimum and leaves 10.0.3.32+ of the hub /22 free.
         name: 'GatewaySubnet'
         properties: {
-          addressPrefix: '10.0.3.0/27'
+          // /26 matches what is DEPLOYED. A subnet cannot be shrunk while resources sit in it, so
+          // narrowing this to the /27 the design originally specified does not tidy anything — it makes
+          // every deploy fail against the live estate.
+          addressPrefix: '10.0.3.0/26'
         }
       }
     ]

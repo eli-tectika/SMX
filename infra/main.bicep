@@ -153,6 +153,7 @@ module spoke 'modules/networking.bicep' = {
     regionShort: regionShort
     location: location
     tags: envTags
+    useRemoteGateways: deployVpnGateway
     spokeCidr: spokeCidr
     acaSubnetCidr: acaSubnetCidr
     functionsSubnetCidr: functionsSubnetCidr
@@ -166,6 +167,7 @@ module hubPeering 'modules/hubPeering.bicep' = {
   scope: hubRg
   params: {
     hubVnetName: hub.outputs.vnetName
+    allowGatewayTransit: deployVpnGateway
     spokeVnetId: spoke.outputs.vnetId
     spokeVnetName: spoke.outputs.vnetName
   }
@@ -423,7 +425,7 @@ module policy 'modules/policy.bicep' = if (deployPolicyGuardrails) {
 param deployVpnGateway bool = false
 
 @description('P2S client address pool (see vpn.bicep). Also used by the NSG rules that scope what a connected laptop may reach.')
-param vpnClientPool string = '172.16.0.0/24'
+param vpnClientPool string = '172.20.0.0/24'
 
 @description('App registration client id used as the P2S custom audience — printed by configure-auth.sh. Empty is only valid while deployVpnGateway is false.')
 param vpnAudienceClientId string = ''

@@ -17,6 +17,9 @@ param acaSubnetCidr string
 @description('Functions subnet CIDR.')
 param functionsSubnetCidr string
 
+@description('Consume the hub VNet\'s VPN gateway across the peering. Paired with allowGatewayTransit on the hub side; ARM REJECTS this peering if the hub has no gateway, which is why it is gated rather than always true.')
+param useRemoteGateways bool = false
+
 @description('Private-endpoints subnet CIDR.')
 param peSubnetCidr string
 
@@ -153,8 +156,10 @@ resource spokeToHub 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@20
     }
     allowVirtualNetworkAccess: true
     allowForwardedTraffic: true
-    allowGatewayTransit: false
-    useRemoteGateways: false
+    allowGatewayTransit: false // the spoke has no gateway of its own to offer
+    // Consume the hub's VPN gateway. Already true on the live peering; see hubPeering.bicep for why
+    // hardcoding false here is a silent outage rather than a cosmetic drift.
+    useRemoteGateways: useRemoteGateways
   }
 }
 

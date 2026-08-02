@@ -57,11 +57,20 @@ param apiClientId = ''
 // delete vgw-smx-hub-swc — Bicep removing the resource from the template does not delete what exists).
 param deployVpnGateway = true
 
-// EMPTY SELECTS CERTIFICATE AUTHENTICATION — the shipped path, because the audience app registration needs
-// directory privileges the operator does not have (see apiClientId above). Setting this to the id printed
-// by configure-auth.sh is what switches this SAME gateway to Entra auth later: the address pool, public IP
-// and routes survive, and only vpnClientConfiguration changes.
-param vpnAudienceClientId = ''
+// Microsoft-REGISTERED Azure VPN Client app id (Azure Public and all other clouds). NOT an app we own and
+// NOT one we register: Microsoft pre-registered it with global consent, so this needs no app registration
+// and no admin consent — which is precisely why Entra auth is reachable despite the operator being a tenant
+// guest with no directory privileges.
+//
+// Do NOT substitute the older manually-registered value 41b23e61-6c1e-4545-b367-cd054e0ed4b4: it requires
+// consent via the Cloud Application Administrator role (which we do not have) and Microsoft retires it on
+// 2028-03-31.
+//
+// Setting this selects the Entra branch of vpnClientConfiguration; vpnRootCertData below goes inert.
+// Access is TENANT-WIDE: any SecurityMatters account can establish the tunnel. Narrowing it to a group
+// needs a CUSTOM audience app registration, which needs the directory privileges we lack — so the group
+// scoping is an open ask, not a shipped control. See apiClientId above for why that matters.
+param vpnAudienceClientId = 'c632b3df-fb67-4d84-bdcf-b95ad541b5c8'
 
 // Public key of the P2S root CA (CN=SMX-P2S-Root, SHA-1 94:21:6E:32:FD:F8:56:34:77:63:D0:08:0A:93:D5:66:
 // 20:2A:2F:45), valid 2026-08-02 to 2031-08-02. Public certificate data only — the private key lives in
