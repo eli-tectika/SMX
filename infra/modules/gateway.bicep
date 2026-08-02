@@ -41,11 +41,19 @@ param certKeyVaultSecretId string = ''
 @description('DNS label for the gateway public IP, giving <label>.<region>.cloudapp.azure.com. Empty = no name, IP only. The label must be globally unique within the region, so callers pass one carrying the estate uniqueSuffix.')
 param dnsLabel string = ''
 
+@description('Static private IP for the gateway frontend, inside agwSubnet. Empty = public-listener behaviour (the pre-2026-08 posture). Non-empty moves EVERY listener to the private IP; the public IP stays allocated for the v2 control plane but nothing binds to it.')
+param privateFrontendIp string = ''
+
 var gwName = 'agw-${namePrefix}-${env}-${regionShort}'
 var pipName = 'pip-${namePrefix}-${env}-agw-${regionShort}'
 var gwId = resourceId('Microsoft.Network/applicationGateways', gwName)
 
 var feIpName = 'appGwPublicFrontendIp'
+var fePrivateIpName = 'appGwPrivateFrontendIp'
+// Every listener binds to whichever frontend this names. It is a single variable on purpose: a listener
+// left on the public frontend keeps the app on the internet, and the whole point of the private frontend
+// is that there is nothing left to reach from outside the tunnel.
+var listenerFeName = empty(privateFrontendIp) ? feIpName : fePrivateIpName
 var fePortName = 'port80'
 var poolName = 'acaBackendPool'        // default route → frontend app FQDN
 var apiPoolName = 'acaApiBackendPool'  // /api/* → backend API app FQDN
@@ -144,8 +152,10 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
         }
       }
     ]
-    frontendIPConfigurations: [
+    frontendIPConfigurations: concat([
       {
+        // Kept allocated even when private: App Gateway v2 wants a public frontend for its control
+        // plane. With privateFrontendIp set, NO listener binds here, so nothing answers on it.
         name: feIpName
         properties: {
           publicIPAddress: {
@@ -153,7 +163,18 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
           }
         }
       }
-    ]
+    ], empty(privateFrontendIp) ? [] : [
+      {
+        name: fePrivateIpName
+        properties: {
+          privateIPAllocationMethod: 'Static'
+          privateIPAddress: privateFrontendIp
+          subnet: {
+            id: agwSubnetId
+          }
+        }
+      }
+    ])
     frontendPorts: [
       {
         name: fePortName
@@ -265,10 +286,14 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
     ]
     httpListeners: concat([
       {
+        // BOTH listeners bind to listenerFeName, never feIpName. Leaving either one on the public
+        // frontend defeats the entire change: the HTTP listener would serve the app to the internet,
+        // and the HTTPS listener would serve it over TLS to the internet — a private frontend that
+        // one listener bypasses is not a private frontend.
         name: listenerName
         properties: {
           frontendIPConfiguration: {
-            id: '${gwId}/frontendIPConfigurations/${feIpName}'
+            id: '${gwId}/frontendIPConfigurations/${listenerFeName}'
           }
           frontendPort: {
             id: '${gwId}/frontendPorts/${fePortName}'
@@ -281,7 +306,7 @@ resource appGw 'Microsoft.Network/applicationGateways@2024-05-01' = {
         name: 'httpsListener'
         properties: {
           frontendIPConfiguration: {
-            id: '${gwId}/frontendIPConfigurations/${feIpName}'
+            id: '${gwId}/frontendIPConfigurations/${listenerFeName}'
           }
           frontendPort: {
             id: '${gwId}/frontendPorts/port443'

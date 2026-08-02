@@ -26,6 +26,12 @@ param peSubnetCidr string
 @description('Resource ID of the hub VNet to peer with.')
 param hubVnetId string
 
+@description('App Gateway subnet ranges in the hub. The gateway reads its TLS certificate from Key Vault over the KV private endpoint in this subnet, so omitting these breaks HTTPS (Phase C) with a symptom that looks like a broken gateway rather than a firewall rule.')
+param agwSubnetCidrs array = []
+
+@description('P2S VPN client pool, explicitly denied inbound to the private-endpoint subnet. Empty falls back to the default pool in the deny rule — the fence is never silently absent.')
+param vpnClientPool string = ''
+
 @description('Functions subnet delegation (Microsoft.App/environments = Flex Consumption; Microsoft.Web/serverFarms = Elastic Premium).')
 param functionsDelegation string = 'Microsoft.App/environments'
 
@@ -47,12 +53,62 @@ resource nsgFunctions 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   }
 }
 
+// The private-endpoint subnet is the data plane: Cosmos, Key Vault, ACR and AI Search all terminate here.
+// A P2S client gets layer-3 reach into the peered VNets, so without these rules a connected laptop could
+// open a TCP connection straight to any of them. The workload subnets are the only legitimate sources.
 resource nsgPe 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: 'nsg-${namePrefix}-${env}-pe-${regionShort}'
   location: location
   tags: tags
   properties: {
-    securityRules: []
+    securityRules: [
+      {
+        name: 'Allow-Workload-Subnets'
+        properties: {
+          priority: 100
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: '*'
+          // The App Gateway subnets belong here alongside the workload subnets: privatelink.vaultcore is
+          // linked to the HUB vnet (hub.bicep hubZoneLinks), so the gateway resolves Key Vault to the
+          // private endpoint below and must be able to reach it. VPN clients are unaffected — they arrive
+          // as 172.20.0.x and fall through to the deny at 200.
+          sourceAddressPrefixes: union([ acaSubnetCidr, functionsSubnetCidr ], agwSubnetCidrs)
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRange: '*'
+        }
+      }
+      {
+        // Explicit and above the catch-all so the intent is legible in the portal: the tunnel exists to
+        // reach the web app, not the databases behind it. Azure VPN Gateway does not NAT, so the client
+        // pool is the address a connected laptop actually presents here.
+        name: 'Deny-VpnClients'
+        properties: {
+          priority: 200
+          direction: 'Inbound'
+          access: 'Deny'
+          protocol: '*'
+          sourceAddressPrefix: empty(vpnClientPool) ? '172.20.0.0/24' : vpnClientPool
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRange: '*'
+        }
+      }
+      {
+        name: 'Deny-Other-Inbound'
+        properties: {
+          priority: 4096
+          direction: 'Inbound'
+          access: 'Deny'
+          protocol: '*'
+          sourceAddressPrefix: '*'
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRange: '*'
+        }
+      }
+    ]
   }
 }
 

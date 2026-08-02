@@ -99,7 +99,11 @@ var baseTags = union({ project: 'SMX', managedBy: 'bicep' }, tags)
 var hubTags = union(baseTags, { environment: 'shared' })
 var envTags = union(baseTags, { environment: env })
 
-var spokeCidr = env == 'prod' ? '10.2.0.0/20' : '10.1.0.0/20'
+// Both spokes, not just this deploy's. The hub gateway NSG is shared by the dev AND prod gateway
+// subnets, so its allow rule has to name both ranges no matter which env is deploying — a dev deploy
+// that listed only 10.1.0.0/20 would silently strip prod's own VNet out of prod's allow rule.
+var allSpokeCidrs = [ '10.1.0.0/20', '10.2.0.0/20' ]
+var spokeCidr = env == 'prod' ? allSpokeCidrs[1] : allSpokeCidrs[0]
 var acaSubnetCidr = env == 'prod' ? '10.2.0.0/23' : '10.1.0.0/23'
 var functionsSubnetCidr = env == 'prod' ? '10.2.2.0/24' : '10.1.2.0/24'
 var peSubnetCidr = env == 'prod' ? '10.2.3.0/24' : '10.1.3.0/24'
@@ -141,6 +145,10 @@ module hub 'modules/hub.bicep' = {
     regionShort: regionShort
     location: location
     tags: hubTags
+    // Only scope the gateway NSG to the tunnel once a tunnel exists — otherwise the deploy would lock
+    // the app behind a VPN nobody can connect to.
+    vpnClientPool: deployVpnGateway ? vpnClientPool : ''
+    spokeCidrs: allSpokeCidrs
   }
 }
 
@@ -154,11 +162,13 @@ module spoke 'modules/networking.bicep' = {
     location: location
     tags: envTags
     useRemoteGateways: deployVpnGateway
+    agwSubnetCidrs: hub.outputs.agwSubnetCidrs
     spokeCidr: spokeCidr
     acaSubnetCidr: acaSubnetCidr
     functionsSubnetCidr: functionsSubnetCidr
     peSubnetCidr: peSubnetCidr
     hubVnetId: hub.outputs.vnetId
+    vpnClientPool: deployVpnGateway ? vpnClientPool : ''
   }
 }
 
@@ -394,6 +404,7 @@ module gateway 'modules/gateway.bicep' = {
     // Gives the gateway a real hostname instead of a bare IP. uniqueSuffix keeps the label
     // globally unique within the region, which cloudapp.azure.com requires.
     dnsLabel: '${namePrefix}-${env}-${uniqueSuffix}'
+    privateFrontendIp: agwPrivateIp
   }
 }
 
@@ -426,6 +437,9 @@ param deployVpnGateway bool = false
 
 @description('P2S client address pool (see vpn.bicep). Also used by the NSG rules that scope what a connected laptop may reach.')
 param vpnClientPool string = '172.20.0.0/24'
+
+@description('Static private IP for the App Gateway frontend, inside snet-agw-<env>. Empty keeps the public listener (pre-2026-08 posture); emptying it again is the rollback.')
+param agwPrivateIp string = ''
 
 @description('App registration client id used as the P2S custom audience — printed by configure-auth.sh. Empty is only valid while deployVpnGateway is false.')
 param vpnAudienceClientId string = ''

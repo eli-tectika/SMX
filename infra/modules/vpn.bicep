@@ -9,12 +9,12 @@ param tags object
 param gatewaySubnetId string
 
 @description('P2S client address pool. Must not overlap the hub (10.0.0.0/22) or either spoke (10.1/10.2.0.0/20).')
-param clientPool string = '172.16.0.0/24'
+param clientPool string = '172.20.0.0/24'
 
 @description('Entra tenant id — the issuer the gateway validates P2S sign-ins against.')
 param tenantId string
 
-@description('App registration client id used as the P2S custom AUDIENCE. A custom audience, never the shared Microsoft Azure VPN app: that app authenticates every account in the tenant, which would make the tunnel allow-list the whole directory.')
+@description('P2S audience. Ships as the MICROSOFT-REGISTERED Azure VPN Client app (c632b3df-fb67-4d84-bdcf-b95ad541b5c8), which needs no app registration and no admin consent - the only reason Entra auth was reachable for a tenant guest. The cost is that it authenticates ANY account in the tenant; narrowing the tunnel to named users requires a CUSTOM audience app, which needs directory privileges we do not have. Empty selects certificate auth instead.')
 param vpnAudienceClientId string
 
 @description('Base64 public certificate data of the P2S root CA — the body of the exported .cer with no PEM header/footer and no line breaks. Required when deployVpnGateway is true and vpnAudienceClientId is empty.')

@@ -51,6 +51,12 @@ param acmebotPrincipalId = ''
 // closes the network path to it; it does not authenticate anyone who is on that path.
 param apiClientId = ''
 
+// Static private frontend IP for the App Gateway. THIS IS NOT OPTIONAL POLISH: the live gateway already
+// has appGwPrivateFrontendIp at 10.0.0.10 with httpListener bound to it, and gateway.bicep only emits that
+// configuration when this parameter is non-empty. Leaving it empty does not "leave the gateway alone" —
+// it rebinds the listener to the PUBLIC frontend and puts SMX back on the internet.
+param agwPrivateIp = '10.0.0.10'
+
 // ---------------- P2S VPN (spec 2026-08-02) ----------------
 // ARMED. The next `deploy.sh dev` CREATES the VPN gateway: ~30-45 minutes, and roughly $140/month from that
 // moment. It is the first irreversible-in-practice line in this file. Set to false to stop billing (and

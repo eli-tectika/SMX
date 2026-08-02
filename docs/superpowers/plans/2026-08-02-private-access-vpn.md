@@ -6,34 +6,68 @@
 **Goal:** Make the SMX web app reachable only from inside the VNet, entered through a per-user VPN client on
 arbitrary laptops, with application access restricted to named Entra accounts.
 
-**Architecture:** A Point-to-Site VPN Gateway in the hub VNet authenticates operators with Entra ID against a
-**custom-audience** app registration whose enterprise app requires group assignment. Gateway transit is
-enabled on both peering directions so tunnel traffic reaches the spoke. The App Gateway keeps its public IP
-for the v2 control plane but moves **every listener** onto a new private frontend IP, and NSGs deny `Internet`
-inbound while fencing the private-endpoint subnet off from the VPN pool. HTTPS (Let's Encrypt via DNS-01 into
-Key Vault) is added because Entra sign-in requires an `https://` redirect URI, and the app then enforces an
-`Operator` app role on every request.
+**Architecture:** A Point-to-Site VPN Gateway in the hub VNet authenticates operators with **Entra ID against
+the Microsoft-registered Azure VPN Client app** (`c632b3df-fb67-4d84-bdcf-b95ad541b5c8`) — an app Microsoft
+pre-registers and consents to globally, so **no app registration and no admin consent are needed**, which is
+what makes this deployable by a tenant guest. Gateway transit is enabled on both peering directions so tunnel
+traffic reaches the spoke. The App Gateway keeps its public IP for the v2 control plane but moves **every
+listener** onto a new private frontend IP, and NSGs deny `Internet` inbound while fencing the private-endpoint
+subnet off from the VPN pool. HTTPS (Let's Encrypt via DNS-01 into Key Vault) is added because Entra sign-in
+requires an `https://` redirect URI, and the app then enforces an `Operator` app role on every request.
 
-**Tech Stack:** Bicep, Azure CLI, Azure VPN Gateway (VpnGw1, OpenVPN), Microsoft Entra ID, Azure DNS,
-Key Vault, KeyVault-Acmebot, Application Gateway v2, .NET 8 (`Microsoft.AspNetCore.Authentication.JwtBearer`).
+**Tech Stack:** Bicep, Azure CLI, Azure VPN Gateway (**VpnGw1AZ**, OpenVPN over TCP 443), Microsoft Entra ID,
+Azure DNS, Key Vault, KeyVault-Acmebot, Application Gateway v2, .NET 8
+(`Microsoft.AspNetCore.Authentication.JwtBearer`).
 
 **Source spec:** [`docs/superpowers/specs/2026-08-02-private-access-vpn-design.md`](../specs/2026-08-02-private-access-vpn-design.md).
 **Reused mechanism:** the certificate flow from [`2026-07-15-frontend-https-and-entra-auth.md`](2026-07-15-frontend-https-and-entra-auth.md).
 
 ---
 
+## Status — read this before executing anything
+
+**Phase A is COMPLETE and verified live (2026-08-02).** The gateway exists, Entra auth works, and a tunnelled
+client has been confirmed reaching the ACA app in the spoke. Its tasks are retained below, checked, with their
+verification commands intact — run them to re-confirm the estate, not to build it.
+
+**This plan was reconciled with the deployed estate on 2026-08-02, and three decisions in it were reversed.**
+Spec §1 records them in full; the executable consequences here are:
+
+| Was in this plan | Now |
+|---|---|
+| Task A1 — create a **custom-audience** app registration + `sg-smx-vpn-users` group | **Deleted.** The Microsoft-registered app needs no registration and no consent. Narrowing to a group is the only thing that still needs one, and it moved to **Phase D, Task D1** |
+| Task A1C — root CA, `new-vpn-client-cert.ps1`, certificate inventory, revocation list | **Deleted.** Certificate auth was chosen and then abandoned; neither script nor inventory was ever created. The root CA that *was* generated is inert (spec §1 R3) |
+| Tasks A2/A3/A4 | Renumbered **A1/A2/A3**, and all three are done |
+| Phase D tasks D1–D4 | Renumbered **D2–D5**; new **D1** is narrowing the tunnel to named users |
+| Client pool `172.16.0.0/24` | **`172.20.0.0/24`** — corrected in every NSG rule below |
+| `GatewaySubnet` `10.0.3.0/27` | **`10.0.3.0/26`** |
+| SKU `VpnGw1`, PIP `pip-smx-hub-vgw-swc` | **`VpnGw1AZ`**, **`pip-smx-hub-vpngw-swc`** |
+
+**One live inconsistency to expect, and not to "fix" by weakening it:** Task B4's assertion is already
+committed in `smoke.sh`/`smoke.ps1`, but Phase B has not been armed — so **`infra/scripts/smoke.sh dev` fails
+today**, with `PUBLIC FRONTEND IS ANSWERING`. It is telling the truth. It goes green when Task B1 Step 5 sets
+`agwPrivateIp`.
+
+---
+
 ## Prerequisites & conventions
 
-- [ ] **P1 — Execute on a dedicated branch.** The current branch `feat/reading-layer` holds unrelated UI work.
+- [ ] **P1 — Execute on a dedicated branch.** Phase A's infrastructure is already committed
+  (`infra/modules/vpn.bicep`, the `deployVpnGateway` gate, both peering flags, the `agwPrivateIp` plumbing in
+  `gateway.bicep`/`main.bicep`, and the `smoke.sh` assertion). Phases B–D still change infra and the backend;
+  keep them off `main`.
 
-  Run: `git fetch origin && git switch -c feat/private-access-vpn origin/main`
-  Expected: a clean new branch tracking `main`.
+  Run: `git fetch origin && git switch -c feat/private-access-vpn`
+  Expected: a clean new branch off current `HEAD`.
 
-- [ ] **P2 — Azure CLI login.** The session token is expired (`AADSTS700082`).
+- [ ] **P2 — Azure CLI login.**
 
-  Run: `az login --tenant 18995613-d6b8-45ca-aa8f-c3f406244c88 --scope "https://graph.microsoft.com//.default"`
+  Run: `az login --tenant 18995613-d6b8-45ca-aa8f-c3f406244c88`
   then `az account set --subscription 98c6dba9-5088-4d2b-aadc-31b629a308de`
   Expected: `az account show --query name -o tsv` prints `SecurityMatters`.
+
+  *(The `--scope "https://graph.microsoft.com//.default"` variant is only needed for the `az ad …` commands in
+  Phase D, and those are blocked regardless — see P3.)*
 
 - [ ] **P3 — ⚙ BLOCKER, verified live 2026-08-02: obtain directory privileges.** The operator account is a
   **guest** in the SecurityMatters tenant (`az ad signed-in-user show` →
@@ -41,40 +75,40 @@ Key Vault, KeyVault-Acmebot, Application Gateway v2, .NET 8 (`Microsoft.AspNetCo
   `az ad group list`, `az ad app list` and `GET /subscribedSkus` all return `Authorization_RequestDenied`.
   **ARM is unaffected**; only the directory axis is walled off.
 
-  Blocked by this: **Task A1** entirely, **Task D1**, **Task D3** (needs `apiClientId`, which needs
-  `configure-auth.sh`), and **Task D4**. Not blocked: A2, A3, all of Phase B, all of Phase C.
+  **What this no longer blocks:** the VPN tunnel itself. Entra authentication ships against the
+  **Microsoft-registered** Azure VPN Client app, which requires no app registration and no admin consent
+  ([Microsoft docs](https://learn.microsoft.com/en-us/azure/vpn-gateway/point-to-site-entra-gateway)). The
+  earlier plan had this backwards and treated an app registration as a hard prerequisite for Phase A; it was
+  not. **All of Phase A shipped without a single directory write.**
+
+  **What it still blocks, and both matter:**
+  - **Task D1 — narrowing the tunnel to the 5–10 named experts.** Today **any** SecurityMatters account can
+    establish it. A custom-audience app registration is the only way to scope it to a group, and that needs
+    the privileges below. This is the *first* thing the grant buys, and it is an open ask, not a control.
+  - **Tasks D2, D4 and D5** — the `Operator` app role, `apiClientId`, and Conditional Access. Until they
+    land, the app behind the tunnel serves every endpoint unauthenticated.
+
+  Not blocked: any of Phase A, B or C, and Task D3 (the backend policy, which is gated by `apiClientId`).
 
   Ask a SecurityMatters tenant admin for these roles on the guest account — request the grant, not per-step
-  help, because the asks recur across this plan and the next:
-  - **Application Administrator** — app registrations and app roles (A1, D1)
-  - **Groups Administrator** — the `sg-smx-vpn-users` allow-list (A1)
-  - **Conditional Access Administrator** — the CA policy (D4)
+  help, because the asks recur:
+  - **Application Administrator** — app registrations and app roles (D1, D2)
+  - **Groups Administrator** — the `sg-smx-vpn-users` allow-list (D1)
+  - **Conditional Access Administrator** — the CA policy (D5)
   - **Privileged Role Administrator** or Global Admin — the one-off `az ad app permission admin-consent`
 
   Ask them the licensing question at the same time (it decides the design, spec §1): **does the tenant hold
-  Entra ID P1/P2, or Entra Suite / Private Access?** If Entra Suite is held, stop and reconsider — Private
-  Access is a tighter grant than this whole plan and skips the VPN gateway's ~$140/mo.
+  Entra ID P1/P2, or Entra Suite / Private Access?** If Entra Suite is held, reconsider the whole shape —
+  Private Access is a tighter grant than this plan and skips the gateway's monthly cost.
 
   Verify: `az ad group list --query '[0].displayName' -o tsv` returns a name instead of
   `Authorization_RequestDenied`.
 
-  **DECISION 2026-08-02: the fallback below was taken.** The operator judged the role grant unlikely to be
-  obtainable. Certificate auth is now the shipped path (Task A1C); Entra auth remains reachable later by
-  setting `vpnAudienceClientId`, but is not assumed. This does **not** retire the ask above — Phase D still
-  needs it, and until it lands the deployed app is unauthenticated behind the tunnel.
-
-  **The fallback, for the record:** switch the P2S gateway to **certificate**
-  authentication (a self-signed root uploaded to the gateway — an ARM operation needing no Graph access, with
-  per-user control becoming per-certificate issuance). That unblocks Phases A–C and delivers VNet-only
-  access, but it forfeits Entra group membership, Conditional Access and MFA on the tunnel, and leaves all of
-  Phase D blocked — meaning the app behind the tunnel stays unauthenticated. Treat it as a real fallback, not
-  an equivalent.
-
-- [ ] **P4 — Record the pre-change baseline.** You will need it to prove Phase B actually closed something.
+- [x] **P4 — Record the pre-change baseline.** Needed to prove Phase B actually closed something.
 
   Run: `curl -s -o /dev/null -m 20 -w '%{http_code}\n' "http://smx-dev-lmxnb.swedencentral.cloudapp.azure.com/"`
-  Expected: `200` — the app is publicly reachable **today**. Write the number down; Task B4 asserts it becomes
-  a timeout.
+  Expected: `200` — the app is publicly reachable **today**, after Phase A. Task B4 asserts it becomes a
+  timeout.
 
 **Conventions used below**
 - `HUB_RG=rg-smx-hub-swc`, `RG=rg-smx-dev-swc`, `HUB_VNET=vnet-smx-hub-swc`, `SPOKE_VNET=vnet-smx-dev-swc`.
@@ -83,6 +117,11 @@ Key Vault, KeyVault-Acmebot, Application Gateway v2, .NET 8 (`Microsoft.AspNetCo
   **CODIFY** marks the Bicep/script change that makes it survive `deploy.sh`.
 - **A task is not done at the end of its PORTAL step.** Per spec §6, portal changes to ARM resources are
   reverted by the next `deploy.sh`. Every portal step here has a CODIFY step, and the task ends at the commit.
+- **And codify in the same session.** Spec §6.1 records the inverse failure, which nearly fired on this very
+  gateway: a resource built out of band while the repo described something else, where the next `deploy.sh`
+  would have deleted and recreated it (SKU `VpnGw1AZ`→`VpnGw1` is not a resize), repointed its public IP,
+  changed the client pool under live sessions, shrunk an in-use subnet, and reverted both peering flags — and
+  reported `Succeeded` while doing it. Portal drift fails loudly; repo drift fails quietly and costs more.
 - Infra "tests" are `az bicep build` (compiles) plus a live `az … show` / `curl` / `dig` check, not xUnit.
 - Scope is **dev**. Prod is the same pattern on WAF_v2, sequenced later (spec §9).
 
@@ -95,498 +134,182 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
 
 ---
 
-# Phase A — VPN access
+# Phase A — VPN access — **COMPLETE, verified live 2026-08-02**
 
-End state: the operator connects the Azure VPN Client and reaches the ACA frontend by its internal FQDN. The
-app is **still publicly reachable** — nothing has been removed yet, so a mistake here costs no access.
+End state, reached: the operator connects the Azure VPN Client, signs in with an Entra account, and reaches
+the ACA frontend inside the spoke. The app is **still publicly reachable** — nothing has been removed yet, so
+a mistake here costs no access.
 
-## Task A1: Entra group and VPN custom-audience app registration — **DEFERRED, NOT THE SHIPPED PATH**
+**No Entra objects were created.** That is the headline simplification of this phase versus how it was
+originally planned: the gateway authenticates against an application Microsoft already registered and
+consented to globally, so the entire "register an app, add redirect URIs, create a service principal, require
+assignment, grant admin consent" sequence is gone. What it costs is that the tunnel is open to the whole
+tenant (Task D1).
 
-> **Amended 2026-08-02.** Steps 4–5 (the `configure-auth.sh`/`.ps1` changes) are **done and committed**
-> (`ad4138b`); they are inert until someone can run them. Steps 1, 2, 3, 6 and 7 are **blocked** by P3 — the
-> operator account is a guest with no directory privileges.
->
-> **The shipped path is Task A1C below.** Do not attempt this task. It stays in the plan because the code is
-> already merged and because `vpnAudienceClientId` remains the switch that turns Entra auth on later
-> (spec §4.6) — at which point this task becomes live again, unchanged.
-
-**Files:**
-- Modify: `infra/scripts/configure-auth.sh` (append the VPN audience section)
-- Modify: `infra/scripts/configure-auth.ps1` (twin — same change)
-
-- [ ] **Step 1 — ⚙ OPERATOR — PORTAL: create the allow-list group.** Entra admin center → **Groups** →
-  **New group**. Type `Security`, name `sg-smx-vpn-users`, description "Accounts permitted to establish the
-  SMX VPN tunnel". Membership type `Assigned`. Add yourself as the only member for now. Create.
-
-  Verify: `az ad group show --group sg-smx-vpn-users --query id -o tsv` prints a GUID. Record it as `GROUP_ID`.
-
-- [ ] **Step 2 — ⚙ OPERATOR — PORTAL: register the VPN audience app.** Entra admin center → **App
-  registrations** → **New registration**. Name `smx-dev-vpn`, supported account types **Accounts in this
-  organizational directory only**. Register. On the app's **Authentication** blade → **Add a platform** →
-  **Mobile and desktop applications** → tick the redirect URI `https://login.microsoftonline.com/common/oauth2/nativeclient`
-  and add a custom one: `azurevpn://`. Save.
-
-  Why both: the Azure VPN Client uses `azurevpn://` on Windows/macOS and the native-client URI as fallback.
-  Omitting them produces an `AADSTS50011` redirect-mismatch at connect time, not at configure time.
-
-  Verify: `az ad app list --display-name smx-dev-vpn --query '[0].appId' -o tsv` prints a GUID. Record it as
-  `VPN_CLIENT_ID`.
-
-- [ ] **Step 3 — ⚙ OPERATOR — PORTAL: require assignment and assign the group.** Entra admin center →
-  **Enterprise applications** → find `smx-dev-vpn` → **Properties** → set **Assignment required?** to
-  **Yes** → Save. Then **Users and groups** → **Add user/group** → select `sg-smx-vpn-users` → Assign.
-
-  This is the step that makes the VPN "specific users" rather than "anyone in the tenant". Without it the
-  gateway authenticates every account in the directory.
-
-  Verify:
-  ```bash
-  az ad sp list --display-name smx-dev-vpn --query '[0].appRoleAssignmentRequired' -o tsv
-  ```
-  Expected: `true`.
-
-- [ ] **Step 4 — CODIFY: script the app registration.** Append to `infra/scripts/configure-auth.sh`, after the
-  existing SPA block (which ends with the `warn "Grant admin consent…"` line):
-
-  ```bash
-  # =====================================================================================================
-  # VPN custom audience (Task A1): the app registration the P2S gateway authenticates against. A CUSTOM
-  # audience, never Microsoft's shared "Azure VPN" app id — the shared app authenticates every account in
-  # the tenant, so pointing the gateway at it would make the tunnel's allow-list the whole directory.
-  # Assignment-required + a single assigned group is what turns this into a named-user list.
-  # Group membership itself stays portal-managed on purpose (spec §6): it is a Graph object deploy.sh
-  # neither creates nor destroys, and it changes on a different cadence than the infrastructure.
-  # =====================================================================================================
-  VPN_APP_NAME="${NAME_PREFIX}-${ENV}-vpn"
-  log "Ensuring Entra app registration '${VPN_APP_NAME}'..."
-  VPN_ID="$(az ad app list --display-name "${VPN_APP_NAME}" --query '[0].appId' -o tsv)"
-  if [ -z "${VPN_ID}" ]; then
-    VPN_ID="$(az ad app create --display-name "${VPN_APP_NAME}" --sign-in-audience AzureADMyOrg --query appId -o tsv)"
-    [ -n "${VPN_ID}" ] || die "Failed to create the app registration '${VPN_APP_NAME}'."
-    log "Created app registration ${VPN_ID}"
-  fi
-
-  # The Azure VPN Client uses azurevpn:// on Windows/macOS and the native-client URI as fallback. Both are
-  # (re)set every run: a missing redirect URI fails at CONNECT time with AADSTS50011, long after this script
-  # reported success, which is the most expensive place for this to be wrong.
-  az ad app update --id "${VPN_ID}" --public-client-redirect-uris \
-    "azurevpn://" "https://login.microsoftonline.com/common/oauth2/nativeclient" --output none
-
-  # Ensure the service principal exists, then require assignment. Without the SP there is nothing to assign
-  # a group to, and `az ad app create` does not make one.
-  VPN_SP="$(az ad sp list --display-name "${VPN_APP_NAME}" --query '[0].id' -o tsv)"
-  if [ -z "${VPN_SP}" ]; then
-    VPN_SP="$(az ad sp create --id "${VPN_ID}" --query id -o tsv)"
-    log "Created service principal ${VPN_SP}"
-  fi
-  az ad sp update --id "${VPN_SP}" --set appRoleAssignmentRequired=true --output none
-
-  echo "VPN_CLIENT_ID=${VPN_ID}"
-  warn "Set in dev.bicepparam: vpnAudienceClientId='${VPN_ID}'"
-  warn "Assign 'sg-smx-vpn-users' to the ${VPN_APP_NAME} enterprise app (portal) — that group IS the tunnel allow-list."
-  ```
-
-- [ ] **Step 5 — CODIFY the PowerShell twin.** Apply the identical logic to
-  `infra/scripts/configure-auth.ps1`. Per CLAUDE.md these are twins, not alternatives — a fix in one is a fix
-  in the other. Keep the file ASCII-only (documented Windows constraint in `infra/scripts/README.md`).
-
-- [ ] **Step 6 — Run the script and confirm it is idempotent.**
-
-  Run: `infra/scripts/configure-auth.sh dev dev.example-placeholder.com`
-  Expected: prints `VPN_CLIENT_ID=<the same GUID as Step 2>` — it adopts the portal-created app rather than
-  making a second one. Run it a second time; expect identical output and no new app registrations:
-  `az ad app list --display-name smx-dev-vpn --query 'length(@)' -o tsv` prints `1`.
-
-  Note: the positional host argument is required by the existing script, and it **overwrites the SPA's
-  redirect URI** every run (`az ad app update --set spa=…`). A placeholder is safe only because dev auth is
-  currently off (`apiClientId = ''`); Task D3 is what turns it on, and Task D1 Step 5 re-runs this script with
-  the real host before that happens. Do not skip that re-run — a stale redirect URI fails at sign-in with
-  `AADSTS50011`, not at configure time.
-
-- [ ] **Step 7 — Commit.**
-
-  ```bash
-  git add infra/scripts/configure-auth.sh infra/scripts/configure-auth.ps1
-  git commit -m "feat(infra): VPN custom-audience app registration with assignment required"
-  ```
-
-## Task A1C: Root CA and per-user client certificates — **the shipped path**
+## Task A1: GatewaySubnet and the VPN gateway — **DONE**
 
 **Files:**
-- Create: `infra/scripts/new-vpn-client-cert.ps1`
+- Create: `infra/modules/vpn.bicep` ✔
+- Modify: `infra/modules/hub.bicep` (add `GatewaySubnet` to the hub VNet) ✔
+- Modify: `infra/main.bicep` (params + module wiring) ✔
+- Modify: `infra/env/dev.bicepparam` ✔
 
-Certificate authentication needs no directory privileges (spec §4.6). Everything here runs on your Windows
-side — the certificates must land in the Windows certificate store, and WSL cannot write to it.
-
-- [ ] **Step 1 — ⚙ OPERATOR: generate the root CA.** In **Windows PowerShell as your own user** (not WSL,
-  not elevated):
-
-  ```powershell
-  $root = New-SelfSignedCertificate `
-    -Type Custom -KeySpec Signature `
-    -Subject "CN=SMX-P2S-Root" `
-    -KeyExportPolicy Exportable `
-    -HashAlgorithm sha256 -KeyLength 2048 `
-    -CertStoreLocation "Cert:\CurrentUser\My" `
-    -KeyUsageProperty Sign -KeyUsage CertSign `
-    -NotAfter (Get-Date).AddYears(5)
-  $root.Thumbprint
-  ```
-
-  `-NotAfter` is **not optional**: the default is one year, and when the root expires **every user loses
-  access simultaneously** (spec §4.6). Five years is chosen to outlive the certificate-auth period, which is
-  expected to be temporary.
-
-  Record the thumbprint and the expiry date — Step 5 puts them somewhere they will actually be seen.
-
-- [ ] **Step 2 — ⚙ OPERATOR: export the root's public key** (this is what the gateway gets — public only):
-
-  ```powershell
-  [Convert]::ToBase64String($root.RawData) | Set-Clipboard
-  ```
-
-  Verify: paste it somewhere and confirm it is one long unbroken base64 string with **no**
-  `-----BEGIN CERTIFICATE-----` header and no line breaks. Azure rejects both.
-
-- [ ] **Step 3 — ⚙ OPERATOR: back up the root's PRIVATE key into Key Vault.** The root private key can mint
-  new client certificates, so it must not live only in one laptop's certificate store.
-
-  ```powershell
-  $pwPlain = Read-Host "Password to protect the root .pfx"
-  Export-PfxCertificate -Cert $root -FilePath "$env:TEMP\smx-p2s-root.pfx" `
-      -Password (ConvertTo-SecureString $pwPlain -AsPlainText -Force) | Out-Null
-  az keyvault certificate import --vault-name kv-smx-dev-lmxnb --name smx-p2s-root `
-      --file "$env:TEMP\smx-p2s-root.pfx" --password $pwPlain
-  Remove-Item "$env:TEMP\smx-p2s-root.pfx" -Force
-  Clear-History; $pwPlain = $null
-  ```
-
-  `az` needs the password as plaintext, so it lands in the PowerShell history buffer — hence the
-  `Clear-History`. The vault name `kv-smx-dev-lmxnb` was read back live from `rg-smx-dev-swc`, not assumed.
-
-  Verify: `az keyvault certificate show --vault-name kv-smx-dev-lmxnb -n smx-p2s-root --query id -o tsv`
-  returns an id. Then confirm the temp `.pfx` is gone.
-
-- [ ] **Step 4 — Write the client-certificate issuance script.** Create
-  `infra/scripts/new-vpn-client-cert.ps1`:
-
-  ```powershell
-  # Issues ONE client certificate, signed by the SMX P2S root, for ONE named person, and exports it as a
-  # password-protected .pfx for that person's laptop.
-  #
-  # Under certificate auth this script IS user provisioning, and the revocation list is the only
-  # deprovisioning. There is no group whose membership expires and no sign-in log that would show a
-  # certificate being used by someone it was not issued to -- so the -Name recorded here is the only
-  # durable record of who holds what. Use a real person's identifier, never "laptop2" or "temp".
-  param(
-      [Parameter(Mandatory = $true)][string] $Name,
-      [string] $RootSubject = 'CN=SMX-P2S-Root',
-      [int]    $ValidYears  = 1
-  )
-  $ErrorActionPreference = 'Stop'
-
-  $root = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq $RootSubject } | Select-Object -First 1
-  if (-not $root) { throw "Root certificate '$RootSubject' not found in Cert:\CurrentUser\My." }
-
-  # Client certs are deliberately SHORTER-lived than the root: an unrevoked certificate that nobody
-  # remembers issuing expires on its own. That is the only automatic deprovisioning this design has.
-  $client = New-SelfSignedCertificate `
-      -Type Custom -KeySpec Signature `
-      -Subject "CN=$Name" `
-      -KeyExportPolicy Exportable `
-      -HashAlgorithm sha256 -KeyLength 2048 `
-      -CertStoreLocation 'Cert:\CurrentUser\My' `
-      -Signer $root `
-      -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.2') `
-      -NotAfter (Get-Date).AddYears($ValidYears)
-
-  $pw   = Read-Host -AsSecureString "Password to protect $Name.pfx"
-  $path = Join-Path (Get-Location) "$Name.pfx"
-  Export-PfxCertificate -Cert $client -FilePath $path -Password $pw | Out-Null
-
-  Write-Host "Issued : $Name"
-  Write-Host "Thumb  : $($client.Thumbprint)"
-  Write-Host "Expires: $($client.NotAfter.ToString('yyyy-MM-dd'))"
-  Write-Host "PFX    : $path"
-  Write-Warning "Record the thumbprint. Revoking access later requires it, and it is not recoverable from the gateway."
-  Write-Warning "Transfer the .pfx out of band. It contains a private key -- do not email it."
-  ```
-
-  ASCII-only (repo convention for `.ps1`). No bash twin: this cannot run outside Windows, and a twin that
-  cannot work is worse than none.
-
-- [ ] **Step 5 — Record the certificate inventory.** Create `infra/scripts/vpn-cert-inventory.md` with a
-  table: person, certificate subject, thumbprint, issued date, expiry, revoked (y/n).
-
-  This file is the allow-list. Under Entra auth the directory would be, and would answer "who has access?"
-  on demand; here nothing does unless this is maintained. Commit it, and update it in the same commit as any
-  issuance or revocation.
-
-- [ ] **Step 6 — Issue your own client certificate.**
-
-  Run (Windows PowerShell, from the repo root): `.\infra\scripts\new-vpn-client-cert.ps1 -Name eli`
-  Expected: prints a thumbprint and writes `eli.pfx`. Add the row to the inventory.
-
-  Then confirm `eli.pfx` is **not** tracked by git: `git status --short` must not list it. If it does, stop
-  and add `*.pfx` to `.gitignore` before anything else — committing a private key to a repo is not
-  recoverable by deleting it later.
-
-- [ ] **Step 7 — Commit** (the script and inventory only — never a `.pfx`).
-
-  ```bash
-  git add infra/scripts/new-vpn-client-cert.ps1 infra/scripts/vpn-cert-inventory.md
-  git commit -m "feat(infra): P2S client certificate issuance and inventory"
-  ```
-
-## Task A2: GatewaySubnet and the VPN gateway
-
-**Files:**
-- Create: `infra/modules/vpn.bicep`
-- Modify: `infra/modules/hub.bicep` (add `GatewaySubnet` to the hub VNet)
-- Modify: `infra/main.bicep` (params + module wiring)
-- Modify: `infra/env/dev.bicepparam`
-
-- [ ] **Step 1 — ⚙ OPERATOR — PORTAL: create the GatewaySubnet.** Portal → `vnet-smx-hub-swc` → **Subnets** →
+- [x] **Step 1 — ⚙ OPERATOR — PORTAL: create the GatewaySubnet.** Portal → `vnet-smx-hub-swc` → **Subnets** →
   **+ Subnet**. Name **`GatewaySubnet`** (this exact name is required by Azure — any other name and the
-  gateway cannot be placed), address range `10.0.3.0/27`. No NSG, no delegation. Save.
+  gateway cannot be placed), address range `10.0.3.0/26`. No NSG, no delegation. Save.
 
   Verify:
   ```bash
   az network vnet subnet show -g rg-smx-hub-swc --vnet-name vnet-smx-hub-swc -n GatewaySubnet --query addressPrefix -o tsv
   ```
-  Expected: `10.0.3.0/27`.
+  Expected: `10.0.3.0/26`.
 
-- [ ] **Step 2 — ⚙ OPERATOR — PORTAL: create the VPN gateway.** Portal → **Virtual network gateways** →
+  **Do not shrink this to `/27`.** An earlier revision of this plan specified `/27`; the deployed subnet is
+  `/26` and it now holds a gateway. ARM cannot shrink a subnet that has one in it, so the "correction" is a
+  failed deployment at best.
+
+- [x] **Step 2 — ⚙ OPERATOR — PORTAL: create the VPN gateway.** Portal → **Virtual network gateways** →
   **Create**. Name `vgw-smx-hub-swc`, region `Sweden Central`, gateway type **VPN**, VPN type **Route-based**,
-  SKU **VpnGw1**, generation **Generation1**, virtual network `vnet-smx-hub-swc`, public IP **Create new**
-  named `pip-smx-hub-vgw-swc` (SKU Standard, Static), no active-active, no BGP. Review + create.
+  SKU **VpnGw1AZ**, generation **Generation1**, virtual network `vnet-smx-hub-swc`, public IP **Create new**
+  named `pip-smx-hub-vpngw-swc` (SKU Standard, Static), no active-active, no BGP. Review + create.
 
-  **This takes 30–45 minutes.** Start it, then continue reading — do not wait idle. Nothing in Task A2's
-  remaining steps depends on it completing, but Task A3 does.
+  **This takes 30–45 minutes.** Two names here are load-bearing and were the source of the near-miss in spec
+  §6.1: the SKU is `VpnGw1AZ` (zone-redundant — Azure cannot resize between the AZ and non-AZ families, so
+  changing it is a delete-and-recreate) and the public IP is `pip-smx-hub-vpngw-swc` with **`vpngw`, not
+  `vgw`** — a mismatched name in Bicep does not create a tidy second resource, it creates a second public IP,
+  repoints the gateway at it, and changes the address every distributed client profile targets.
 
-- [ ] **Step 3 — CODIFY: add `GatewaySubnet` to the hub VNet.** In `infra/modules/hub.bicep`, inside the
-  `subnets` array of the hub VNet resource, after the `snet-shared` entry (around line 121-127), add:
+  Verify:
+  ```bash
+  az network vnet-gateway show -g rg-smx-hub-swc -n vgw-smx-hub-swc \
+    --query '{state:provisioningState,sku:sku.name,type:vpnType,pool:vpnClientConfiguration.vpnClientAddressPool.addressPrefixes[0],auth:vpnClientConfiguration.vpnAuthenticationTypes[0],aud:vpnClientConfiguration.aadAudience}' -o json
+  ```
+  Expected: `Succeeded`, `VpnGw1AZ`, `RouteBased`, `172.20.0.0/24`, `AAD`,
+  `c632b3df-fb67-4d84-bdcf-b95ad541b5c8`.
+
+- [x] **Step 3 — CODIFY: add `GatewaySubnet` to the hub VNet.** In `infra/modules/hub.bicep`, inside the
+  `subnets` array of the hub VNet resource, after the `snet-shared` entry:
 
   ```bicep
       {
         // Azure requires this EXACT name — a VPN gateway cannot be placed in a subnet called anything
-        // else. /27 is comfortably above the /29 minimum and leaves 10.0.3.32+ of the hub /22 free.
+        // else. Matches the deployed /26; it now contains a gateway, so it cannot be shrunk.
         name: 'GatewaySubnet'
         properties: {
-          addressPrefix: '10.0.3.0/27'
+          addressPrefix: '10.0.3.0/26'
         }
       }
   ```
 
-- [ ] **Step 4 — CODIFY: create the VPN module.** Create `infra/modules/vpn.bicep`:
+- [x] **Step 4 — CODIFY: create the VPN module.** `infra/modules/vpn.bicep` — see the file for the full
+  content. The parts that are decisions rather than boilerplate:
 
   ```bicep
-  @description('Short workload token.')
-  param namePrefix string
+  // 'vpngw', not 'vgw': this name must match the ALREADY-DEPLOYED public IP.
+  var pipName = 'pip-${namePrefix}-hub-vpngw-${regionShort}'
 
-  param regionShort string
-  param location string
-  param tags object
+  // VpnGw1AZ matches what is DEPLOYED. Azure cannot resize between the AZ and non-AZ families, so
+  // "simplifying" this to VpnGw1 is a delete + recreate, ~45 min of downtime, and a new public IP that
+  // invalidates every client profile. VpnGw1 is the floor for Entra auth in any case.
+  sku: { name: 'VpnGw1AZ', tier: 'VpnGw1AZ' }
 
-  @description('Resource ID of the hub VNet GatewaySubnet.')
-  param gatewaySubnetId string
-
-  @description('P2S client address pool. Must not overlap the hub (10.0.0.0/22) or either spoke (10.1/10.2.0.0/20).')
-  param clientPool string = '172.16.0.0/24'
-
-  @description('Entra tenant id — the issuer the gateway validates P2S sign-ins against.')
-  param tenantId string
-
-  @description('App registration client id used as the P2S custom AUDIENCE. A custom audience, never the shared Microsoft Azure VPN app: that app authenticates every account in the tenant, which would make the tunnel allow-list the whole directory.')
-  param vpnAudienceClientId string
-
-  var gwName = 'vgw-${namePrefix}-hub-${regionShort}'
-  var pipName = 'pip-${namePrefix}-hub-vgw-${regionShort}'
-
-  resource pip 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
-    name: pipName
-    location: location
-    tags: tags
-    sku: {
-      name: 'Standard'
-    }
-    properties: {
-      publicIPAllocationMethod: 'Static'
-    }
+  // Empty vpnAudienceClientId selects CERTIFICATE auth; non-empty selects Entra. Non-empty is what ships.
+  // Both branches are the same gateway resource with the same SKU and tunnel type, so switching is a
+  // parameter change on a running gateway, not a teardown.
+  vpnClientConfiguration: empty(vpnAudienceClientId) ? { /* certificate branch — inert, kept as fallback */ } : {
+    vpnClientAddressPool: { addressPrefixes: [ clientPool ] }
+    // Entra auth works over OpenVPN ONLY. IKEv2/SSTP do certificate and RADIUS but never Entra.
+    vpnClientProtocols: [ 'OpenVPN' ]
+    vpnAuthenticationTypes: [ 'AAD' ]
+    aadTenant: 'https://login.microsoftonline.com/${tenantId}/'
+    aadAudience: vpnAudienceClientId
+    aadIssuer: 'https://sts.windows.net/${tenantId}/'
   }
-
-  resource vgw 'Microsoft.Network/virtualNetworkGateways@2024-05-01' = {
-    name: gwName
-    location: location
-    tags: tags
-    properties: {
-      gatewayType: 'Vpn'
-      vpnType: 'RouteBased'
-      // VpnGw1 is the floor for Entra authentication: the Basic SKU supports neither OpenVPN nor Entra.
-      sku: {
-        name: 'VpnGw1'
-        tier: 'VpnGw1'
-      }
-      enableBgp: false
-      activeActive: false
-      ipConfigurations: [
-        {
-          name: 'vnetGatewayConfig'
-          properties: {
-            privateIPAllocationMethod: 'Dynamic'
-            subnet: {
-              id: gatewaySubnetId
-            }
-            publicIPAddress: {
-              id: pip.id
-            }
-          }
-        }
-      ]
-      vpnClientConfiguration: {
-        vpnClientAddressPool: {
-          addressPrefixes: [ clientPool ]
-        }
-        // Entra authentication REQUIRES the OpenVPN tunnel type — IKEv2/SSTP support only certificate or
-        // RADIUS auth, which would make "specific users" a certificate-lifecycle problem instead of a
-        // group-membership one.
-        vpnClientProtocols: [ 'OpenVPN' ]
-        vpnAuthenticationTypes: [ 'AAD' ]
-        aadTenant: 'https://login.microsoftonline.com/${tenantId}/'
-        aadAudience: vpnAudienceClientId
-        aadIssuer: 'https://sts.windows.net/${tenantId}/'
-      }
-    }
-  }
-
-  output gatewayName string = vgw.name
-  output gatewayPublicIp string = pip.properties.ipAddress
-  output clientPool string = clientPool
   ```
 
-  Note on `aadIssuer`: the P2S gateway expects the **v1** issuer form (`sts.windows.net`) even though the
-  backend's JwtBearer uses v2. This is a gateway-side quirk, not a copy/paste error from `Program.cs` — using
-  the v2 issuer here produces a sign-in that succeeds in the browser and then fails to establish the tunnel.
+  **Both trailing slashes are required.** `aadTenant` and `aadIssuer` without them deploy cleanly, sign in
+  cleanly in the browser, and then never establish a tunnel. And `aadIssuer` is the **v1** form
+  (`sts.windows.net`) even though the backend's JwtBearer uses v2 — a gateway-side requirement, not a
+  copy/paste slip from `Program.cs`.
 
-- [ ] **Step 5 — CODIFY: wire it into `main.bicep`.** Add parameters near the other feature gates (beside
-  `deployPolicyGuardrails`, around line 395):
+- [x] **Step 5 — CODIFY: wire it into `main.bicep`.** Parameters beside the other feature gates:
 
   ```bicep
   @description('Deploy the P2S VPN gateway and enable gateway transit on both peering directions. GATED because the spoke peering cannot set useRemoteGateways=true before a gateway exists in the hub — a fresh-subscription deploy with this true and no gateway fails. Deploy once with false, then flip.')
   param deployVpnGateway bool = false
 
   @description('P2S client address pool (see vpn.bicep). Also used by the NSG rules that scope what a connected laptop may reach.')
-  param vpnClientPool string = '172.16.0.0/24'
+  param vpnClientPool string = '172.20.0.0/24'
 
-  @description('App registration client id used as the P2S custom audience — printed by configure-auth.sh. Empty is only valid while deployVpnGateway is false.')
+  @description('Entra audience the P2S gateway validates sign-ins against. Empty selects certificate auth.')
   param vpnAudienceClientId string = ''
   ```
 
-  Then add the module after the `hubPeering` module:
+  the module after `hubPeering`, and the output:
 
   ```bicep
-  module vpn 'modules/vpn.bicep' = if (deployVpnGateway) {
-    name: 'vpn-hub'
-    scope: hubRg
-    params: {
-      namePrefix: namePrefix
-      regionShort: regionShort
-      location: location
-      tags: tags
-      gatewaySubnetId: '${hub.outputs.vnetId}/subnets/GatewaySubnet'
-      clientPool: vpnClientPool
-      tenantId: subscription().tenantId
-      vpnAudienceClientId: vpnAudienceClientId
-    }
-  }
+  // Safe-dereference rather than a ternary on deployVpnGateway: the ternary is evaluated eagerly at
+  // template-compile time and fails when the module is not deployed.
+  output vpnGatewayPublicIp string = vpn.?outputs.gatewayPublicIp ?? ''
   ```
 
-  And an output beside the other network outputs:
+- [x] **Step 6 — CODIFY: set the dev parameters.** In `infra/env/dev.bicepparam`:
 
   ```bicep
-  output vpnGatewayPublicIp string = deployVpnGateway ? vpn.outputs.gatewayPublicIp : ''
-  ```
-
-- [ ] **Step 6 — CODIFY: set the dev parameters.** In `infra/env/dev.bicepparam`, after the `apiClientId`
-  block, add:
-
-  ```bicep
-  // P2S VPN gateway (spec 2026-08-02). GATED and deployed in two passes on purpose: the spoke peering's
-  // useRemoteGateways=true is rejected by ARM if no gateway exists in the hub yet, so a fresh subscription
-  // must deploy once with this false. Flip to true only after the gateway exists (or accept the ~40 min
-  // creation inside a single deploy).
   param deployVpnGateway = true
 
-  // EMPTY selects CERTIFICATE authentication (spec 4.6) — the shipped path, because the operator account is
-  // a guest with no directory privileges and the audience app cannot be created. Setting this to the id
-  // printed by configure-auth.sh is what switches the SAME gateway to Entra auth later; nothing else about
-  // the estate has to change.
-  param vpnAudienceClientId = ''
-
-  // The base64 body of the root CA's exported .cer — Task A1C Step 2. No PEM header, no line breaks.
-  param vpnRootCertData = '<base64 from Task A1C Step 2>'
-
-  // Thumbprints of client certificates whose access has been withdrawn. THIS LIST IS THE ONLY OFFBOARDING
-  // MECHANISM under certificate auth — there is no group to remove anyone from. Keep it in step with
-  // infra/scripts/vpn-cert-inventory.md.
-  param vpnRevokedCertThumbprints = []
+  // Microsoft-REGISTERED Azure VPN Client app id. NOT an app we own and NOT one we register: Microsoft
+  // pre-registered it with global consent, so this needs no app registration and no admin consent — which
+  // is precisely why Entra auth is reachable despite the operator being a tenant guest.
+  //
+  // Do NOT substitute the older manually-registered value 41b23e61-6c1e-4545-b367-cd054e0ed4b4: it requires
+  // consent via the Cloud Application Administrator role (which we do not have) and Microsoft retires it on
+  // 2028-03-31.
+  //
+  // Access is TENANT-WIDE: any SecurityMatters account can establish the tunnel. Narrowing it to a group
+  // needs a CUSTOM audience app registration (Task D1), which needs directory privileges we lack.
+  param vpnAudienceClientId = 'c632b3df-fb67-4d84-bdcf-b95ad541b5c8'
   ```
 
-- [ ] **Step 7 — Pre-flight the two things Bicep cannot catch, THEN deploy.**
+  `vpnRootCertData` and `vpnRevokedCertThumbprints` remain set in that file and are **inert** — the
+  certificate branch is selected only when `vpnAudienceClientId` is empty. They are the tested fallback, not
+  a live credential (spec §1 R3). No client certificate was ever issued from that root.
 
-  Bicep types `vpnAuthenticationTypes` as an open `string` and `rootCertData` as an optional one, so a green
-  compile proves neither that the auth combination is valid nor that a certificate was supplied. Both failures
-  would otherwise surface ~40 minutes into a gateway create, which is the most expensive place to learn them.
+- [x] **Step 7 — Deploy and confirm idempotence.**
 
-  First, assert a certificate is actually present:
-  ```bash
-  grep -q "param vpnRootCertData = ''" infra/env/dev.bicepparam && \
-    echo "REFUSING: vpnRootCertData is empty — publicCertData is required and the create will fail late." || \
-    echo "cert data present"
-  ```
-  Expected: `cert data present`.
-
-  Then let ARM validate the property shape without provisioning anything:
-  ```bash
-  az deployment sub what-if --location swedencentral \
-    --template-file infra/main.bicep --parameters infra/env/dev.bicepparam \
-    --no-pretty-print > /tmp/vpn-whatif.txt; echo "exit=$?"
-  ```
-  Expected: `exit=0` and the output lists a `Create` for `vgw-smx-hub-swc`. A rejection of
-  `vpnAuthenticationTypes` or `publicCertData` shows up here, before any money is spent.
-
-  Only then:
   ```bash
   az bicep build --file infra/main.bicep --stdout > /dev/null && \
   az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null && \
   infra/scripts/deploy.sh dev
   ```
   Expected: both compile silently; the deploy reports `Succeeded` and does **not** recreate the gateway the
-  portal already made (same name, same properties → no-op).
+  portal already made (same name, same SKU, same public IP name → no-op). Re-run Step 2's verification
+  afterwards: **`sku.name` must still read `VpnGw1AZ` and the pool must still read `172.20.0.0/24`.** If
+  either changed, the deploy just recreated the gateway — that is the §6.1 failure, and every client profile
+  is now stale.
 
-  **This deploy starts the ~$140/mo meter.** It is the first irreversible-in-practice step in the plan.
+  **This deploy started the monthly meter** (~$140/mo for VpnGw1, plus the AZ premium).
 
-- [ ] **Step 8 — Commit.**
+- [x] **Step 8 — Commit.**
 
   ```bash
   git add infra/modules/vpn.bicep infra/modules/hub.bicep infra/main.bicep infra/env/dev.bicepparam
-  git commit -m "feat(infra): P2S VPN gateway with Entra auth and custom audience"
+  git commit -m "feat(infra): P2S VPN gateway with Entra auth on the Microsoft-registered client app"
   ```
 
-## Task A3: Enable gateway transit on both peering directions
+## Task A2: Enable gateway transit on both peering directions — **DONE**
 
 **Files:**
-- Modify: `infra/modules/hubPeering.bicep:23`
-- Modify: `infra/modules/networking.bicep:156-157`
-- Modify: `infra/main.bicep` (pass the gate through to both)
+- Modify: `infra/modules/hubPeering.bicep` ✔
+- Modify: `infra/modules/networking.bicep` ✔
+- Modify: `infra/main.bicep` (pass the gate through to both) ✔
 
-- [ ] **Step 1 — Confirm the gateway finished provisioning.** Task A2 Step 2 must be complete before the spoke
-  peering can reference it.
+- [x] **Step 1 — Confirm the gateway finished provisioning.**
 
   Run: `az network vnet-gateway show -g rg-smx-hub-swc -n vgw-smx-hub-swc --query provisioningState -o tsv`
   Expected: `Succeeded`. If `Updating`, wait — this is the 30–45 minute step.
 
-- [ ] **Step 2 — ⚙ OPERATOR — PORTAL: flip both peering flags.** Order matters; the hub side must go first.
+- [x] **Step 2 — ⚙ OPERATOR — PORTAL: flip both peering flags.** Order matters; the hub side must go first.
 
   Portal → `vnet-smx-hub-swc` → **Peerings** → `peer-to-vnet-smx-dev-swc` → tick **Allow gateway transit** →
   Save. Then → `vnet-smx-dev-swc` → **Peerings** → `peer-to-hub` → tick **Use the remote virtual network's
@@ -602,106 +325,106 @@ side — the certificates must land in the Windows certificate store, and WSL ca
   ```
   Expected: `true` from both.
 
-- [ ] **Step 3 — CODIFY the hub side.** In `infra/modules/hubPeering.bicep`, add a parameter at the top of the
-  file:
+- [x] **Step 3 — CODIFY the hub side.** In `infra/modules/hubPeering.bicep`:
 
   ```bicep
-  @description('Allow this hub VNet to offer its VPN gateway to the peered spoke. Gated: paired with useRemoteGateways on the spoke side, and both are meaningless (the spoke peering is REJECTED) until a gateway exists in the hub.')
+  @description('Offer this hub VNet\'s VPN gateway to the peered spoke. Paired with useRemoteGateways on the spoke side; both must be true for a P2S client to reach the spoke, and both are true on the live peerings.')
   param allowGatewayTransit bool = false
   ```
 
-  and replace line 23 (`allowGatewayTransit: false`) with:
+  replacing the hardcoded `allowGatewayTransit: false` with the parameter, and carrying the reason at the
+  site:
 
   ```bicep
-      allowGatewayTransit: allowGatewayTransit
+    // The hub OFFERS its VPN gateway across the peering; the spoke consumes it via useRemoteGateways
+    // (networking.bicep). Both are already true on the live peerings — hardcoding false here would revert
+    // them on the next deploy and silently cut every VPN client off from the spoke, while the tunnel
+    // itself still connected. That failure looks like "the app is down", not "the peering changed".
+    allowGatewayTransit: allowGatewayTransit
   ```
 
-- [ ] **Step 4 — CODIFY the spoke side.** In `infra/modules/networking.bicep`, add a parameter beside the
-  other params (near line 21):
+- [x] **Step 4 — CODIFY the spoke side.** In `infra/modules/networking.bicep`:
 
   ```bicep
   @description('Use the hub VNet VPN gateway for P2S transit. Gated: ARM REJECTS this peering when the hub has no gateway, so a fresh subscription must deploy once with false.')
   param useRemoteGateways bool = false
   ```
 
-  and replace line 157 (`useRemoteGateways: false`) with:
+  replacing the hardcoded `useRemoteGateways: false`. Leave `allowGatewayTransit: false` on the spoke side —
+  the spoke has no gateway to offer.
 
-  ```bicep
-      useRemoteGateways: useRemoteGateways
-  ```
+- [x] **Step 5 — CODIFY the wiring.** In `infra/main.bicep`, `allowGatewayTransit: deployVpnGateway` on the
+  `hubPeering` module and `useRemoteGateways: deployVpnGateway` on the `spoke` (networking) module.
 
-  Leave `allowGatewayTransit: false` on the spoke side — the spoke has no gateway to offer.
+- [x] **Step 6 — Validate, deploy, and confirm idempotence.**
 
-- [ ] **Step 5 — CODIFY the wiring.** In `infra/main.bicep`, pass `deployVpnGateway` into both modules. In the
-  `hubPeering` module params add `allowGatewayTransit: deployVpnGateway`, and in the `spoke` (networking)
-  module params add `useRemoteGateways: deployVpnGateway`.
-
-- [ ] **Step 6 — Validate, deploy, and confirm idempotence.**
-
-  Run:
   ```bash
   az bicep build --file infra/main.bicep --stdout > /dev/null && \
   az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null && \
   infra/scripts/deploy.sh dev && infra/scripts/deploy.sh dev
   ```
   Expected: both deploys `Succeeded`; the second changes nothing. Re-run the two `az network vnet peering show`
-  commands from Step 2 — still `true`. **This is the first real test of the portal trap**: if the flags read
-  `false` after deploying, the codification is wrong, not the portal.
+  commands from Step 2 — still `true`. **This is the first real test of both traps**: if the flags read
+  `false` afterwards, the codification is wrong, not the portal.
 
-- [ ] **Step 7 — Commit.**
+- [x] **Step 7 — Commit.**
 
   ```bash
   git add infra/modules/hubPeering.bicep infra/modules/networking.bicep infra/main.bicep
   git commit -m "feat(infra): gateway transit on both peerings, gated on deployVpnGateway"
   ```
 
-## Task A4: Connect a laptop and prove VNet reach
+## Task A3: Connect a laptop and prove VNet reach — **DONE**
 
 **Files:** none — this is a live verification task.
 
-- [ ] **Step 1 — ⚙ OPERATOR — PORTAL: download the client profile.** Portal → `vgw-smx-hub-swc` →
-  **Point-to-site configuration** → confirm it shows address pool `172.16.0.0/24`, tunnel type `OpenVPN (SSL)`,
-  authentication type **`Azure certificate`**, and the root certificate named `smx-p2s-root`. Click **Download
-  VPN client** and save the zip.
+- [x] **Step 1 — ⚙ OPERATOR — PORTAL: download the client profile.** Portal → `vgw-smx-hub-swc` →
+  **Point-to-site configuration** → confirm it shows address pool `172.20.0.0/24`, tunnel type
+  `OpenVPN (SSL)`, and authentication type **`Azure Active Directory`** with audience
+  `c632b3df-fb67-4d84-bdcf-b95ad541b5c8`. Click **Download VPN client** and save the zip.
 
-  If it shows `Azure Active Directory` instead, `vpnAudienceClientId` is not empty — check Task A2 Step 6.
+  If it shows `Azure certificate` instead, `vpnAudienceClientId` is empty — check Task A1 Step 6.
 
-- [ ] **Step 2 — ⚙ OPERATOR: install the client certificate, then the VPN client.** Order matters: the
-  profile import looks for a matching certificate.
+- [x] **Step 2 — ⚙ OPERATOR: install the Azure VPN Client and import the profile.** Install the **Azure VPN
+  Client** from the Microsoft Store, then **+** → **Import** → select `AzureVPN/azurevpnconfig.xml` from the
+  downloaded zip → Save → **Connect**.
 
-  Double-click `eli.pfx` (Task A1C Step 6) → install to **Current User** → **Personal** store, entering the
-  password you set. Then install the **Azure VPN Client** from the Microsoft Store, and in it:
-  **+** → **Import** → select `AzureVPN/azurevpnconfig.xml` from the downloaded zip → Save → **Connect**.
+  Expected: a browser sign-in prompt for a SecurityMatters account, then **Connected**. There is no
+  certificate to install and nothing to consent to — that is the whole point of the Microsoft-registered
+  audience app.
 
-  Expected: the client reports **Connected** with no browser prompt — there is no interactive sign-in under
-  certificate auth, which is exactly the property that makes this weaker than Entra (spec §4.6): possession
-  of the file is the whole authentication.
+  If sign-in succeeds in the browser but the tunnel never establishes, check `aadTenant` and `aadIssuer` for
+  the **trailing slash** and that `aadIssuer` is the v1 `sts.windows.net` form (Task A1 Step 4).
 
-  If it fails with a certificate error, confirm the client certificate is in `Cert:\CurrentUser\My` and that
-  it chains to `CN=SMX-P2S-Root` — `certutil -verify -urlfetch` on the exported `.cer` will say so.
+- [x] **Step 3 — Verify the tunnel assigned an address from the pool.**
 
-- [ ] **Step 3 — Verify the tunnel assigned an address from the pool.**
+  Run (Windows PowerShell): `ipconfig | Select-String 172.20.`
+  Run (macOS/Linux): `ifconfig | grep 172.20.`
+  Expected: an address inside `172.20.0.0/24`.
 
-  Run (Windows PowerShell): `ipconfig | Select-String 172.16.`
-  Run (macOS/Linux): `ifconfig | grep 172.16.`
-  Expected: an address inside `172.16.0.0/24`.
+- [x] **Step 4 — Verify reach into the spoke.** This is the step that proves gateway transit works.
 
-- [ ] **Step 4 — Verify reach into the spoke.** This is the step that proves gateway transit works.
+  **DNS will not help you here, and that is expected, not a fault** (spec §4.4): the ACA environment's
+  private DNS zone is linked to the hub and spoke VNets only, while a P2S client resolves through its own
+  local resolver. A bare `curl http://<aca-fqdn>/` from the tunnel fails at **name resolution** and proves
+  nothing about reachability. Supply the address:
 
-  Run:
   ```bash
   FQDN=$(az containerapp show -g rg-smx-dev-swc -n frontend --query properties.configuration.ingress.fqdn -o tsv)
-  echo "$FQDN"
-  curl -s -o /dev/null -m 20 -w '%{http_code}\n' "http://${FQDN}/"
+  ACA_IP=$(az containerapp env show -g rg-smx-dev-swc -n cae-smx-dev-swc --query properties.staticIp -o tsv)
+  echo "$FQDN -> $ACA_IP"
+  curl -s -o /dev/null -m 20 -w '%{http_code}\n' --resolve "${FQDN}:80:${ACA_IP}" "http://${FQDN}/"
   ```
-  Expected: `200`. The ACA environment is internal, so this FQDN resolves and answers **only** from inside the
-  VNet — getting a 200 here from a laptop is the whole point of Phase A.
+  Expected: `200`. The ACA environment is internal, so that address answers **only** from inside the VNet —
+  getting a 200 here from a laptop is the whole point of Phase A. *(This is also exactly why Phase C's public
+  A record for `dev.<domain>` is a requirement rather than a nicety: it is the only name that resolves from a
+  tunnelled laptop with no per-laptop setup.)*
 
-- [ ] **Step 5 — Verify the same request fails with the tunnel down.** Disconnect the VPN client and re-run the
-  `curl` from Step 4.
+- [x] **Step 5 — Verify the same request fails with the tunnel down.** Disconnect the VPN client and re-run
+  the `curl` from Step 4 (the `--resolve` form, so the result is about reachability and not DNS).
 
-  Expected: a DNS failure or timeout — **not** a 200. If it returns 200 while disconnected, the ACA environment
-  is not internal and the premise of this design is broken; stop and investigate before proceeding to Phase B.
+  Expected: a timeout — **not** a 200. If it returns 200 while disconnected, the ACA environment is not
+  internal and the premise of this design is broken; stop and investigate before proceeding to Phase B.
 
 - [ ] **Step 6 — Reconnect** before starting Phase B. Closing the public listener while disconnected removes
   your own access.
@@ -713,12 +436,18 @@ side — the certificates must land in the Windows certificate store, and WSL ca
 End state: every App Gateway listener is on a private IP, the NSG denies `Internet`, and the
 private-endpoint subnet is fenced off from the VPN pool. The app is reachable **only** over the tunnel.
 
+**Partly codified already, and not armed.** `gateway.bicep` and `main.bicep` carry the private-frontend
+plumbing, and `smoke.sh`/`smoke.ps1` carry the assertion — but `dev.bicepparam` does not set `agwPrivateIp`,
+so every listener is still on the public frontend and the app is still on the internet. The NSG work (B2, B3)
+has not been started at all. **B3 is the most urgent item in this plan**: the tunnel is live and tenant-wide,
+`nsgPe` has no rules, so every account in the directory currently has layer-3 reach to the private endpoints.
+
 ## Task B1: Move the App Gateway onto a private frontend IP
 
 **Files:**
-- Modify: `infra/modules/gateway.bicep` (frontend IP configs + listener bindings)
-- Modify: `infra/main.bicep` (`agwPrivateIp` param + pass-through)
-- Modify: `infra/env/dev.bicepparam`
+- Modify: `infra/modules/gateway.bicep` ✔ (done)
+- Modify: `infra/main.bicep` ✔ (done)
+- Modify: `infra/env/dev.bicepparam` ← **the remaining step**
 
 - [ ] **Step 1 — ⚙ OPERATOR — PORTAL: check whether an in-place addition is even offered.** Portal →
   `agw-smx-dev-swc` → **Frontend IP configurations** → **Add**. Per spec §4.5, App Gateway v2 may refuse to add
@@ -727,7 +456,8 @@ private-endpoint subnet is fenced off from the VPN pool. The app is reachable **
   - **If Add offers a private IP:** create it with static address `10.0.0.10` in `snet-agw-dev`, then go to
     **Listeners** → `httpListener` → change **Frontend IP** to the private configuration → Save. Continue to
     Step 2.
-  - **If it is refused or absent:** skip to Step 3 and take the recreate path. This is expected, not a failure.
+  - **If it is refused or absent:** skip to Step 5 and take the recreate path. This is expected, not a
+    failure.
 
 - [ ] **Step 2 — Verify the listener moved** (in-place path only).
 
@@ -739,70 +469,38 @@ private-endpoint subnet is fenced off from the VPN pool. The app is reachable **
   Expected: every listener's frontend id ends in the **private** configuration name, not
   `appGwPublicFrontendIp`.
 
-- [ ] **Step 3 — CODIFY: add the private frontend to `gateway.bicep`.** Add a parameter after `dnsLabel`
-  (line 42):
+- [x] **Step 3 — CODIFY: the private frontend in `gateway.bicep`.** Already committed:
 
   ```bicep
   @description('Static private IP for the gateway frontend, inside agwSubnet. Empty = public-listener behaviour (the pre-2026-08 posture). Non-empty moves EVERY listener to the private IP; the public IP stays allocated for the v2 control plane but nothing binds to it.')
   param privateFrontendIp string = ''
-  ```
 
-  Add a variable beside the other name vars (after line 48):
-
-  ```bicep
   var fePrivateIpName = 'appGwPrivateFrontendIp'
   var listenerFeName = empty(privateFrontendIp) ? feIpName : fePrivateIpName
   ```
 
-  Replace the `frontendIPConfigurations` array (lines 147-156) with:
+  with `frontendIPConfigurations` built by `concat` (public always, private only when set) and **both**
+  `httpListeners` bound to `listenerFeName`. Verify the binding is on both, not one:
 
-  ```bicep
-      frontendIPConfigurations: concat([
-        {
-          // Kept allocated even when private: App Gateway v2 wants a public frontend for its control
-          // plane. With privateFrontendIp set, NO listener binds here, so nothing answers on it.
-          name: feIpName
-          properties: {
-            publicIPAddress: {
-              id: pip.id
-            }
-          }
-        }
-      ], empty(privateFrontendIp) ? [] : [
-        {
-          name: fePrivateIpName
-          properties: {
-            privateIPAllocationMethod: 'Static'
-            privateIPAddress: privateFrontendIp
-            subnet: {
-              id: agwSubnetId
-            }
-          }
-        }
-      ])
-  ```
+  Run: `grep -cF 'frontendIPConfigurations/${listenerFeName}' infra/modules/gateway.bicep`
+  Expected: `2`. (`-F` and single quotes are not optional — `${…}` in a shell-interpolated or regex pattern
+  matches nothing here and the check would silently report `0`.) Leaving either listener on the public
+  frontend leaves the door open.
 
-  Then in **both** `httpListeners` entries (lines 266-295), replace
-  `id: '${gwId}/frontendIPConfigurations/${feIpName}'` with
-  `id: '${gwId}/frontendIPConfigurations/${listenerFeName}'`. Both the HTTP and the gated HTTPS listener must
-  move — leaving either on the public frontend leaves the door open.
+- [x] **Step 4 — CODIFY: wire it through `main.bicep`.** Already committed: `param agwPrivateIp string = ''`
+  and `privateFrontendIp: agwPrivateIp` in the `gateway` module params.
 
-- [ ] **Step 4 — CODIFY: wire it through `main.bicep`.** Add the parameter beside `vpnClientPool`:
-
-  ```bicep
-  @description('Static private IP for the App Gateway frontend. Empty keeps the public listener (pre-2026-08 posture).')
-  param agwPrivateIp string = ''
-  ```
-
-  and pass `privateFrontendIp: agwPrivateIp` in the `gateway` module params.
-
-- [ ] **Step 5 — CODIFY: set it for dev.** In `infra/env/dev.bicepparam`:
+- [ ] **Step 5 — CODIFY: arm it for dev.** In `infra/env/dev.bicepparam`, add:
 
   ```bicep
   // Moves every App Gateway listener onto a private IP in snet-agw-dev. The public IP stays allocated
-  // (v2 control plane) with nothing bound to it. Emptying this string is the rollback.
+  // (v2 control plane) with nothing bound to it. Emptying this string is the rollback, and it is the
+  // first thing to check if the app is ever unexpectedly reachable from the internet.
   param agwPrivateIp = '10.0.0.10'
   ```
+
+  **This is the line that closes the public door.** Until it exists, `gateway.bicep` takes the
+  `empty(privateFrontendIp)` branch and every listener stays public, no matter what the rest of Phase B says.
 
 - [ ] **Step 6 — Deploy.**
 
@@ -815,13 +513,14 @@ private-endpoint subnet is fenced off from the VPN pool. The app is reachable **
   Expected: `Succeeded`.
 
   **If the deploy fails** with a frontend-IP-configuration error, this is the recreate path from spec §4.5.
-  Delete the gateway and redeploy — the Bicep now declares both frontends at creation time, which is
-  supported:
+  Delete the gateway and redeploy — the Bicep declares both frontends at creation time, which is supported:
   ```bash
   az network application-gateway delete -g rg-smx-dev-swc -n agw-smx-dev-swc
   infra/scripts/deploy.sh dev
   ```
-  Expect ~15-25 minutes and a new `dnsLabel` allocation on the public IP. Harmless — nothing points at it.
+  Expect ~15–25 minutes and a new `dnsLabel` allocation on the App Gateway public IP. Harmless — nothing
+  points at it. *(Note this is the **App Gateway's** public IP, not the VPN gateway's. Deleting the VPN
+  gateway's `pip-smx-hub-vpngw-swc` would invalidate every client profile.)*
 
 - [ ] **Step 7 — Verify from the tunnel.** With the VPN connected:
 
@@ -831,8 +530,8 @@ private-endpoint subnet is fenced off from the VPN pool. The app is reachable **
 - [ ] **Step 8 — Commit.**
 
   ```bash
-  git add infra/modules/gateway.bicep infra/main.bicep infra/env/dev.bicepparam
-  git commit -m "feat(infra): move every App Gateway listener onto a private frontend IP"
+  git add infra/env/dev.bicepparam
+  git commit -m "feat(infra): arm the private App Gateway frontend in dev"
   ```
 
 ## Task B2: Deny Internet at the gateway subnet NSG
@@ -843,8 +542,8 @@ private-endpoint subnet is fenced off from the VPN pool. The app is reachable **
 
 - [ ] **Step 1 — ⚙ OPERATOR — PORTAL: replace the inbound allow rule.** Portal → `nsg-smx-hub-agw-swc` →
   **Inbound security rules** → open `Allow-HTTP-HTTPS-Inbound`. Change **Source** from `Service Tag /
-  Internet` to **IP Addresses** with source `172.16.0.0/24`. Rename is not possible in place, so also note it
-  now means "VPN pool only". Save.
+  Internet` to **IP Addresses** with source **`172.20.0.0/24`**. Rename is not possible in place, so also note
+  it now means "VPN pool only". Save.
 
   Leave `Allow-GatewayManager` and `Allow-AzureLoadBalancer` untouched — removing them breaks the App Gateway
   control plane and health probes respectively, and the gateway will go Unhealthy.
@@ -854,7 +553,7 @@ private-endpoint subnet is fenced off from the VPN pool. The app is reachable **
   az network nsg rule show -g rg-smx-hub-swc --nsg-name nsg-smx-hub-agw-swc -n Allow-HTTP-HTTPS-Inbound \
     --query '{src:sourceAddressPrefix,ports:destinationPortRanges}' -o json
   ```
-  Expected: source `172.16.0.0/24`.
+  Expected: source `172.20.0.0/24`.
 
 - [ ] **Step 2 — CODIFY.** In `infra/modules/hub.bicep`, add a parameter near the top:
 
@@ -884,17 +583,20 @@ private-endpoint subnet is fenced off from the VPN pool. The app is reachable **
         }
   ```
 
-  In `infra/main.bicep`, pass `vpnClientPool: deployVpnGateway ? vpnClientPool : ''` in the `hub` module params.
+  In `infra/main.bicep`, pass `vpnClientPool: deployVpnGateway ? vpnClientPool : ''` in the `hub` module
+  params. The value flows from `main.bicep`'s `vpnClientPool` default — **`172.20.0.0/24`**. Do not hardcode
+  a prefix here; a rule scoped to the wrong pool matches nothing and fails **open**.
 
 - [ ] **Step 3 — Deploy and verify the rename took.**
 
   Run:
   ```bash
   az bicep build --file infra/main.bicep --stdout > /dev/null && infra/scripts/deploy.sh dev && \
-  az network nsg rule list -g rg-smx-hub-swc --nsg-name nsg-smx-hub-agw-swc --query '[].name' -o tsv
+  az network nsg rule list -g rg-smx-hub-swc --nsg-name nsg-smx-hub-agw-swc --query '[].{n:name,src:sourceAddressPrefix}' -o tsv
   ```
-  Expected: `Allow-Frontend-Inbound`, `Allow-GatewayManager`, `Allow-AzureLoadBalancer`, `Deny-Other-Inbound`.
-  The old `Allow-HTTP-HTTPS-Inbound` is gone — Bicep replaced it rather than leaving both.
+  Expected: `Allow-Frontend-Inbound  172.20.0.0/24`, plus `Allow-GatewayManager`, `Allow-AzureLoadBalancer`
+  and `Deny-Other-Inbound`. The old `Allow-HTTP-HTTPS-Inbound` is gone — Bicep replaced it rather than
+  leaving both.
 
 - [ ] **Step 4 — Commit.**
 
@@ -906,17 +608,19 @@ private-endpoint subnet is fenced off from the VPN pool. The app is reachable **
 ## Task B3: Fence the private-endpoint subnet off from the VPN pool
 
 **Files:**
-- Modify: `infra/modules/networking.bicep:47-52` (`nsgPe` rules)
+- Modify: `infra/modules/networking.bicep:50-56` (`nsgPe` rules)
+- Modify: `infra/main.bicep` (pass the VPN pool into the spoke module)
 
-This is spec §4.2 — the cost of choosing an L3 tunnel, paid explicitly.
+This is spec §4.2 — the cost of choosing an L3 tunnel, paid explicitly. **Do this first if you do only one
+thing in Phase B.** The tunnel is already live and open to the whole tenant; `nsgPe` has no rules; so the set
+of accounts that can currently open a TCP connection to Cosmos, Key Vault, ACR or AI Search over the tunnel
+is the entire SecurityMatters directory.
 
 - [ ] **Step 1 — ⚙ OPERATOR — PORTAL: inspect what is currently allowed.** Portal → `nsg-smx-dev-pe-swc` →
   **Inbound security rules**. Note that there are **no custom rules** — only the three default rules, of which
-  `AllowVnetInBound` permits everything inside the VNet and anything routed into it. Nothing today stops a
-  connected laptop from opening a TCP connection to the Cosmos or Key Vault private endpoint.
+  `AllowVnetInBound` permits everything inside the VNet and anything routed into it.
 
-- [ ] **Step 2 — CODIFY the rules.** In `infra/modules/networking.bicep`, replace the `nsgPe` resource
-  (lines 47-54) with:
+- [ ] **Step 2 — CODIFY the rules.** In `infra/modules/networking.bicep`, replace the `nsgPe` resource with:
 
   ```bicep
   // The private-endpoint subnet is the data plane: Cosmos, Key Vault, ACR and AI Search all terminate here.
@@ -943,14 +647,15 @@ This is spec §4.2 — the cost of choosing an L3 tunnel, paid explicitly.
         }
         {
           // Explicit and above the catch-all so the intent is legible in the portal: the tunnel exists to
-          // reach the web app, not the databases behind it.
+          // reach the web app, not the databases behind it. The default MUST be the live pool, not a
+          // placeholder — a deny rule scoped to a prefix nothing uses matches nothing and fails OPEN.
           name: 'Deny-VpnClients'
           properties: {
             priority: 200
             direction: 'Inbound'
             access: 'Deny'
             protocol: '*'
-            sourceAddressPrefix: empty(vpnClientPool) ? '172.16.0.0/24' : vpnClientPool
+            sourceAddressPrefix: empty(vpnClientPool) ? '172.20.0.0/24' : vpnClientPool
             sourcePortRange: '*'
             destinationAddressPrefix: '*'
             destinationPortRange: '*'
@@ -974,7 +679,7 @@ This is spec §4.2 — the cost of choosing an L3 tunnel, paid explicitly.
   }
   ```
 
-  Add the parameter this references, beside the other params (near line 21):
+  Add the parameter this references, beside `useRemoteGateways`:
 
   ```bicep
   @description('P2S VPN client pool, explicitly denied inbound to the private-endpoint subnet.')
@@ -1003,7 +708,7 @@ This is spec §4.2 — the cost of choosing an L3 tunnel, paid explicitly.
   curl -s -o /dev/null -m 10 -w '%{http_code}\n' "https://${COSMOS}.documents.azure.com/" || echo "blocked"
   ```
   Expected: a timeout or `blocked` — **not** an HTTP status code. A returned status means the deny rule is not
-  matching and the tunnel still reaches the data plane.
+  matching; the first thing to check is that its source prefix is `172.20.0.0/24` and not a stale `172.16`.
 
 - [ ] **Step 6 — Commit.**
 
@@ -1012,52 +717,41 @@ This is spec §4.2 — the cost of choosing an L3 tunnel, paid explicitly.
   git commit -m "feat(infra): fence the private-endpoint subnet off from the VPN client pool"
   ```
 
-## Task B4: Prove the public door is shut, and make the smoke test enforce it
+## Task B4: Prove the public door is shut — **script DONE, live proof pending**
 
 **Files:**
-- Modify: `infra/scripts/smoke.sh:17-24`
-- Modify: `infra/scripts/smoke.ps1` (twin)
+- Modify: `infra/scripts/smoke.sh` ✔ (done)
+- Modify: `infra/scripts/smoke.ps1` ✔ (done)
 
 - [ ] **Step 1 — Verify from outside the tunnel.** **Disconnect the VPN client**, then:
 
   ```bash
   curl -s -o /dev/null -m 20 -w '%{http_code}\n' "http://smx-dev-lmxnb.swedencentral.cloudapp.azure.com/" || echo "unreachable"
   ```
-  Expected: `000` or `unreachable` (timeout). Compare against the `200` recorded in P4 — that delta is the
-  entire point of Phase B. Anything else means a listener is still bound to the public frontend; re-check
-  Task B1 Step 3 covered **both** listeners.
+  Expected **after B1 Step 5**: `000` or `unreachable` (timeout). Compare against the `200` recorded in P4 —
+  that delta is the entire point of Phase B. Anything else means a listener is still bound to the public
+  frontend; re-check that B1 Step 3's `grep` returns `2`.
 
-- [ ] **Step 2 — Write the assertion into the smoke script.** In `infra/scripts/smoke.sh`, replace the gateway
-  probe block (lines 17-24) with:
+- [x] **Step 2 — The assertion is already in `smoke.sh`.** Committed, including a `probe_http` helper that
+  exists because of a real bug: `curl` writes its `--write-out` string even when the transfer fails
+  (`http_code` is `000`), so the obvious `curl … || echo 000` prints **both** and yields `000000` — which
+  reads as a live status code and fires the `die` on the expected-success path.
 
   ```bash
-  GW_IP="$(az network public-ip show -g "$RG" -n "pip-${NAME_PREFIX}-${ENV}-agw-${REGION_SHORT}" --query ipAddress -o tsv 2>/dev/null || true)"
-  if [ -n "${GW_IP}" ]; then
-    # The public IP stays ALLOCATED (App Gateway v2 control plane) but no listener binds to it. A response
-    # here is a regression, not a success: it means a listener drifted back onto the public frontend and the
-    # app is on the internet again. Probed with a short timeout because the expected outcome is silence.
-    log "Probing http://${GW_IP}/ — expecting NO response (public listener must be closed)..."
-    code="$(curl -s -o /dev/null -m 8 -w '%{http_code}' "http://${GW_IP}/" || echo 000)"
-    if [ "${code}" = "000" ]; then
-      log "Public frontend closed (no response). OK."
-    else
-      die "PUBLIC FRONTEND IS ANSWERING (HTTP ${code}) at ${GW_IP} — the app is reachable from the internet."
-    fi
+  log "Probing http://${GW_IP}/ — expecting NO response (the public listener must be closed)..."
+  code="$(probe_http "http://${GW_IP}/" 8)"
+  if [ "${code}" = "000" ]; then
+    log "Public frontend closed (no response). OK."
   else
-    warn "App Gateway public IP not found."
-  fi
-
-  AGW_PRIVATE_IP="${AGW_PRIVATE_IP:-10.0.0.10}"
-  log "Probing http://${AGW_PRIVATE_IP}/ — requires an established VPN tunnel..."
-  code="$(curl -s -o /dev/null -m 20 -w '%{http_code}' "http://${AGW_PRIVATE_IP}/" || echo 000)"
-  if [ "${code}" = "200" ]; then
-    log "Private frontend OK (HTTP ${code})."
-  else
-    warn "Private frontend returned HTTP ${code} — connect the VPN client, or the backend is still warming."
+    die "PUBLIC FRONTEND IS ANSWERING (HTTP ${code}) at ${GW_IP} — the app is reachable from the internet."
   fi
   ```
 
-- [ ] **Step 3 — Apply the identical change to the PowerShell twin** `infra/scripts/smoke.ps1`. ASCII-only.
+  The private-frontend probe below it only **warns**, deliberately: public reachability is a security
+  regression and must break the build, while private unreachability is almost always just "you are not on the
+  VPN" — and conflating the two would train the operator to ignore the one that matters.
+
+- [x] **Step 3 — The PowerShell twin `infra/scripts/smoke.ps1` carries the identical change.** ASCII-only.
 
 - [ ] **Step 4 — Run the smoke test both ways.**
 
@@ -1065,24 +759,22 @@ This is spec §4.2 — the cost of choosing an L3 tunnel, paid explicitly.
   frontend.
   Connected: `infra/scripts/smoke.sh dev` → expect "Public frontend closed" **and** "Private frontend OK".
 
-- [ ] **Step 5 — Commit.**
-
-  ```bash
-  git add infra/scripts/smoke.sh infra/scripts/smoke.ps1
-  git commit -m "feat(infra): smoke test fails if the public frontend answers"
-  ```
+  **Until Task B1 Step 5 lands, this script fails with `PUBLIC FRONTEND IS ANSWERING`, and it is right to.**
+  Do not soften the assertion to make the suite green — arm `agwPrivateIp` instead.
 
 ---
 
 # Phase C — HTTPS on the private frontend
 
 End state: `https://dev.<domain>` serves the app with a trusted, auto-renewing certificate, resolving to
-`10.0.0.10`. Required because Entra accepts only `https://` redirect URIs (spec §4.3).
+`10.0.0.10`. Required because Entra accepts only `https://` redirect URIs (spec §4.3) — and, independently,
+because the public A record is the **only** name that resolves from a tunnelled laptop (spec §4.4).
 
 ## Task C1: Register the domain and point it at the private IP
 
 **Files:**
 - Modify: `infra/env/dev.bicepparam` (`appDomainName`)
+- Modify: `infra/main.bicep` (the `dns` module's `gatewayIp`)
 
 - [ ] **Step 1 — ⚙ OPERATOR — PORTAL: register the domain.** Portal → search **App Service Domains** →
   **Create**. Enter the domain (e.g. `smxmarkers.io`), contact details, agree, purchase (~$12–20/yr). Put the
@@ -1093,10 +785,14 @@ End state: `https://dev.<domain>` serves the app with a trusted, auto-renewing c
 - [ ] **Step 2 — ⚙ OPERATOR — PORTAL: create the A record pointing at the private IP.** Portal → the DNS zone
   → **+ Record set**. Name `dev`, type `A`, TTL 3600, IP address **`10.0.0.10`**.
 
-  Yes, a public DNS record whose value is a private address. Spec §4.4: it costs nothing, needs no DNS
-  resolver in the VNet, resolves from any laptop on the tunnel, and leaks only the RFC-1918 addressing plan.
+  Yes, a public DNS record whose value is a private address, and it is a **requirement**, not a saving
+  (spec §4.4). A P2S client resolves through its own local resolver, so no Azure Private DNS zone is ever
+  visible from the tunnel. The alternatives were an Azure DNS Private Resolver (~$180/mo — more than the VPN
+  gateway, for one record) or a `hosts` entry on every one of 5–10 unmanaged laptops in several countries.
+  What leaks is the RFC-1918 addressing plan and nothing reachable.
 
-  Verify: `dig +short dev.<domain>` returns `10.0.0.10` from anywhere.
+  Verify: `dig +short dev.<domain>` returns `10.0.0.10` **from anywhere, on or off the tunnel**. That
+  "anywhere" is the property being bought.
 
 - [ ] **Step 3 — CODIFY.** In `infra/env/dev.bicepparam`, set:
 
@@ -1104,7 +800,7 @@ End state: `https://dev.<domain>` serves the app with a trusted, auto-renewing c
   param appDomainName = '<domain>'
   ```
 
-  Then update `infra/modules/dns.bicep`'s caller in `main.bicep`: the module currently receives
+  Then update the `dns` module's caller in `main.bicep`: it currently receives
   `gatewayIp: gateway.outputs.gatewayPublicIp`. Change it to:
 
   ```bicep
@@ -1144,7 +840,7 @@ End state: `https://dev.<domain>` serves the app with a trusted, auto-renewing c
   that file.
 
 - [ ] **Step 3 — Deploy.** This activates the gated HTTPS listener and the 301 redirect in `gateway.bicep`.
-  Both bind to `listenerFeName` from Task B1 Step 3, so both land on the private IP.
+  Both bind to `listenerFeName` (Task B1 Step 3), so both land on the private IP.
 
   Run: `infra/scripts/deploy.sh dev`
   Expected: `Succeeded`.
@@ -1166,21 +862,104 @@ End state: `https://dev.<domain>` serves the app with a trusted, auto-renewing c
 
 ---
 
-# Phase D — Per-account authorization — **BLOCKED, DOES NOT SHIP WITH A–C**
+# Phase D — Who may connect, and who may use the app — **BLOCKED, DOES NOT SHIP WITH A–C**
 
-> **Amended 2026-08-02.** Every task below is Entra work and is blocked by P3. Certificate auth (Task A1C)
-> does not unblock any of it — it authenticates the *tunnel*, and this phase authorizes the *application*.
+> Every task below is Entra work and is blocked by P3. **Two separate gaps live in this phase, and they are
+> easy to conflate:**
+>
+> 1. **Task D1 — the tunnel is open to the entire tenant.** Any SecurityMatters account can connect. This is
+>    a property of the Microsoft-registered audience app, which cannot be assignment-gated by us; only a
+>    custom-audience app registration can narrow it to `sg-smx-vpn-users`.
+> 2. **Tasks D2–D5 — the application behind the tunnel is unauthenticated.** `apiClientId` is empty.
 >
 > **Consequence to state plainly in any status report:** with Phases A–C complete and D blocked, the SMX app
-> is **VNet-only and unauthenticated**. Anyone holding a client certificate reaches a fully open API. That is
-> a real improvement on today's *public and unauthenticated*, and it is not what was asked for.
+> is **tenant-wide-reachable and unauthenticated**. Anyone in the SecurityMatters directory can establish the
+> tunnel and then use a fully open API. That is a real improvement on today's *public and unauthenticated*,
+> and it is not what was asked for.
 >
-> Task D2 (the backend `Operator` role policy) is the one part that can be written and merged ahead of the
+> Task D3 (the backend `Operator` role policy) is the one part that can be written and merged ahead of the
 > directory grant — it is gated by `apiClientId` being empty, exactly like the auth wiring it extends.
 
-End state: only accounts assigned the `Operator` role can use the API, enforced independently of the tunnel.
+End state: only named accounts can establish the tunnel, and only accounts assigned the `Operator` role can
+use the API — enforced independently of each other.
 
-## Task D1: `Operator` app role and assignment-required on the SPA and API
+## Task D1: Narrow the tunnel to named users (custom-audience app) — **the open ask**
+
+**Files:**
+- Modify: `infra/env/dev.bicepparam` (`vpnAudienceClientId`)
+- The `configure-auth.sh` / `.ps1` changes are **already written and committed** — see Step 2
+
+This task did not exist in the original plan as a Phase D item; it was Phase A Task A1, on the premise that
+Entra P2S auth required an app registration. **It does not** — but *scoping* it to a group does, so the work
+survives here, where it belongs.
+
+- [ ] **Step 1 — ⚙ OPERATOR — PORTAL: create the allow-list group.** Entra admin center → **Groups** →
+  **New group**. Type `Security`, name `sg-smx-vpn-users`, description "Accounts permitted to establish the
+  SMX VPN tunnel". Membership type `Assigned`. Add the 5–10 named experts.
+
+  Verify: `az ad group show --group sg-smx-vpn-users --query id -o tsv` prints a GUID.
+
+- [x] **Step 2 — The custom-audience app registration is already scripted.** `infra/scripts/configure-auth.sh`
+  (and its `.ps1` twin) contain the block below, committed and **unrunnable** until P3 lands. It is not dead
+  code — it is exactly this task's mechanism.
+
+  ```bash
+  VPN_APP_NAME="${NAME_PREFIX}-${ENV}-vpn"
+  VPN_ID="$(az ad app list --display-name "${VPN_APP_NAME}" --query '[0].appId' -o tsv)"
+  if [ -z "${VPN_ID}" ]; then
+    VPN_ID="$(az ad app create --display-name "${VPN_APP_NAME}" --sign-in-audience AzureADMyOrg --query appId -o tsv)"
+    [ -n "${VPN_ID}" ] || die "Failed to create the app registration '${VPN_APP_NAME}'."
+  fi
+
+  # The Azure VPN Client uses azurevpn:// on Windows/macOS and the native-client URI as fallback. Both are
+  # (re)set every run: a missing redirect URI fails at CONNECT time with AADSTS50011, long after this script
+  # reported success, which is the most expensive place for this to be wrong.
+  az ad app update --id "${VPN_ID}" --public-client-redirect-uris \
+    "azurevpn://" "https://login.microsoftonline.com/common/oauth2/nativeclient" --output none
+
+  # Ensure the service principal exists, then require assignment. Without the SP there is nothing to assign
+  # a group to, and `az ad app create` does not make one.
+  VPN_SP="$(az ad sp list --display-name "${VPN_APP_NAME}" --query '[0].id' -o tsv)"
+  if [ -z "${VPN_SP}" ]; then
+    VPN_SP="$(az ad sp create --id "${VPN_ID}" --query id -o tsv)"
+  fi
+  az ad sp update --id "${VPN_SP}" --set appRoleAssignmentRequired=true --output none
+  ```
+
+  Its comment header still describes the custom audience as the only correct choice ("never Microsoft's
+  shared app id"). **That is now half true and worth correcting when this task runs:** the shared app is what
+  ships and is the reason Phase A needed no directory access; the custom audience is what *narrows* it.
+
+- [ ] **Step 3 — Run the script and assign the group.**
+
+  Run: `infra/scripts/configure-auth.sh dev dev.<domain>`
+  Expected: prints `VPN_CLIENT_ID=<GUID>`. Run it a second time; expect identical output and
+  `az ad app list --display-name smx-dev-vpn --query 'length(@)' -o tsv` → `1`.
+
+  Then Entra admin center → **Enterprise applications** → `smx-dev-vpn` → **Properties** → **Assignment
+  required? Yes** → Save → **Users and groups** → add `sg-smx-vpn-users`.
+
+  Verify: `az ad sp list --display-name smx-dev-vpn --query '[0].appRoleAssignmentRequired' -o tsv` → `true`.
+  **This toggle is the entire difference** between "specific users" and "anyone in the tenant".
+
+- [ ] **Step 4 — Switch the gateway to the custom audience.** In `infra/env/dev.bicepparam`, replace the
+  Microsoft app id with the one printed in Step 3, then `infra/scripts/deploy.sh dev`.
+
+  The gateway keeps its address pool, its public IP and its client routes; only `vpnClientConfiguration`
+  changes. **Every user must re-import their profile** — download the new one from **Point-to-site
+  configuration** and distribute it before announcing the change, not after.
+
+  Verify: `az network vnet-gateway show -g rg-smx-hub-swc -n vgw-smx-hub-swc --query vpnClientConfiguration.aadAudience -o tsv`
+  returns the new GUID, and an account **outside** `sg-smx-vpn-users` is refused at sign-in.
+
+- [ ] **Step 5 — Commit.**
+
+  ```bash
+  git add infra/env/dev.bicepparam
+  git commit -m "feat(infra): scope the VPN tunnel to sg-smx-vpn-users via a custom audience"
+  ```
+
+## Task D2: `Operator` app role and assignment-required on the SPA and API
 
 **Files:**
 - Modify: `infra/scripts/configure-auth.sh` (app role + assignment-required)
@@ -1232,7 +1011,7 @@ End state: only accounts assigned the `Operator` role can use the API, enforced 
   warn "Assign sg-smx-vpn-users to the ${API_APP_NAME} enterprise app with the Operator role (portal)."
   ```
 
-  Note: `SPA_APP_NAME` is defined further down the existing script — move this block to **after** the SPA
+  Note: `SPA_APP_NAME` is defined further down the existing script — place this block **after** the SPA
   registration section (after the `az ad app update --id "${API_ID}" --set api.preAuthorizedApplications=…`
   line) so both variables are in scope. Placing it earlier fails with an unbound variable under `set -u`.
 
@@ -1244,6 +1023,10 @@ End state: only accounts assigned the `Operator` role can use the API, enforced 
   Expected: the second run logs "Operator app role already defined" with the **same** GUID, and creates
   nothing new.
 
+  **Pass the real host**, not a placeholder: the script overwrites the SPA's redirect URI every run
+  (`az ad app update --set spa=…`), and a stale redirect URI fails at sign-in with `AADSTS50011`, not at
+  configure time.
+
 - [ ] **Step 6 — Commit.**
 
   ```bash
@@ -1251,17 +1034,18 @@ End state: only accounts assigned the `Operator` role can use the API, enforced 
   git commit -m "feat(infra): Operator app role and assignment-required on the SPA and API"
   ```
 
-## Task D2: Enforce the role in the backend
+## Task D3: Enforce the role in the backend — **buildable now**
 
 **Files:**
 - Modify: `src/Smx.Backend/Program.cs:65-68`
-- Test: `src/Smx.Backend.Tests/` (new test file `AuthorizationPolicyTests.cs`)
+- Test: `src/Smx.Backend.Tests/AuthorizationPolicyTests.cs` (new)
 
 - [ ] **Step 1 — Write the failing test.** Create
   `src/Smx.Backend.Tests/AuthorizationPolicyTests.cs`:
 
   ```csharp
   using Microsoft.AspNetCore.Authorization;
+  using Microsoft.AspNetCore.Authorization.Infrastructure;
   using Xunit;
 
   namespace Smx.Backend.Tests;
@@ -1349,13 +1133,14 @@ End state: only accounts assigned the `Operator` role can use the API, enforced 
   git commit -m "feat(backend): require the Operator role on every endpoint"
   ```
 
-## Task D3: Turn auth on in dev and verify all three outcomes
+## Task D4: Turn auth on in dev and verify all three outcomes
 
 **Files:**
-- Modify: `infra/env/dev.bicepparam` (`apiClientId`)
+- Modify: `infra/env/dev.bicepparam` (`apiClientId`, `frontendImage`, `backendImage`)
 
 - [ ] **Step 1 — CODIFY: set the audience.** In `infra/env/dev.bicepparam`, set `apiClientId` to the
   `API_CLIENT_ID` printed by `configure-auth.sh`. This is what flips `authEnabled` to true in `Program.cs`.
+  Replace the comment block currently standing there, which explains at length why it is empty.
 
 - [ ] **Step 2 — Rebuild the frontend image with the Entra variables.** The SPA needs its client id, scope and
   tenant baked in at build time.
@@ -1367,7 +1152,7 @@ End state: only accounts assigned the `Operator` role can use the API, enforced 
   with `VITE_ENTRA_CLIENT_ID`, `VITE_API_SCOPE=api://<API_CLIENT_ID>/access_as_user` and
   `VITE_ENTRA_TENANT_ID` set as the script expects (see the `warn` output of `configure-auth.sh`). Then bump
   `frontendImage` and `backendImage` in `dev.bicepparam` to the printed tags — per the comment already in that
-  file, **not** doing so means the next deploy reverts the apps.
+  file, **not** doing so means the next deploy replaces both running apps with the placeholder container.
 
 - [ ] **Step 3 — Deploy.**
 
@@ -1410,14 +1195,17 @@ End state: only accounts assigned the `Operator` role can use the API, enforced 
   git commit -m "feat(infra): enable Entra auth in dev"
   ```
 
-## Task D4: Conditional Access
+## Task D5: Conditional Access
 
 **Files:** none — Entra policy, portal-managed by design (spec §6).
 
 - [ ] **Step 1 — ⚙ OPERATOR — PORTAL: require MFA to establish the tunnel.** Entra admin center →
   **Protection** → **Conditional Access** → **New policy**. Name `SMX — MFA for VPN and app`.
-  Users: `sg-smx-vpn-users`. Target resources: the `smx-dev-vpn`, `smx-dev-api` and `smx-dev-web` apps.
-  Grant: **Require multifactor authentication**. Enable in **Report-only** first.
+  Users: `sg-smx-vpn-users`. Target resources: the `smx-dev-vpn` (from Task D1), `smx-dev-api` and
+  `smx-dev-web` apps. Grant: **Require multifactor authentication**. Enable in **Report-only** first.
+
+  **Task D1 is a prerequisite, not a nicety.** Targeting the Microsoft-registered shared app instead would
+  scope the policy far beyond SMX.
 
 - [ ] **Step 2 — Check report-only results after one sign-in cycle.** Entra → **Sign-in logs** → filter to
   those apps → the **Report-only** tab shows what the policy *would* have done. Confirm it reports "would have
@@ -1448,25 +1236,40 @@ End state: only accounts assigned the `Operator` role can use the API, enforced 
 Run the full spec §8 checklist. Every item must hold **simultaneously** — several of these fail silently and
 are the reason the list exists.
 
-- [ ] **V1 — Nothing answers publicly.** Disconnected: `curl -m 8 http://<gateway-public-ip>/` → timeout.
-- [ ] **V2 — The app works over the tunnel.** Connected: `https://dev.<domain>/` → 200, valid padlock.
-- [ ] **V3 — DNS resolves publicly to a private target.** `dig +short dev.<domain>` → `10.0.0.10`.
+- [x] **V0 — The tunnel reaches the spoke.** Connected, with an explicit address because no private zone
+  resolves from a P2S client (spec §4.4):
+
+  ```bash
+  FQDN=$(az containerapp show -g rg-smx-dev-swc -n frontend --query properties.configuration.ingress.fqdn -o tsv)
+  ACA_IP=$(az containerapp env show -g rg-smx-dev-swc -n cae-smx-dev-swc --query properties.staticIp -o tsv)
+  curl -s -o /dev/null -m 20 -w '%{http_code}\n' --resolve "${FQDN}:80:${ACA_IP}" "http://${FQDN}/"
+  ```
+  Expected: `200` connected, timeout disconnected. **Confirmed live 2026-08-02.**
+- [ ] **V1 — Nothing answers publicly.** Disconnected:
+  `curl -s -o /dev/null -m 8 -w '%{http_code}\n' "http://smx-dev-lmxnb.swedencentral.cloudapp.azure.com/"`
+  → `000`. Currently **200** — Phase B is not armed.
+- [ ] **V2 — The app works over the tunnel by name.** Connected: `https://dev.<domain>/` → 200, valid padlock.
+- [ ] **V3 — DNS resolves publicly to a private target.** `dig +short dev.<domain>` → `10.0.0.10`, from on
+  and off the tunnel alike.
 - [ ] **V4 — The tunnel does not reach the data plane.** Connected: a TCP connection to any `snet-pe` private
-  endpoint times out (Task B3 Step 5).
-- [ ] **V5 — BLOCKED (Phase D).** The intended check is: no token → 401; assigned account → 200; unassigned
-  account → 403. **Assert the true state instead:** `curl https://dev.<domain>/api/projects` with **no token**
-  returns **200**, confirming the app is unauthenticated and the tunnel is the only control. Record that
-  result explicitly — an unchecked box reads later as an untested pass, and this one is a known fail.
-- [ ] **V6 — Revocation is the tunnel allow-list.** Add a spare client certificate's thumbprint to
-  `vpnRevokedCertThumbprints`, redeploy, and confirm that certificate can no longer connect while yours
-  still can. Then remove it. Under certificate auth this is the **only** offboarding mechanism, so it must be
-  proven to work before anyone relies on it — not discovered on the day someone leaves.
-- [ ] **V7 — The codification holds.** `infra/scripts/deploy.sh dev` twice in a row, then re-run V1–V5. This
-  is the one that catches the portal trap (spec §6): anything configured only in the portal has now been
-  reverted, and V1 is where it shows.
-- [ ] **V8 — Update CLAUDE.md.** Add a bullet under the infra section recording that the frontend is
-  VNet-only behind a P2S VPN, that the public IP is allocated but unbound, and that `smoke.sh` fails if it
-  answers. Commit.
+  endpoint times out (Task B3 Step 5). Currently **false** — `nsgPe` has no rules and the tunnel is live.
+- [ ] **V5 — The tunnel admits only named users.** An account in the tenant but **outside**
+  `sg-smx-vpn-users` cannot establish the tunnel (Task D1 Step 4). Currently **false by design of the shared
+  audience app** — any tenant account can connect. Record this result explicitly; it is the headline gap.
+- [ ] **V6 — The app authorizes.** Intended: no token → 401; assigned account → 200; unassigned account →
+  403. **Assert the true state instead until D4 ships:** `curl https://dev.<domain>/api/projects` with **no
+  token** returns **200**, confirming the app is unauthenticated and the tunnel is the only control. An
+  unchecked box reads later as an untested pass, and this one is a known fail.
+- [ ] **V7 — The codification holds, in both directions.** `infra/scripts/deploy.sh dev` twice in a row, then
+  re-run V0–V6 **and** Task A1 Step 2's gateway property check. This is the item that catches both traps
+  (spec §6, §6.1): anything configured only in the portal has now been reverted, and anything the repo
+  describes differently from the estate has now been overwritten. `sku.name` still `VpnGw1AZ` and the pool
+  still `172.20.0.0/24` is the assertion that the second one did not happen.
+- [ ] **V8 — Update CLAUDE.md.** Add a bullet under the infra section recording that a P2S VPN gateway
+  (`vgw-smx-hub-swc`, VpnGw1AZ, Entra auth, pool `172.20.0.0/24`) is the private entry point, that the
+  frontend is VNet-only with the App Gateway public IP allocated but unbound, that `smoke.sh` fails if it
+  answers, and — until D1/D4 land — that **tunnel access is tenant-wide and the app is unauthenticated**.
+  Commit.
 
 ---
 
@@ -1476,11 +1279,16 @@ Each phase reverses independently, in this order:
 
 | To undo | Set | Effect |
 |---|---|---|
-| Phase D | `apiClientId = ''` | Backend takes the auth-off branch; app open to anyone who can reach it |
+| Phase D (auth) | `apiClientId = ''` | Backend takes the auth-off branch; app open to anyone who can reach it |
+| Phase D (tunnel scope) | `vpnAudienceClientId = 'c632b3df-fb67-4d84-bdcf-b95ad541b5c8'` | Back to the Microsoft-registered app: tenant-wide, no directory dependency. Clients must re-import their profile |
 | Phase C | `certKeyVaultSecretId = ''` | HTTPS listener and redirect gate off; HTTP only |
 | Phase B | `agwPrivateIp = ''` | Listeners return to the public frontend; **the app is public again** |
-| Phase A | `deployVpnGateway = false` | Gateway and transit flags removed; delete `vgw-smx-hub-swc` to stop billing |
+| Phase A | `deployVpnGateway = false` | Transit flags off and the gateway drops out of the template — **but Bicep removing a resource does not delete what exists.** `az network vnet-gateway delete -g rg-smx-hub-swc -n vgw-smx-hub-swc` is what stops the billing |
 
 Emptying `agwPrivateIp` alone restores public access without touching the VPN — the fastest way back if the
 tunnel breaks and the app is needed urgently. It is also, for exactly that reason, the setting to check first
 if the app ever becomes unexpectedly reachable.
+
+**One rollback that is not on this list: the VPN gateway's SKU and public IP.** `VpnGw1AZ` →`VpnGw1` and
+`pip-smx-hub-vpngw-swc` → any other name are not reversals, they are recreations — ~45 minutes of downtime and
+a new address that invalidates every distributed client profile (spec §6.1).
