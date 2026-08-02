@@ -24,3 +24,10 @@ Regulations/
 
 # superpowers brainstorming visual companion (local mockups)
 .superpowers/
+
+# P2S VPN client certificates. A .pfx carries a PRIVATE KEY: committing one hands tunnel
+# access to anyone with repo read, and deleting it later does not remove it from history.
+# The public root .cer goes into Bicep as a parameter value, never as a file.
+*.pfx
+*.p12
+*.key

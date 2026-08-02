@@ -41,8 +41,20 @@ and is out of scope — it is not reachable inbound in any way this design chang
 ### Decisions locked during discussion
 
 - **Access method: a per-user VPN client** (operator requirement — "an installation of a program … we'll set
-  up for specific users"). Concretely: **Azure VPN Client + Point-to-Site VPN Gateway with Entra ID
-  authentication**.
+  up for specific users"). Concretely: **Azure VPN Client + Point-to-Site VPN Gateway**.
+- **Authentication: certificate, not Entra ID (amended 2026-08-02, after the design was first written).**
+  The original design specified Entra authentication with a custom-audience app. It was then verified live
+  that the operator account is a **guest** in the SecurityMatters tenant
+  (`eli_tectika.com#EXT#@SecurityMattersAzure.onmicrosoft.com`) whose guest default permissions deny even
+  directory *reads* — so the audience app cannot be created, and obtaining the privileges was judged
+  unlikely. Certificate authentication is pure ARM on a gateway we already own and needs no directory access
+  at all.
+
+  **This is a deliberate downgrade, and §4.6 states precisely what it costs.** It is not a like-for-like
+  substitution: it delivers the reachability axis and none of the authorization axis. Entra auth remains
+  reachable later — `vpnAudienceClientId` empty selects certificate auth, non-empty selects Entra, on the
+  same gateway — but is **not assumed**. The operator's position is "if Entra auth will be possible later,
+  we'll change to it. But it's not sure."
 - **Rejected alternatives**, with reasons:
   - *Microsoft Entra Private Access (Global Secure Access client)* — the tightest grant of the client-based
     options, publishing one app segment instead of a subnet. **Deferred, not dismissed**: it requires an
@@ -84,6 +96,11 @@ The requirement decomposes into two independent controls that are easy to confla
 
 Each is independently sufficient to deny, and neither is sufficient to allow. A laptop on the VPN with no
 Entra assignment gets a 403 from the API; an assigned account off the VPN cannot resolve or reach the host.
+
+> **Status after the 2026-08-02 amendment: only the reachability axis ships.** The authorization column is
+> entirely Entra-based and is blocked by the guest-account finding. Until directory privileges are granted,
+> the delivered system is *VNet-only and unauthenticated* — the second column is a plan, not a control. Do
+> not read this table as describing what is deployed.
 
 ---
 
@@ -181,13 +198,39 @@ redeploy the gateway from Bicep with both frontends declared at creation. Conseq
 a few minutes of downtime, and the public IP's `dnsLabel` (`smx-dev-lmxnb.swedencentral.cloudapp.azure.com`)
 is reallocated — which is harmless here precisely because nothing will point at it any more.
 
-### 4.6 Restricting the VPN to named users needs a **custom audience** app registration
+### 4.6 Certificate authentication: what it buys, and what it costs
 
-Pointing the gateway at Microsoft's shared "Azure VPN" application would authenticate any account in the
-tenant. Instead the design registers an app in our own tenant, sets it as the gateway's Entra **custom
-audience**, and sets `Assignment required = Yes` on its enterprise app with a single group assigned. That
-group membership then becomes the VPN allow-list, and Conditional Access can require MFA **to establish the
-tunnel** — not merely to open the app afterwards.
+A self-signed **root CA** is generated once; only its public key is uploaded to the gateway (an ARM property
+on a resource we own — no Graph, no admin). Each operator gets a **client certificate signed by that root**,
+installed on their laptop. The gateway validates the chain on connect. Access is withdrawn by adding a
+client certificate's **thumbprint to the gateway's revocation list**.
+
+**What it genuinely delivers.** Per-user granularity is real, not nominal: one certificate per person,
+individually revocable, and chain validation is enforced by the gateway rather than advisory. It satisfies
+the operator requirement as stated — install a program, provision specific users.
+
+**What it costs, stated plainly so no one later mistakes this for the Entra design:**
+
+- **The allow-list becomes a certificate inventory, not a group.** Removing someone from an Entra group is
+  something that happens during offboarding automatically; revoking a thumbprint is something a person has to
+  *remember*. Access outlives employment by default.
+- **No MFA, no Conditional Access, no device signal.** A certificate is a file. Whoever holds it connects.
+  Anyone who copies the `.pfx` off a laptop *is* that user until someone notices and revokes.
+- **The CA lifecycle is ours.** Root expiry breaks every user simultaneously, so the root is issued with a
+  long `NotAfter` and its expiry date is recorded in the plan. The root's **private key can mint new client
+  certificates**, so it is stored in the existing Key Vault, not on a laptop.
+- **Auditing weakens materially.** Entra auth writes every tunnel connection to the sign-in logs against a
+  real identity; certificate auth gives gateway metrics, not identity-linked audit. "Who was connected when"
+  becomes hard to answer — a real loss for a system whose driver is traceability.
+- **It does not unblock §4.7 at all.** Application-level authorization is pure Entra. Under certificate auth
+  the app behind the tunnel stays **unauthenticated** — the posture moves from *public and unauthenticated*
+  to *VNet-only and unauthenticated*. That is a genuine improvement and it is **not** the "specific accounts"
+  half of the original requirement.
+
+**Migration path, if directory privileges are ever granted.** Set `vpnAudienceClientId` and redeploy: the
+gateway keeps its address pool, its public IP and its client routes, and only `vpnClientConfiguration`
+changes. Client laptops re-import a profile; certificates can then be revoked wholesale. Nothing about
+Phases B or C has to be revisited.
 
 ### 4.7 Authorization gains a role, not just authentication
 
@@ -203,14 +246,15 @@ token *issuance*; the role gates the *API*. They fail independently, which is th
 
 | Surface | Change |
 |---|---|
-| `infra/modules/vpn.bicep` | **New.** `GatewaySubnet`, public IP, VPN gateway, P2S config (OpenVPN + Entra), custom audience |
+| `infra/modules/vpn.bicep` | **New.** `GatewaySubnet`, public IP, VPN gateway, P2S config. `vpnAudienceClientId` empty → certificate auth (root cert + revocation list); non-empty → Entra. Empty is the shipped path |
 | `infra/modules/hub.bicep` | `GatewaySubnet` in the hub VNet; `nsgAgw` drops the `Internet` allow, adds the VPN pool |
 | `infra/modules/hubPeering.bicep` | `allowGatewayTransit` behind the gate parameter |
 | `infra/modules/networking.bicep` | `useRemoteGateways` behind the gate; real `securityRules` on `nsgPe` |
 | `infra/modules/gateway.bicep` | Private frontend IP config; every listener rebound to it |
 | `infra/main.bicep` | `deployVpnGateway`, `vpnClientPool`, `vpnAudienceClientId`, `agwPrivateIp` params + wiring |
 | `infra/env/dev.bicepparam` | The above set, plus `appDomainName`, `certKeyVaultSecretId`, `apiClientId` |
-| `infra/scripts/configure-auth.sh` (+ `.ps1`) | VPN audience app; `Operator` app role; assignment-required on all three |
+| `infra/scripts/configure-auth.sh` (+ `.ps1`) | VPN audience app; `Operator` app role; assignment-required on all three. **Written and committed but unrunnable** — needs directory privileges the operator does not have |
+| `infra/scripts/new-vpn-client-cert.ps1` | **New.** Issues a client certificate from the root and exports the `.pfx` for one named person |
 | `infra/scripts/smoke.sh` (+ `.ps1`) | Probe the private IP; **fail** if the public IP answers |
 | `src/Smx.Backend/Program.cs` | Fallback policy → `RequireRole("Operator")` |
 | Entra (portal, not ARM) | `sg-smx-vpn-users` group, user assignments, Conditional Access policy |
@@ -252,8 +296,15 @@ proven before Phase B**, or closing the public listener locks everyone out of a 
 | **C — HTTPS** | `https://dev.<domain>` with a trusted, auto-renewing cert, resolving to the private IP. | Additive |
 | **D — Identity** | Assignment-required, `Operator` role, backend policy, Conditional Access. | Additive; `apiClientId=''` disables |
 
-Phase A is where the money is spent (~$140/mo for VpnGw1; Basic SKU cannot do Entra auth) and where the
-longest single wait sits — **a VPN gateway takes 30–45 minutes to provision**.
+Phase A is where the money is spent (~$140/mo for VpnGw1; the Basic SKU supports neither OpenVPN nor Entra)
+and where the longest single wait sits — **a VPN gateway takes 30–45 minutes to provision**.
+
+> **Amended 2026-08-02: Phase D is blocked and does not ship with A–C.** It is entirely Entra work and the
+> operator account is a guest with no directory privileges. Phases A (certificate auth), B and C proceed and
+> deliver a VNet-only application; the application behind that tunnel remains **unauthenticated** until
+> directory privileges are granted. The end state of C is therefore *not* the end state of this design, and
+> the gap is the authorization axis in §2. Anyone reading this spec to understand what is deployed should
+> stop at Phase C.
 
 ---
 
@@ -267,9 +318,14 @@ The system is correct when all of the following hold simultaneously:
 3. `dig dev.<domain>` returns `10.0.0.10` from anywhere (public record, private target).
 4. From a connected laptop, a TCP connection to any private endpoint in `snet-pe` **fails** — the tunnel does
    not grant data-plane reach.
-5. `GET /api/projects` with no bearer token returns **401**; with a token from an account **not** assigned the
-   `Operator` role returns **403**; with an assigned account returns 200.
-6. An account removed from `sg-smx-vpn-users` cannot establish the tunnel.
+5. *(Phase D — blocked.)* `GET /api/projects` with no bearer token returns **401**; with a token from an
+   account **not** assigned the `Operator` role returns **403**; with an assigned account returns 200.
+   **Until then the honest assertion is the opposite one:** `GET /api/projects` with no token returns **200**,
+   and the deployed system's only access control is the tunnel. State it that way in any status report — a
+   checklist item that silently goes untested reads later as one that passed.
+6. A **revoked client certificate** cannot establish the tunnel (certificate auth). Under the original Entra
+   design this read "an account removed from `sg-smx-vpn-users`"; the mechanism changed with §4.6, and so did
+   what it costs to operate — revocation is manual and nothing prompts for it.
 7. `./deploy.sh dev` run twice in a row is idempotent and leaves 1–6 true — the codification actually holds.
 
 Items 1, 4, 5 and 7 are the ones that fail silently if skipped, and 7 is the one that catches the portal trap.

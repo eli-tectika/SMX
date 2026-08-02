@@ -58,7 +58,12 @@ Key Vault, KeyVault-Acmebot, Application Gateway v2, .NET 8 (`Microsoft.AspNetCo
   Verify: `az ad group list --query '[0].displayName' -o tsv` returns a name instead of
   `Authorization_RequestDenied`.
 
-  **Fallback if directory privileges cannot be obtained:** switch the P2S gateway to **certificate**
+  **DECISION 2026-08-02: the fallback below was taken.** The operator judged the role grant unlikely to be
+  obtainable. Certificate auth is now the shipped path (Task A1C); Entra auth remains reachable later by
+  setting `vpnAudienceClientId`, but is not assumed. This does **not** retire the ask above — Phase D still
+  needs it, and until it lands the deployed app is unauthenticated behind the tunnel.
+
+  **The fallback, for the record:** switch the P2S gateway to **certificate**
   authentication (a self-signed root uploaded to the gateway — an ARM operation needing no Graph access, with
   per-user control becoming per-certificate issuance). That unblocks Phases A–C and delivers VNet-only
   access, but it forfeits Entra group membership, Conditional Access and MFA on the tunnel, and leaves all of
@@ -95,7 +100,15 @@ az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null
 End state: the operator connects the Azure VPN Client and reaches the ACA frontend by its internal FQDN. The
 app is **still publicly reachable** — nothing has been removed yet, so a mistake here costs no access.
 
-## Task A1: Entra group and VPN custom-audience app registration
+## Task A1: Entra group and VPN custom-audience app registration — **DEFERRED, NOT THE SHIPPED PATH**
+
+> **Amended 2026-08-02.** Steps 4–5 (the `configure-auth.sh`/`.ps1` changes) are **done and committed**
+> (`ad4138b`); they are inert until someone can run them. Steps 1, 2, 3, 6 and 7 are **blocked** by P3 — the
+> operator account is a guest with no directory privileges.
+>
+> **The shipped path is Task A1C below.** Do not attempt this task. It stays in the plan because the code is
+> already merged and because `vpnAudienceClientId` remains the switch that turns Entra auth on later
+> (spec §4.6) — at which point this task becomes live again, unchanged.
 
 **Files:**
 - Modify: `infra/scripts/configure-auth.sh` (append the VPN audience section)
@@ -195,6 +208,129 @@ app is **still publicly reachable** — nothing has been removed yet, so a mista
   ```bash
   git add infra/scripts/configure-auth.sh infra/scripts/configure-auth.ps1
   git commit -m "feat(infra): VPN custom-audience app registration with assignment required"
+  ```
+
+## Task A1C: Root CA and per-user client certificates — **the shipped path**
+
+**Files:**
+- Create: `infra/scripts/new-vpn-client-cert.ps1`
+
+Certificate authentication needs no directory privileges (spec §4.6). Everything here runs on your Windows
+side — the certificates must land in the Windows certificate store, and WSL cannot write to it.
+
+- [ ] **Step 1 — ⚙ OPERATOR: generate the root CA.** In **Windows PowerShell as your own user** (not WSL,
+  not elevated):
+
+  ```powershell
+  $root = New-SelfSignedCertificate `
+    -Type Custom -KeySpec Signature `
+    -Subject "CN=SMX-P2S-Root" `
+    -KeyExportPolicy Exportable `
+    -HashAlgorithm sha256 -KeyLength 2048 `
+    -CertStoreLocation "Cert:\CurrentUser\My" `
+    -KeyUsageProperty Sign -KeyUsage CertSign `
+    -NotAfter (Get-Date).AddYears(5)
+  $root.Thumbprint
+  ```
+
+  `-NotAfter` is **not optional**: the default is one year, and when the root expires **every user loses
+  access simultaneously** (spec §4.6). Five years is chosen to outlive the certificate-auth period, which is
+  expected to be temporary.
+
+  Record the thumbprint and the expiry date — Step 5 puts them somewhere they will actually be seen.
+
+- [ ] **Step 2 — ⚙ OPERATOR: export the root's public key** (this is what the gateway gets — public only):
+
+  ```powershell
+  [Convert]::ToBase64String($root.RawData) | Set-Clipboard
+  ```
+
+  Verify: paste it somewhere and confirm it is one long unbroken base64 string with **no**
+  `-----BEGIN CERTIFICATE-----` header and no line breaks. Azure rejects both.
+
+- [ ] **Step 3 — ⚙ OPERATOR: back up the root's PRIVATE key into Key Vault.** The root private key can mint
+  new client certificates, so it must not live only in one laptop's certificate store.
+
+  ```powershell
+  $pw = Read-Host -AsSecureString "PFX password"
+  Export-PfxCertificate -Cert $root -FilePath "$env:TEMP\smx-p2s-root.pfx" -Password $pw
+  az keyvault certificate import --vault-name kv-smx-dev-lmxnb --name smx-p2s-root `
+      --file "$env:TEMP\smx-p2s-root.pfx" --password (…)
+  Remove-Item "$env:TEMP\smx-p2s-root.pfx"
+  ```
+
+  Verify: `az keyvault certificate show --vault-name kv-smx-dev-lmxnb -n smx-p2s-root --query id -o tsv`
+  returns an id. Then confirm the temp `.pfx` is gone.
+
+- [ ] **Step 4 — Write the client-certificate issuance script.** Create
+  `infra/scripts/new-vpn-client-cert.ps1`:
+
+  ```powershell
+  # Issues ONE client certificate, signed by the SMX P2S root, for ONE named person, and exports it as a
+  # password-protected .pfx for that person's laptop.
+  #
+  # Under certificate auth this script IS user provisioning, and the revocation list is the only
+  # deprovisioning. There is no group whose membership expires and no sign-in log that would show a
+  # certificate being used by someone it was not issued to -- so the -Name recorded here is the only
+  # durable record of who holds what. Use a real person's identifier, never "laptop2" or "temp".
+  param(
+      [Parameter(Mandatory = $true)][string] $Name,
+      [string] $RootSubject = 'CN=SMX-P2S-Root',
+      [int]    $ValidYears  = 1
+  )
+  $ErrorActionPreference = 'Stop'
+
+  $root = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq $RootSubject } | Select-Object -First 1
+  if (-not $root) { throw "Root certificate '$RootSubject' not found in Cert:\CurrentUser\My." }
+
+  # Client certs are deliberately SHORTER-lived than the root: an unrevoked certificate that nobody
+  # remembers issuing expires on its own. That is the only automatic deprovisioning this design has.
+  $client = New-SelfSignedCertificate `
+      -Type Custom -KeySpec Signature `
+      -Subject "CN=$Name" `
+      -KeyExportPolicy Exportable `
+      -HashAlgorithm sha256 -KeyLength 2048 `
+      -CertStoreLocation 'Cert:\CurrentUser\My' `
+      -Signer $root `
+      -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.2') `
+      -NotAfter (Get-Date).AddYears($ValidYears)
+
+  $pw   = Read-Host -AsSecureString "Password to protect $Name.pfx"
+  $path = Join-Path (Get-Location) "$Name.pfx"
+  Export-PfxCertificate -Cert $client -FilePath $path -Password $pw | Out-Null
+
+  Write-Host "Issued : $Name"
+  Write-Host "Thumb  : $($client.Thumbprint)"
+  Write-Host "Expires: $($client.NotAfter.ToString('yyyy-MM-dd'))"
+  Write-Host "PFX    : $path"
+  Write-Warning "Record the thumbprint. Revoking access later requires it, and it is not recoverable from the gateway."
+  Write-Warning "Transfer the .pfx out of band. It contains a private key -- do not email it."
+  ```
+
+  ASCII-only (repo convention for `.ps1`). No bash twin: this cannot run outside Windows, and a twin that
+  cannot work is worse than none.
+
+- [ ] **Step 5 — Record the certificate inventory.** Create `infra/scripts/vpn-cert-inventory.md` with a
+  table: person, certificate subject, thumbprint, issued date, expiry, revoked (y/n).
+
+  This file is the allow-list. Under Entra auth the directory would be, and would answer "who has access?"
+  on demand; here nothing does unless this is maintained. Commit it, and update it in the same commit as any
+  issuance or revocation.
+
+- [ ] **Step 6 — Issue your own client certificate.**
+
+  Run (Windows PowerShell, from the repo root): `.\infra\scripts\new-vpn-client-cert.ps1 -Name eli`
+  Expected: prints a thumbprint and writes `eli.pfx`. Add the row to the inventory.
+
+  Then confirm `eli.pfx` is **not** tracked by git: `git status --short` must not list it. If it does, stop
+  and add `*.pfx` to `.gitignore` before anything else — committing a private key to a repo is not
+  recoverable by deleting it later.
+
+- [ ] **Step 7 — Commit** (the script and inventory only — never a `.pfx`).
+
+  ```bash
+  git add infra/scripts/new-vpn-client-cert.ps1 infra/scripts/vpn-cert-inventory.md
+  git commit -m "feat(infra): P2S client certificate issuance and inventory"
   ```
 
 ## Task A2: GatewaySubnet and the VPN gateway
@@ -376,8 +512,19 @@ app is **still publicly reachable** — nothing has been removed yet, so a mista
   // creation inside a single deploy).
   param deployVpnGateway = true
 
-  // Printed by configure-auth.sh as VPN_CLIENT_ID. Empty is only valid while deployVpnGateway is false.
-  param vpnAudienceClientId = '<VPN_CLIENT_ID from Task A1 Step 2>'
+  // EMPTY selects CERTIFICATE authentication (spec 4.6) — the shipped path, because the operator account is
+  // a guest with no directory privileges and the audience app cannot be created. Setting this to the id
+  // printed by configure-auth.sh is what switches the SAME gateway to Entra auth later; nothing else about
+  // the estate has to change.
+  param vpnAudienceClientId = ''
+
+  // The base64 body of the root CA's exported .cer — Task A1C Step 2. No PEM header, no line breaks.
+  param vpnRootCertData = '<base64 from Task A1C Step 2>'
+
+  // Thumbprints of client certificates whose access has been withdrawn. THIS LIST IS THE ONLY OFFBOARDING
+  // MECHANISM under certificate auth — there is no group to remove anyone from. Keep it in step with
+  // infra/scripts/vpn-cert-inventory.md.
+  param vpnRevokedCertThumbprints = []
   ```
 
 - [ ] **Step 7 — Validate and deploy.**
@@ -486,18 +633,24 @@ app is **still publicly reachable** — nothing has been removed yet, so a mista
 
 - [ ] **Step 1 — ⚙ OPERATOR — PORTAL: download the client profile.** Portal → `vgw-smx-hub-swc` →
   **Point-to-site configuration** → confirm it shows address pool `172.16.0.0/24`, tunnel type `OpenVPN (SSL)`,
-  authentication type `Azure Active Directory`, and the audience GUID from Task A1. Click **Download VPN
-  client** and save the zip.
+  authentication type **`Azure certificate`**, and the root certificate named `smx-p2s-root`. Click **Download
+  VPN client** and save the zip.
 
-- [ ] **Step 2 — ⚙ OPERATOR: install the Azure VPN Client and import the profile.** Install from the Microsoft
-  Store (Windows) or the App Store (macOS). In the client: **+** → **Import** → select
-  `AzureVPN/azurevpnconfig.xml` from the downloaded zip → Save → **Connect**. A browser window opens for Entra
-  sign-in.
+  If it shows `Azure Active Directory` instead, `vpnAudienceClientId` is not empty — check Task A2 Step 6.
 
-  Expected: sign-in succeeds and the client reports **Connected**.
+- [ ] **Step 2 — ⚙ OPERATOR: install the client certificate, then the VPN client.** Order matters: the
+  profile import looks for a matching certificate.
 
-  If sign-in is rejected with "you cannot access this application", the account is not in `sg-smx-vpn-users` —
-  which means Task A1 Step 3 is working exactly as designed. Add the account to the group and retry.
+  Double-click `eli.pfx` (Task A1C Step 6) → install to **Current User** → **Personal** store, entering the
+  password you set. Then install the **Azure VPN Client** from the Microsoft Store, and in it:
+  **+** → **Import** → select `AzureVPN/azurevpnconfig.xml` from the downloaded zip → Save → **Connect**.
+
+  Expected: the client reports **Connected** with no browser prompt — there is no interactive sign-in under
+  certificate auth, which is exactly the property that makes this weaker than Entra (spec §4.6): possession
+  of the file is the whole authentication.
+
+  If it fails with a certificate error, confirm the client certificate is in `Cert:\CurrentUser\My` and that
+  it chains to `CN=SMX-P2S-Root` — `certutil -verify -urlfetch` on the exported `.cer` will say so.
 
 - [ ] **Step 3 — Verify the tunnel assigned an address from the pool.**
 
@@ -985,7 +1138,17 @@ End state: `https://dev.<domain>` serves the app with a trusted, auto-renewing c
 
 ---
 
-# Phase D — Per-account authorization
+# Phase D — Per-account authorization — **BLOCKED, DOES NOT SHIP WITH A–C**
+
+> **Amended 2026-08-02.** Every task below is Entra work and is blocked by P3. Certificate auth (Task A1C)
+> does not unblock any of it — it authenticates the *tunnel*, and this phase authorizes the *application*.
+>
+> **Consequence to state plainly in any status report:** with Phases A–C complete and D blocked, the SMX app
+> is **VNet-only and unauthenticated**. Anyone holding a client certificate reaches a fully open API. That is
+> a real improvement on today's *public and unauthenticated*, and it is not what was asked for.
+>
+> Task D2 (the backend `Operator` role policy) is the one part that can be written and merged ahead of the
+> directory grant — it is gated by `apiClientId` being empty, exactly like the auth wiring it extends.
 
 End state: only accounts assigned the `Operator` role can use the API, enforced independently of the tunnel.
 
@@ -1262,10 +1425,14 @@ are the reason the list exists.
 - [ ] **V3 — DNS resolves publicly to a private target.** `dig +short dev.<domain>` → `10.0.0.10`.
 - [ ] **V4 — The tunnel does not reach the data plane.** Connected: a TCP connection to any `snet-pe` private
   endpoint times out (Task B3 Step 5).
-- [ ] **V5 — All three authorization outcomes.** No token → 401; assigned account → 200; unassigned account →
-  403 (Task D3 Step 5).
-- [ ] **V6 — Group membership is the tunnel allow-list.** Remove a test account from `sg-smx-vpn-users`; it
-  can no longer connect.
+- [ ] **V5 — BLOCKED (Phase D).** The intended check is: no token → 401; assigned account → 200; unassigned
+  account → 403. **Assert the true state instead:** `curl https://dev.<domain>/api/projects` with **no token**
+  returns **200**, confirming the app is unauthenticated and the tunnel is the only control. Record that
+  result explicitly — an unchecked box reads later as an untested pass, and this one is a known fail.
+- [ ] **V6 — Revocation is the tunnel allow-list.** Add a spare client certificate's thumbprint to
+  `vpnRevokedCertThumbprints`, redeploy, and confirm that certificate can no longer connect while yours
+  still can. Then remove it. Under certificate auth this is the **only** offboarding mechanism, so it must be
+  proven to work before anyone relies on it — not discovered on the day someone leaves.
 - [ ] **V7 — The codification holds.** `infra/scripts/deploy.sh dev` twice in a row, then re-run V1–V5. This
   is the one that catches the portal trap (spec §6): anything configured only in the portal has now been
   reverted, and V1 is where it shows.
