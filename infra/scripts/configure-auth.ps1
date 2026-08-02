@@ -194,3 +194,40 @@ Write-Host "SPA_CLIENT_ID=$spaId"
 Write-Warn "Set in dev.bicepparam: apiClientId='$apiId'"
 Write-Warn "Rebuild the frontend image with VITE_ENTRA_CLIENT_ID=$spaId (SPA), VITE_API_SCOPE=api://$apiId/access_as_user, VITE_ENTRA_TENANT_ID=$tenantId"
 Write-Warn "Grant admin consent for the SPA: az ad app permission admin-consent --id $spaId  (needs a directory admin)"
+
+# =====================================================================================================
+# VPN custom audience (Task A1): the app registration the P2S gateway authenticates against. A CUSTOM
+# audience, never Microsoft's shared "Azure VPN" app id - the shared app authenticates every account in
+# the tenant, so pointing the gateway at it would make the tunnel's allow-list the whole directory.
+# Assignment-required + a single assigned group is what turns this into a named-user list.
+# Group membership itself stays portal-managed on purpose (spec section 6): it is a Graph object deploy.ps1
+# neither creates nor destroys, and it changes on a different cadence than the infrastructure.
+# =====================================================================================================
+$vpnAppName = "$($script:NamePrefix)-$envName-vpn"
+Write-Log "Ensuring Entra app registration '$vpnAppName'..."
+$vpnId = az ad app list --display-name $vpnAppName --query '[0].appId' -o tsv
+if ([string]::IsNullOrWhiteSpace($vpnId)) {
+    $vpnId = az ad app create --display-name $vpnAppName --sign-in-audience AzureADMyOrg --query appId -o tsv
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($vpnId)) { Die "Failed to create the app registration '$vpnAppName'." }
+    Write-Log "Created app registration $vpnId"
+}
+
+# The Azure VPN Client uses azurevpn:// on Windows/macOS and the native-client URI as fallback. Both are
+# (re)set every run: a missing redirect URI fails at CONNECT time with AADSTS50011, long after this script
+# reported success, which is the most expensive place for this to be wrong.
+Invoke-Native az ad app update --id $vpnId --public-client-redirect-uris `
+    'azurevpn://' 'https://login.microsoftonline.com/common/oauth2/nativeclient' --output none
+
+# Ensure the service principal exists, then require assignment. Without the SP there is nothing to assign
+# a group to, and 'az ad app create' does not make one.
+$vpnSp = az ad sp list --display-name $vpnAppName --query '[0].id' -o tsv
+if ([string]::IsNullOrWhiteSpace($vpnSp)) {
+    $vpnSp = az ad sp create --id $vpnId --query id -o tsv
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($vpnSp)) { Die "Failed to create the service principal for '$vpnAppName'." }
+    Write-Log "Created service principal $vpnSp"
+}
+Invoke-Native az ad sp update --id $vpnSp --set appRoleAssignmentRequired=true --output none
+
+Write-Host "VPN_CLIENT_ID=$vpnId"
+Write-Warn "Set in dev.bicepparam: vpnAudienceClientId='$vpnId'"
+Write-Warn "Assign 'sg-smx-vpn-users' to the $vpnAppName enterprise app (portal) - that group IS the tunnel allow-list."
