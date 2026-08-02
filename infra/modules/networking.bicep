@@ -196,7 +196,18 @@ resource spokeVnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           networkSecurityGroup: {
             id: nsgPe.id
           }
-          privateEndpointNetworkPolicies: 'Disabled'
+          // THIS is what makes nsgPe above do anything. Azure does not apply NSG rules to private-endpoint
+          // traffic unless network policy is enabled on the subnet — the default ('Disabled') means the
+          // rules attach and are silently ignored, which is exactly the state this replaced: three rules
+          // deployed, and a VPN client still able to open a socket to Cosmos.
+          //
+          // 'NetworkSecurityGroupEnabled', not 'Enabled': the latter also turns on route-table policy,
+          // which would let a UDR override the private endpoint's /32 route. We use no such UDR, and
+          // enabling machinery we do not use is how a future outage gets an extra suspect.
+          //
+          // REVERT: set back to 'Disabled' and redeploy. That restores the previous behaviour in full,
+          // because the NSG rules stop applying rather than needing to be removed.
+          privateEndpointNetworkPolicies: 'NetworkSecurityGroupEnabled'
         }
       }
     ]
