@@ -43,6 +43,11 @@ resource pip 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
   name: pipName
   location: location
   tags: tags
+  // Zone-redundant, matching the deployed resource and the VpnGw1AZ SKU it fronts. Zones are IMMUTABLE:
+  // omitting this does not leave the IP alone, it asks ARM to move a zonal resource to regional and the
+  // deploy dies on ResourceAvailabilityZonesCannotBeModified. what-if does NOT catch this — it validated
+  // clean and the deploy still failed here, which is the one class of drift what-if cannot warn about.
+  zones: [ '1', '2', '3' ]
   sku: {
     name: 'Standard'
   }
