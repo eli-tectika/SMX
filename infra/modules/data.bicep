@@ -83,6 +83,11 @@ resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
   kind: 'GlobalDocumentDB'
   properties: {
     databaseAccountOfferType: 'Standard'
+    // Matches the live account. Not declaring it made every deploy silently flip it back to false, which
+    // is drift in the most annoying direction: nobody asked for the change and nobody would notice it.
+    // It is a near-no-op on a single-region serverless account (there is nowhere to fail over to), so this
+    // line buys deploy idempotence rather than availability.
+    enableAutomaticFailover: true
     locations: [
       {
         locationName: location
