@@ -252,12 +252,17 @@ side — the certificates must land in the Windows certificate store, and WSL ca
   new client certificates, so it must not live only in one laptop's certificate store.
 
   ```powershell
-  $pw = Read-Host -AsSecureString "PFX password"
-  Export-PfxCertificate -Cert $root -FilePath "$env:TEMP\smx-p2s-root.pfx" -Password $pw
+  $pwPlain = Read-Host "Password to protect the root .pfx"
+  Export-PfxCertificate -Cert $root -FilePath "$env:TEMP\smx-p2s-root.pfx" `
+      -Password (ConvertTo-SecureString $pwPlain -AsPlainText -Force) | Out-Null
   az keyvault certificate import --vault-name kv-smx-dev-lmxnb --name smx-p2s-root `
-      --file "$env:TEMP\smx-p2s-root.pfx" --password (…)
-  Remove-Item "$env:TEMP\smx-p2s-root.pfx"
+      --file "$env:TEMP\smx-p2s-root.pfx" --password $pwPlain
+  Remove-Item "$env:TEMP\smx-p2s-root.pfx" -Force
+  Clear-History; $pwPlain = $null
   ```
+
+  `az` needs the password as plaintext, so it lands in the PowerShell history buffer — hence the
+  `Clear-History`. The vault name `kv-smx-dev-lmxnb` was read back live from `rg-smx-dev-swc`, not assumed.
 
   Verify: `az keyvault certificate show --vault-name kv-smx-dev-lmxnb -n smx-p2s-root --query id -o tsv`
   returns an id. Then confirm the temp `.pfx` is gone.
