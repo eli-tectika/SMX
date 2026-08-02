@@ -171,6 +171,21 @@ module hubPeering 'modules/hubPeering.bicep' = {
   }
 }
 
+module vpn 'modules/vpn.bicep' = if (deployVpnGateway) {
+  name: 'vpn-hub'
+  scope: hubRg
+  params: {
+    namePrefix: namePrefix
+    regionShort: regionShort
+    location: location
+    tags: hubTags
+    gatewaySubnetId: '${hub.outputs.vnetId}/subnets/GatewaySubnet'
+    clientPool: vpnClientPool
+    tenantId: subscription().tenantId
+    vpnAudienceClientId: vpnAudienceClientId
+  }
+}
+
 module dnsLinks 'modules/dnsLinks.bicep' = {
   name: 'dns-links-${env}'
   scope: hubRg
@@ -402,11 +417,24 @@ module policy 'modules/policy.bicep' = if (deployPolicyGuardrails) {
   scope: envRg
 }
 
+@description('Deploy the P2S VPN gateway and enable gateway transit on both peering directions. GATED because the spoke peering cannot set useRemoteGateways=true before a gateway exists in the hub — a fresh-subscription deploy with this true and no gateway fails. Deploy once with false, then flip.')
+param deployVpnGateway bool = false
+
+@description('P2S client address pool (see vpn.bicep). Also used by the NSG rules that scope what a connected laptop may reach.')
+param vpnClientPool string = '172.16.0.0/24'
+
+@description('App registration client id used as the P2S custom audience — printed by configure-auth.sh. Empty is only valid while deployVpnGateway is false.')
+param vpnAudienceClientId string = ''
+
 output hubResourceGroup string = hubRg.name
 output envResourceGroup string = envRg.name
 output uniqueSuffix string = uniqueSuffix
 output hubVnetId string = hub.outputs.vnetId
 output spokeVnetId string = spoke.outputs.vnetId
+// Safe-dereference rather than a ternary on deployVpnGateway: the ternary is correct at runtime (ARM's
+// if() evaluates only the taken branch) but warns BCP318, and a warning that is always present is a
+// warning nobody reads. '.?' says the same thing to the compiler.
+output vpnGatewayPublicIp string = vpn.?outputs.gatewayPublicIp ?? ''
 output uamiClientId string = security.outputs.uamiClientId
 output keyVaultName string = security.outputs.keyVaultName
 output storageName string = data.outputs.storageName

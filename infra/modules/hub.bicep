@@ -123,6 +123,14 @@ resource hubVnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           addressPrefix: '10.0.2.0/24'
         }
       }
+      {
+        // Azure requires this EXACT name — a VPN gateway cannot be placed in a subnet called anything
+        // else. /27 is comfortably above the /29 minimum and leaves 10.0.3.32+ of the hub /22 free.
+        name: 'GatewaySubnet'
+        properties: {
+          addressPrefix: '10.0.3.0/27'
+        }
+      }
     ]
   }
 }
