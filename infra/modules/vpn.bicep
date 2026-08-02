@@ -17,8 +17,23 @@ param tenantId string
 @description('App registration client id used as the P2S custom AUDIENCE. A custom audience, never the shared Microsoft Azure VPN app: that app authenticates every account in the tenant, which would make the tunnel allow-list the whole directory.')
 param vpnAudienceClientId string
 
+@description('Base64 public certificate data of the P2S root CA — the body of the exported .cer with no PEM header/footer and no line breaks. Required when deployVpnGateway is true and vpnAudienceClientId is empty.')
+param rootCertData string = ''
+
+@description('Thumbprints of revoked client certificates. Under certificate auth this list IS the offboarding mechanism: there is no group to remove someone from, so a departing user keeps access until their thumbprint lands here.')
+param revokedCertThumbprints array = []
+
 var gwName = 'vgw-${namePrefix}-hub-${regionShort}'
 var pipName = 'pip-${namePrefix}-hub-vgw-${regionShort}'
+
+// Hoisted out of vpnClientConfiguration because Bicep rejects a for-expression inside a ternary (BCP138);
+// a variable declaration is one of the few contexts that accepts one.
+var revokedCerts = [for thumbprint in revokedCertThumbprints: {
+  name: thumbprint
+  properties: {
+    thumbprint: thumbprint
+  }
+}]
 
 resource pip 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
   name: pipName
@@ -60,13 +75,35 @@ resource vgw 'Microsoft.Network/virtualNetworkGateways@2024-05-01' = {
         }
       }
     ]
-    vpnClientConfiguration: {
+    // An empty vpnAudienceClientId selects certificate auth, following the convention the rest of this
+    // repo already uses to gate a feature on a parameter being empty (certKeyVaultSecretId, apiClientId,
+    // appDomainName). It is the right default here because certificate auth needs no directory access at
+    // all, and the deploying account is a tenant guest that cannot create the audience app registration.
+    // Because both branches are the same gateway resource with the same SKU and tunnel type, moving to
+    // Entra once someone with directory rights can register the app is a parameter change on the running
+    // gateway, not a teardown and rebuild.
+    vpnClientConfiguration: empty(vpnAudienceClientId) ? {
       vpnClientAddressPool: {
         addressPrefixes: [ clientPool ]
       }
-      // Entra authentication REQUIRES the OpenVPN tunnel type — IKEv2/SSTP support only certificate or
-      // RADIUS auth, which would make "specific users" a certificate-lifecycle problem instead of a
-      // group-membership one.
+      vpnClientProtocols: [ 'OpenVPN' ]
+      vpnAuthenticationTypes: [ 'Certificate' ]
+      vpnClientRootCertificates: [
+        {
+          name: '${namePrefix}-p2s-root'
+          properties: {
+            publicCertData: rootCertData
+          }
+        }
+      ]
+      vpnClientRevokedCertificates: revokedCerts
+    } : {
+      vpnClientAddressPool: {
+        addressPrefixes: [ clientPool ]
+      }
+      // OpenVPN here is REQUIRED, not merely shared with the certificate branch above: Entra auth works
+      // over OpenVPN only. (IKEv2/SSTP do certificate and RADIUS but never Entra — the constraint binds
+      // this branch, not the certificate one, which is free to use OpenVPN and does.)
       vpnClientProtocols: [ 'OpenVPN' ]
       vpnAuthenticationTypes: [ 'AAD' ]
       aadTenant: 'https://login.microsoftonline.com/${tenantId}/'

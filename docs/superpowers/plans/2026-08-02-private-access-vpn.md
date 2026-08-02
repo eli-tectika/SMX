@@ -532,9 +532,30 @@ side — the certificates must land in the Windows certificate store, and WSL ca
   param vpnRevokedCertThumbprints = []
   ```
 
-- [ ] **Step 7 — Validate and deploy.**
+- [ ] **Step 7 — Pre-flight the two things Bicep cannot catch, THEN deploy.**
 
-  Run:
+  Bicep types `vpnAuthenticationTypes` as an open `string` and `rootCertData` as an optional one, so a green
+  compile proves neither that the auth combination is valid nor that a certificate was supplied. Both failures
+  would otherwise surface ~40 minutes into a gateway create, which is the most expensive place to learn them.
+
+  First, assert a certificate is actually present:
+  ```bash
+  grep -q "param vpnRootCertData = ''" infra/env/dev.bicepparam && \
+    echo "REFUSING: vpnRootCertData is empty — publicCertData is required and the create will fail late." || \
+    echo "cert data present"
+  ```
+  Expected: `cert data present`.
+
+  Then let ARM validate the property shape without provisioning anything:
+  ```bash
+  az deployment sub what-if --location swedencentral \
+    --template-file infra/main.bicep --parameters infra/env/dev.bicepparam \
+    --no-pretty-print > /tmp/vpn-whatif.txt; echo "exit=$?"
+  ```
+  Expected: `exit=0` and the output lists a `Create` for `vgw-smx-hub-swc`. A rejection of
+  `vpnAuthenticationTypes` or `publicCertData` shows up here, before any money is spent.
+
+  Only then:
   ```bash
   az bicep build --file infra/main.bicep --stdout > /dev/null && \
   az bicep build --file infra/single-rg/main.bicep --stdout > /dev/null && \
@@ -542,6 +563,8 @@ side — the certificates must land in the Windows certificate store, and WSL ca
   ```
   Expected: both compile silently; the deploy reports `Succeeded` and does **not** recreate the gateway the
   portal already made (same name, same properties → no-op).
+
+  **This deploy starts the ~$140/mo meter.** It is the first irreversible-in-practice step in the plan.
 
 - [ ] **Step 8 — Commit.**
 

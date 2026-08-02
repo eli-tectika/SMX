@@ -183,6 +183,8 @@ module vpn 'modules/vpn.bicep' = if (deployVpnGateway) {
     clientPool: vpnClientPool
     tenantId: subscription().tenantId
     vpnAudienceClientId: vpnAudienceClientId
+    rootCertData: vpnRootCertData
+    revokedCertThumbprints: vpnRevokedCertThumbprints
   }
 }
 
@@ -425,6 +427,12 @@ param vpnClientPool string = '172.16.0.0/24'
 
 @description('App registration client id used as the P2S custom audience — printed by configure-auth.sh. Empty is only valid while deployVpnGateway is false.')
 param vpnAudienceClientId string = ''
+
+@description('Base64 public certificate data of the P2S root CA (body of the exported .cer, no PEM header/footer, no line breaks). Required when deployVpnGateway is true and vpnAudienceClientId is empty — see vpn.bicep.')
+param vpnRootCertData string = ''
+
+@description('Thumbprints of revoked P2S client certificates. Under certificate auth this list is the only way to offboard a user, so it must be updated and redeployed when someone leaves.')
+param vpnRevokedCertThumbprints array = []
 
 output hubResourceGroup string = hubRg.name
 output envResourceGroup string = envRg.name
