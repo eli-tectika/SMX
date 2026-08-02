@@ -44,7 +44,39 @@ param acmebotPrincipalId = ''
 
 // API app registration client id (backend JwtBearer audience). Empty until configure-auth.sh creates the
 // app registration (Task B1) and prints the id; while empty the backend runs with auth OFF.
+//
+// STILL EMPTY, AND NOT AN OVERSIGHT: the operator account is a GUEST in the SecurityMatters tenant with no
+// directory privileges, so configure-auth.sh cannot run at all. The consequence is load-bearing and should
+// not be discovered by surprise — THE BACKEND IS SERVING EVERY ENDPOINT UNAUTHENTICATED. The VPN below
+// closes the network path to it; it does not authenticate anyone who is on that path.
 param apiClientId = ''
+
+// ---------------- P2S VPN (spec 2026-08-02) ----------------
+// ARMED. The next `deploy.sh dev` CREATES the VPN gateway: ~30-45 minutes, and roughly $140/month from that
+// moment. It is the first irreversible-in-practice line in this file. Set to false to stop billing (and
+// delete vgw-smx-hub-swc — Bicep removing the resource from the template does not delete what exists).
+param deployVpnGateway = true
+
+// EMPTY SELECTS CERTIFICATE AUTHENTICATION — the shipped path, because the audience app registration needs
+// directory privileges the operator does not have (see apiClientId above). Setting this to the id printed
+// by configure-auth.sh is what switches this SAME gateway to Entra auth later: the address pool, public IP
+// and routes survive, and only vpnClientConfiguration changes.
+param vpnAudienceClientId = ''
+
+// Public key of the P2S root CA (CN=SMX-P2S-Root, SHA-1 94:21:6E:32:FD:F8:56:34:77:63:D0:08:0A:93:D5:66:
+// 20:2A:2F:45), valid 2026-08-02 to 2031-08-02. Public certificate data only — the private key lives in
+// Key Vault as `smx-p2s-root` and can mint new client certificates, so it is not in this repo.
+//
+// THE EXPIRY IS A CLIFF, NOT A WARNING: when this root expires, every client certificate it signed stops
+// working simultaneously and nothing notifies anyone beforehand. Renew during 2031, or move to Entra auth
+// before then and delete this.
+param vpnRootCertData = 'MIIC6TCCAdGgAwIBAgIQGcjAd3XCXJpBy3Ahle7/xzANBgkqhkiG9w0BAQsFADAXMRUwEwYDVQQDDAxTTVgtUDJTLVJvb3QwHhcNMjYwODAyMTA0MjUyWhcNMzEwODAyMTA1MjQ4WjAXMRUwEwYDVQQDDAxTTVgtUDJTLVJvb3QwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC+hb7Sg0tDMZIC/k2GoIvG25+H797keirxes2SwelkNtxK+BJtjaggc9yTrOXwjx1jUKmtueHNR3RTTz1L96PUOimbpMW+2Zf+BRHfs76Cu9wJTaABPenUkrZmcRNi9TXCP2foR+TNp61L50LRBB7cnWUtXxRvb0vTCbkriv7ECZBKhDDzzhgvye6VognvNaAPlPj+X/bS2r0cX/KBc/PgWPlZ8x1RxVDS3pb7/J3Lv08D/o5H36QB3ZdaQ0EpS0XDhkHRmvEoTYlhTg2WsQYhUJkB0eJZN9JD0XAMRV1BHmz2DaI1bGSqhf382tFMldw7bVJCMh3dFzCWBgf4NVuxAgMBAAGjMTAvMA4GA1UdDwEB/wQEAwICBDAdBgNVHQ4EFgQUtRH11K/u7kgv2rp4hHRUYFp3hSEwDQYJKoZIhvcNAQELBQADggEBACZDr6HtvzyxecAdwIcWzsj7q0X/i27fVZs1fNRJPMVrr2K8UZ+Xl3uyieOvPV7b4/xp28qSTT9F0k+yjTf1GMjzREBsknc+Ld5SD/5ubiIj+Q3Nzi87t2ib+qAj7MGNgFqXz6Nb5IpW1pmfbqPS22XRl9J3cnSScTEC3f52uB2T0JJULj7cSXT4lrA20hckFFGAV0uG+B3IThOl2lvc5ttGBsTNQo4zrPDIRp3/9HOFEPVfOYgq7boVqE4BQOHngSQFZtrmUzw88EHm+9aNo/JZCr9CE3+h4PX4Pb7fesVYd5l978kGg2PQEo7IBd9syhO2OoE9Vk5CHh1/mLgoh7I='
+
+// Thumbprints of client certificates whose access has been withdrawn. THIS LIST IS THE ENTIRE OFFBOARDING
+// MECHANISM under certificate auth: there is no group to remove anyone from, and nothing expires on its own
+// except the certificate itself. Keep it in step with infra/scripts/vpn-cert-inventory.md, and revoke in the
+// same change as the inventory edit.
+param vpnRevokedCertThumbprints = []
 
 // The container images the environment runs. THESE ARE NOT OPTIONAL POLISH.
 //
