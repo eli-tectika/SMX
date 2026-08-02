@@ -35,7 +35,37 @@ Key Vault, KeyVault-Acmebot, Application Gateway v2, .NET 8 (`Microsoft.AspNetCo
   then `az account set --subscription 98c6dba9-5088-4d2b-aadc-31b629a308de`
   Expected: `az account show --query name -o tsv` prints `SecurityMatters`.
 
-- [ ] **P3 — Record the pre-change baseline.** You will need it to prove Phase B actually closed something.
+- [ ] **P3 — ⚙ BLOCKER, verified live 2026-08-02: obtain directory privileges.** The operator account is a
+  **guest** in the SecurityMatters tenant (`az ad signed-in-user show` →
+  `eli_tectika.com#EXT#@SecurityMattersAzure.onmicrosoft.com`). Guest default permissions deny even reads —
+  `az ad group list`, `az ad app list` and `GET /subscribedSkus` all return `Authorization_RequestDenied`.
+  **ARM is unaffected**; only the directory axis is walled off.
+
+  Blocked by this: **Task A1** entirely, **Task D1**, **Task D3** (needs `apiClientId`, which needs
+  `configure-auth.sh`), and **Task D4**. Not blocked: A2, A3, all of Phase B, all of Phase C.
+
+  Ask a SecurityMatters tenant admin for these roles on the guest account — request the grant, not per-step
+  help, because the asks recur across this plan and the next:
+  - **Application Administrator** — app registrations and app roles (A1, D1)
+  - **Groups Administrator** — the `sg-smx-vpn-users` allow-list (A1)
+  - **Conditional Access Administrator** — the CA policy (D4)
+  - **Privileged Role Administrator** or Global Admin — the one-off `az ad app permission admin-consent`
+
+  Ask them the licensing question at the same time (it decides the design, spec §1): **does the tenant hold
+  Entra ID P1/P2, or Entra Suite / Private Access?** If Entra Suite is held, stop and reconsider — Private
+  Access is a tighter grant than this whole plan and skips the VPN gateway's ~$140/mo.
+
+  Verify: `az ad group list --query '[0].displayName' -o tsv` returns a name instead of
+  `Authorization_RequestDenied`.
+
+  **Fallback if directory privileges cannot be obtained:** switch the P2S gateway to **certificate**
+  authentication (a self-signed root uploaded to the gateway — an ARM operation needing no Graph access, with
+  per-user control becoming per-certificate issuance). That unblocks Phases A–C and delivers VNet-only
+  access, but it forfeits Entra group membership, Conditional Access and MFA on the tunnel, and leaves all of
+  Phase D blocked — meaning the app behind the tunnel stays unauthenticated. Treat it as a real fallback, not
+  an equivalent.
+
+- [ ] **P4 — Record the pre-change baseline.** You will need it to prove Phase B actually closed something.
 
   Run: `curl -s -o /dev/null -m 20 -w '%{http_code}\n' "http://smx-dev-lmxnb.swedencentral.cloudapp.azure.com/"`
   Expected: `200` — the app is publicly reachable **today**. Write the number down; Task B4 asserts it becomes
@@ -812,7 +842,7 @@ This is spec §4.2 — the cost of choosing an L3 tunnel, paid explicitly.
   ```bash
   curl -s -o /dev/null -m 20 -w '%{http_code}\n' "http://smx-dev-lmxnb.swedencentral.cloudapp.azure.com/" || echo "unreachable"
   ```
-  Expected: `000` or `unreachable` (timeout). Compare against the `200` recorded in P3 — that delta is the
+  Expected: `000` or `unreachable` (timeout). Compare against the `200` recorded in P4 — that delta is the
   entire point of Phase B. Anything else means a listener is still bound to the public frontend; re-check
   Task B1 Step 3 covered **both** listeners.
 
