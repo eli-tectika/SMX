@@ -8,6 +8,11 @@ SecurityMatters tenant can reach it, unauthenticated**.
 
 Every step is given twice: **Portal** and **CLI**. Do one or the other, not both.
 
+> **Read [`access-options.md`](access-options.md) first if you have not.** It decides *how* users connect
+> (VPN, App Proxy, or public front door). This guide covers *which* users are allowed, and **Part B works
+> identically under all three** — so Part B is safe to do now, before that decision lands. Part A only
+> applies if the VPN is kept.
+
 ---
 
 ## 1. What this actually restricts
@@ -24,6 +29,10 @@ means the app is safe but the data plane behind it is still exposed to everyone 
 
 If you only have time for one, **do B**. Network position is not authorization, and B is what stands
 between a curious colleague and a system that writes regulatory verdicts.
+
+> **Door B survives the pending decision; Door A may not.** If we move to App Proxy, Door A is replaced by
+> App Proxy's own pre-authentication — but that only controls *arrival*, not permission, so Door B is
+> still exactly as necessary. Doing B now is not wasted work under any outcome.
 
 ---
 
@@ -80,26 +89,65 @@ them yourself with no tenant-wide rights. Owners can expose scopes, add client a
 *Assignment required*, and assign users and groups — everything below except the two one-off items marked
 **⚠ ADMIN ONLY**.
 
-### 3.3 The request to send your tenant admin
+### 3.3 What the two access routes need from an admin
 
-> Please create the following Microsoft Entra objects and add `eli@tectika.com` as **owner** of each
-> (owner, not a directory role — this grants nothing outside these objects):
+The access method is under review — see [`access-options.md`](access-options.md). The two candidates need
+**different directory permissions**, so ask for both at once rather than going back twice.
+
+| | Route | Directory role needed | Can ownership replace it? |
+|---|---|---|---|
+| Keep the VPN | Part A below | Cloud Application Administrator | ✅ yes |
+| **Entra App Proxy** | not in this guide | **Application Administrator** | ❌ **no** |
+| The app's own sign-in | Part B below | Cloud Application Administrator | ✅ yes |
+
+**Why App Proxy is different:** installing the connector requires signing in *on the server itself* with an
+Application Administrator account. There is no object to own yet at that point, so ownership cannot cover
+it. It is a genuinely higher ask, and it is the one thing that blocks that route entirely.
+
+### 3.4 The request to send your tenant admin
+
+> **Context:** we are restricting an internal R&D tool (SMX, dev environment) to 5–10 named external
+> experts. Two parts: creating the identity objects, and letting those experts sign in.
 >
-> 1. App registration **`smx-dev-vpn-audience`** — single tenant. Add me as owner of both the app
->    registration and its enterprise application.
-> 2. App registration **`smx-dev-api`** — single tenant. Same: owner of both.
-> 3. App registration **`smx-dev-web`** — single tenant. Same: owner of both.
-> 4. Security group **`sg-smx-vpn-users`** — assigned membership. Add me as **group owner** so I can
->    manage membership.
+> **1 — Objects, with me as owner.** Please create these and add `eli@tectika.com` as **owner** of each.
+> Owner is not a directory role — it grants nothing outside the named object:
 >
-> Two one-off actions I cannot perform even as owner, please run once:
+> | Object | Type | Also make me owner of |
+> |---|---|---|
+> | `smx-dev-api` | App registration, single tenant | its enterprise application |
+> | `smx-dev-web` | App registration, single tenant | its enterprise application |
+> | `smx-dev-vpn-audience` | App registration, single tenant | its enterprise application |
+> | `sg-smx-users` | Security group, assigned membership | the group itself |
 >
-> 5. Grant admin consent for `smx-dev-web` (requires Privileged Role Administrator or Global Admin).
-> 6. If a Conditional Access policy is wanted (MFA on these apps), create it — Conditional Access
->    Administrator.
+> (`smx-dev-vpn-audience` is only needed if we keep the VPN. Safe to skip if we go the App Proxy route.)
 >
-> Alternatively, if ownership is awkward, **Cloud Application Administrator** + **Groups Administrator**
-> on my account achieves the same thing with broader rights.
+> **2 — One-off actions I cannot perform even as owner:**
+>
+> - Grant **admin consent** for `smx-dev-web` — needs Privileged Role Administrator or Global Admin.
+>   Without it every user is prompted to consent at first sign-in, and is blocked outright if user
+>   consent is disabled tenant-wide.
+> - Create a **Conditional Access** policy requiring MFA on these apps, if wanted — needs Conditional
+>   Access Administrator.
+>
+> **3 — Inviting the experts.** They have no accounts in the tenant, so they need **B2B guest** invitations
+> (they sign in with their own work email; no account is created for them to manage). Either grant me
+> **Guest Inviter** — the narrowest role that exists, it does nothing except send invitations — or send
+> the invitations yourself from a list I provide.
+>
+> **4 — If we proceed with Entra Application Proxy** *(decision pending)*, that route additionally needs:
+>
+> - **Application Administrator**, used once, to register the connector during installation on the server.
+>   This cannot be delegated through object ownership. If the role cannot be granted even temporarily,
+>   an admin running the connector installer once achieves the same result.
+> - Admin consent for the **`User.Read`** permission on the published application. Microsoft stopped
+>   granting this automatically for new App Proxy apps on 2026-06-30, so it is now a required manual step.
+>
+> **Fallback:** if per-object ownership is awkward to administer, **Cloud Application Administrator** +
+> **Groups Administrator** + **Guest Inviter** on my account achieves items 1 and 3 with broader rights.
+
+> **Naming note:** the group is `sg-smx-users`, not `sg-smx-vpn-users` as in the sections below — the
+> membership is the same people regardless of how they connect, and tying the name to the VPN would age
+> badly if we move to App Proxy. Commands below still say `sg-smx-vpn-users`; substitute as you go.
 
 ---
 
