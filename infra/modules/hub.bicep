@@ -25,6 +25,12 @@ Set empty to omit the rule (an estate with no P2S gateway).
 ''')
 param vpnClientAddressPool string = '172.20.0.0/24'
 
+// The App Gateway subnets, named once. They are also published as an output because the spoke's
+// private-endpoint NSG has to allow them inbound — the gateway reaches the workload through them —
+// and a second hand-copied literal is exactly how those two drift apart.
+var agwDevSubnetCidr = '10.0.0.0/24'
+var agwProdSubnetCidr = '10.0.1.0/24'
+
 var privateDnsZoneNames = [
   'privatelink.blob.core.windows.net'
   'privatelink.dfs.core.windows.net'
@@ -136,7 +142,7 @@ resource hubVnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
       {
         name: 'snet-agw-dev'
         properties: {
-          addressPrefix: '10.0.0.0/24'
+          addressPrefix: agwDevSubnetCidr
           networkSecurityGroup: {
             id: nsgAgw.id
           }
@@ -145,7 +151,7 @@ resource hubVnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
       {
         name: 'snet-agw-prod'
         properties: {
-          addressPrefix: '10.0.1.0/24'
+          addressPrefix: agwProdSubnetCidr
           networkSecurityGroup: {
             id: nsgAgw.id
           }
@@ -217,3 +223,6 @@ output vnetName string = hubVnet.name
 output logAnalyticsId string = logAnalytics.id
 output appInsightsConnectionString string = appInsights.properties.ConnectionString
 output privateDnsZoneNames array = privateDnsZoneNames
+
+@description('App Gateway subnet CIDRs, for the spoke private-endpoint NSG allow-list.')
+output agwSubnetCidrs array = [ agwDevSubnetCidr, agwProdSubnetCidr ]

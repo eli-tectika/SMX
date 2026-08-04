@@ -16,6 +16,19 @@ param regionShort string = 'swc'
 @description('Public IP of the deploying machine, allowlisted on service firewalls during deployment.')
 param deployerIpAddress string = ''
 
+@description('''
+Point-to-site VPN client address pool. Defined ONCE here and passed to both the hub and the spoke,
+because the two use it for opposite purposes and must never disagree about what it is:
+
+  hub   — ALLOWS it inbound to the App Gateway subnet. The gateway's only listener is on its private
+          frontend, so without this nobody can reach the app at all.
+  spoke — DENIES it inbound to the private endpoints. A VPN client is an operator at a browser, not
+          a data-plane caller.
+
+Empty omits both rules (an estate with no P2S gateway).
+''')
+param vpnClientAddressPool string = '172.20.0.0/24'
+
 @allowed(['Enabled', 'Disabled'])
 @description('Public network access for data/AI services at deploy time. harden.sh flips these to Disabled post-deploy.')
 param publicNetworkAccess string = 'Enabled'
@@ -141,6 +154,7 @@ module hub 'modules/hub.bicep' = {
     regionShort: regionShort
     location: location
     tags: hubTags
+    vpnClientAddressPool: vpnClientAddressPool
   }
 }
 
@@ -158,6 +172,8 @@ module spoke 'modules/networking.bicep' = {
     functionsSubnetCidr: functionsSubnetCidr
     peSubnetCidr: peSubnetCidr
     hubVnetId: hub.outputs.vnetId
+    hubAgwSubnetCidrs: hub.outputs.agwSubnetCidrs
+    vpnClientAddressPool: vpnClientAddressPool
   }
 }
 
