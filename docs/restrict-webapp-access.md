@@ -8,6 +8,12 @@ SecurityMatters tenant can reach it, unauthenticated**.
 
 Every step is given twice: **Portal** and **CLI**. Do one or the other, not both.
 
+> **Handing Part A to the tenant admin?** Send them
+> [`entra-admin-vpn-access-guide.md`](entra-admin-vpn-access-guide.md) instead of this file — the same work,
+> portal-only, written for someone who does not know SMX, ending with the three values they send back.
+> It names the app registration **`smx-dev-vpn`** (matching `configure-auth.sh`), not
+> `smx-dev-vpn-audience` as below; if the admin builds it, use their name everywhere.
+
 > **Read [`access-options.md`](access-options.md) first if you have not.** It decides *how* users connect
 > (VPN, App Proxy, or public front door). This guide covers *which* users are allowed, and **Part B works
 > identically under all three** — so Part B is safe to do now, before that decision lands. Part A only
