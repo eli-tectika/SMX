@@ -145,6 +145,19 @@ The first application code now lives under `src/` (this is no longer a pure-infr
   - Deferred follow-ons: the XRF Lines mapper, the Compatibility Matrix rollup and Element×Form coverage
     matrix, the supplementary supplier lists, RD7 class/pair expansion, and a few unresolved source citation
     tokens (e.g. a rule whose `Key Ref(s)` cell is literally `-`).
+- **Customer data loader** (`tools/Smx.CustomerDataLoad`) — loads *client-confidential* source data
+  (XRF background workbooks, the historical polymers project database, supplier COA/SDS PDFs) straight
+  into Azure. **The data is passed by path and never enters the repo** — that is the whole point of the
+  tool, and `data/` is the wrong home for anything naming a client. It maps workbook rows onto the real
+  `LearnedConclusionDoc`, so a schema change breaks this build rather than quietly writing knowledge
+  nothing can read back. Always `--dry-run` first: it is also the report of what the workbooks contain.
+  - `dotnet run --project tools/Smx.CustomerDataLoad -- --source <dir> --cosmos <endpoint> --storage <account> [--dry-run]`
+  - Needs the caller's IP on the Cosmos **and** storage firewalls (both allowlist `deployerIpAddress`).
+  - Two things it deliberately does NOT write, because the source cannot support them honestly:
+    **MarkerLibraryDoc** (`Ppm` is one number; most historical rows record a *range*) and
+    **MsdsRegistryDoc** (`Supplier`/`Version`/`Date` are absent from the workbook). It also holds back
+    any conditional XRF verdict carrying no signal note — the same rule `XrfSheet` enforces on upload —
+    and any CAS failing `CasNumber.IsValid`.
 - **Search Proxy** (`src/Smx.SearchProxy`, .NET 8 isolated worker; deployed into the `searchproxy`
   Function App — a **separate app and identity from `regsync`, with zero corpus RBAC**) — the anonymizing
   external-search egress, and the system's **single public egress**. It answers *live search queries* and

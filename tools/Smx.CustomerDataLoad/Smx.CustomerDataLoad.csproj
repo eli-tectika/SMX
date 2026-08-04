@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RollForward>Major</RollForward>
+    <RootNamespace>Smx.CustomerDataLoad</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Same version tools/Smx.ReferenceData.Transform already uses to read the reference workbooks. -->
+    <PackageReference Include="ClosedXML" Version="0.104.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Smx.Infrastructure brings CosmosKnowledgeStore + the Cosmos/DataLake/Identity packages, and
+         Smx.Domain brings the record types. Reusing the real LearnedConclusionDoc is the point: a
+         schema change breaks this build instead of silently writing malformed knowledge. -->
+    <ProjectReference Include="../../src/Smx.Infrastructure/Smx.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
