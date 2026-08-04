@@ -13,6 +13,18 @@ param tags object
 @description('Log Analytics retention (days).')
 param logRetentionDays int = 30
 
+@description('''
+Point-to-site VPN client address pool, allowed inbound to the App Gateway subnet.
+
+This is not optional decoration. The gateway's only listener is bound to its PRIVATE frontend
+(10.0.0.10) — the public IP has no listener at all — so a VPN client is the only way a human
+reaches the app. The client pool is a PRIVATE range, so it does not match the `Internet` tag on
+Allow-HTTP-HTTPS-Inbound and would otherwise fall through to Deny-Other-Inbound.
+
+Set empty to omit the rule (an estate with no P2S gateway).
+''')
+param vpnClientAddressPool string = '172.20.0.0/24'
+
 var privateDnsZoneNames = [
   'privatelink.blob.core.windows.net'
   'privatelink.dfs.core.windows.net'
@@ -33,7 +45,7 @@ resource nsgAgw 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   location: location
   tags: tags
   properties: {
-    securityRules: [
+    securityRules: concat([
       {
         name: 'Allow-HTTP-HTTPS-Inbound'
         properties: {
@@ -86,7 +98,29 @@ resource nsgAgw 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
           destinationPortRange: '*'
         }
       }
-    ]
+    ], empty(vpnClientAddressPool) ? [] : [
+      {
+        // WITHOUT THIS RULE THE APP IS UNREACHABLE BY ANYONE. The listener is on the private
+        // frontend only, and the client pool is a private range that `Internet` does not cover,
+        // so every VPN client falls through to Deny-Other-Inbound above.
+        //
+        // It was learned the hard way: this NSG was reconciled to a template that omitted the
+        // rule, which silently cut the only path to the gateway while leaving every health probe
+        // green — the gateway, its backends and the container apps all stayed Healthy, because
+        // nothing they measure crosses this boundary.
+        name: 'Allow-VpnClients-Inbound'
+        properties: {
+          priority: 130
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourceAddressPrefix: vpnClientAddressPool
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRanges: [ '80', '443' ]
+        }
+      }
+    ])
   }
 }
 
@@ -121,6 +155,17 @@ resource hubVnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
         name: 'snet-shared'
         properties: {
           addressPrefix: '10.0.2.0/24'
+        }
+      }
+      {
+        // Declared even though the P2S gateway itself is not deployed from here. A VNet update
+        // PUTs the whole subnet list, so omitting a subnet that EXISTS is a request to delete it —
+        // and Azure refuses with InUseSubnetCannotBeDeleted once a gateway lives in it, which
+        // fails the entire hub deployment and every deployment after it. Declaring it makes the
+        // update idempotent instead. No NSG: Azure requires GatewaySubnet to be unencumbered.
+        name: 'GatewaySubnet'
+        properties: {
+          addressPrefix: '10.0.3.0/26'
         }
       }
     ]
