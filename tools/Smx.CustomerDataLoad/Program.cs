@@ -120,7 +120,7 @@ if (opts.Storage is not null && pdfs.Count > 0)
     var fs = lake.GetFileSystemClient("bronze");
     foreach (var (file, kind) in pdfs)
     {
-        var path = $"customer-documents/{kind}/{file.Name}";
+        var path = $"{Documents.PrefixFor(kind)}/{file.Name}";
         await using var stream = file.OpenRead();
         await fs.GetFileClient(path).UploadAsync(stream, overwrite: true);
         Console.WriteLine($"  bronze/{path}");
@@ -192,4 +192,11 @@ file static class Documents
         if (n.Contains("sds") || n.Contains("msds")) return "sds";
         return "unclassified";
     }
+
+    /// Certificates go to the prefix CoaDocumentProvider lists, taken from the provider itself — a
+    /// loader writing one path while the catalog reads another produces an empty library that looks
+    /// exactly like "nothing was uploaded".
+    public static string PrefixFor(string kind) => kind == "coa"
+        ? Smx.Domain.Documents.CoaDocumentProvider.Prefix
+        : $"customer-documents/{kind}";
 }

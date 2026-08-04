@@ -38,3 +38,15 @@ public sealed class InMemoryRegDocumentSource : IRegDocumentSource
     public Task<RegDocRow?> GetDocAsync(string docId, string sourceId, CancellationToken ct = default) =>
         Task.FromResult(Docs.FirstOrDefault(d => d.DocId == docId && d.SourceId == sourceId));
 }
+
+/// In-memory ICoaDocumentSource: `Files` is the bronze prefix listing.
+public sealed class InMemoryCoaDocumentSource : ICoaDocumentSource
+{
+    public List<CoaRow> Files { get; } = [];
+
+    public Task<IReadOnlyList<CoaRow>> ListAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<CoaRow>>(Files.ToList());
+
+    public Task<CoaRow?> GetAsync(string fileName, CancellationToken ct = default) =>
+        Task.FromResult(Files.FirstOrDefault(f => f.FileName == fileName));
+}

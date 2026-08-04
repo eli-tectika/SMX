@@ -268,8 +268,15 @@ The first application code now lives under `src/` (this is no longer a pure-infr
     free-text label the agent wrote. Deriving an id by parsing it would produce links that are
     usually right, and a chip that opens the *wrong* regulation is worse than one that opens
     nothing. The fix is a real `documentId` on the Citation record; until then the chips stay inert.
-  - **File viewer** (`/docs`, `/docs/:id`) — the document library and reader over the SDS PDFs and
-    regulatory source documents already in Bronze. Both read real endpoints. Reachable from the
+  - **File viewer** (`/docs`, `/docs/:id`) — the document library and reader over the SDS PDFs,
+    supplier **certificates of analysis** (`DocumentKinds.Coa`) and regulatory source documents
+    already in Bronze. COA is a **fourth facet, never a column on `sds`**: MSDS-before-order turns on
+    a *safety* sheet existing, and a certificate filed as one would let that hard gate read as
+    satisfied. It is also per-batch where a safety sheet is per-substance. Unlike the SDS half it has
+    **no registry** — `CoaDocumentProvider` lists the bronze prefix directly (`CoaDocumentSource`),
+    so it cannot drift the way a registry row claiming a missing blob does, and equally it has no gap
+    rows, no curated title and no CAS until a COA registry exists. Contents are **not extracted or
+    indexed** yet; the detail rail says so rather than showing a blank. Both read real endpoints. Reachable from the
     header nav, from MSDS Registry rows, and from the ⌘K finder
     (a `document` hit opens the file itself). The library lists the **gaps** too (a substance whose
     sheet was never obtained) as first-class, unlinked rows — a missing MSDS is what blocks an order,

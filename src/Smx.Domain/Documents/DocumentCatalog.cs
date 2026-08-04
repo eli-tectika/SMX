@@ -7,7 +7,8 @@ namespace Smx.Domain.Documents;
 /// pipelines, backfilling everything already written, and keeping a second copy of state that can
 /// disagree with the blob store. When the corpus outgrows this, IDocumentCatalog is the seam: the
 /// implementation changes and neither the API nor the UI notices.
-public sealed class DocumentCatalog(SdsDocumentProvider sds, RegDocumentProvider reg) : IDocumentCatalog
+public sealed class DocumentCatalog(SdsDocumentProvider sds, RegDocumentProvider reg, CoaDocumentProvider coa)
+    : IDocumentCatalog
 {
     public async Task<IReadOnlyList<DocumentSummary>> ListAsync(DocumentFilter filter, CancellationToken ct = default)
     {
@@ -16,6 +17,8 @@ public sealed class DocumentCatalog(SdsDocumentProvider sds, RegDocumentProvider
             rows.AddRange(await sds.ListAsync(ct));
         if (filter.Kind is DocumentKinds.All or DocumentKinds.Reg or DocumentKinds.Seed)
             rows.AddRange(await reg.ListAsync(ct));
+        if (filter.Kind is DocumentKinds.All or DocumentKinds.Coa)
+            rows.AddRange(await coa.ListAsync(ct));
 
         IEnumerable<DocumentSummary> q = rows;
 
@@ -46,6 +49,7 @@ public sealed class DocumentCatalog(SdsDocumentProvider sds, RegDocumentProvider
         {
             DocumentId.Sds or DocumentId.SdsGap => await sds.GetAsync(documentId, ct),
             DocumentId.Reg or DocumentId.Seed => await reg.GetAsync(documentId, ct),
+            DocumentId.Coa => await coa.GetAsync(documentId, ct),
             _ => null,
         };
     }

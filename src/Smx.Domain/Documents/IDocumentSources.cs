@@ -44,6 +44,21 @@ public interface ISdsDocumentSource
     Task<SdsMasterRow?> GetMasterAsync(string masterId, string element, CancellationToken ct = default);
 }
 
+/// One certificate of analysis in bronze. Unlike a safety sheet there is no registry row behind it —
+/// the file IS the record — so this carries only what storage itself knows.
+///
+/// That is deliberate, not a shortcut: the SDS side can drift (a registry row claiming a sheet that
+/// storage does not have is the `blob-missing` case), and a catalog assembled straight from the
+/// container cannot. The cost is that there is no curated title, supplier or CAS until a COA registry
+/// exists; the surface says what it has rather than parsing them out of a filename.
+public sealed record CoaRow(string FileName, string BlobPath, long SizeBytes, string? LastModifiedUtc);
+
+public interface ICoaDocumentSource
+{
+    Task<IReadOnlyList<CoaRow>> ListAsync(CancellationToken ct = default);
+    Task<CoaRow?> GetAsync(string fileName, CancellationToken ct = default);
+}
+
 public interface IRegDocumentSource
 {
     Task<IReadOnlyList<RegSourceRow>> ListSourcesAsync(CancellationToken ct = default);

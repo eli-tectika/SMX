@@ -54,6 +54,7 @@ type Hit =
 // A friendly label for the document's facet, shown as the hit's badge.
 const DOC_BADGE: Record<DocumentSummary['kind'], string> = {
   sds: 'safety sheet',
+  coa: 'certificate',
   reg: 'regulation',
   seed: 'seeded',
 };

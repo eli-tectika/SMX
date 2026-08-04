@@ -13,6 +13,7 @@ public class DocumentEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     private readonly InMemorySdsDocumentSource _sds = new();
     private readonly InMemoryRegDocumentSource _reg = new();
     private readonly InMemoryDocumentContentStore _bronze = new();
+    private readonly InMemoryCoaDocumentSource _coa = new();
     private readonly InMemoryDocumentTextReader _text = new();
     private readonly HttpClient _client;
 
@@ -25,10 +26,12 @@ public class DocumentEndpointsTests : IClassFixture<WebApplicationFactory<Progra
                 s.AddSingleton<IRegDocumentSource>(_reg);
                 s.AddSingleton<IDocumentContentStore>(_bronze);
                 s.AddSingleton<IDocumentTextReader>(_text);
+                s.AddSingleton<ICoaDocumentSource>(_coa);
                 s.AddSingleton<IDocumentCatalog>(sp => new DocumentCatalog(
                     new SdsDocumentProvider(sp.GetRequiredService<ISdsDocumentSource>()),
                     new RegDocumentProvider(sp.GetRequiredService<IRegDocumentSource>(),
-                                            sp.GetRequiredService<IDocumentContentStore>())));
+                                            sp.GetRequiredService<IDocumentContentStore>()),
+                    new CoaDocumentProvider(sp.GetRequiredService<ICoaDocumentSource>())));
             })).CreateClient();
     }
 

@@ -226,10 +226,26 @@ public static class BackendHost
                 cosmos.GetContainer(opts.CosmosDatabase, "reg-state"));
         });
 
+        // Certificates of analysis are listed from the bronze container itself rather than a registry
+        // (see CoaRow), so this mirrors the IDocumentContentStore registration above — same
+        // BRONZE_LOCAL_PATH escape hatch, same account, same filesystem.
+        services.AddSingleton<ICoaDocumentSource>(sp =>
+        {
+            if (opts.BronzeLocalPath is { Length: > 0 }) return new LocalCoaDocumentSource(opts.BronzeLocalPath);
+            if (opts.BronzeAccountName is not { Length: > 0 })
+                throw new InvalidOperationException(
+                    "BRONZE_ACCOUNT_NAME is not set (BRONZE_LOCAL_PATH is the local-dev alternative) — " +
+                    "the document viewer has no bronze filesystem to read certificates of analysis from.");
+            return new BronzeCoaDocumentSource(
+                new DataLakeServiceClient(new Uri($"https://{opts.BronzeAccountName}.dfs.core.windows.net"), credential)
+                    .GetFileSystemClient(opts.BronzeFilesystem));
+        });
+
         services.AddSingleton<IDocumentCatalog>(sp => new DocumentCatalog(
             new SdsDocumentProvider(sp.GetRequiredService<ISdsDocumentSource>()),
             new RegDocumentProvider(sp.GetRequiredService<IRegDocumentSource>(),
-                                    sp.GetRequiredService<IDocumentContentStore>())));
+                                    sp.GetRequiredService<IDocumentContentStore>()),
+            new CoaDocumentProvider(sp.GetRequiredService<ICoaDocumentSource>())));
 
         services.AddSingleton<IDocumentTextReader>(sp => new CompositeDocumentTextReader(
             new CosmosRegSilverTextReader(

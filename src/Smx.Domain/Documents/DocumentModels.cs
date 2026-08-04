@@ -5,6 +5,15 @@ public static class DocumentKinds
     public const string Sds = "sds";           // a safety data sheet, present or missing
     public const string Reg = "reg";           // a synced regulatory source document
     public const string Seed = "seed";         // a seed-imported regulatory document
+
+    /// A supplier's certificate of analysis — the assayed composition and particle size of a batch.
+    ///
+    /// A separate facet rather than a column on `sds` because it answers a different question and
+    /// gates nothing: MSDS-before-order turns on a SAFETY sheet existing, and a COA filed as one
+    /// would let that hard gate read as satisfied when no safety sheet was ever obtained. It is also
+    /// per-BATCH where a safety sheet is per-substance, so one substance has many.
+    public const string Coa = "coa";
+
     public const string All = "all";
 }
 

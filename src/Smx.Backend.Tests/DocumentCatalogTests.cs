@@ -455,8 +455,10 @@ public class DocumentCatalogTests
     private readonly InMemorySdsDocumentSource _sds = new();
     private readonly InMemoryRegDocumentSource _reg = new();
     private readonly InMemoryDocumentContentStore _bronze = new();
+    private readonly InMemoryCoaDocumentSource _coa = new();
 
-    private DocumentCatalog Catalog => new(new SdsDocumentProvider(_sds), new RegDocumentProvider(_reg, _bronze));
+    private DocumentCatalog Catalog => new(
+        new SdsDocumentProvider(_sds), new RegDocumentProvider(_reg, _bronze), new CoaDocumentProvider(_coa));
 
     private void Given()
     {

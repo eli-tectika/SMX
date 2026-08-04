@@ -19,6 +19,7 @@ import { useQueryParam } from '../hooks/useQueryParam';
 const FILTERS: { key: 'all' | DocumentKind; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'sds', label: 'Safety sheets' },
+  { key: 'coa', label: 'Certificates' },
   { key: 'reg', label: 'Regulations' },
   { key: 'seed', label: 'Seeded' },
 ];

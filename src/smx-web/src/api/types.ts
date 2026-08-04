@@ -941,7 +941,7 @@ export interface SdsUploadResult {
    distinguishes it, and only because it resolves against a different container.
    --------------------------------------------------------------------------- */
 
-export type DocumentKind = 'sds' | 'reg' | 'seed';
+export type DocumentKind = 'sds' | 'reg' | 'seed' | 'coa';
 export type DocumentState = 'available' | 'missing' | 'superseded';
 
 export interface DocumentSummary {

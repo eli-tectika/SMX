@@ -17,6 +17,7 @@ public static class DocumentId
     public const string Reg = "reg";
     public const string Seed = "seed";
     public const string SdsGap = "sdsgap";
+    public const string Coa = "coa";
 
     /// Every kind there is. Exposed so tests can assert invariants across the whole set — e.g. that
     /// no kind contains '_', the character TryDecode splits the id on — without hand-duplicating
@@ -38,6 +39,11 @@ public static class DocumentId
         [Reg] = ('/', 2, false),      // sourceId / docId
         [Seed] = ('/', 2, false),     // region / docId
         [SdsGap] = ('_', 2, false),   // element _ form-slug  (DedupKey.ForMasterList)
+        // A COA has no registry row and so no compound key — the payload is the file's own name, one
+        // segment. Spaces are allowed because supplier filenames genuinely contain them ("COA of
+        // AlY10.pdf"); the '/' rule below still applies, so the directory prefix can never travel in
+        // the payload and CoaDocumentProvider builds it instead.
+        [Coa] = ('|', 1, true),       // fileName
     };
 
     // Decodes with exception fallback rather than Encoding.UTF8's default REPLACEMENT fallback:

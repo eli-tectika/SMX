@@ -127,7 +127,7 @@ public static class DocumentEndpoints
     // The FACETS the list endpoint filters on — not DocumentId's kinds. `sdsgap` is deliberately
     // absent: a missing sheet is still a sheet, and only the id scheme draws that distinction.
     private static readonly string[] KnownKinds =
-        [DocumentKinds.All, DocumentKinds.Sds, DocumentKinds.Reg, DocumentKinds.Seed];
+        [DocumentKinds.All, DocumentKinds.Sds, DocumentKinds.Reg, DocumentKinds.Seed, DocumentKinds.Coa];
 
     private static readonly string[] KnownStates =
         [DocumentStates.All, DocumentStates.Available, DocumentStates.Missing, DocumentStates.Superseded];
