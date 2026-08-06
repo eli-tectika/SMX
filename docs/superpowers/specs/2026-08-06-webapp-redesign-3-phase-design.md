@@ -354,6 +354,38 @@ preconditions, so the irreversible acts still refuse over an incomplete analysis
 than a measurement must carry its provenance in the matrix column and in the XLSX export, not only in
 the chart. A cell reading `60 ppm` with no provenance mark is the dangerous version of this feature.
 
+### 10.1 What Dosing doses over when nobody has ruled yet
+
+§8 says Regulatory "lands with its verdicts" and the pipeline continues. It does not say what Dosing
+then operates on, and the honest answer is not obvious.
+
+`CompliantSet.Of` reads **only** the operator's `Determination` and ignores `ProposedDetermination`
+entirely. `Smx.Domain.Tests/CompliantSetTests.cs` calls this "the Law-9 line, at the Dosing boundary"
+and says outright that the test failing is a design alarm. So on an unattended run the compliant set is
+**empty**, and a Dosing stage that simply stopped parking would run over nothing and produce nothing —
+strictly worse than parking, because it would look like it had finished.
+
+There are two ways out and only one of them is acceptable.
+
+**Rejected:** make `CompliantSet` fall back to `ProposedDetermination`. This deletes the Law-9 line. The
+agent's proposal would carry a substance into a dosed code, and from there into a compliance package and
+an order, with no human ever having said yes.
+
+**Adopted:** a second, separately named set.
+
+- `CompliantSet.Of` is **unchanged**, keeps reading only human determinations, and remains the only set
+  the two irreversible acts consult.
+- A new `ProvisionalSet.Of` folds `Determination ?? ProposedDetermination`. Dosing runs over it, so the
+  operator gets a complete proposed answer to look at in one sitting — which is the entire point of D10.
+- A `DosingDoc` computed over any proposed determination is stamped **provisional**, carrying which
+  substances are in it only on the agent's say-so.
+- **Provisional dosing blocks the order**, exactly as the estimated-floor flag does. The compliance
+  package export and `POST /orders/{cas}` both continue to consult `CompliantSet` and the two `Armable`
+  predicates, so nothing irreversible can happen over a proposal.
+
+The distinction the two names carry is the whole safety property: *the machine may compute over its own
+proposals; it may not act on them.* Naming them alike would be how that gets lost.
+
 ---
 
 ## 11. The shell
@@ -457,6 +489,9 @@ already dispatches `record_answer`.
   asserted on the projection, not the CSS.
 - **Provenance:** a ppm from the default floor carries its `estimate` provenance in the table
   projection and in the XLSX export.
+- **The Law-9 line (§10.1):** `CompliantSetTests` is retained verbatim — `CompliantSet.Of` must still
+  ignore `ProposedDetermination`. Plus a new test that a project whose verdicts carry only proposals
+  produces a **provisional** DosingDoc, a refused compliance-package export, and a refused order.
 - **Signature voiding:** an amendment whose blast radius covers a signed gate returns a confirmation
   requirement rather than voiding silently.
 - Existing frontend tests for the deleted screens are removed with them; `PpmChart`, `PARKED`
