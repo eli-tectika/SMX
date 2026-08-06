@@ -267,20 +267,42 @@ trail. XRF is deferred, so as a stage it is a pass-through.
 
 ## 9. Amendments and rerun scope
 
-### 9.1 The mechanism already exists
+### 9.1 Half the mechanism exists; the other half is new
 
-`Smx.Domain/IntakeAnswers.cs` is an **allow-list** for the `record_answer` chat tool. Writable:
-`components.{id}.{material|application|objective|markets|batchMassKg}` and `clientRestrictedList`.
-Refused by name, with an explanation aimed at the model: `elementPools`, `measuredBackground`,
-`device`, `providedCandidates` — the physicist's measured data and the eval seam.
+**Corrected 2026-08-06, during Plan 4.** An earlier draft of this section claimed `record_answer` *was*
+the amendment API. It is not, and the difference matters.
 
-That is the amendment API. It has no home in the UI once Intake stops being a phase; **Overview** is
-that home. The intake agent gets a composer there, beside the brief it wrote. The operator says
-*"the customer confirmed they're shipping to Japan as well"*; the agent patches
-`components.bottle.markets`.
+`Smx.Domain/IntakeAnswers.cs` is an **allow-list** — `components.{id}.{material|application|objective|
+markets|batchMassKg}` and `clientRestrictedList`, with `elementPools`, `measuredBackground`, `device` and
+`providedCandidates` refused by name. That part is exactly right and is reused verbatim.
 
-This preserves the no-direct-edits law: the operator never hand-mutates the record, they tell the
-agent what changed and why, and the reason is recorded.
+But `record_answer`, the tool that uses it, **refuses the moment constraints exist**:
+
+> *"intake has already produced constraints, so this is no longer a gap-fill. To change an established
+> input, use apply_revision with the operator's reason."*
+
+It is a pre-intake gap-fill, and its own comment records that the guard is load-bearing for a second
+reason: `RunIntakeAsync` runs only when intake has not run **and** no constraints exist, so loosening it
+would reopen a stage the runner then refuses to run — intake stuck at `pending` forever.
+
+`apply_revision` is not the answer either. It revises an **agent's analytical output** on one stage. An
+amendment changes the **operator's own requirement** — a fact about the customer's product, upstream of
+every agent — and it has to patch the payload, regenerate constraints, and invalidate a *set* of stages.
+Those are different operations with different blast radii, and conflating them would put requirement
+changes through a path that only knows how to re-run one stage.
+
+**So amendments are a new mechanism that reuses the allow-list.** A tool `amend_requirement(field, value,
+reason)` on the intake thread, available exactly where `record_answer` stops — after constraints exist:
+
+1. validate `field`/`value` through `IntakeAnswers.Patch` (unchanged: the physicist's data stays unwritable
+   by construction);
+2. append an `Amendment` to the project with when, field, from, to, and the operator's reason;
+3. patch `ConstraintsDoc` to match;
+4. reset the stages in the blast radius (§9.3) to `pending` so the runner re-runs exactly those.
+
+This preserves the no-direct-edits law: the operator never hand-mutates the record, they tell the agent
+what changed and why, and the reason is recorded. **Overview** is its home in the UI — the intake agent
+gets a composer there, beside the brief it wrote.
 
 ### 9.2 Amendments are recorded, not just applied
 
