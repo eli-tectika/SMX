@@ -39,6 +39,17 @@ public sealed class StageState
     public string? Error { get; set; }
 }
 
+/// One requirement change, with what it cost.
+///
+/// <paramref name="Rerun"/> is recorded rather than re-derived on read: <see cref="RerunScope"/> may
+/// legitimately change as the pipeline changes, and the log has to say what was ACTUALLY re-run at the time,
+/// not what today's map would have chosen. <paramref name="VoidedSignatures"/> is the same reasoning — a
+/// signature that was voided is a fact about that day, and the gate record alone cannot say which amendment
+/// did it.
+public sealed record Amendment(
+    string At, string ComponentId, string Field, string From, string To, string Reason,
+    IReadOnlyList<string> Rerun, IReadOnlyList<string> VoidedSignatures);
+
 public sealed class ProjectDoc
 {
     public required string Id { get; set; }
@@ -67,6 +78,15 @@ public sealed class ProjectDoc
     /// than inferring it from an absent key.
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string? AnalysisStartedAt { get; set; }
+
+    /// Every requirement the operator changed after intake, in order.
+    ///
+    /// A requirement change that leaves no trace is indistinguishable, afterwards, from an analysis that was
+    /// always wrong: the record shows markets the agent never screened against and nothing says when they
+    /// arrived or why. The REASON is the point — the same instinct as a Learned Conclusion — so it is
+    /// mandatory at the door, and `From`/`To` are kept so the log reads as a history rather than a list of
+    /// edits.
+    public List<Amendment> Amendments { get; set; } = [];
 
     /// `analysisStarted` DEFAULTS to true — i.e. writing the doc makes the project runnable, exactly as
     /// before. Only the INTERVIEW AGENT passes false, because it is the only caller that is a language
