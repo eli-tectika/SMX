@@ -190,7 +190,7 @@ public class XrfConfirmRerunTests : IClassFixture<WebApplicationFactory<Program>
         Assert.Equal(StageStatus.Done, (await StageAsync(Stages.Discovery)).Status);
         var body = await res.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal([Stages.Dosing, Stages.Decision],
-            body.GetProperty("rerun").EnumerateArray().Select(s => s.GetString()).ToArray());
+            body.GetProperty("rerun").EnumerateArray().Select(s => s.GetString()!).ToArray());
     }
 
     [Fact]
@@ -226,7 +226,7 @@ public class XrfConfirmRerunTests : IClassFixture<WebApplicationFactory<Program>
         Assert.Equal(HttpStatusCode.Conflict, res.StatusCode);
         var body = await res.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal([GateTypes.Vp],
-            body.GetProperty("voids").EnumerateArray().Select(s => s.GetString()).ToArray());
+            body.GetProperty("voids").EnumerateArray().Select(s => s.GetString()!).ToArray());
         Assert.Empty((await _store.GetConstraintsAsync(P))!.MeasuredBackgrounds);
         Assert.Equal(StageStatus.Done, (await StageAsync(Stages.Dosing)).Status);
         Assert.Equal("approved", (await _store.GetGateAsync(P, GateTypes.Vp))!.Status);
