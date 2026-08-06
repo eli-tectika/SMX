@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { matrixXlsxUrl } from '../../api/client';
 import type { DiscoveryCells, DosingCells, OutcomeCells, RegulatoryCells } from '../../api/types';
 import { VERDICT_DIMENSIONS, VERDICT_SEVERITY } from '../../api/types';
@@ -26,6 +27,7 @@ import {
   useProjectTable,
   type PhaseGroup,
   type ReadRow,
+  type TableRead,
 } from './projectTable';
 import type { ScreenProps } from '../ProjectLayout';
 import type { VerdictStatus } from '../../api/types';
@@ -112,70 +114,183 @@ export function FullMatrix({ project }: ScreenProps) {
           {state.read.rows.length === 0 ? (
             <EmptyState icon="ti-table-off" title="The table has no rows." />
           ) : (
-            <div className="mxscroll">
-              <div className="mxscroll__count small secondary">
-                {state.read.rows.length} row{state.read.rows.length === 1 ? '' : 's'} ·{' '}
-                {byComponentRows(state.read.rows).length} component
-                {byComponentRows(state.read.rows).length === 1 ? '' : 's'}
-              </div>
-              <div className="mxscroll__pane">
-                <table className="mx mx--sticky">
-                  <caption className="sr-only">
-                    Every substance in every component, with what each phase found. A row that stopped
-                    spans its remaining columns with the phase it stopped at and why.
-                  </caption>
-                  <thead>
-                    {/* The band is load-bearing here rather than decorative: once a column's own
-                        heading has scrolled off, this is what says which phase it belongs to. */}
-                    <GroupBand groups={GROUPS} />
-                    <tr className="mx__cols">
-                      <th scope="col" data-rowhead>
-                        Material
-                      </th>
-                      <th scope="col">State</th>
-                      <th scope="col">Why</th>
-                      <th scope="col">Sources</th>
-                      <th scope="col">State</th>
-                      <th scope="col">Why</th>
-                      <th scope="col">Confidence</th>
-                      <th scope="col">Sources</th>
-                      {/* Never one column. The proposal is the agent's and carries no weight; the
-                          determination is the operator's and is the only field CompliantSet reads. */}
-                      <th scope="col">Proposed</th>
-                      <th scope="col">Determination</th>
-                      <th scope="col">State</th>
-                      <th scope="col">Why</th>
-                      <th scope="col">Confidence</th>
-                      <th scope="col">Amount</th>
-                      <th scope="col">Availability</th>
-                      <th scope="col">In code</th>
-                      <th scope="col">Order</th>
-                    </tr>
-                  </thead>
-                  {byComponentRows(state.read.rows).map(([componentId, rows]) => (
-                    <tbody key={componentId}>
-                      <tr>
-                        {/* Components are row GROUPS here, not columns — that is the transposition. */}
-                        <th colSpan={TOTAL_COLUMNS} scope="colgroup" style={{ textAlign: 'left' }}>
-                          {componentId}{' '}
-                          <span className="tiny muted">
-                            {rows.length} substance{rows.length === 1 ? '' : 's'}
-                          </span>
-                        </th>
-                      </tr>
-                      {rows.map((row) => (
-                        <MatrixRow key={`${row.componentId}|${row.cas}`} row={row} />
-                      ))}
-                    </tbody>
-                  ))}
-                </table>
-              </div>
-            </div>
+            <MatrixSheet read={state.read} />
           )}
         </>
       )}
     </section>
   );
+}
+
+/**
+ * The sheet, and the two things that make a sheet wider than its column readable.
+ *
+ * THE SCROLL HAS TO BE UNMISTAKABLE. Seventeen columns do not fit any laptop, and they never will —
+ * clipping the prose (`.cellclip`) bought back roughly a third of the width and Dosing and Outcome
+ * are still off-frame at 1600px. A table that runs off the right edge mid-word, with an auto-hiding
+ * scrollbar and a gradient painted behind transparent cells, does not read as "there is more" — it
+ * reads as broken, which is the single worst thing this screen can say to the customer it exists to
+ * be forwarded to. So the affordance is stated three ways, none of which depend on the operator
+ * already suspecting there is something to find: an always-drawn scrollbar, an overlay fade with a
+ * button in it at the live right edge, and a jump nav that names the phases and goes to them.
+ *
+ * The edge state is MEASURED, never assumed. A fade that is always on lies at the end of the scroll
+ * (there is nothing more, and it says there is); one that is never on is what we had.
+ */
+function MatrixSheet({ read }: { read: TableRead }) {
+  const paneRef = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState(false);
+  const components = byComponentRows(read.rows);
+
+  const measure = useCallback(() => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const max = pane.scrollWidth - pane.clientWidth;
+    // A 4px slack: a fractional scrollWidth would otherwise leave the fade up forever at the end.
+    setMore(max > 4 && pane.scrollLeft < max - 4);
+  }, []);
+
+  useEffect(() => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    measure();
+    pane.addEventListener('scroll', measure, { passive: true });
+    window.addEventListener('resize', measure);
+    // The column widths move when the agent column collapses, which no scroll or resize event
+    // reports. jsdom has no ResizeObserver, hence the guard.
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
+    ro?.observe(pane);
+    return () => {
+      pane.removeEventListener('scroll', measure);
+      window.removeEventListener('resize', measure);
+      ro?.disconnect();
+    };
+    // Rows changing changes the table's width, so the row count is part of the clock.
+  }, [measure, read.rows.length]);
+
+  /** Scroll so a phase's first column sits just clear of the frozen identity column. */
+  const jump = (group: string) => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const cell = pane.querySelector<HTMLElement>(`.mx__groups th[data-group="${group}"]`);
+    if (!cell) return;
+    const frozen = pane.querySelector<HTMLElement>('.mx__groups th[data-rowhead]');
+    scroll(pane, Math.max(0, cell.offsetLeft - (frozen?.offsetWidth ?? 0)));
+  };
+
+  return (
+    <div className="mxscroll">
+      <div className="mxscroll__bar">
+        <div className="mxscroll__count small secondary">
+          {read.rows.length} row{read.rows.length === 1 ? '' : 's'} · {components.length} component
+          {components.length === 1 ? '' : 's'} · {TOTAL_COLUMNS} columns
+        </div>
+        <nav className="mxjump" aria-label="Scroll the matrix to a phase">
+          <span className="tiny muted">Scroll to</span>
+          {GROUPS.filter((g) => g.group !== 'identity').map((g) => (
+            <button
+              key={g.group}
+              type="button"
+              className="mxjump__btn"
+              data-group={g.group}
+              onClick={() => jump(g.group)}
+            >
+              {g.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      <div className="mxscroll__frame">
+        <div
+          className="mxscroll__pane"
+          ref={paneRef}
+          /* A scroll container that only a mouse can reach is a column an operator can sign a gate
+             without having read. Focusable, and named by what is off to the right. */
+          tabIndex={0}
+          role="region"
+          aria-label="The full matrix. It scrolls sideways — Dosing and Outcome are to the right."
+        >
+          <table className="mx mx--sticky mx--compact">
+            <caption className="sr-only">
+              Every substance in every component, with what each phase found. A row that stopped
+              spans its remaining columns with the phase it stopped at and why.
+            </caption>
+            <thead>
+              {/* The band is load-bearing here rather than decorative: once a column's own
+                  heading has scrolled off, this is what says which phase it belongs to. */}
+              <GroupBand groups={GROUPS} />
+              <tr className="mx__cols">
+                <th scope="col" data-rowhead>
+                  Material
+                </th>
+                <th scope="col">State</th>
+                <th scope="col">Why</th>
+                <th scope="col">Sources</th>
+                <th scope="col">State</th>
+                <th scope="col">Why</th>
+                <th scope="col">Confidence</th>
+                <th scope="col">Sources</th>
+                {/* Never one column. The proposal is the agent's and carries no weight; the
+                    determination is the operator's and is the only field CompliantSet reads. */}
+                <th scope="col">Proposed</th>
+                <th scope="col">Determination</th>
+                <th scope="col">State</th>
+                <th scope="col">Why</th>
+                <th scope="col">Confidence</th>
+                <th scope="col">Amount</th>
+                <th scope="col">Availability</th>
+                <th scope="col">In code</th>
+                <th scope="col">Order</th>
+              </tr>
+            </thead>
+            {components.map(([componentId, rows]) => (
+              <tbody key={componentId}>
+                <tr>
+                  {/* Components are row GROUPS here, not columns — that is the transposition. */}
+                  <th colSpan={TOTAL_COLUMNS} scope="colgroup" style={{ textAlign: 'left' }}>
+                    <span className="mx__rowgroup">
+                      {componentId}{' '}
+                      <span className="tiny muted">
+                        {rows.length} substance{rows.length === 1 ? '' : 's'}
+                      </span>
+                    </span>
+                  </th>
+                </tr>
+                {rows.map((row) => (
+                  <MatrixRow key={`${row.componentId}|${row.cas}`} row={row} />
+                ))}
+              </tbody>
+            ))}
+          </table>
+        </div>
+
+        {more && (
+          <>
+            <div className="mxscroll__fade" aria-hidden="true" />
+            <button
+              type="button"
+              className="mxscroll__nudge"
+              onClick={() => {
+                const pane = paneRef.current;
+                if (pane) scroll(pane, pane.scrollLeft + pane.clientWidth * 0.7);
+              }}
+              aria-label="Scroll right to the next columns"
+              title="Scroll right to the next columns"
+            >
+              <i className="ti ti-chevron-right" aria-hidden="true" />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** `scrollTo` with the jsdom fallback — the test environment implements neither it nor smooth. */
+function scroll(pane: HTMLElement, left: number) {
+  if (typeof pane.scrollTo === 'function') pane.scrollTo({ left, behavior: 'smooth' });
+  else pane.scrollLeft = left;
 }
 
 function MatrixRow({ row }: { row: ReadRow }) {
@@ -209,6 +324,7 @@ function MatrixRow({ row }: { row: ReadRow }) {
 function DiscoveryGroup({ cells }: { cells: DiscoveryCells }) {
   const sources = typeof cells.sources === 'number' && Number.isFinite(cells.sources) ? cells.sources : 0;
   const tier = typeof cells.tier === 'string' && cells.tier ? cells.tier : null;
+  const rationale = typeof cells.rationale === 'string' ? cells.rationale : '';
   return (
     <>
       {/* Tier and `preferred` are one state — see Discovery.tsx. */}
@@ -216,12 +332,21 @@ function DiscoveryGroup({ cells }: { cells: DiscoveryCells }) {
         {tier ?? <span className="muted">no tier</span>}
         {cells.preferred === true && <span className="tiny muted"> · preferred</span>}
       </td>
-      <td className="secondary" style={{ minWidth: 220 }}>
-        {typeof cells.rationale === 'string' ? cells.rationale : ''}
+      {/* The `minWidth: 220` this cell used to carry was a FLOOR on a column that needed a ceiling:
+          it guaranteed the width and did nothing about the wrap. */}
+      <td className="secondary">
+        <span className="cellclip" title={rationale || undefined}>
+          {rationale}
+        </span>
       </td>
       {/* A COUNT, not chips: the projection carries how many citations Discovery recorded, never the
           citations themselves, and a chip built from a count would be a citation with no source. */}
-      <td style={sources === 0 ? { color: 'var(--text-warning)' } : undefined}>{sources}</td>
+      <td
+        style={sources === 0 ? { color: 'var(--text-warning)' } : undefined}
+        title={`${sources} source${sources === 1 ? '' : 's'} recorded by Discovery`}
+      >
+        {sources}
+      </td>
     </>
   );
 }

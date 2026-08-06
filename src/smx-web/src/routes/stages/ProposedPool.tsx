@@ -3,7 +3,7 @@ import { usePolling } from '../../hooks/usePolling';
 import { CitationChip, SectionHeader } from '../../components/ui/Primitives';
 
 /**
- * The pool agent's output. Real data from GET /projects/{id}/pool.
+ * The discovery agent's first pass, the element pool. Real data from GET /projects/{id}/pool.
  *
  * It is a HYPOTHESIS, and the copy says so: everything downstream (the XRF filter, Discovery's
  * catalog corroboration, the regulatory screen) is a sieve over it. Presenting it as a finding
@@ -48,8 +48,12 @@ export function ProposedPool({
   if (pool === NotFound)
     return (
       <div className="tiny muted">
-        <i className="ti ti-loader" data-running="" aria-hidden="true" /> The pool agent has not
-        proposed a pool yet — this fills in as soon as it does.
+        {/* NOT "the pool agent". There is no such agent and there has not been since the pipeline
+            runner replaced change-feed dispatch: the pool is Discovery's first pass. Naming a
+            component the operator will never find anywhere else in the product is worse than naming
+            none, because it invites them to go looking for it. */}
+        <i className="ti ti-loader" data-running="" aria-hidden="true" /> The discovery agent has not
+        proposed an element pool yet — this fills in as soon as it does.
       </div>
     );
 
@@ -87,7 +91,7 @@ export function ProposedPool({
                     {s.citations.map((c, i) => (
                       <CitationChip key={i} {...c} />
                     ))}
-                    {/* The pool agent may answer from model knowledge — §9 flags rather than
+                    {/* The pool pass may answer from model knowledge — §9 flags rather than
                         rejects. A flag the operator can see is the whole point; silently
                         rendering it like a cited suggestion is what would mislead. */}
                     {s.uncited && (

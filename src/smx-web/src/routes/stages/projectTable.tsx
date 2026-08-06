@@ -229,12 +229,17 @@ export function AbsentCells({
   phase: string;
 }) {
   if (state.kind === 'stopped') {
+    const reason = state.reason ?? 'the record gives no reason';
     return (
       <td colSpan={span} data-absence="stopped" className="small">
-        <span style={{ color: 'var(--text-warning)' }}>
+        <span
+          className="cellclamp"
+          style={{ color: 'var(--text-warning)' }}
+          title={`stopped at ${stoppedLabel(state.at)} — ${reason}`}
+        >
           <i className="ti ti-player-stop" aria-hidden="true" /> stopped at{' '}
           <b>{stoppedLabel(state.at)}</b>
-          {state.reason ? ` — ${state.reason}` : ' — the record gives no reason'}
+          {` — ${reason}`}
         </span>
       </td>
     );
@@ -243,7 +248,7 @@ export function AbsentCells({
   if (state.kind === 'unreadable') {
     return (
       <td colSpan={span} data-absence="unreadable" className="small" role="alert">
-        <span style={{ color: 'var(--text-danger)' }}>
+        <span className="cellclamp" style={{ color: 'var(--text-danger)' }}>
           <i className="ti ti-alert-triangle" aria-hidden="true" /> the {phase} cells came back in a
           shape this screen cannot read — do not read this row as {phase} having found nothing
         </span>
@@ -253,7 +258,10 @@ export function AbsentCells({
 
   return (
     <td colSpan={span} data-absence="not-reached" className="small muted">
-      <i className="ti ti-clock" aria-hidden="true" /> not reached — {phase} has not run for this row
+      <span className="cellclamp">
+        <i className="ti ti-clock" aria-hidden="true" /> not reached — {phase} has not run for this
+        row
+      </span>
     </td>
   );
 }
@@ -265,14 +273,25 @@ export function AbsentCells({
  * `position: sticky; left: 0` in craft.css). A second sticky column needs a measured left offset, and
  * a fixed width guessed here is exactly the class of bug the type-floor pass turned up — two boxes
  * that could no longer hold their contents, with no test to notice.
+ *
+ * EXACTLY TWO LINES, ALWAYS. On the full matrix this column ended up 83px wide, so `Eu β-diketonate`
+ * broke over two lines and its CAS over two more — a four-line identity that set the height of the
+ * sixteen cells beside it and made one row twice its neighbours. The form is clipped (with the full
+ * text on `title`) and the CAS never wraps, which floors the column at a width it can actually hold.
+ * The CAS is the identifier an operator matches against a supplier quote and a missing digit is a
+ * different substance, so it is the one thing here that is bounded rather than clipped.
  */
 export function IdentityCell({ row }: { row: ReadRow }) {
   return (
     <td data-rowhead>
-      <div style={{ fontWeight: 500 }}>
+      <span
+        className="cellclip"
+        style={{ fontWeight: 500, ['--clip' as string]: '18ch' }}
+        title={`${row.element} ${row.form}`}
+      >
         <Data kind="element">{row.element}</Data> <span className="secondary">{row.form}</span>
-      </div>
-      <div className="tiny muted">
+      </span>
+      <div className="tiny muted" style={{ whiteSpace: 'nowrap' }}>
         <Data kind="cas">{row.cas}</Data>
       </div>
     </td>
@@ -311,6 +330,9 @@ export function BoundValue({ bound }: { bound: unknown }) {
  * (types.ts), which is why the dosing group has no Sources column rather than an always-empty one.
  * The floor is the physicist's measurement and the upper end is a regulatory cap or the agent's own
  * estimate, so the two are different KINDS of claim and are never run together into one sentence.
+ *
+ * ONE LINE PER END, clipped. Two ends of free prose wrapping to four lines each is what made a row
+ * 150px tall; `.cellclip` caps the column's natural width and hands the full sentence to `title`.
  */
 export function DosingWhyCell({ cells }: { cells: DosingCells }) {
   const ends: [string, unknown][] = [
@@ -329,11 +351,14 @@ export function DosingWhyCell({ cells }: { cells: DosingCells }) {
 
   return (
     <td className="secondary">
-      {readable.map(([end, b]) => (
-        <div key={end}>
-          <span className="tiny muted">{end}</span> {String((b as Record<string, unknown>).basis)}
-        </div>
-      ))}
+      {readable.map(([end, b]) => {
+        const basis = String((b as Record<string, unknown>).basis);
+        return (
+          <span className="cellclip" key={end} title={`${end} — ${basis}`}>
+            <span className="tiny muted">{end}</span> {basis}
+          </span>
+        );
+      })}
     </td>
   );
 }
@@ -476,40 +501,79 @@ export function governingDimension(cells: RegulatoryCells): DimensionVerdict | u
  * A dimension the record never assessed is stated here too, and loudly — the four glyph columns used
  * to carry that, and losing it would let a cell folded over two dimensions read exactly like one
  * folded over four.
+ *
+ * ONE LINE. The rationale is the agent's own prose and has no length bound; rendered whole it wrapped
+ * to four lines and set the height of every row beside it. It is clipped to `.cellclip` with the full
+ * sentence on `title`, which is the same trade the reference product makes — a table cell is a place
+ * to recognise a fact, not to read one.
+ *
+ * The unassessed warning stays ON THE LINE rather than under it, and shrinks to an amber triangle and
+ * a count. It was "⚠ 2 not assessed" for one draft, and those three words cost 76px of a 187px
+ * column — enough that the governing dimension's own NAME clipped to "ElementGa…", which is the one
+ * token in this cell nobody can do without. The names of the missing dimensions live on `title` and
+ * in the screen-reader text, and the same fact is stated a second time by the amber marker on the
+ * confidence beside it, whose tooltip spells out how many of the gate's dimensions were assessed.
  */
 export function WhyCell({ cells }: { cells: RegulatoryCells }) {
   const governing = governingDimension(cells);
   const missing = unassessedDimensions(cells);
+  const rationale =
+    governing && typeof governing.rationale === 'string' ? governing.rationale : '';
+  const full = governing
+    ? `${governing.dimension}${rationale ? ` — ${rationale}` : ' — no rationale recorded'}`
+    : 'no dimension was assessed';
   return (
-    <td className="secondary">
-      {governing ? (
-        <>
-          <span style={{ fontWeight: 500 }}>{governing.dimension}</span>
-          {typeof governing.rationale === 'string' && governing.rationale ? (
-            <> — {governing.rationale}</>
+    <td className="secondary cellcol">
+      <span className="cellrow">
+        <span className="cellclip" title={full}>
+          {governing ? (
+            <>
+              <span style={{ fontWeight: 500 }}>{governing.dimension}</span>
+              {rationale ? (
+                <> — {rationale}</>
+              ) : (
+                <span className="muted"> — no rationale recorded</span>
+              )}
+            </>
           ) : (
-            <span className="muted"> — no rationale recorded</span>
+            <span style={{ color: 'var(--text-warning)' }}>no dimension was assessed</span>
           )}
-        </>
-      ) : (
-        <span style={{ color: 'var(--text-warning)' }}>no dimension was assessed</span>
-      )}
-      {missing.length > 0 && (
-        <div className="small" style={{ color: 'var(--text-warning)' }} data-unassessed={missing.join(',')}>
-          <i className="ti ti-alert-triangle" aria-hidden="true" /> not assessed: {missing.join(', ')}
-        </div>
-      )}
+        </span>
+        {missing.length > 0 && (
+          <span
+            className="tiny"
+            style={{ color: 'var(--text-warning)', whiteSpace: 'nowrap' }}
+            data-unassessed={missing.join(',')}
+            title={`not assessed: ${missing.join(', ')}`}
+          >
+            <i className="ti ti-alert-triangle" aria-hidden="true" />
+            <span aria-hidden="true">{missing.length}</span>
+            {/* The names survive in full for anything that is not a pair of eyes on a 187px column. */}
+            <span className="sr-only">not assessed: {missing.join(', ')}</span>
+          </span>
+        )}
+      </span>
     </td>
   );
 }
 
 /**
- * The folded confidence, as a number and a bar.
+ * The folded confidence: A NUMBER, and nothing else on the line.
  *
  * `foldConfidence` is worst-wins (domain/confidence.ts) — the cell is only as trustworthy as its
  * weakest supporting dimension. `expected` is how many the caller believes should be there, so a fold
  * over an incomplete set is marked rather than presented whole: a number folded from two dimensions
  * and one folded from four are different claims, and the difference is invisible in the number.
+ *
+ * BOTH OF THOSE QUALIFICATIONS USED TO BE PROSE IN THE CELL — "80% lowest", "90% lowest over an
+ * incomplete set". That is the self-explaining copy §16.1 deletes, relocated into a data column: a
+ * cell in a column headed "Confidence" is read as a value, and three words of apparatus beside it
+ * cost two lines of row height on every row in the table. The value stays in the cell; the
+ * qualification moves to `title`, to the screen-reader text, and — for the partial fold, which is the
+ * one an operator must not miss — to an amber marker that is visible without being read.
+ *
+ * `data-fold` is the assertable hook, because "it reads differently" is exactly the assertion that
+ * stays green while a distinction rots out.
  *
  * `null` is rendered as a WORD, never as an empty bar. A 0% meter says the agent had no confidence,
  * which is a claim about the record; "not stated" is the truth.
@@ -517,6 +581,9 @@ export function WhyCell({ cells }: { cells: RegulatoryCells }) {
 export function ConfidenceCell({ values, expected }: { values: unknown[]; expected: number }) {
   const folded = foldConfidence(values);
   const partial = isPartialFold(values, expected);
+  const readable = Array.isArray(values)
+    ? values.filter((v) => typeof v === 'number' && Number.isFinite(v)).length
+    : 0;
 
   if (folded === null) {
     return (
@@ -529,35 +596,59 @@ export function ConfidenceCell({ values, expected }: { values: unknown[]; expect
   }
 
   const low = folded < LOW_CONFIDENCE;
+  const pct = Math.round(folded * 100);
+  const explain = partial
+    ? `${pct}% — the lowest of the ${readable} confidences on file, and only ${readable} of ${expected} were assessed, so the fold is over an incomplete set.`
+    : `${pct}% — the lowest of the ${readable} confidences on file, not their average.`;
+
   return (
-    <td data-confidence={low ? 'low' : 'ok'} style={{ whiteSpace: 'nowrap' }}>
+    <td
+      data-confidence={low ? 'low' : 'ok'}
+      data-fold={partial ? 'partial' : 'full'}
+      style={{ whiteSpace: 'nowrap' }}
+      title={explain}
+    >
       <span
         className="small"
         style={{ fontWeight: 600, color: low ? 'var(--text-warning)' : undefined }}
       >
-        {Math.round(folded * 100)}%
+        {pct}%
       </span>
-      {/* The word "lowest" is the fold made visible: it is not the cell's average confidence and must
-          not be read as one. */}
-      <span className="tiny muted"> lowest</span>
       {partial && (
-        <div className="tiny" style={{ color: 'var(--text-warning)' }}>
-          over an incomplete set
-        </div>
+        <i
+          className="ti ti-alert-triangle"
+          aria-hidden="true"
+          style={{ marginLeft: 4, color: 'var(--text-warning)' }}
+        />
       )}
+      <span className="sr-only">{explain}</span>
     </td>
   );
 }
 
 /**
- * Every citation on every dimension of a cell, deduped by (document, reference).
+ * Every citation on every dimension of a cell, deduped by (document, reference) — A COUNT THAT OPENS.
  *
  * Deduped because four dimensions routinely cite the same regulation and four identical chips in one
- * cell is noise. NOT truncated: every verdict has to trace to a cited source, and a "+3 more" would
- * hide exactly the citation an operator went looking for.
+ * cell is noise. Still NOT truncated: every verdict has to trace to a cited source, and a "+3 more"
+ * would hide exactly the citation an operator went looking for. What changed is that the list is
+ * behind its own count instead of laid flat in the cell.
  *
- * Zero is the loud case. A regulatory cell resting on no citation at all is the worst artifact this
- * system can produce — a claim that traces to nothing.
+ * WHY. A citation with no `documentId` renders as `source · reference · date` — `smx-reference ·
+ * ref/rare-earth-oxides · 2026-08-06` — and two of those run past any column this table can afford,
+ * so the row got taller and the sheet got wider on identifiers nobody reads at a glance. The
+ * retrievedAt date is the worst of it: load-bearing when you are checking a citation, pure noise when
+ * you are scanning twenty rows for the one that failed. So the cell carries the fact you scan for
+ * (how many sources, or the alarm that there are none) and the chips — file name when the record can
+ * name a file, label otherwise, date on both — are one click away, unabridged.
+ *
+ * `<details>` rather than a popover on purpose: it needs no JS, it survives print, and the expanded
+ * list is real DOM inside the cell rather than a layer that can end up clipped by the scroll pane it
+ * lives in.
+ *
+ * Zero is the loud case, and it is NOT collapsed. A regulatory cell resting on no citation at all is
+ * the worst artifact this system can produce — a claim that traces to nothing — and it must never be
+ * one click away from being seen.
  */
 export function SourcesCell({ citations }: { citations: Citation[] }) {
   const list = Array.isArray(citations) ? citations.filter((c): c is Citation => obj(c)) : [];
@@ -581,9 +672,17 @@ export function SourcesCell({ citations }: { citations: Citation[] }) {
 
   return (
     <td data-sources={String(unique.length)}>
-      {unique.map((c, i) => (
-        <CitationChip key={`${c.source}-${c.reference}-${i}`} {...c} />
-      ))}
+      <details className="srcs">
+        <summary className="srcs__count small">
+          <i className="ti ti-chevron-right" aria-hidden="true" />
+          {unique.length} source{unique.length === 1 ? '' : 's'}
+        </summary>
+        <div className="srcs__list">
+          {unique.map((c, i) => (
+            <CitationChip key={`${c.source}-${c.reference}-${i}`} {...c} />
+          ))}
+        </div>
+      </details>
     </td>
   );
 }

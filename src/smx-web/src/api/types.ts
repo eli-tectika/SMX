@@ -61,7 +61,7 @@ export interface ComponentSpec {
   batchMassKg?: number;
   /**
    * The substrate's physical state — "liquid" | "solid" | "oil-soluble" | "coating" (free text).
-   * Drives the pool agent's form-class choice (oil-soluble → organocomplex; solid polymer →
+   * Drives the pool pass's form-class choice (oil-soluble → organocomplex; solid polymer →
    * oxide/salt; coating → dispersible compound). Collected in the intake form.
    */
   physicalState?: string;
@@ -166,10 +166,10 @@ export interface XrfConfirmed {
  * PoolSuggestion — src/Smx.Domain/Records/PoolDoc.cs.
  *
  * One proposed marker for one component: an ELEMENT and a FORM-CLASS, never a CAS — the exact form
- * and its check-digit-guarded CAS are Discovery's job. `formClass` is a closed enum the pool agent is
+ * and its check-digit-guarded CAS are Discovery's job. `formClass` is a closed enum the pool pass is
  * validated against (PoolAgent.FormClasses), which is why it is a union here and not a string.
  *
- * It is a HYPOTHESIS, corroborated or dropped downstream — the pool agent is allowed to draw on model
+ * It is a HYPOTHESIS, corroborated or dropped downstream — the pool pass is allowed to draw on model
  * knowledge, unlike Discovery, so a suggestion may legitimately rest on no retrieved source at all.
  */
 export interface PoolSuggestion {
@@ -345,7 +345,7 @@ export interface XrfDevice {
  */
 export interface ProjectPayload {
   components: ComponentSpec[];
-  /** Optional: a need-only project carries no operator element pool — the pool agent proposes one instead. */
+  /** Optional: a need-only project carries no operator element pool — the discovery agent proposes one instead. */
   elementPools?: ElementPool[];
   providedCandidates: unknown[];
   clientRestrictedList: string[];

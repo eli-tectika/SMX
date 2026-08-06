@@ -32,13 +32,21 @@ describe('ProposedPool', () => {
     expect(screen.getByText('liquid')).toBeInTheDocument();
   });
 
-  /** A pool that has not run is not an error — the section says so and takes no space arguing. */
-  it('says the pool has not run yet rather than erroring', async () => {
+  /**
+   * A pool that has not run is not an error — the section says so and takes no space arguing.
+   *
+   * And it credits the DISCOVERY agent. "The pool agent" named a component that stopped existing
+   * when the pipeline runner replaced change-feed dispatch; the pool is Discovery's first pass.
+   */
+  it('says the discovery agent has not proposed a pool yet rather than erroring', async () => {
     vi.mocked(api.getPool).mockResolvedValue(Symbol.for('NotFound') as never);
     render(<ProposedPool projectId="proj-1" />);
     await waitFor(() =>
-      expect(screen.getByText(/has not proposed a pool yet/i)).toBeInTheDocument(),
+      expect(
+        screen.getByText(/the discovery agent has not proposed an element pool yet/i),
+      ).toBeInTheDocument(),
     );
+    expect(screen.queryByText(/pool agent/i)).not.toBeInTheDocument();
   });
 
   /**

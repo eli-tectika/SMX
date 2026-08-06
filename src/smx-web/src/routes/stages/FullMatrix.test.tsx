@@ -188,6 +188,132 @@ describe('FullMatrix — every column group, one sheet', () => {
     );
   });
 
+  /* -------------------------------------------------------------------------
+     DENSITY. The four defects the customer opened this screen on, each pinned by the thing that
+     made the row tall rather than by the row's height, which jsdom cannot measure.
+     ------------------------------------------------------------------------- */
+
+  /**
+   * SOURCES ARE A COUNT, NOT A LIST OF IDENTIFIERS. The cell used to print
+   * `smx-reference · ref/rare-earth-oxides · 2026-08-06  reg-index · rea…` — two raw references and
+   * two corpus dates, wider than any column this table can afford and clipped mid-word. The customer
+   * asked for the file name and nothing else; what a dense cell can carry is the count.
+   *
+   * Nothing is dropped: the chips are one disclosure away, with the date they need to be citations.
+   */
+  it('carries sources as a count and keeps the raw reference and date out of the cell', async () => {
+    vi.mocked(api.getTable).mockResolvedValue({
+      projectId: 'proj-1',
+      rows: [
+        full({
+          regulatory: {
+            overall: 'Pass',
+            dimensions: [
+              {
+                dimension: 'ElementGate',
+                status: 'Pass',
+                confidence: 0.9,
+                rationale: '',
+                citations: [
+                  {
+                    source: 'smx-reference',
+                    reference: 'ref/rare-earth-oxides',
+                    retrievedAt: '2026-08-06T00:00:00Z',
+                    documentId: null,
+                  },
+                  {
+                    source: 'reg-index',
+                    reference: 'reach-annex17#e04',
+                    retrievedAt: '2026-08-06T00:00:00Z',
+                    documentId: null,
+                  },
+                ],
+              },
+            ],
+            proposedDetermination: null,
+            determination: null,
+            evidenceReviewed: false,
+          },
+        }),
+      ],
+    } as never);
+    view();
+    await waitFor(() => expect(document.querySelector('[data-sources="2"]')).toBeInTheDocument());
+    const summary = document.querySelector('[data-sources="2"] summary')!;
+    expect(summary.textContent).toBe('2 sources');
+    expect(summary.textContent).not.toMatch(/ref\/rare-earth-oxides|2026-08-06/);
+    // And the chips themselves are still there, unabridged, behind the count.
+    const chips = document.querySelectorAll('[data-sources="2"] [data-cite]');
+    expect(chips.length).toBe(2);
+    expect(chips[0].textContent).toMatch(/ref\/rare-earth-oxides/);
+  });
+
+  /**
+   * THE CONFIDENCE CELL READS AS A NUMBER. It used to read `90% lowest over an incomplete set` —
+   * self-explaining copy (§16.1) relocated into a data column, three lines deep on every row.
+   *
+   * The two qualifications are not lost, which is the whole point of asserting on the title and the
+   * screen-reader text rather than only on what is gone: worst-wins and the incomplete set both stay
+   * discoverable, and the partial fold keeps a marker you can see without reading anything.
+   */
+  it('renders confidence as a value, with worst-wins and the partial fold moved off the line', async () => {
+    vi.mocked(api.getTable).mockResolvedValue({
+      projectId: 'proj-1',
+      rows: [
+        full({
+          regulatory: {
+            overall: 'Pass',
+            // Two of the gate's four dimensions — so the fold is over an incomplete set.
+            dimensions: [
+              { dimension: 'ElementGate', status: 'Pass', citations: [], confidence: 0.9, rationale: '' },
+              { dimension: 'Compatibility', status: 'Pass', citations: [], confidence: 0.95, rationale: '' },
+            ],
+            proposedDetermination: null,
+            determination: null,
+            evidenceReviewed: false,
+          },
+        }),
+      ],
+    } as never);
+    view();
+    await waitFor(() => expect(document.querySelector('[data-fold="partial"]')).toBeInTheDocument());
+    const cell = document.querySelector('[data-fold="partial"]')!;
+    // What a sighted reader sees on the line is the number.
+    const seen = cell.cloneNode(true) as HTMLElement;
+    seen.querySelectorAll('.sr-only').forEach((n) => n.remove());
+    expect(seen.textContent?.trim()).toBe('90%');
+    // What the qualification costs to reach: a hover, or a screen reader.
+    expect(cell.getAttribute('title')).toMatch(/lowest/);
+    expect(cell.getAttribute('title')).toMatch(/incomplete set/);
+    expect(cell.querySelector('.sr-only')?.textContent).toMatch(/incomplete set/);
+  });
+
+  /** A complete fold is marked as one, so "partial" is a claim and not the absence of a claim. */
+  it('marks a fold over the whole dimension set as complete', async () => {
+    view();
+    await waitFor(() => expect(document.querySelector('[data-fold="full"]')).toBeInTheDocument());
+    expect(document.querySelector('[data-fold="full"]')?.getAttribute('title')).not.toMatch(
+      /incomplete/,
+    );
+  });
+
+  /**
+   * THE SCROLL HAS TO BE FINDABLE. Seventeen columns do not fit, so Dosing and Outcome are off-frame
+   * at every laptop width — and a table that stops mid-word with no signal reads as broken rather
+   * than as scrollable. The nav is what makes the two invisible phases reachable without guessing,
+   * and the pane is a named, focusable region rather than a mouse-only box.
+   */
+  it('offers a way to reach the phases that are off the right edge', async () => {
+    view();
+    await waitFor(() => expect(document.querySelector('.mxjump')).toBeInTheDocument());
+    const jumps = [...document.querySelectorAll('.mxjump__btn')].map((b) => b.textContent);
+    expect(jumps).toEqual(['Discovery', 'Regulatory', 'Dosing', 'Outcome']);
+    const pane = document.querySelector('.mxscroll__pane')!;
+    expect(pane.getAttribute('role')).toBe('region');
+    expect(pane.getAttribute('aria-label')).toMatch(/sideways/i);
+    expect(pane.getAttribute('tabindex')).toBe('0');
+  });
+
   /**
    * The sheet a customer is forwarded and the screen an operator signs against read ONE projection,
    * so every group here is the same shape its own phase screen renders.

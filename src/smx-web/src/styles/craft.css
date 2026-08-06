@@ -215,6 +215,8 @@
   color: var(--fg-group, var(--text-secondary));
 }
 
+/* The four phase tints are declared ONCE and shared by the band and by the jump nav that scrolls to
+   it, so a button and the band cell it lands on can never drift apart into two different purples. */
 .mx__groups th[data-group='identity'] {
   /* Achromatic on purpose — identity is not a phase. No token carries this exact wash; it sits
      between --surface-1 and --surface-2, both of which are already spoken for by the table's own
@@ -222,19 +224,23 @@
   --bg-group: #f2f3f5;
   --fg-group: var(--text-secondary);
 }
-.mx__groups th[data-group='discovery'] {
+.mx__groups th[data-group='discovery'],
+.mxjump__btn[data-group='discovery'] {
   --bg-group: var(--bg-accent);
   --fg-group: var(--text-accent);
 }
-.mx__groups th[data-group='regulatory'] {
+.mx__groups th[data-group='regulatory'],
+.mxjump__btn[data-group='regulatory'] {
   --bg-group: var(--bg-pro);
   --fg-group: var(--text-pro);
 }
-.mx__groups th[data-group='dosing'] {
+.mx__groups th[data-group='dosing'],
+.mxjump__btn[data-group='dosing'] {
   --bg-group: var(--bg-teal);
   --fg-group: var(--text-teal);
 }
-.mx__groups th[data-group='outcome'] {
+.mx__groups th[data-group='outcome'],
+.mxjump__btn[data-group='outcome'] {
   --bg-group: var(--bg-warning);
   --fg-group: var(--text-warning);
 }
@@ -255,6 +261,24 @@
   background: var(--bg-group, var(--surface-1));
 }
 
+/* And it must be ABOVE the phase bands, not merely tinted. The identity band cell shares z-index 4
+   with them, so paint order decided it — Regulatory is later in the DOM and painted straight over
+   the frozen cell, leaving the pinned column with a blank strip where its label should be at every
+   scroll position but zero. Found by scrolling the thing and looking at it. */
+.mx--sticky .mx__groups th[data-rowhead] {
+  z-index: 5;
+}
+
+/* The component's own name, which is a row-group heading spanning all seventeen columns: without
+   this it scrolls off the left edge with the columns and a sheet scrolled to Dosing no longer says
+   which component the rows belong to. There is no product-wide marker (law 1) — the component is
+   never a detail. */
+.mx__rowgroup {
+  position: sticky;
+  left: 8px;
+  display: inline-block;
+}
+
 /* ---- density -----------------------------------------------------------------
    Comfortable is the default; compact is for the operator who knows the grid and wants
    to see forty substances without scrolling. Density is an expert affordance, so it is
@@ -265,6 +289,120 @@
 .mx--compact th,
 .mx--compact td {
   padding: 3px 6px;
+}
+
+/* ---- one-line cells ----------------------------------------------------------
+
+   DENSITY IS A LINE COUNT, NOT A FONT SIZE. The 12px floor is not negotiable, so the only lever a
+   dense table has is how many lines each cell spends — and every tall row in this app was one cell
+   wrapping agent prose. A regulatory Why cell wrapped to four lines and set the height of the eleven
+   cells beside it; the row came out around 150px, which is three rows to a screen.
+
+   `.cellclip` is the fix and it works because of `max-width` specifically. A table under `auto`
+   layout sizes a column to its content's natural width, and `white-space: nowrap` alone would make
+   that natural width the whole sentence — a wider table, not a shorter row. A block with a definite
+   `max-width` caps the column instead: the cell is at most 32 characters wide and exactly one line
+   tall, and `title` carries the sentence in full.
+
+   32ch is a deliberate number. Below ~24ch a clipped rationale loses its subject and the cell says
+   nothing; past ~40ch the four clipped columns push the sheet wide enough that the phases nobody
+   can see outnumber the ones they can. Override per column with `--clip` where a cell has a
+   different job. */
+
+.cellclip {
+  display: block;
+  min-width: 0;
+  max-width: var(--clip, 32ch);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A clipped value with a marker beside it — the marker keeps its full width and the value gives way,
+   never the other way round.
+
+   THE `width: 0` IS THE WHOLE MECHANISM, and `min-width: 0` alone does not do it — measured, not
+   reasoned about. A column under auto table layout is at least as wide as its cell's min-content, and
+   Chrome takes a nowrap flex item's min-content contribution to be its max-width however shrinkable
+   the flex sizing says it is. So the pair (32ch clip + nowrap marker) claimed 351px of a 904px table
+   as a HARD FLOOR and pushed the Rule button clean off the card. A definite `width: 0` makes the
+   contribution the automatic minimum instead, which `overflow: hidden` already puts at 0.
+
+   That leaves the column with no width of its own either — a flex item at `width: 0` contributes
+   nothing to max-content either, so the column collapsed to the width of the marker beside the text
+   (115px, about four words) on the one screen that had room to spare. `.cellcol` puts a floor back.
+   It is `min-width` and not `width` because `width` on a td is ignored outright once the table is
+   wider than its box, which is precisely the full matrix's situation — measured both ways.
+
+   30ch is the largest floor that still lets the Regulatory table fit its card at 1600px — 34ch
+   overflows it by 17px. That number came off a ruler and it moves when anything else in the row
+   does: it was 26ch while the unassessed marker still spelled out "2 not assessed". */
+.cellrow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.cellrow > .cellclip {
+  flex: 1 1 0;
+  width: 0;
+  /* The ceiling is the column's now, not the item's — otherwise a wide screen leaves the text
+     stopping short at 32ch with empty cell beside it. */
+  max-width: none;
+}
+
+.cellcol {
+  min-width: 30ch;
+}
+
+/* An absence sentence spans several columns, so it costs the table no width — but it is a whole
+   sentence in a cell that can be two narrow columns wide, and it wrapped to three lines and set the
+   height of the row. It is clamped by LINE COUNT rather than by width, because a width bound would
+   either blow out the columns it spans (nowrap min-content) or ellipse text with half the cell
+   empty. The full sentence is on `title`, and the icon, the colour and `data-absence` still tell
+   stopped from not-reached without reading a word of it. */
+.cellclamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* ---- a cell's sources, behind their count ------------------------------------
+
+   The summary is the whole cell at rest: "3 sources", one line, the same shape Discovery shows. Open
+   it and the chips arrive at full width — file name where the record can name a file, label
+   otherwise, retrieval date on both. `list-style: none` plus the `::-webkit-details-marker` reset is
+   what removes the browser's own triangle so the chevron can carry the state instead. */
+
+.srcs > summary {
+  cursor: pointer;
+  white-space: nowrap;
+  list-style: none;
+  color: var(--text-secondary);
+}
+.srcs > summary::-webkit-details-marker {
+  display: none;
+}
+.srcs > summary:hover {
+  color: var(--text-primary);
+}
+.srcs > summary .ti {
+  display: inline-block;
+  margin-right: 2px;
+  transition: transform var(--dur-1) var(--ease-out);
+}
+.srcs[open] > summary .ti {
+  transform: rotate(90deg);
+}
+.srcs__list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding-top: 5px;
+  /* Wide enough that a chip is not itself clipped — the point of opening it is to read it whole. */
+  min-width: 26ch;
 }
 
 /* ---- matrix crosshair --------------------------------------------------------
@@ -346,15 +484,118 @@
      grows to its content. */
   max-height: max(280px, calc(100vh - 380px));
   background:
-    linear-gradient(to left, var(--surface-0) 30%, transparent) right center / 24px 100% no-repeat,
     linear-gradient(to top, var(--surface-0) 30%, transparent) bottom center / 100% 24px no-repeat,
-    radial-gradient(farthest-side at 100% 50%, hsl(var(--shadow-hue) / 0.14), transparent) right
-      center / 12px 100% no-repeat,
     radial-gradient(farthest-side at 50% 100%, hsl(var(--shadow-hue) / 0.14), transparent) bottom
       center / 100% 12px no-repeat;
-  background-attachment: local, local, scroll, scroll;
+  background-attachment: local, scroll;
+}
+
+/* THE SCROLLBAR IS PART OF THE ANSWER, so it is `scroll` and not `auto` and it is drawn rather than
+   left to the platform. A table that runs off the right edge mid-word with no track under it does not
+   read as scrollable, it reads as broken — and an auto-hiding overlay scrollbar shows up only once
+   you have already done the thing it was supposed to suggest. */
+.mxscroll__pane {
+  overflow-x: scroll;
+  scrollbar-color: var(--border-strong) var(--surface-1);
+}
+.mxscroll__pane::-webkit-scrollbar {
+  height: 12px;
+  width: 12px;
+}
+.mxscroll__pane::-webkit-scrollbar-track {
+  background: var(--surface-1);
+}
+.mxscroll__pane::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+  border: 3px solid var(--surface-1);
+}
+
+/* ---- the right edge, said out loud -------------------------------------------
+
+   The pane's own background gradients cover the BOTTOM edge and are useless on the right: the cells
+   are transparent, so a gradient painted behind them fades nothing an operator can see, and the last
+   column simply stopped mid-word. A customer who cannot tell a clipped table from a broken one has
+   no reason to look for the two phases they cannot see.
+
+   So the right edge gets a real overlay — painted OVER the content, `pointer-events: none`, and
+   mounted only while there is something still to scroll to — with a button in it that scrolls. The
+   left edge deliberately gets neither: it is the side you have already read, and the frozen identity
+   column is opaque and sticky on top of it, so an overlay there would either hide the one column that
+   is always on screen or paint under it and be invisible. Getting back is the jump nav's job. */
+
+.mxscroll__frame {
+  position: relative;
+}
+
+.mxscroll__fade {
+  position: absolute;
+  top: 0;
+  right: 0;
+  /* Clear of the horizontal scrollbar, which is itself an affordance and must not be dimmed. */
+  bottom: 12px;
+  width: 64px;
+  pointer-events: none;
+  background: linear-gradient(to left, var(--surface-0) 22%, transparent);
+}
+
+.mxscroll__nudge {
+  position: absolute;
+  top: calc(50% - 16px);
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-0);
+  color: var(--text-secondary);
+  cursor: pointer;
+  box-shadow: 0 1px 4px hsl(var(--shadow-hue) / 0.18);
+}
+.mxscroll__nudge:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+/* ---- the sheet's own toolbar --------------------------------------------------
+
+   The count on the left, and on the right a button per phase group. The buttons are not decoration:
+   Dosing and Outcome are off-frame at every laptop width, and "scroll sideways and hope" is not a
+   route to them. They carry the band's own tints, so pressing one lands you on the colour you
+   pressed. */
+
+.mxscroll__bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  margin-bottom: var(--s2);
 }
 
 .mxscroll__count {
-  margin-bottom: var(--s2);
+  margin: 0;
+}
+
+.mxjump {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.mxjump__btn {
+  border: 1px solid transparent;
+  border-radius: var(--r1);
+  padding: 2px 8px;
+  font: inherit;
+  font-size: var(--t-small);
+  cursor: pointer;
+  background: var(--bg-group, var(--surface-1));
+  color: var(--fg-group, var(--text-secondary));
+}
+.mxjump__btn:hover {
+  border-color: currentColor;
 }

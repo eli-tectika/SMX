@@ -116,6 +116,40 @@
     border: 1px solid #999;
   }
 
+  /* NOTHING IS CLIPPED ON PAPER. Every truncation on these screens trades the tail of a sentence for
+     a `title` — which is a fair trade at a desk and a silent deletion on a printed page, where there
+     is no hover and no disclosure to open. A printed matrix is a record that has left the building,
+     so it wraps, and the sources come out from behind their count. */
+  .cellclip,
+  .cellclamp {
+    max-width: none !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    display: block !important;
+    -webkit-line-clamp: none !important;
+    line-clamp: none !important;
+  }
+  .cellcol {
+    min-width: 0;
+  }
+  .srcs__list {
+    display: block !important;
+  }
+  .srcs > summary {
+    /* The count is what the list is now beneath; on paper it is a heading, not a control. */
+    list-style: none;
+  }
+  .mxscroll__pane {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  /* Chrome only: the affordances are for a scroll that does not exist on paper. */
+  .mxscroll__fade,
+  .mxscroll__nudge,
+  .mxjump {
+    display: none !important;
+  }
+
   /* Verdicts keep their fill. A matrix printed as grey-on-grey is not a matrix. */
   .chip,
   .ribbon__seg,

@@ -757,7 +757,7 @@ export async function orderSubstance(projectId: string, cas: string): Promise<{ 
 }
 
 /**
- * GET /projects/{id}/pool — the need-driven pool the pool agent proposed (ProjectEndpoints.cs:186).
+ * GET /projects/{id}/pool — the need-driven pool the discovery agent proposed (ProjectEndpoints.cs:186).
  *
  * 404 before that agent has run, which is a STATE and not an error: a project sitting at
  * awaiting-confirmation has no pool yet and never should.
