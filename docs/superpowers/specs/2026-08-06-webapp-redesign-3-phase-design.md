@@ -527,3 +527,79 @@ already dispatches `record_answer`.
 - The XRF filter, and its Discovery dependency edge (§9.3).
 - `documentId` on `Citation`, which is what would let citation chips link.
 - Whether the codes table should itself gain a matrix-shaped view keyed on `(component, code)`.
+
+---
+
+## 16. Revision — operator review after seeing it run
+
+Four changes, agreed after the first working build. Everything above stands except where contradicted here.
+
+### 16.1 The UI stops explaining itself
+
+The built screens narrate their own design rationale at the operator: a paragraph on what a sign-off is,
+a subtitle on what a table row is, per-group hints on what the element gate is. The reference product
+(DMPP) carries **no explanatory sentences at all** — column headers, values, and a pagination control.
+
+This was self-inflicted. The instruction "comments say WHY and name the failure mode" is right for code
+and leaked into UI copy. **Prose in a screen is now a defect unless it states something the operator
+cannot get from the data.** A warning that names a real condition of *this* record stays; a sentence
+explaining how the app works goes.
+
+### 16.2 Amendments are a conversation, not a form
+
+The Overview screen grew a modal form for changing a requirement. That is precisely the direct edit
+Law 4 forbids — an operator typing into fields, with the reason demoted to one more field.
+
+**Overview gets the agent panel**, and the amendment is what the operator says to it: *"the customer
+confirmed they're shipping to Japan as well."* The agent calls the amendment tool. The form is deleted.
+This is what §9.1 specified; the build diverged from it.
+
+### 16.3 Discovery is ONE agent, and works elements-then-molecules
+
+`PoolAgent` merges into `DiscoveryAgent`. Two agents for one operator move was always a seam the operator
+had to understand for no benefit, and the pool is the first half of discovery, not a separate opinion.
+
+Two corrections to how it works, from how the team actually works:
+
+1. **A target breadth PER COMPONENT.** The prompt names no number today — which is why real runs returned
+   three candidates for one component and two for another. It should ask for **roughly ten elements per
+   component**, explicitly a target and not a cap. (The data model was never wrong: `PoolSuggestion`
+   already carries a `Component`.)
+2. **Elements first, then molecules.** The agent currently drafts `element + formClass` together in one
+   step. It must instead: (a) search for the relevant ELEMENTS for this component's substrate and
+   objective; then (b) for each element, break it into candidate MOLECULES and choose the forms that suit
+   the substrate. These are different questions against different evidence — what is detectable and clean
+   here, versus what form survives this material — and collapsing them loses the second.
+
+Only then does the deep per-candidate corroboration run.
+
+### 16.4 The regulatory gate is dropped entirely
+
+Not demoted — **removed**. No `GateDoc` for regulatory, no approve endpoint, no signature. The matrix
+carries confidence and sources, and that is the review surface.
+
+**This has a mechanical consequence that must be handled in the same change.** `CompliantSet` reads only
+substances the operator explicitly marked `recommended`, and the regulatory gate was that writer. Left
+alone, the compliant set is empty forever, every dosing is provisional, and **every order is refused
+permanently** — an app that looks fine and quietly never lets anyone buy anything. So:
+
+- **What may be dosed** becomes *everything the agent did not reject, minus anything the operator vetoed*.
+  The agent's proposal is the default admission; the operator's ruling becomes an OVERRIDE, still recorded
+  with a mandatory reason. `CompliantSet` is rewritten to that rule and keeps its name and its role as the
+  set the irreversible acts consult.
+- **`provisional` shrinks to the genuine data gap**: an estimated detection floor with no physicist
+  measurement. "Rests on the agent's proposal" stops being an exception because it is now the normal basis.
+
+**The VP sign-off is now the only human checkpoint before procurement**, so it must show the evidence that
+judgement needs rather than a summary: anything low-confidence, anything uncited, anything dosed over an
+estimated floor. Removing one gate and leaving the other blind is worse than either choice alone.
+
+### 16.5 `Citation.documentId`
+
+Citation chips have been inert because `Citation.reference` is free text the agent wrote, and deriving a
+document id by parsing it would open the *wrong* regulation — worse than opening nothing.
+
+`Citation` gains a **`DocumentId`**, written by the retrieval tool that produced the chunk, which is the
+only place the real id is known. Chips render the **file name** (not the id) and open the document when the
+id is present. **Absent id ⇒ still inert, still no guess** — the old rule survives for every citation that
+predates this field.
