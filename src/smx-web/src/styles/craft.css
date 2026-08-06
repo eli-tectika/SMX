@@ -334,9 +334,32 @@
    It is `min-width` and not `width` because `width` on a td is ignored outright once the table is
    wider than its box, which is precisely the full matrix's situation — measured both ways.
 
-   30ch is the largest floor that still lets the Regulatory table fit its card at 1600px — 34ch
-   overflows it by 17px. That number came off a ruler and it moves when anything else in the row
-   does: it was 26ch while the unassessed marker still spelled out "2 not assessed". */
+   17ch is the largest floor that still lets the Regulatory table fit its card at 1600px. That number
+   came off a ruler and it moves when anything else in the row does: it was 26ch while the unassessed
+   marker still spelled out "2 not assessed", then 30ch, and it is 17ch since the customer's type
+   selection shipped (Figtree, 13px base, roomy tables).
+
+   THE MEASUREMENT, because this one is worth showing. On a 1600px viewport the Regulatory table gets
+   904px — the artifact column beside a 390px agent panel, less the card's padding — and every column
+   is at its own min-content, so the table's width is their sum. Measured in Chrome, per column:
+
+       old (Plex, 12px, 7px 9px cells)  135 109 [216] 76 85  98 104 80  = 904, fits exactly
+       new (Figtree, 13px, 11px 12px)   153 120 [250] 88 97 111 111 80  = 1011, spills 107px
+
+   Of that 107px, 48px is the roomy cells' extra 3px of horizontal padding on 8 columns, 25px is the
+   type step, and 34px is this floor growing with `ch` (Figtree's `0` is 0.64em against Plex's 0.60em,
+   on top of 12px -> 13px). The other seven columns are content: a chip, a percentage, two words, a
+   button. Only this one is a knob, so this one gives — 904 - 761px of columns that cannot move = 143px
+   = 17ch. Below that the table hangs out of its white card and the artifact grows a horizontal
+   scrollbar, which puts the per-row Rule button — the operator's whole reason for being on this
+   screen — off the edge.
+
+   IT COSTS ~15 CHARACTERS OF THE AGENT'S RATIONALE: ~33 visible before, ~18 now ("ElementGate — Res…").
+   The governing dimension's NAME still lands, which is the one token in the cell nobody can do without
+   (see WhyCell in projectTable.tsx), and the full sentence is still on `title` and in the opened row.
+   If that is judged too tight, the next 48px is the roomy cells' horizontal padding: 11px 9px keeps
+   the row height the customer chose and buys this column back to 23ch. That is a change to their
+   selection, so it is theirs to make, not ours. */
 .cellrow {
   display: flex;
   align-items: baseline;
@@ -351,7 +374,48 @@
 }
 
 .cellcol {
-  min-width: 30ch;
+  min-width: 17ch;
+}
+
+/* AND THE COLUMN SPENDS A SECOND LINE, because the width it lost is not the only budget it has.
+   At 17ch on one line the governing dimension's own NAME clipped — "ApplicationC…" — and that name
+   is the one token in the cell nobody can do without (WhyCell in projectTable.tsx says so, and it
+   is why the unassessed marker was cut down to a triangle and a count in the first place).
+
+   The trade is VERTICAL: the clamped box is 36px against one line's 18px, and a Regulatory row
+   measures 61px with it. That buys the rationale back from ~18 visible characters to ~36 — more than
+   the ~33 it showed before any of this. The ellipsis comes from the clamp itself, and `title` still
+   carries the whole sentence.
+
+   An earlier revision of this comment claimed the rows "did not get taller at all". They do, by one
+   line. That claim was measured against a stylesheet in which THIS RULE WAS NOT APPLYING — the
+   comment above it closed twice, so the CSS parser ate the selector and dropped the block (see
+   styles/stylesheets.test.ts, which now fails on that shape). A measurement taken through a rule
+   that is not in effect measures nothing; it is corrected here rather than deleted, because the
+   trap is easy to fall into twice.
+
+   WHAT IS STILL WORSE THAN BEFORE, so nobody has to rediscover it: on a row that ALSO carries the
+   unassessed marker, the text box is the column less the marker — about 90px — so the longest
+   rationales still lose their tail. Measured against the four-row sample, three of the four now
+   render in full (33, 37 and 24 characters) and only the 54-character
+   "ApplicationCheck — No JP food-contact source retrieved" clips, overflowing its two lines by 15px;
+   the old 250px single-line column showed "ApplicationCheck — No JP food-contact so…".
+   The 48px that would fix it outright is the roomy cells' horizontal padding; see the note above.
+
+   NOT ON THE FULL MATRIX. `.mx--compact` is the operator's own density affordance and the full
+   matrix is always compact (FullMatrix.tsx): there the column is 281px wide with room to spare, and
+   doubling 40 rows' height to buy width nobody needs would be the opposite trade. Density is a line
+   count in this app — that is the rule this rule obeys, not an exception to it. */
+.cellcol .cellclip {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.mx--compact .cellcol .cellclip {
+  display: block;
+  white-space: nowrap;
 }
 
 /* An absence sentence spans several columns, so it costs the table no width — but it is a whole

@@ -34,11 +34,28 @@
 .data {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  /* 0.94em is an optical match — IBM Plex Mono runs visually larger than Plex Sans at the
-     same nominal size, so mono set inline mid-sentence needs a nudge down to sit level.
-     But a MULTIPLIER can walk under the floor: composed with .tiny (12px) it computes to
-     11.28px, and the token layer would still report 12. max() keeps the optical correction
-     wherever there is room for it and refuses to go below the floor. */
+  /* 0.94em is an optical match, and it is RE-DERIVED for Figtree + Roboto Mono rather than
+     inherited. What the eye reads as "size" is x-height, so the correction is the ratio of
+     the two x-heights. Measured in Chrome off the real webfonts — canvas ink extents at 1000px,
+     the method src/lab/measure.ts uses, taken large enough that the reading is the font's own
+     metric and not a rounded pixel:
+
+         Figtree       x-height 0.50000em   Roboto Mono   0.53125em  ->  0.941
+         IBM Plex Sans x-height 0.51563em   IBM Plex Mono 0.51563em  ->  1.000
+
+     So Roboto Mono genuinely does set ~6% larger than Figtree and a nudge down is real. The
+     old comment claimed the same of IBM Plex, and the second line above is why that claim was
+     wrong: the two Plex faces are one superfamily and measure identically, so under Plex this
+     rule was shrinking inline data for no optical reason at all. The number survives the change of
+     faces by coincidence, not by inheritance: re-derived from scratch it lands on 0.941, and 0.94 is
+     that to the nearest hundredth. If the sans or the mono is ever changed again, re-measure — the
+     right value for a pairing is a property of the two faces and of nothing else.
+
+     A MULTIPLIER can still walk under the floor: composed with .tiny (13px) 0.94em computes
+     to 12.22px, and the token layer would still report 13. max() keeps the optical correction
+     wherever there is room for it and refuses to go below the floor — which means the
+     correction only actually bites where the surrounding text is larger than --t-small
+     (--t-body and up), and that is exactly where an inline mono run is conspicuous. */
   font-size: max(var(--t-small), 0.94em);
   letter-spacing: 0;
 }
@@ -385,7 +402,7 @@
   align-items: baseline;
   gap: var(--s2);
   margin: var(--s5) 0 var(--s3);
-  /* Plex Sans is wider than the Georgia it replaced at the same size, and this row holds a
+  /* The sans is wider than the Georgia it replaced at the same size, and this row holds a
      title, a count and (on Full matrix) an export button in a column whose width the agent
      panel decides. Without a wrap the widest of those was pushed off the edge instead of onto
      the next line — the class of bug the type-floor pass found twice with no test to notice. */
@@ -773,15 +790,18 @@
 }
 
 /* The four kinds the finder actually renders (Finder.tsx LABEL) are Marker, MSDS, Learned,
-   Document. Measured from the real IBM Plex Sans 400 glyph metrics at 12px with the
-   0.07em eyebrow tracking this rule applies, "Document" (the longest) sets ~71px including
-   tracking — the box was 58px, sized for the pre-floor 10px rendering, and had no clip rule,
-   so raising the type floor made the label spill into finder__hit-main beside it. 80px clears
-   the longest label with real headroom; overflow/ellipsis is a backstop in case a future kind
-   label is added that is longer still. */
+   Document. RE-MEASURED for the shipped face and size — this box has now been resized twice by a
+   type change, which is the argument for measuring rather than eyeballing it:
+
+     IBM Plex Sans 400, 12px, 0.07em tracking   "DOCUMENT" = 71.0px   box was 80px
+     Figtree 400,       13px, 0.07em tracking   "DOCUMENT" = 80.8px   box is now 92px
+
+   The 80px box was 0.8px too small for its own longest label the moment the base moved, which
+   would have shown up as "DOCUMEN…" rather than as anything obvious. 92px clears it with real
+   headroom; overflow/ellipsis stays as the backstop for a future kind label longer still. */
 .finder__kind {
   flex: none;
-  width: 80px;
+  width: 92px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;

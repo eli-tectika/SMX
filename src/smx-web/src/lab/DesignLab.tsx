@@ -239,7 +239,10 @@ export function DesignLab() {
             {(
               [
                 ['compact', 'Compact'],
-                ['default', 'Default'],
+                // The id stays `default` so stored settings keep resolving; the LABEL does not,
+                // because the shipped default is Roomy now and a notch reading "Default" beside
+                // the one that actually ships would misname the thing the panel exists to show.
+                ['default', 'Standard'],
                 ['roomy', 'Roomy'],
               ] as const
             ).map(([id, label]) => (

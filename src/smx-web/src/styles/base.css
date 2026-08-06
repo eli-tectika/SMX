@@ -124,7 +124,7 @@ strong {
   /* One family throughout (see tokens.css). The serif that used to sit here is gone; the
      weight below is what separates a title from the sentence under it, and the size did
      NOT go up to make up for the lost texture. `.cap b` is `display: block` and sits in no
-     fixed box, so the wider Plex advance widths cost nothing here. */
+     fixed box, so a change of face or of advance width costs nothing here. */
   font-weight: var(--w-semibold);
   font-size: var(--t-title);
   line-height: var(--lh-tight);
@@ -199,7 +199,7 @@ strong {
    `textarea` was never given a font, so it fell through to the user-agent default —
    13.33px monospace. That put the app's PRIMARY input, the intake interview's composer,
    in a terminal face, while the docked agent's `<input>` beside it rendered correctly in
-   Plex Sans. The mono rule in this app means "machine-readable value"; a sentence the
+   the app's sans. The mono rule in this app means "machine-readable value"; a sentence the
    operator is composing is neither. */
 
 textarea {
@@ -347,9 +347,15 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 3px;
-  /* Was a hardcoded 64px, sized against the pre-floor 10px label. At 12px the longest
+  /* NOTE: this component is no longer mounted — the icon rail was replaced by the sidebar in the
+     2026-07-29 shell rebuild and only these rules survive. The measurement below was re-taken for
+     the shipped face anyway, because a stale glyph measurement in a comment is how the next person
+     gets the wrong number: "PROJECTS" sets 72.0px in Figtree 400 at 13px with this rule's 0.07em
+     tracking, against the 75px lane. Still clears, with 3px to spare instead of 10.
+
+     Was a hardcoded 64px, sized against the pre-floor 10px label. At 12px the longest
      label ("Projects", measured off the real IBM Plex Sans 400 glyph metrics with this
-     rule's own 0.07em tracking) needs ~64.6px — the same as the box, i.e. no margin at
+     rule's own 0.07em tracking) needed ~64.6px — the same as the box, i.e. no margin at
      all. --rail-w is already 76px and .rail has no horizontal padding, so the rail was
      quietly reserving 12px this item never used; spending it here restores real headroom
      without widening anything outside this rule.
@@ -375,8 +381,9 @@ textarea {
   letter-spacing: var(--track-eyebrow);
   line-height: 1.1;
   /* The longest label ("Projects") clears the item — now var(--rail-w), 76px — by a real
-     margin in IBM Plex Sans (re-verified at 12px: ~64.6px of glyphs + tracking against a
-     76px box). That margin is still an estimate, not a guarantee — the system-font fallback
+     margin (re-verified for the shipped face at 13px: 72.0px of Figtree glyphs + tracking
+     against a 76px box; it was ~64.6px in IBM Plex Sans at 12px). That margin is still an
+     estimate, not a guarantee — the system-font fallback
      that renders for the instant before the webfont loads sets wider caps, and a future label
      swap could shrink it further. Wrapping to a second line would silently break the icon+label
      grid baseline; forcing one line makes an overflow visible (and fixable) instead of hidden. */
@@ -495,7 +502,11 @@ textarea {
 .mx th,
 .mx td {
   border: 1px solid var(--border);
-  padding: 7px 9px;
+  /* ROOMY, chosen in the design lab alongside the faces (it is a density, not a token — the
+     lab's copy-out says so and names this rule). Was 7px 9px. Every table in the app reads
+     off this one declaration, so the 4px of extra leading per row is felt most on the matrix,
+     which is where the customer was looking when they picked it. */
+  padding: 11px 12px;
   text-align: left;
   vertical-align: middle;
   /* A matrix whose digits shift column between renders reads as unreliable. */

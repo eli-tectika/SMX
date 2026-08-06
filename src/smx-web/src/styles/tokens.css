@@ -98,15 +98,23 @@
 
   /* type. TWO FACES, and it used to be three.
 
-     IBM Plex, self-hosted from node_modules via @fontsource — no CDN, because the
-     system is private-by-default and a font request is an egress.
+     FIGTREE + ROBOTO MONO, self-hosted from node_modules via @fontsource — no CDN,
+     because the system is private-by-default and a font request is an egress.
 
-     The pairing is not incidental, and it is why this app does NOT adopt the reference
-     product's single Roboto: SMX sets machine-readable values in mono INLINE,
-     mid-sentence, inside sans table cells ("CAS 7440-22-4", "12 ppm",
-     "Ce:Y = 1.00:0.50"). Plex Sans and Plex Mono are siblings from one superfamily, so
-     that mono run does not produce a texture break on every row. Roboto has no matched
-     mono, and a product that never sets inline data never has to solve this.
+     THIS PAIR WAS CHOSEN BY THE CUSTOMER, in the design lab (`?lab`, src/lab/), against
+     these screens with their real content — not from a specimen sheet and not from an
+     argument. The lab loads each candidate self-hosted, sets it on the live app, and
+     reports whether the face actually resolved, so what was judged was this product in
+     this typeface. Their selection: Figtree / Roboto Mono, 13px base, roomy tables.
+
+     It replaces IBM Plex Sans + IBM Plex Mono, and it retires the reasoning that used to
+     sit here: that the two faces had to be siblings from one superfamily so that a mono
+     run set INLINE mid-sentence ("CAS 7440-22-4", "12 ppm", "Ce:Y = 1.00:0.50") would not
+     break texture on every row. The inline-mono rule is unchanged and still the thing the
+     look rests on — but the superfamily argument is not what decided this pairing, and it
+     is not load-bearing: what actually keeps an inline mono run level with the sans around
+     it is matched x-height, which is measurable and which `.data` in primitives.css now
+     corrects for with a measured number rather than a family relationship.
 
      THE SERIF IS GONE. `--font-serif` (Georgia) dressed screen and section titles, and
      it was deleted rather than re-scoped: a serif title face gives an instrument an
@@ -116,8 +124,8 @@
 
      The rule the whole look hangs on: every machine-readable value is monospaced,
      every prose word is not. See `.data` in primitives.css. */
-  --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+  --font-sans: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Roboto Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
 
   /* The floor is 12px. Below it, text stops being read and starts being skimmed — and this app
      put primary information (a blocking reason, a citation, a confidence) at 10 and 11px on
@@ -127,14 +135,24 @@
      compatibility-matrix header, where the column header already carries the meaning and the
      row is scanned rather than read. It is never correct for prose, a label, a status, or a
      control — every other direct use has been raised to --t-small. --t-micro is gone; there is
-     no size below --t-tiny. */
-  --t-tiny: 11px; /* dense table cells only */
-  --t-small: 12px; /* the floor for all other UI text */
-  --t-body: 13px;
-  --t-lead: 15px;
-  --t-title: 20px;
-  --t-display: 28px;
-  --t-mast: 34px; /* the wordmark, and nothing else */
+     no size below --t-tiny.
+
+     THE BASE IS NOW 13px, chosen with the faces in the design lab. "Base" means where the
+     FLOOR sits: --t-small is the floor for all UI text, so moving it moves the whole scale.
+     The scale below is the lab's 13px step verbatim (src/lab/settings.ts, SCALES) — written
+     out rather than derived from a ratio, because a multiplier produces fractional pixels and
+     would drag --t-tiny off the one value it is allowed to hold.
+
+     One consequence worth stating: --t-tiny is now 12px, i.e. AT the floor rather than under
+     it. The single sanctioned exception no longer buys an exception — `.mx th` is simply the
+     smallest thing on screen, and nothing in the app renders below 12px any more. */
+  --t-tiny: 12px; /* dense table cells only — `.mx th`, and now at the floor, not below it */
+  --t-small: 13px; /* the floor for all other UI text — this is "the base size" */
+  --t-body: 14px;
+  --t-lead: 16px;
+  --t-title: 21px;
+  --t-display: 30px;
+  --t-mast: 36px; /* the wordmark, and nothing else */
 
   /* Only 400/500/600 are loaded. Never ask for `bold` — the browser will synthesize
      a 700 that does not exist and the letterforms will smear. */
@@ -149,10 +167,11 @@
 
   /* The phase-group band's height (`.mx__groups` in craft.css). A real number rather than a guess,
      because the sticky full matrix pins the column headers directly beneath it and needs it as an
-     offset. 16px of line for --t-tiny plus 3px of padding either side. Change the band's type and
+     offset. 17px of line for --t-tiny plus 3px of padding either side. Change the band's type and
      this changes with it — a fixed box that no longer holds its contents is the exact bug the type
-     floor pass found twice with no test to notice. */
-  --mx-group-h: 22px;
+     floor pass found twice with no test to notice. It went 22px -> 23px when --t-tiny went 11 -> 12
+     (the lab derives it the same way: round(tiny * 1.45) + 6). */
+  --mx-group-h: 23px;
 
   /* motion */
   --dur-1: 90ms; /* hover tint, focus ring, crosshair */

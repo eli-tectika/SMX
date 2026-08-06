@@ -51,8 +51,9 @@ html[data-lab-monoscope='identifiers'] .prov-hash {
 }
 
 /* `.data` carries `font-size: max(var(--t-small), 0.94em)` — an optical correction that
-   exists because IBM Plex MONO runs visually larger than Plex Sans at the same nominal
-   size. Withdraw the mono face and that correction is no longer a correction: it is just
+   exists because the shipped MONO (Roboto Mono, x-height 0.53em) runs visually larger than
+   the shipped sans (Figtree, 0.50em) at the same nominal size; see the measurement in
+   primitives.css. Withdraw the mono face and that correction is no longer a correction: it is just
    a 6% shrink applied to sans set inside sans, which makes every ppm and price quietly
    smaller than the prose around it. Restore it to 1em wherever the run is no longer mono. */
 html[data-lab-monoscope='none'] .data {

@@ -49,13 +49,24 @@ export interface LabSettings {
  * every comparison after it a comparison against a thing that was never shipped.
  */
 export const DEFAULTS: LabSettings = {
-  sans: 'ibm-plex-sans',
-  mono: 'ibm-plex-mono',
+  sans: 'figtree',
+  mono: 'roboto-mono',
   monoScope: 'all',
-  density: 'default',
-  base: 12,
+  density: 'roomy',
+  base: 13,
   sidebar: 'light',
 };
+
+/**
+ * The density step base.css actually ships in `.mx th/.mx td`.
+ *
+ * It is NOT the step named `default` any more — the customer chose `roomy` and it was applied,
+ * so `default` is now just the middle notch. This constant is what the copy-out compares
+ * against when deciding whether to tell you a density needs a hand edit; comparing against the
+ * literal `'default'` would emit "change base.css to 7px 9px" for the padding base.css already
+ * has, which is a paste instruction that undoes a shipped decision.
+ */
+export const SHIPPED_DENSITY: Density = 'roomy';
 
 export const STORAGE_KEY = 'smx.designlab.v1';
 
@@ -80,8 +91,9 @@ export interface TypeScale {
  *
  * A multiplier would be tidier and wrong: it produces fractional pixels, and it would drag
  * `--t-tiny` off the one value it is allowed to hold. `--t-tiny` is the documented single
- * exception to the floor (`.mx th` and nothing else), so at the default step it stays at
- * today's 11 and the lab at its defaults is byte-identical to the shipped scale.
+ * exception to the floor (`.mx th` and nothing else); at the shipped step (13) it is 12, i.e.
+ * AT the floor rather than under it, and the lab at its defaults is byte-identical to the
+ * shipped scale in tokens.css.
  *
  * `--t-small` IS the base: it is the floor for all other UI text, so "base size" means
  * "where the floor sits", and every step above moves the whole scale with it.
@@ -99,10 +111,11 @@ export function scaleFor(base: BaseSize): TypeScale {
     ...s,
     /**
      * Raising type is a LAYOUT change. `--mx-group-h` is a FIXED box pinned above the
-     * matrix's sticky column headers, sized in tokens.css as "16px of line for --t-tiny plus
-     * 3px of padding either side" — a box that no longer holds its contents is the exact bug
-     * the type-floor pass found twice with no test to notice it. So it is derived from
-     * `tiny` here instead of left behind at 22. At tiny=11 this reproduces 22 exactly.
+     * matrix's sticky column headers, sized in tokens.css as "a line of --t-tiny plus 3px of
+     * padding either side" — a box that no longer holds its contents is the exact bug the
+     * type-floor pass found twice with no test to notice it. So it is derived from `tiny`
+     * here instead of left behind at a constant. At tiny=11 it gives the pre-13px 22px; at
+     * the shipped tiny=12 it gives the 23px tokens.css now carries.
      */
     mxGroupH: Math.round(s.tiny * 1.45) + 6,
   };
@@ -128,7 +141,7 @@ export function stepUp(base: BaseSize): { ok: true; next: BaseSize } | { ok: fal
 // Density
 // ---------------------------------------------------------------------------
 
-/** Table cell padding per density step. `default` is base.css's shipped `7px 9px`. */
+/** Table cell padding per density step. `roomy` is base.css's shipped `11px 12px`. */
 export const DENSITY_PAD: Record<Density, { y: number; x: number }> = {
   compact: { y: 3, x: 7 },
   default: { y: 7, x: 9 },
@@ -225,7 +238,7 @@ export function cssBlock(s: LabSettings): string {
     lines.push(` * MONO SCOPE = ${s.monoScope.toUpperCase()} is not a token. It needs a rule in`);
     lines.push(` * primitives.css next to .data — see src/lab/lab.css for the one the lab used.`);
   }
-  if (s.density !== 'default') {
+  if (s.density !== SHIPPED_DENSITY) {
     lines.push(` *`);
     lines.push(` * DENSITY = ${s.density} is not a token either: .mx th/.mx td in base.css hard-codes`);
     lines.push(` * its padding. Change it there to ${pad.y}px ${pad.x}px.`);

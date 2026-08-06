@@ -5,6 +5,7 @@ import {
   DEFAULTS,
   DENSITY_PAD,
   type LabSettings,
+  SHIPPED_DENSITY,
   STORAGE_KEY,
   TYPE_FLOOR_PX,
   cssBlock,
@@ -44,27 +45,34 @@ describe('design lab — the type floor', () => {
 });
 
 describe('design lab — defaults reproduce the shipped design exactly', () => {
+  // These assertions are a mirror of src/styles/tokens.css and base.css, and they moved when
+  // the customer's lab selection was shipped (Figtree / Roboto Mono / 13px / roomy). They are
+  // the only reason the lab can promise that opening it changes nothing on screen.
   it('leaves the scale at the values in tokens.css', () => {
     const t = scaleFor(DEFAULTS.base);
-    expect(t).toMatchObject({ tiny: 11, small: 12, body: 13, lead: 15, title: 20, display: 28, mast: 34 });
+    expect(DEFAULTS.base).toBe(13);
+    expect(t).toMatchObject({ tiny: 12, small: 13, body: 14, lead: 16, title: 21, display: 30, mast: 36 });
   });
 
-  it('reproduces the shipped --mx-group-h of 22px, and grows it when type grows', () => {
-    // tokens.css calls 22px "16px of line for --t-tiny plus 3px of padding either side".
+  it('reproduces the shipped --mx-group-h of 23px, and grows it when type grows', () => {
+    // tokens.css calls 23px "17px of line for --t-tiny plus 3px of padding either side".
     // A fixed box that no longer holds its contents is the bug the type-floor pass found
-    // twice with nothing to catch it, so the lab derives it rather than leaving it behind.
+    // twice with nothing to catch it, so the lab derives it rather than leaving it behind —
+    // which is how it followed --t-tiny from 11px to 12px without anyone remembering to.
+    expect(scaleFor(DEFAULTS.base).mxGroupH).toBe(23);
     expect(scaleFor(12).mxGroupH).toBe(22);
-    expect(scaleFor(15).mxGroupH).toBeGreaterThan(22);
+    expect(scaleFor(15).mxGroupH).toBeGreaterThan(23);
   });
 
-  it('reproduces base.css cell padding at the default density', () => {
-    expect(DENSITY_PAD.default).toEqual({ y: 7, x: 9 });
+  it('reproduces base.css cell padding at the shipped density', () => {
+    expect(SHIPPED_DENSITY).toBe(DEFAULTS.density);
+    expect(DENSITY_PAD[SHIPPED_DENSITY]).toEqual({ y: 11, x: 12 });
   });
 
-  it('emits the shipped IBM Plex stacks', () => {
+  it('emits the shipped Figtree / Roboto Mono stacks', () => {
     const v = cssVars(DEFAULTS);
-    expect(v['--font-sans']).toContain("'IBM Plex Sans'");
-    expect(v['--lab-mono-real']).toContain("'IBM Plex Mono'");
+    expect(v['--font-sans']).toContain("'Figtree'");
+    expect(v['--lab-mono-real']).toContain("'Roboto Mono'");
   });
 });
 
@@ -81,7 +89,7 @@ describe('design lab — mono scope', () => {
     // lab.css puts it back on CAS/code/id. If --lab-mono-real followed --font-mono into
     // the sans, "identifiers only" would silently become "none".
     const v = cssVars(withScope('identifiers'));
-    expect(v['--lab-mono-real']).toContain("'IBM Plex Mono'");
+    expect(v['--lab-mono-real']).toContain("'Roboto Mono'");
   });
 
   it('publishes the scope as a data attribute for lab.css to key off', () => {
@@ -114,11 +122,18 @@ describe('design lab — the copy-out block', () => {
   });
 
   it('names the file and rule for every choice that is not a token', () => {
-    const css = cssBlock({ ...DEFAULTS, monoScope: 'none', density: 'roomy', sidebar: 'navy' });
+    // `compact`, not `roomy`: roomy is what base.css ships now, so it needs no hand edit and
+    // the block correctly says nothing about it. See SHIPPED_DENSITY.
+    const css = cssBlock({ ...DEFAULTS, monoScope: 'none', density: 'compact', sidebar: 'navy' });
     expect(css).toContain('primitives.css');
     expect(css).toContain('base.css');
     expect(css).toContain('shell.css');
-    expect(css).toContain('11px 12px');
+    expect(css).toContain('3px 7px');
+  });
+
+  it('stays silent about the density base.css already ships', () => {
+    const css = cssBlock({ ...DEFAULTS, density: SHIPPED_DENSITY, sidebar: 'navy' });
+    expect(css).not.toMatch(/DENSITY =/);
   });
 
   it('says nothing about non-token choices when none were made', () => {
