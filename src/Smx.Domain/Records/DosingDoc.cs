@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Smx.Domain.Records;
 
 /// The three legal values of <see cref="Bound.Kind"/>. A constants class rather than three bare literals,
@@ -80,5 +82,25 @@ public sealed class DosingDoc
     /// are Regulatory and VP, and adding a third would dilute what a signature means.
     public string? ReviewNote { get; set; }
     public string? ReviewedAt { get; set; }
+
+    /// TRUE when this dosing rests on something weaker than a signature or a measurement: a substance present
+    /// on the AGENT'S PROPOSAL alone (<see cref="ProvisionalSet"/>), or a window computed over a
+    /// <see cref="DefaultDetectionFloor"/> rather than the physicist's number.
+    ///
+    /// It is the ORDER-BLOCKING flag. The pipeline no longer parks (execution-core §8), so this is what
+    /// carries the cost of that: procurement refuses over a provisional dosing, and the compliance-package
+    /// export still consults <see cref="CompliantSet"/>. Nothing irreversible happens over a proposal.
+    ///
+    /// Serialized even when FALSE, like <c>GateDoc.ApprovedBy</c> and for the same reason: the UI must read
+    /// "not provisional" off the wire rather than infer it from an absent key. A frontend/backend build skew
+    /// would otherwise turn a missing field into a clean bill of health, which is the quiet reading of an
+    /// alarm — exactly the failure this codebase has shipped before.
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public bool Provisional { get; set; }
+
+    /// One NAMED line per reason — never a count. "3 substances are provisional" is not something an
+    /// operator can act on; "Ce (1306-38-3) in 'bottle' is included on the agent's proposal alone" is.
+    public List<string> ProvisionalReasons { get; set; } = [];
+
     public required string GeneratedAt { get; set; }
 }
