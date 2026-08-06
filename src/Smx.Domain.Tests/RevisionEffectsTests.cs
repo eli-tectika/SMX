@@ -12,7 +12,6 @@ public class RevisionEffectsTests
     [InlineData(Stages.Decision, true)]     // Plan 5 — the operator changes the pick by telling the agent why
     [InlineData(Stages.Intake, false)]
     [InlineData(Stages.Matrix, false)]      // assembled deterministically — there is no agent to re-run
-    [InlineData(Stages.Cost, false)]        // deterministic table lookup — change its inputs, not the audit
     public void IsRevisable_DiscoveryRegulatoryDosingAndDecisionOnly(string stage, bool expected) =>
         Assert.Equal(expected, RevisionEffects.IsRevisable(stage));
 
@@ -26,7 +25,6 @@ public class RevisionEffectsTests
 
     [Theory]
     [InlineData(Stages.Matrix)]
-    [InlineData(Stages.Cost)]               // not revisable — so asking what a revision would void is a bug
     public void BreaksRegulatoryGate_ThrowsForANonRevisableStage(string stage) =>
         // `false` is the DANGEROUS answer (it leaves an approved gate standing over a changed analysis),
         // so an unrecognized/non-revisable stage must never be able to fall into it.
@@ -44,7 +42,6 @@ public class RevisionEffectsTests
     [Theory]
     [InlineData(Stages.Matrix)]
     [InlineData(Stages.Intake)]
-    [InlineData(Stages.Cost)]               // not revisable — a Cost change has no "why" to file
     public void ConclusionKind_ThrowsForANonRevisableStage(string stage) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => RevisionEffects.ConclusionKind(stage));
 
@@ -54,7 +51,6 @@ public class RevisionEffectsTests
     [InlineData(Stages.Regulatory)]
     [InlineData(Stages.Matrix)]
     [InlineData(Stages.Dosing)]
-    [InlineData(Stages.Cost)]
     [InlineData(Stages.Decision)]
     public void EveryRevisableStage_HasAConclusionKindAndAGateAnswer(string stage)
     {

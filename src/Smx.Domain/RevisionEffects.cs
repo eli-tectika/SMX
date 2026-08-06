@@ -8,7 +8,7 @@ public static class RevisionEffects
 {
     /// Revising a stage means RE-RUNNING its agent. Discovery, Regulatory and Dosing qualify; Matrix does
     /// not (it is assembled deterministically from candidates + verdicts — revise those instead), and
-    /// neither does Cost (it is a deterministic table lookup — to change a cost you change its inputs, not
+    /// neither did Cost, the deterministic lookup that has since been deleted (to change it you changed its inputs, not
     /// argue with the audit; Law 4 has no "why" to record over a price fetch).
     ///
     /// Dosing IS revisable (Law 4): the operator changes a ppm by telling the agent WHY, which re-runs the
@@ -39,7 +39,7 @@ public static class RevisionEffects
     /// first — which every caller must do anyway. Dosing is DOWNSTREAM of the gate: it consumes the
     /// compliant set the operator signed over, it cannot change it, so re-running it must NOT void that
     /// signature — it answers `false` here. Decision is downstream further still (the pick reads the
-    /// signed analysis) and answers `false` for the same reason. (Cost is not revisable, so it hits the
+    /// signed analysis) and answers `false` for the same reason. (Matrix is not revisable, so it hits the
     /// throw above.)
     public static bool BreaksRegulatoryGate(string stage)
     {

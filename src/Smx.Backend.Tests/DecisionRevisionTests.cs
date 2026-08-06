@@ -143,16 +143,6 @@ public class DecisionRevisionTests
         GeneratedAt = "2026-07-15T11:00:00.0000000+00:00",
     };
 
-    private static CostDoc CostBefore() => new()
-    {
-        Id = RecordIds.Cost(P), ProjectId = P,
-        Substances =
-        [
-            new SupplierAudit("cas-zr", "Zr", ["Acme Chemicals"], null, "", []),
-            new SupplierAudit("cas-y", "Y", ["Beta Reagents"], null, "", []),
-        ],
-        GeneratedAt = SeededCostGeneratedAt,
-    };
 
     /// The DecisionDoc the operator is about to revise — the agent's STALE pick over the (cas-zr, cas-y)
     /// code, with a distinctive GeneratedAt so an "UNCHANGED" assertion proves content, not mere presence.
@@ -166,7 +156,7 @@ public class DecisionRevisionTests
                 [
                     new DecisionRow("cas-zr", "Zr", Determinations.Recommended, 450.0,
                         new ClearedCriteria(true, true, true),
-                        new TraceRefs(RecordIds.Verdict(P, "cas-zr", "bottle"), RecordIds.Dosing(P), RecordIds.Cost(P))),
+                        new TraceRefs(RecordIds.Verdict(P, "cas-zr", "bottle"), RecordIds.Dosing(P))),
                 ],
                 ProposedCode: new ProposedCode(StaleRatio, ["cas-zr", "cas-y"], "the stale pick"),
                 ConfirmedCode: confirmed ? StaleRatio : null,
@@ -188,7 +178,7 @@ public class DecisionRevisionTests
     private static async Task SeedProposedDecisionAsync(InMemoryRecordStore store, InMemoryKnowledgeStore knowledge)
     {
         var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
-        foreach (var s in new[] { Stages.Intake, Stages.Discovery, Stages.Regulatory, Stages.Matrix, Stages.Dosing, Stages.Cost })
+        foreach (var s in new[] { Stages.Intake, Stages.Discovery, Stages.Regulatory, Stages.Matrix, Stages.Dosing })
             project.Stages[s].Status = "done";
         project.Stages[Stages.Decision].Status = "done";
         await store.UpsertProjectAsync(project);
@@ -200,7 +190,6 @@ public class DecisionRevisionTests
         await store.UpsertVerdictAsync(Verdict("cas-fe", "Fe"));
         await store.UpsertGateAsync(RegGate());
         await store.UpsertDosingAsync(DosingBefore());
-        await store.UpsertCostAsync(CostBefore());
         await store.UpsertDecisionAsync(DecisionBefore());
         await knowledge.UpsertSubstancePropertyAsync(Loading("cas-zr", "Zr"));
         await knowledge.UpsertSubstancePropertyAsync(Loading("cas-y", "Y"));
@@ -408,14 +397,12 @@ public class DecisionRevisionTests
         //    Decision re-arms its own, with the park error cleared.
         await d.OnRevisionAsync(Delivered(DosingRevision("swap Zr for Fe — the client's colorant now carries Zr")), default);
         Assert.Equal(RevisionStatus.Applied, Assert.Single(await store.GetRevisionsAsync(P)).Status);
-        Assert.Equal("pending", Stage(store, Stages.Cost).Status);
         var decisionStage = Stage(store, Stages.Decision);
         Assert.Equal("pending", decisionStage.Status);
         Assert.Null(decisionStage.Error);
 
         // 2) The persisted DosingDoc reaches the change feed — Cost re-prices the NEW substance set.
         await d.RunAsync(P, default);
-        Assert.Equal("done", Stage(store, Stages.Cost).Status);
 
         // 3) The fresh CostDoc reaches the change feed — and THIS time Decision is `pending`, so the pick
         //    re-runs over the NEW dosing: the proposal names the (cas-y, cas-fe) code, not the stale one.
@@ -458,9 +445,7 @@ public class DecisionRevisionTests
 
         // The record is untouched: dosing, cost, decision, stages and gate all stand as signed.
         Assert.Equal(DosingBefore().GeneratedAt, (await store.GetDosingAsync(P))!.GeneratedAt);
-        Assert.Equal(SeededCostGeneratedAt, (await store.GetCostAsync(P))!.GeneratedAt);
         Assert.Equal(SeededDecisionGeneratedAt, (await store.GetDecisionAsync(P))!.GeneratedAt);
-        Assert.Equal("done", Stage(store, Stages.Cost).Status);
         Assert.Equal("done", Stage(store, Stages.Decision).Status);
         Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Vp))!.Status);
     }
@@ -632,8 +617,6 @@ public class DecisionRevisionTests
 
         // NOTHING was reset and NOTHING persisted: dosing/cost stand, both downstream stages untouched.
         Assert.Equal(DosingBefore().GeneratedAt, (await store.GetDosingAsync(P))!.GeneratedAt);
-        Assert.Equal(SeededCostGeneratedAt, (await store.GetCostAsync(P))!.GeneratedAt);
-        Assert.Equal("done", Stage(store, Stages.Cost).Status);
         Assert.Equal("done", Stage(store, Stages.Decision).Status);   // NOT reset to pending
         Assert.Empty(catalog.Calls);
         Assert.Equal(StaleRatio, Assert.Single((await store.GetDecisionAsync(P))!.Components).ConfirmedCode);

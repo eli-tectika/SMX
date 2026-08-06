@@ -20,10 +20,10 @@ public class VpGateTests
         Rows:
         [
             new DecisionRow("cas-zr", "Zr", Determinations.Recommended, 450.0,
-                Cleared: new ClearedCriteria(Regulatory: true, Dosing: true, Cost: true),
+                Cleared: new ClearedCriteria(Regulatory: true, Dosing: true, Availability: true),
                 Traceability: new TraceRefs(
                     Verdict: RecordIds.Verdict("p1", "cas-zr", id),
-                    Window: RecordIds.Dosing("p1"), Audit: RecordIds.Cost("p1"))),
+                    Window: RecordIds.Dosing("p1"))),
         ],
         ProposedCode: proposed
             ? new ProposedCode("Zr:Y = 1.00:0.44", ["cas-zr", "cas-y"], "covers both criteria at lowest cost")

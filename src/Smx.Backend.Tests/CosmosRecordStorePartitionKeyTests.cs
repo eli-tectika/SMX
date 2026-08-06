@@ -119,12 +119,6 @@ public sealed class CosmosRecordStorePartitionKeyTests
         GeneratedAt = "2026-07-15T00:00:00Z",
     };
 
-    private static CostDoc Cost() => new()
-    {
-        Id = RecordIds.Cost("p1"),     // "p1|cost"
-        ProjectId = "p1",              // "p1" — the PK
-        GeneratedAt = "2026-07-15T00:00:00Z",
-    };
 
     private static DecisionDoc Decision() => new()
     {
@@ -153,25 +147,8 @@ public sealed class CosmosRecordStorePartitionKeyTests
         AssertReadAddressesTheUpsertedDocument(s.Records);
     }
 
-    // ---- Cost — the highest-value mutation lives here (UpsertCostAsync passing doc.Id) ------------
 
-    [Fact]
-    public async Task Cost_upsert_passes_the_partition_key_cosmos_will_extract()
-    {
-        var s = new Store();
-        await s.Value.UpsertCostAsync(Cost());
-        AssertUpsertKeyIsWhatCosmosWillExtract(s.Records);
-    }
 
-    [Fact]
-    public async Task Cost_point_read_addresses_the_document_the_upsert_wrote()
-    {
-        var s = new Store();
-        await s.Value.UpsertCostAsync(Cost());
-
-        Assert.Null(await s.Value.GetCostAsync("p1"));   // the container is empty: 404 -> null
-        AssertReadAddressesTheUpsertedDocument(s.Records);
-    }
 
     // ---- Decision — the doc the VP signs over; a mis-keyed upsert here is a decision nobody can read back --
 

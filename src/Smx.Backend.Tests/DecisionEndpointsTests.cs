@@ -52,7 +52,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         [
             new DecisionRow("cas-zr", "Zr", Determinations.Recommended, 450.0,
                 new ClearedCriteria(true, true, true),
-                new TraceRefs(RecordIds.Verdict(P, "cas-zr", id), RecordIds.Dosing(P), RecordIds.Cost(P))),
+                new TraceRefs(RecordIds.Verdict(P, "cas-zr", id), RecordIds.Dosing(P))),
         ],
         ProposedCode: new ProposedCode(Ratio(id), ["cas-zr", "cas-y"], "the agent's rationale — history, not a signature"));
 

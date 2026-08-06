@@ -5,7 +5,7 @@ using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tools;
 using Smx.Backend.Agents;
-using Smx.Backend.Cost;
+using Smx.Backend.Supply;
 using Smx.Backend.Knowledge;
 
 namespace Smx.Backend.Pipeline;
@@ -86,7 +86,6 @@ public sealed class PipelineRunner(
             (Stages.Regulatory, RunRegulatoryAsync),
             (Stages.Matrix,     RunMatrixAsync),
             (Stages.Dosing,     RunDosingAsync),
-            (Stages.Cost,       RunCostAsync),
             (Stages.Decision,   RunDecisionAsync),
         };
 
@@ -706,6 +705,18 @@ public sealed class PipelineRunner(
         if (!result.Succeeded) return new StageResult(RunOutcome.NeedsReview, result.Error, null, null);
 
         var dosing = result.Output!;
+
+        // The supply audit, formerly a stage of its own. DISTINCT over the finalized codes' markers: one
+        // (CAS, element) is audited once even when it appears in several codes or components. A null catalog
+        // degrades exactly as RunCostAsync did -- Supply stays empty rather than an audit being fabricated
+        // from a catalog that is not there.
+        if (catalog is not null)
+        {
+            var toAudit = dosing.Codes.SelectMany(k => k.Markers)
+                .Select(m => (m.Cas, m.Element)).Distinct().ToList();
+            dosing.Supply = await SupplyAudit.RunAsync(catalog, toAudit, ct);
+        }
+
         // What this dosing rests on, stamped onto the document itself so procurement can refuse over it
         // without re-deriving the reasoning. Set together — a `Provisional` with no reasons is an alarm
         // nobody can act on, and reasons with no flag are an alarm nobody sees.
@@ -729,34 +740,6 @@ public sealed class PipelineRunner(
             RecordIds.Dosing(projectId));
     }
 
-    private async Task<StageResult> RunCostAsync(RunTrail trail, CancellationToken ct)
-    {
-        var projectId = trail.Run.ProjectId;
-        if (await HasRunAsync(projectId, Stages.Cost, ct)) return Skip();
-        if (await store.GetDosingAsync(projectId, ct) is not { } d) return Skip();
-        if (catalog is null) return Skip(); // degrades safely, as OnDosingAsync did
-
-        // DISTINCT over the finalized codes' markers: one (CAS, element) is audited once even when it
-        // appears in several codes or components. The element selects the ref-catalog partition; the CAS
-        // is the exact identifier the returned cards are filtered by.
-        var substances = d.Codes.SelectMany(k => k.Markers).Select(m => (m.Cas, m.Element)).Distinct().ToList();
-
-        // trail.Run.Agent stays NULL. Cost is a catalog lookup and a price parse; there is nothing here
-        // for a model to reason about, and one asked to would only be given the chance to invent a price
-        // procurement then acts on. The UI reads the null and says so.
-        await trail.StepAsync(RunStepKind.Started,
-            $"Pricing {substances.Count} substances against the supplier catalog.", ct: ct);
-        await SetStageAsync(projectId, Stages.Cost, s => s.Status = "running", ct);
-
-        var cost = await CostAudit.RunAsync(catalog, substances, projectId,
-            DateTimeOffset.UtcNow.ToString("O"), ct);
-        await store.UpsertCostAsync(cost, ct);
-        return new StageResult(RunOutcome.Done, null,
-            $"Priced {substances.Count} substances — " +
-            $"{cost.Substances.Count(s => s.BestQuote is not null)} with a parseable quote.",
-            RecordIds.Cost(projectId));
-    }
-
     /// The journey's last mile. The decision matrix is DETERMINISTIC assembly over the four upstream
     /// records (DecisionAssembler); only the final-code PICK is an agent, and its output is a PROPOSAL.
     /// The STAGE therefore parks at `awaiting-VP`, never `done`: only the VP gate's signature completes it
@@ -766,16 +749,15 @@ public sealed class PipelineRunner(
         var projectId = trail.Run.ProjectId;
         if (await HasRunAsync(projectId, Stages.Decision, ct)) return Skip();
         var dosing = await store.GetDosingAsync(projectId, ct);
-        var cost = await store.GetCostAsync(projectId, ct);
         var constraints = await store.GetConstraintsAsync(projectId, ct);
-        if (dosing is null || cost is null || constraints is null) return Skip();
+        if (dosing is null || constraints is null) return Skip();
         var verdicts = await store.GetVerdictsAsync(projectId, ct);
 
         // Assemble may throw on a pre-invariant DosingDoc with a duplicate (component, cas) window. It is
         // INSIDE the opened run deliberately: ExecuteAsync's catch stamps `failed` with the message, so
         // the failure is visible rather than a stage silently stuck (§11, nothing dies silently).
         var assembled = DecisionAssembler.Assemble(
-            verdicts, dosing, cost, [.. constraints.Components.Select(c => c.Id)]);
+            verdicts, dosing, [.. constraints.Components.Select(c => c.Id)]);
 
         trail.Run.Agent = DecisionAgent.AgentName;
         await trail.StepAsync(RunStepKind.Started,
@@ -1202,15 +1184,13 @@ public sealed class PipelineRunner(
                 // the upsert would regenerate the records a just-signed gate covers.
                 await ThrowIfClosedAsync(c.ProjectId, "project", token);
 
-                // A Dosing revision may change the codes' substance set, so a Cost audit computed over the
-                // OLD set is now stale — the same "never leave an artifact that is wrong but looks current"
-                // rule the Matrix gets. Reset Cost to `pending`, which is what InvalidatedAsync reads: the
-                // next pass re-prices over the revised substances instead of skipping on the stale doc. A
-                // review note does NOT travel this path, so "a review note does not re-price" is preserved.
-                await SetStageAsync(c.ProjectId, Stages.Cost,
-                    s => { if (s.Status is "done" or "failed") { s.Status = "pending"; s.Error = null; } }, token);
-                // ...and Decision with it: the DecisionDoc's rows and proposal were assembled over the OLD
-                // dosing/cost, so leaving Decision alone would keep a STALE proposal at the VP's door.
+                // The Cost stage's reset used to live here — a Dosing revision changes the codes' substance
+                // set, so the audit over the OLD set was stale. That is now handled INSIDE the revised dosing
+                // itself: ReviseDosingAsync re-runs the supply audit alongside the codes, so the audit can no
+                // longer be stale relative to the document carrying it. One fewer record to keep in step.
+                //
+                // Decision still resets: its rows and proposal were assembled over the OLD dosing, so
+                // leaving it alone would keep a STALE proposal at the VP's door.
                 //
                 // `done` is now INCLUDED, which it could not be while the park existed. Decision reaches
                 // `done` off its own agent, not off a signature, so `done` no longer means "the VP signed and
@@ -1237,13 +1217,10 @@ public sealed class PipelineRunner(
         var verdicts = await store.GetVerdictsAsync(c.ProjectId, ct);
         var dosing = await store.GetDosingAsync(c.ProjectId, ct)
             ?? throw new InvalidOperationException("no dosing on file — there are no finalized codes to re-pick over");
-        var cost = await store.GetCostAsync(c.ProjectId, ct)
-            ?? throw new InvalidOperationException("no cost audit on file — Decision has not run for this project");
-
         // Assemble may throw (the pre-invariant duplicate-window ArgumentException); here the
         // OnRevisionAsync catch turns that into an honestly-failed revision, analysis untouched.
         var assembled = DecisionAssembler.Assemble(
-            verdicts, dosing, cost, [.. c.Components.Select(k => k.Id)]);
+            verdicts, dosing, [.. c.Components.Select(k => k.Id)]);
 
         var result = await agents.RunDecisionAsync(assembled, dosing, r, NullRunTrail.Instance, ct);
         if (!result.Succeeded)
@@ -1512,7 +1489,6 @@ public sealed class PipelineRunner(
         Stages.Regulatory => JsonSerializer.Serialize(await store.GetVerdictsAsync(projectId, ct), Json.Options),
         Stages.Matrix => JsonSerializer.Serialize(await store.GetMatrixAsync(projectId, ct), Json.Options),
         Stages.Dosing => JsonSerializer.Serialize(await store.GetDosingAsync(projectId, ct), Json.Options),
-        Stages.Cost => JsonSerializer.Serialize(await store.GetCostAsync(projectId, ct), Json.Options),
         Stages.Decision => JsonSerializer.Serialize(await store.GetDecisionAsync(projectId, ct), Json.Options),
         _ => "{}",
     };

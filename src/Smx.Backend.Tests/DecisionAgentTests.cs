@@ -12,8 +12,8 @@ public class DecisionAgentTests
 
     private static DecisionRow Row(string cas, string element, double ppm) =>
         new(cas, element, Determinations.Recommended, ppm,
-            new ClearedCriteria(Regulatory: true, Dosing: true, Cost: true),
-            new TraceRefs($"p1|verdict|{cas}|bottle", "p1|dosing", "p1|cost"));
+            new ClearedCriteria(Regulatory: true, Dosing: true, Availability: true),
+            new TraceRefs($"p1|verdict|{cas}|bottle", "p1|dosing"));
 
     private static IReadOnlyList<ComponentDecision> Assembled() =>
         [new("bottle", Rows: [Row("cas-y", "Y", 44), Row("cas-zr", "Zr", 100)], ProposedCode: null)];

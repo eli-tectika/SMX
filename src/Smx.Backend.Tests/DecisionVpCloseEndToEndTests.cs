@@ -177,7 +177,6 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
             .Returns("Zr", Card("cas-zr", "Zr", "Acme", "cat-zr", "$66.00", "25 g"))
             .Returns("Y", Card("cas-y", "Y", "Beta", "cat-y", "$50.00", "25 g"));
         await _dispatcher.RunAsync(P, default);
-        Assert.Equal("done", (await StageAsync(Stages.Cost)).Status);
     }
 
     [Fact]

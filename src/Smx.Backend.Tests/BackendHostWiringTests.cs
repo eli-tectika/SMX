@@ -138,11 +138,12 @@ public class BackendHostWiringTests
             // ReadToolsFor left the combined-list assertion green.) An agent that can still CHANGE the analysis
             // but can no longer LOOK ANYTHING UP is the worst reachable state in this system — it answers, and
             // acts, from memory.
-            if (stage is Stages.Matrix or Stages.Cost)
+            if (stage == Stages.Matrix)
             {
-                // No corpus to search, on purpose. Matrix derives its output from the record it is handed;
-                // Cost is a deterministic table lookup. Neither is revisable either — so a turn on them holds
-                // no capability at all and answers only from the stage inputs in its prompt.
+                // No corpus to search, on purpose: Matrix derives its output from the record it is handed,
+                // and it is not revisable either — so a turn on it holds no capability at all and answers
+                // only from the stage inputs in its prompt. Cost used to share this branch; the stage is
+                // deleted (redesign spec §6), which is why the condition names one stage now.
                 Assert.Empty(readTools);
                 Assert.Empty(tools);
             }

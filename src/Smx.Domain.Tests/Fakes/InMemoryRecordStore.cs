@@ -50,8 +50,6 @@ public sealed class InMemoryRecordStore : IRecordStore
         Read<MatrixDoc>(RecordIds.Matrix(projectId));
     public Task<DosingDoc?> GetDosingAsync(string projectId, CancellationToken ct = default) =>
         Read<DosingDoc>(RecordIds.Dosing(projectId));
-    public Task<CostDoc?> GetCostAsync(string projectId, CancellationToken ct = default) =>
-        Read<CostDoc>(RecordIds.Cost(projectId));
     public Task<DecisionDoc?> GetDecisionAsync(string projectId, CancellationToken ct = default) =>
         Read<DecisionDoc>(RecordIds.Decision(projectId));
     public Task<IReadOnlyList<VerdictDoc>> GetVerdictsAsync(string projectId, CancellationToken ct = default) =>
@@ -98,7 +96,6 @@ public sealed class InMemoryRecordStore : IRecordStore
     public Task UpsertVerdictAsync(VerdictDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertMatrixAsync(MatrixDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertDosingAsync(DosingDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
-    public Task UpsertCostAsync(CostDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertDecisionAsync(DecisionDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertPoolAsync(PoolDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);

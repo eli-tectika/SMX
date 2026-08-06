@@ -90,7 +90,7 @@ public class ProjectCloseDispatchTests
                         new DecisionRow("cas-zr", "Zr", Determinations.Recommended, 450.0,
                             new ClearedCriteria(true, true, true),
                             new TraceRefs(RecordIds.Verdict(pid, "cas-zr", "bottle"),
-                                RecordIds.Dosing(pid), RecordIds.Cost(pid))),
+                                RecordIds.Dosing(pid))),
                     ],
                     ProposedCode: new ProposedCode(Ratio, ["cas-zr", "cas-y"], "agent pick"),
                     ConfirmedCode: Ratio, ConfirmedBy: "VP R&D", ConfirmedReason: "reviewed on 16 Jul"),

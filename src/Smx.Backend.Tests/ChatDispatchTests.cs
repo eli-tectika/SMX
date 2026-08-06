@@ -296,38 +296,14 @@ public class ChatDispatchTests
         Assert.Contains("600", inputs);
     }
 
-    [Fact]
-    public async Task ChatMessage_OnCost_SeesTheCostDoc_NotEmptyInputs()
-    {
-        // Cost holds no tools (it is deterministic), but the chat surface is still a read-only Q&A over the
-        // finished audit — so the CostDoc must reach the agent as inputs, not "{}". This is the other half of
-        // the "one commit makes the stage live" wiring: the arm exists and carries the audit.
-        var (d, store, agents) = Sut();
-        await SeedAsync(d, store);
-        await store.UpsertCostAsync(new CostDoc
-        {
-            Id = RecordIds.Cost(P), ProjectId = P, GeneratedAt = "2026-07-15T00:00:00Z",
-            Substances = [new SupplierAudit("10035-04-8", "Zr", ["OnlySource"],
-                BestQuote: null, PriceNote: "single listing", Risks: ["single-source"])],
-        });
 
-        string? inputs = null;
-        agents.Chat = (_, _, i, _) => { inputs = i; return Task.FromResult("ok"); };
-
-        await SendAsync(d, store, Message(Stages.Cost, "c1", "is Zr single-source?", "2026-07-15T09:00:00.0000000+00:00"));
-
-        Assert.Contains("10035-04-8", inputs);
-        Assert.Contains("single-source", inputs);
-    }
-
-    /// A project driven to a priced answer: a DosingDoc naming a marker, a CostDoc carrying a cited price,
+    /// A project driven to a priced answer: a DosingDoc naming a marker, a supply audit on the dosing doc,
     /// and a DecisionDoc carrying the agent's proposed final code — enough for the chat surface on ANY of
     /// the new stages to have its own record to read.
     private static async Task SeedCostedProjectAsync(InMemoryRecordStore store)
     {
         var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
         project.Stages[Stages.Dosing].Status = "done";
-        project.Stages[Stages.Cost].Status = "done";
         await store.UpsertProjectAsync(project);
         await store.UpsertDosingAsync(new DosingDoc
         {
@@ -338,13 +314,6 @@ public class ChatDispatchTests
                 [new CodeMarker("1314-36-9", "Y", 20, 0.787, 1, 2), new CodeMarker("10035-04-8", "Zr", 10, 0.5, 1, 2)],
                 "r")],
         });
-        await store.UpsertCostAsync(new CostDoc
-        {
-            Id = RecordIds.Cost(P), ProjectId = P, GeneratedAt = "t",
-            Substances = [new SupplierAudit("1314-36-9", "Y", ["Acme"],
-                new PriceQuote(0.42, "USD", "Acme", "100 g", new Citation("ref-catalog", "ref-catalog/acme", "t")),
-                "note", [])],
-        });
         await store.UpsertDecisionAsync(new DecisionDoc
         {
             Id = RecordIds.Decision(P), ProjectId = P, GeneratedAt = "t",
@@ -352,10 +321,10 @@ public class ChatDispatchTests
                 Rows:
                 [
                     new DecisionRow("1314-36-9", "Y", "recommended", 20,
-                        Cleared: new ClearedCriteria(Regulatory: true, Dosing: true, Cost: true),
+                        Cleared: new ClearedCriteria(Regulatory: true, Dosing: true, Availability: true),
                         Traceability: new TraceRefs(
                             Verdict: RecordIds.Verdict(P, "1314-36-9", "bottle"),
-                            Window: RecordIds.Dosing(P), Audit: RecordIds.Cost(P))),
+                            Window: RecordIds.Dosing(P))),
                 ],
                 ProposedCode: new ProposedCode("Y:Zr = 1.00:0.50", ["1314-36-9", "10035-04-8"],
                     "final code covering both criteria at lowest cost"))],
@@ -369,7 +338,6 @@ public class ChatDispatchTests
     /// each stage's chat turn must be handed THAT stage's own record, never an empty object.
     [Theory]
     [InlineData(Stages.Dosing, "1314-36-9")]     // the DosingDoc's marker
-    [InlineData(Stages.Cost, "ref-catalog/")]    // the CostDoc's citation
     [InlineData(Stages.Decision, "final")]       // the DecisionDoc's picked-code rationale (seed writes "final code …")
     public async Task ChatOnANewStage_SeesThatStagesOwnRecord_NotAnEmptyObject(string stage, string expected)
     {

@@ -108,7 +108,6 @@ public class ChatAgentTests
     public void ReadToolsFor_MatrixCostAndAnUnknownStage_GetNoTools()
     {
         Assert.Empty(Box().ReadToolsFor(Stages.Matrix));
-        Assert.Empty(Box().ReadToolsFor(Stages.Cost));
         Assert.Empty(Box().ReadToolsFor("screening"));   // an unknown stage — the fail-closed default
     }
 
@@ -142,7 +141,6 @@ public class ChatAgentTests
         new[] { "apply_revision", "search_learned_conclusions", "search_reference" })]
     // Cost is deterministic and NOT revisable: no read tools, no apply_revision — a read-only Q&A over the
     // CostDoc in the prompt, holding no tools at all.
-    [InlineData(Stages.Cost, new string[0])]
     public void ChatTurnTools_AreTheStagesReadTools_PlusThisTurnsMutatingTools(string stage, string[] expected) =>
         Assert.Equal(expected, TurnTools(stage).Select(t => t.Name).OrderBy(x => x));
 
@@ -170,7 +168,6 @@ public class ChatAgentTests
     [InlineData(Stages.Regulatory)]
     [InlineData(Stages.Matrix)]
     [InlineData(Stages.Dosing)]
-    [InlineData(Stages.Cost)]
     public void ChatTurnTools_ContainNothingThatCouldSignAGateOrApproveAnything(string stage)
     {
         string[] forbidden = ["approve", "gate", "sign", "determination", "finalize", "release"];

@@ -4,11 +4,17 @@ namespace Smx.Domain.Records;
 
 /// Which criteria a row has actually cleared — booleans computed by DecisionAssembler from the RECORD
 /// (a recommended determination, a dosable window, a priced audit), never asserted by the agent.
-public sealed record ClearedCriteria(bool Regulatory, bool Dosing, bool Cost);
+/// What a decision row actually cleared. `Availability` was `Cost` until the Cost stage was deleted: with
+/// no price data to be had, what the third criterion can honestly assert is that the substance is SOLD by
+/// somebody. It was renamed rather than removed -- silently dropping a criterion would shrink what the VP
+/// signs over without anyone deciding to.
+public sealed record ClearedCriteria(bool Regulatory, bool Dosing, bool Availability);
 
 /// Where each claim in a row came from — record ids, so every figure on the decision matrix is
 /// traceable end-to-end (§3.5: "every row traceable"). Ids, not copies: the record is the truth.
-public sealed record TraceRefs(string Verdict, string Window, string Audit);
+/// Where each claim on a row lives. `Audit` is gone with the cost document -- the supply audit rides on the
+/// dosing doc now, so a third ref would repeat `Window` on every row.
+public sealed record TraceRefs(string Verdict, string Window);
 
 /// One substance's line in a component's decision: the operator's determination (copied from the
 /// verdict — the R.E.'s word, not the agent's), the recommended ppm from Dosing, and what it cleared.

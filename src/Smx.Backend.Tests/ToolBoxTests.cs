@@ -127,7 +127,6 @@ public class ToolBoxTests
                      Smx.Domain.Records.Stages.Intake, Smx.Domain.Records.Stages.Pool,
                      Smx.Domain.Records.Stages.Discovery, Smx.Domain.Records.Stages.Regulatory,
                      Smx.Domain.Records.Stages.Dosing, Smx.Domain.Records.Stages.Decision,
-                     Smx.Domain.Records.Stages.Cost,
                  })
             Assert.DoesNotContain(Box().ReadToolsFor(stage), t => t.Name == "search_web");
     }

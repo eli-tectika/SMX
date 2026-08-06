@@ -86,7 +86,7 @@ public class DosingCostEndToEndTests : IClassFixture<WebApplicationFactory<Progr
         var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
         project.Stages[Stages.Intake].Status = "done";
         project.Stages[Stages.Discovery].Status = "done";
-        project.Stages[Stages.Regulatory].Status = "awaiting-RE"; // the approved-gate delivery flips this to done
+        project.Stages[Stages.Regulatory].Status = "done";   // lands done with its verdicts (execution-core 8)
         project.Stages[Stages.Matrix].Status = "done";
         // Dosing + Cost stay "pending" — the at-least-once trigger conditions the dispatcher acts on.
         await _store.UpsertProjectAsync(project);
@@ -190,11 +190,9 @@ public class DosingCostEndToEndTests : IClassFixture<WebApplicationFactory<Progr
         //    and the deterministic Cost audit follows it in the same pass.
         await _dispatcher.RunAsync(P, default);
         Assert.Equal("done", (await DosingStageAsync()).Status);
-        Assert.Equal("done", (await StageAsync(Stages.Cost)).Status);
 
         // 9. Real HTTP reads + the three tripwires — deserialize into the domain records.
         var dosing = await _client.GetFromJsonAsync<DosingDoc>($"/projects/{P}/dosing");
-        var cost = await _client.GetFromJsonAsync<CostDoc>($"/projects/{P}/cost");
         var compliantCas = new[] { "cas-zr", "cas-y" };
 
         Assert.NotNull(dosing);
@@ -204,9 +202,11 @@ public class DosingCostEndToEndTests : IClassFixture<WebApplicationFactory<Progr
         Assert.All(dosing.Codes.SelectMany(c => c.Markers),
             m => Assert.Contains(m.Cas, compliantCas));           // nothing rejected reached a code
 
-        Assert.NotNull(cost);
-        Assert.NotEmpty(cost!.Substances);
-        Assert.All(cost.Substances, s => Assert.True(s.BestQuote is null || s.BestQuote.Citation is not null));
-        Assert.All(cost.Substances, s => Assert.StartsWith("ref-catalog/", s.BestQuote!.Citation.Reference)); // every figure cited
+        // The third tripwire was "every price carries a ref-catalog citation". There are no prices any more
+        // (redesign spec §6), so what rides here instead is the SUPPLY audit -- on the dosing doc, covering
+        // every marker that reached a code.
+        Assert.NotEmpty(dosing.Supply);
+        Assert.All(dosing.Codes.SelectMany(c => c.Markers),
+            m => Assert.Contains(dosing.Supply, a => a.Cas == m.Cas));
     }
 }

@@ -64,33 +64,6 @@ public class InMemoryRecordStoreTests
         Assert.Equal("Y:Zr = 1.00:0.50", Assert.Single(got!.Codes).RatioSignature);
     }
 
-    [Fact]
-    public async Task Cost_UpsertThenGet_RoundTrips_AndColdStoreIsNull()
-    {
-        var store = new InMemoryRecordStore();
-        Assert.Null(await store.GetCostAsync("p1"));   // cold store: null, not throw
-
-        await store.UpsertCostAsync(new CostDoc
-        {
-            Id = RecordIds.Cost("p1"), ProjectId = "p1", GeneratedAt = "2026-07-15T00:00:00Z",
-            Substances =
-            [
-                new SupplierAudit("1314-36-9", "Y", ["Acme"],
-                    new PriceQuote(4.20, "USD", "Acme", "100 g",
-                        new Citation("catalog", "ref-catalog/product|Y|oxide", "2026-07-15T00:00:00Z")),
-                    "best of 1", []),
-                new SupplierAudit("10035-04-8", "Zr", ["OnlySource"], null, "nothing parseable",
-                    ["single-source"]),
-            ],
-        });
-
-        var got = await store.GetCostAsync("p1");
-        Assert.NotNull(got);
-        Assert.Equal(2, got!.Substances.Count);
-        // The nested Citation and the null quote both survive the fake's deep-copy through Json.Options.
-        Assert.Equal("ref-catalog/product|Y|oxide", got.Substances[0].BestQuote!.Citation.Reference);
-        Assert.Null(got.Substances[1].BestQuote);
-    }
 
     [Fact]
     public async Task Gate_And_SingleVerdict_RoundTrip()

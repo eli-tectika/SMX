@@ -121,7 +121,6 @@ public class OperatorEntryPointWiringTests : IClassFixture<WebApplicationFactory
     {
         await SeedProjectAsync(
             (Stages.Intake, "done"), (Stages.Discovery, "done"), (Stages.Regulatory, "done"),
-            (Stages.Matrix, "done"), (Stages.Dosing, "done"), (Stages.Cost, "done"),
             (Stages.Decision, StageStatus.Done));
         await SeedComplianceAsync();
 
@@ -175,7 +174,6 @@ public class OperatorEntryPointWiringTests : IClassFixture<WebApplicationFactory
     {
         await SeedProjectAsync(
             (Stages.Intake, "done"), (Stages.Discovery, "done"), (Stages.Regulatory, "done"),
-            (Stages.Matrix, "done"), (Stages.Dosing, "done"), (Stages.Cost, "done"),
             (Stages.Decision, StageStatus.Done));
         await SeedComplianceAsync();
         var code = new MarkerCode("bottle",

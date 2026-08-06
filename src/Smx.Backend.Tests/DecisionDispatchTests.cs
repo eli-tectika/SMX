@@ -48,7 +48,6 @@ public class DecisionDispatchTests
         p.Stages[Stages.Regulatory].Status = "done";
         p.Stages[Stages.Matrix].Status = "done";
         p.Stages[Stages.Dosing].Status = "done";
-        p.Stages[Stages.Cost].Status = "done";
         p.Stages[Stages.Decision].Status = decisionStatus;
         return p;
     }
@@ -97,17 +96,6 @@ public class DecisionDispatchTests
         Codes = [new MarkerCode("bottle", [Marker("cas-zr", "Zr", 450.0), Marker("cas-y", "Y", 200.0)], "ratio 9:4")],
     };
 
-    private static CostDoc Cost() => new()
-    {
-        Id = RecordIds.Cost(P), ProjectId = P, GeneratedAt = "t",
-        Substances =
-        [
-            new SupplierAudit("cas-zr", "Zr", ["Acme Chemicals"], new PriceQuote(2.64, "USD", "Acme Chemicals",
-                "25 g", new Citation("ref-catalog", "ref-catalog/z", "t")), "ok", []),
-            new SupplierAudit("cas-y", "Y", ["Beta Reagents"], new PriceQuote(2.00, "USD", "Beta Reagents",
-                "25 g", new Citation("ref-catalog", "ref-catalog/y", "t")), "ok", []),
-        ],
-    };
 
     /// Everything TryDecideAsync resolves: the project (Decision at <paramref name="decisionStatus"/>),
     /// constraints, both verdicts, dosing (overridable — the duplicate-window test seeds a poisoned one)
@@ -121,7 +109,6 @@ public class DecisionDispatchTests
         await store.UpsertVerdictAsync(Verdict("cas-zr", "Zr"));
         await store.UpsertVerdictAsync(Verdict("cas-y", "Y"));
         await store.UpsertDosingAsync(dosing ?? Dosing());
-        await store.UpsertCostAsync(Cost());
     }
 
     private static StageState DecisionStage(InMemoryRecordStore store) =>
@@ -220,7 +207,6 @@ public class DecisionDispatchTests
 
     [Theory]
     [InlineData("dosing")]
-    [InlineData("cost")]
     [InlineData("constraints")]
     public async Task Decision_RequiresItsInputs(string missing)
     {
@@ -231,7 +217,6 @@ public class DecisionDispatchTests
         if (missing != "constraints") await store.UpsertConstraintsAsync(Constraints());
         await store.UpsertCandidatesAsync(Candidates());
         if (missing != "dosing") await store.UpsertDosingAsync(Dosing());
-        if (missing != "cost") await store.UpsertCostAsync(Cost());
         await store.UpsertVerdictAsync(Verdict("cas-zr", "Zr"));
         await store.UpsertVerdictAsync(Verdict("cas-y", "Y"));
 

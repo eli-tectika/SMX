@@ -9,11 +9,14 @@ namespace Smx.Domain;
 public static class DecisionAssembler
 {
     public static IReadOnlyList<ComponentDecision> Assemble(
-        IReadOnlyCollection<VerdictDoc> verdicts, DosingDoc dosing, CostDoc cost,
+        IReadOnlyCollection<VerdictDoc> verdicts, DosingDoc dosing,
         IReadOnlyList<string> componentIds)
     {
         var windows = dosing.Windows.ToDictionary(w => (w.ComponentId, w.Cas));
-        var audits = cost.Substances.ToDictionary(a => a.Cas);
+        // The supply audit now rides on the dosing doc -- the Cost stage that used to carry it is deleted
+        // (redesign spec §6). GroupBy+First rather than ToDictionary: Supply is agent-adjacent data on a
+        // persisted document, and a duplicated CAS there would throw where the old separate doc could not.
+        var audits = dosing.Supply.GroupBy(a => a.Cas).ToDictionary(g => g.Key, g => g.First());
 
         return [.. componentIds.Select(comp => new ComponentDecision(
             comp,
@@ -33,11 +36,16 @@ public static class DecisionAssembler
                             new ClearedCriteria(
                                 Regulatory: true,                   // only recommended rows exist here
                                 Dosing: window is not null,
-                                Cost: audit?.BestQuote is not null),
+                                // AVAILABILITY, not cost: there are no prices, so what this criterion can
+                                // honestly assert is that somebody sells the substance. Renamed rather than
+                                // dropped -- shrinking what the VP signs over should be a decision.
+                                Availability: audit is { Suppliers.Count: > 0 }),
+                            // Two refs, not three. `Audit` pointed at the cost document; with supply folded
+                            // into dosing it would be the same id as `Window` on every row -- a trace that
+                            // traces to itself.
                             new TraceRefs(
                                 Verdict: RecordIds.Verdict(v.ProjectId, v.Cas, v.ComponentId),
-                                Window: RecordIds.Dosing(v.ProjectId),
-                                Audit: RecordIds.Cost(v.ProjectId)));
+                                Window: RecordIds.Dosing(v.ProjectId)));
                     }),
             ],
             ProposedCode: null))];   // the agent fills this in; assembly never proposes

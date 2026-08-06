@@ -8,7 +8,6 @@ public static class RecordTypes
     public const string Verdict = "verdict";
     public const string Matrix = "matrix";
     public const string Dosing = "dosing";
-    public const string Cost = "cost";
     public const string Decision = "decision";
     public const string Gate = "gate";
     public const string Revision = "revision";
@@ -33,7 +32,6 @@ public static class Stages
     public const string Regulatory = "regulatory";
     public const string Matrix = "matrix";
     public const string Dosing = "dosing";
-    public const string Cost = "cost";
     public const string Decision = "decision";
 
     /// Every CHATTABLE stage — and therefore every stage the operator can TALK to (ChatEndpoints and
@@ -45,13 +43,13 @@ public static class Stages
     /// Listed in pipeline order, but do NOT read adjacency off this array: `Pool` is a stage that legitimately
     /// SKIPS (provided candidates, an operator element pool), so it can sit at `pending` on a project that ran
     /// to completion. <see cref="Spine"/> is the ordered list for anything that reasons about what comes next.
-    public static readonly string[] All = [Intake, Pool, Discovery, Regulatory, Matrix, Dosing, Cost, Decision];
+    public static readonly string[] All = [Intake, Pool, Discovery, Regulatory, Matrix, Dosing, Decision];
 
     /// The OPERATOR-FACING journey, in order — the eight-stage spine the UI renders and the dashboard's
     /// "ready to continue" walks. Pool and Background are excluded on purpose: both can be skipped by the
     /// runner without ever being stamped, so a neighbour-is-done rule over them would either advertise a
     /// stage the operator has no screen for, or stall the walk at a stage nothing will ever complete.
-    public static readonly string[] Spine = [Intake, Discovery, Regulatory, Matrix, Dosing, Cost, Decision];
+    public static readonly string[] Spine = [Intake, Discovery, Regulatory, Matrix, Dosing, Decision];
 }
 
 public static class RecordIds
@@ -66,13 +64,12 @@ public static class RecordIds
     /// component. Singular ids also make the change feed's at-least-once redelivery an idempotent upsert
     /// rather than a second document.
     public static string Dosing(string projectId) => $"{projectId}|dosing";
-    public static string Cost(string projectId) => $"{projectId}|cost";
 
-    /// One decision doc per project, same singular-per-project rationale as Dosing/Cost — the per-component
+    /// One decision doc per project, same singular-per-project rationale as Dosing — the per-component
     /// split lives INSIDE the doc (ComponentDecision.ComponentId).
     public static string Decision(string projectId) => $"{projectId}|decision";
 
-    /// One pool doc per project — the proposed candidate pool, singular like Dosing/Cost/Decision so an
+    /// One pool doc per project — the proposed candidate pool, singular like Dosing/Decision so an
     /// at-least-once redelivery upserts one doc. The per-component split lives INSIDE it (PoolSuggestion.Component).
     public static string Pool(string projectId) => $"{projectId}|pool";
 

@@ -27,16 +27,20 @@ public class DecisionAssemblerTests
             [new CodeMarker("cas-zr", "Zr", 100, 0.74, 1, 2), new CodeMarker("cas-y", "Y", 80, 0.7, 1, 2)], "r")],
     };
 
-    private static CostDoc Cost() => new()
+    /// The supply audit now rides on the dosing doc. cas-zr is stocked; cas-y is listed by NOBODY, which is
+    /// what an uncleared availability means once there are no prices to be uncleared for.
+    private static List<SupplierAudit> Supply() =>
+    [
+        new("cas-zr", "Zr", ["Acme"], []),
+        new("cas-y", "Y", [], ["not-off-the-shelf"]),
+    ];
+
+    private static DosingDoc DosingWithSupply()
     {
-        Id = RecordIds.Cost("p1"), ProjectId = "p1", GeneratedAt = "t",
-        Substances =
-        [
-            new SupplierAudit("cas-zr", "Zr", ["Acme"], new PriceQuote(1, "USD", "Acme", "25 g",
-                new Citation("ref-catalog", "ref-catalog/z", "t")), "ok", []),
-            new SupplierAudit("cas-y", "Y", ["Beta"], null, "no price on file — quote required", ["single-source"]),
-        ],
-    };
+        var d = Dosing();
+        d.Supply = Supply();
+        return d;
+    }
 
     [Fact]
     public void Assemble_FoldsOnlyRecommendedSubstances_WithFullTraceability()
@@ -44,7 +48,7 @@ public class DecisionAssemblerTests
         var rows = DecisionAssembler.Assemble(
             [Verdict("cas-zr", "bottle"), Verdict("cas-y", "bottle"), Verdict("cas-ba", "bottle", Determinations.Rejected),
              Verdict("cas-nd", "bottle", det: null)],
-            Dosing(), Cost(), ["bottle"]);
+            DosingWithSupply(), ["bottle"]);
 
         var bottle = Assert.Single(rows);
         Assert.Equal("bottle", bottle.ComponentId);
@@ -55,29 +59,40 @@ public class DecisionAssemblerTests
         Assert.DoesNotContain(bottle.Rows, r => r.Cas == "cas-nd");
         var zr = bottle.Rows.Single(r => r.Cas == "cas-zr");
         Assert.Equal(100, zr.RecommendedPpm);
-        Assert.True(zr.Cleared.Regulatory && zr.Cleared.Dosing && zr.Cleared.Cost);
+        Assert.True(zr.Cleared.Regulatory && zr.Cleared.Dosing && zr.Cleared.Availability);
         Assert.Equal(RecordIds.Verdict("p1", "cas-zr", "bottle"), zr.Traceability.Verdict);
     }
 
     [Fact]
-    public void Assemble_AnUnpricedSubstance_IsNotClearedForCost_ButStaysOnTheMatrix()
+    public void Assemble_AnUnsourcedSubstance_IsNotClearedForAvailability_ButStaysOnTheMatrix()
     {
-        // "no price on file" is the honest output, not a failure — the row shows, uncleared. Hiding it
-        // would push the VP to sign over a substance nobody can order; clearing it would fake a price.
+        // "nobody lists it" is the honest output, not a failure — the row shows, uncleared. Hiding it would
+        // push the VP to sign over a substance nobody can order; clearing it would fake a supplier.
         var rows = DecisionAssembler.Assemble(
-            [Verdict("cas-zr", "bottle"), Verdict("cas-y", "bottle")], Dosing(), Cost(), ["bottle"]);
+            [Verdict("cas-zr", "bottle"), Verdict("cas-y", "bottle")], DosingWithSupply(), ["bottle"]);
         var y = rows.Single().Rows.Single(r => r.Cas == "cas-y");
-        Assert.False(y.Cleared.Cost);
+        Assert.False(y.Cleared.Availability);
         Assert.True(y.Cleared.Regulatory && y.Cleared.Dosing);
+    }
+
+    [Fact]
+    public void Assemble_WithNoSupplyAuditAtAll_ClearsNothingForAvailability()
+    {
+        // The catalog was unavailable, so Supply is empty. That must read as "we do not know", never as
+        // "available" — the absence path leans the same way as the failure path.
+        var rows = DecisionAssembler.Assemble(
+            [Verdict("cas-zr", "bottle")], Dosing(), ["bottle"]);
+
+        Assert.False(Assert.Single(Assert.Single(rows).Rows).Cleared.Availability);
     }
 
     [Fact]
     public void Assemble_ASubstanceWithNoWindow_IsNotClearedForDosing()
     {
-        var dosing = Dosing();
+        var dosing = DosingWithSupply();
         dosing.Windows.RemoveAll(w => w.Cas == "cas-y");
         var y = DecisionAssembler.Assemble(
-            [Verdict("cas-zr", "bottle"), Verdict("cas-y", "bottle")], dosing, Cost(), ["bottle"])
+            [Verdict("cas-zr", "bottle"), Verdict("cas-y", "bottle")], dosing, ["bottle"])
             .Single().Rows.Single(r => r.Cas == "cas-y");
         Assert.False(y.Cleared.Dosing);
         Assert.Equal(0, y.RecommendedPpm); // no window ⇒ no number; a fabricated ppm here is the harm case

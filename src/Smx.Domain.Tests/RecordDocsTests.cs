@@ -160,16 +160,12 @@ public class RecordDocsTests
         Assert.True(p.Stages.ContainsKey(Stages.Regulatory));
         Assert.True(p.Stages.ContainsKey(Stages.Matrix));
         Assert.True(p.Stages.ContainsKey(Stages.Dosing));
-        Assert.True(p.Stages.ContainsKey(Stages.Cost));
         Assert.True(p.Stages.ContainsKey(Stages.Decision));
         Assert.False(p.Stages.ContainsKey("screening"));
-        Assert.Equal(9, p.Stages.Count);
-        // Dosing, Cost and Decision start `pending` like every other stage — inert until an upstream doc
-        // triggers them. `pending` is not "run me now": nothing scans stages for pending, the dispatcher only
-        // reacts to specific upstream docs (the approved regulatory gate triggers Dosing, the CostDoc will
-        // trigger Decision — Plan 5, Task 6).
+        Assert.Equal(8, p.Stages.Count);   // was 9; the Cost stage is deleted (redesign spec §6)
+        // Dosing and Decision start `pending` like every other stage. `pending` is not "run me now": the
+        // runner walks the stages in order and each body decides for itself whether it has work.
         Assert.Equal("pending", p.Stages[Stages.Dosing].Status);
-        Assert.Equal("pending", p.Stages[Stages.Cost].Status);
         Assert.Equal("pending", p.Stages[Stages.Decision].Status);
     }
 
@@ -376,57 +372,6 @@ public class RecordDocsTests
         Assert.Equal("Y:Zr = 1.00:0.50", back.Codes[0].RatioSignature);
     }
 
-    [Fact]
-    public void CostDoc_RoundTrips_WithTypeDiscriminator_AndPreservesNestedCitationsAndNullQuotes()
-    {
-        var doc = new CostDoc
-        {
-            Id = RecordIds.Cost("p1"), ProjectId = "p1", GeneratedAt = "2026-07-15T00:00:00Z",
-            Substances =
-            [
-                new SupplierAudit("1314-36-9", "Y", ["Acme", "Sigma"],
-                    BestQuote: new PriceQuote(4.20, "USD", "Acme", "100 g",
-                        new Citation("catalog", "ref-catalog/product|Y|oxide", "2026-07-15T00:00:00Z", "$420 / 100 g")),
-                    PriceNote: "best of 2 parseable listings",
-                    Risks: []),
-                new SupplierAudit("10035-04-8", "Zr", ["OnlySource"],
-                    BestQuote: null,
-                    PriceNote: "price is free text on the only listing; nothing parseable on file",
-                    Risks: ["single-source", "not-off-the-shelf"]),
-            ],
-        };
-        var json = JsonSerializer.Serialize(doc, Json.Options);
-        // RecordDocRouter switches on this and nothing else. Plan 5's Decision stage triggers off CostDoc, so
-        // a wrong discriminator silently strands the whole downstream chain.
-        Assert.Contains("\"type\":\"cost\"", json);
-        Assert.Contains("\"projectId\":\"p1\"", json);
-        // The Citation is three levels deep (SupplierAudit -> PriceQuote -> Citation). Assert its reference
-        // reaches the wire: a [JsonIgnore] or a required-member mismatch would silently drop the one thing that
-        // makes a price checkable, and procurement acts on these numbers.
-        Assert.Contains("ref-catalog/product|Y|oxide", json);
-
-        var back = JsonSerializer.Deserialize<CostDoc>(json, Json.Options)!;
-        Assert.Equal("p1|cost", back.Id);
-        Assert.Equal(RecordTypes.Cost, back.Type);
-        Assert.Equal(2, back.Substances.Count);
-
-        var quoted = back.Substances[0];
-        Assert.NotNull(quoted.BestQuote);
-        Assert.Equal(4.20, quoted.BestQuote!.UsdPerGram);
-        Assert.Equal("Acme", quoted.BestQuote.Supplier);
-        // The nested Citation survived the round trip, all three levels down.
-        Assert.Equal("catalog", quoted.BestQuote.Citation.Source);
-        Assert.Equal("ref-catalog/product|Y|oxide", quoted.BestQuote.Citation.Reference);
-        Assert.Equal("$420 / 100 g", quoted.BestQuote.Citation.Snippet);
-        Assert.Equal(["Acme", "Sigma"], quoted.Suppliers);
-
-        var unquoted = back.Substances[1];
-        // A null BestQuote must survive AS null — nothing is ever interpolated into existence, and a Cost stage
-        // that read back a fabricated zero-dollar quote would be inventing the number procurement acts on.
-        Assert.Null(unquoted.BestQuote);
-        Assert.Equal("price is free text on the only listing; nothing parseable on file", unquoted.PriceNote);
-        Assert.Equal(["single-source", "not-off-the-shelf"], unquoted.Risks);
-    }
 
     [Fact]
     public void DecisionDoc_RoundTrips_WithProposalAndConfirmationApart()
@@ -443,9 +388,9 @@ public class RecordDocsTests
                     Rows:
                     [
                         new DecisionRow("cas-zr", "Zr", "recommended", 450.0,
-                            Cleared: new ClearedCriteria(Regulatory: true, Dosing: true, Cost: true),
+                            Cleared: new ClearedCriteria(Regulatory: true, Dosing: true, Availability: true),
                             Traceability: new TraceRefs(
-                                Verdict: "p1|verdict|cas-zr|bottle", Window: "p1|dosing", Audit: "p1|cost")),
+                                Verdict: "p1|verdict|cas-zr|bottle", Window: "p1|dosing")),
                     ],
                     ProposedCode: new ProposedCode("Zr:Y = 1.00:0.44", ["cas-zr", "cas-y"], "covers both criteria at lowest cost"),
                     ConfirmedCode: null, ConfirmedBy: null, ConfirmedReason: null),

@@ -36,7 +36,7 @@ public class FakeAgentRunsSmokeTests
         var assembled = new List<ComponentDecision>
         {
             new("bottle", Rows: [new DecisionRow("cas-zr", "Zr", Determinations.Recommended, 100,
-                new ClearedCriteria(true, true, true), new TraceRefs("v", "w", "a"))], ProposedCode: null),
+                new ClearedCriteria(true, true, true), new TraceRefs("v", "w"))], ProposedCode: null),
         };
 
         var result = await ((Smx.Backend.Pipeline.IAgentRuns)fake).RunDecisionAsync(assembled, dosing, null, Smx.Backend.Pipeline.NullRunTrail.Instance, default);

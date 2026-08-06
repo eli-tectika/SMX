@@ -234,10 +234,9 @@ public sealed class ToolBox(
         Stages.Regulatory => RegulatoryTools(),
         Stages.Dosing => DosingReadTools(),
         Stages.Decision => DecisionReadTools(),
-        // Cost is deterministic — its output is a table lookup, not a reasoned claim over a corpus — so a
-        // chat turn on it holds NO read tools and answers only from the CostDoc in its prompt. Listed
-        // explicitly (not left to the default) so the intent reads as deliberate, not as an unknown stage.
-        Stages.Cost => [],
+        // Matrix is deterministic — its output is assembled from the record it is handed, not a reasoned
+        // claim over a corpus — so a chat turn on it holds NO read tools and answers only from the stage
+        // inputs in its prompt. (Cost used to share this branch; the stage is deleted, spec §6.)
         _ => [],
     };
 

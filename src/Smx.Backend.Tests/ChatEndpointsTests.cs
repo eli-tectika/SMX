@@ -99,21 +99,6 @@ public class ChatEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.Empty(Messages("p1"));
     }
 
-    [Fact]
-    public async Task PostChat_ToCost_IsAccepted_ADeterministicStageStillHasAReadOnlyChatSurface()
-    {
-        // Cost is deterministic and holds NO chat tools (ToolBox.ReadToolsFor(Cost) is empty, and Cost is not
-        // revisable), but it is still a real stage in Stages.All — so the operator can ask a read-only Q&A
-        // about the finished audit and the endpoint accepts it, rather than refusing the stage outright. This
-        // pins the plan's stance: chat allowed, tool-less, answered from the CostDoc in the prompt.
-        await SeedProject("p1");
-        var resp = await PostChat("p1", Stages.Cost, "why is Zr flagged single-source?");
-
-        Assert.Equal(HttpStatusCode.Accepted, resp.StatusCode);
-        var doc = Assert.Single(Messages("p1"));
-        Assert.Equal(Stages.Cost, doc.Stage);
-        Assert.Equal(ChatStatus.Pending, doc.Status);
-    }
 
     [Fact]
     public async Task PostChat_ToAnUnknownProject_Is404()

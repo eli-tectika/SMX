@@ -69,6 +69,19 @@ public sealed record MarkerCode(string ComponentId, IReadOnlyList<CodeMarker> Ma
         Smx.Domain.RatioSignature.Of([.. Markers.Select(m => (m.Element, m.Ppm))]);
 }
 
+/// The supply picture for one substance: who sells it, and what is risky about that.
+///
+/// Formerly the payload of a whole Cost STAGE, which existed to attach a PRICE — and the customer has
+/// confirmed there are no price details to attach (redesign spec §6). What is left is the part procurement
+/// actually acts on, and it was always the more useful half: a single-source marker is a supply risk whether
+/// or not anyone quoted it.
+///
+/// `Risks` are the strings <c>SupplyAudit</c> produces: "single-source" | "not-off-the-shelf". Neither was
+/// ever derived from a price — the first is a supplier count, the second is absence from the catalog — so
+/// deleting the price path costs this record nothing.
+public sealed record SupplierAudit(
+    string Cas, string Element, IReadOnlyList<string> Suppliers, IReadOnlyList<string> Risks);
+
 public sealed class DosingDoc
 {
     public required string Id { get; set; }
@@ -76,6 +89,12 @@ public sealed class DosingDoc
     public string Type { get; set; } = RecordTypes.Dosing;
     public List<PpmWindow> Windows { get; set; } = [];
     public List<MarkerCode> Codes { get; set; } = [];
+
+    /// Availability per substance, from the reference catalog. It lives HERE rather than in a document of its
+    /// own because it is one column of the dosing table and has exactly one consumer; a separate record would
+    /// be a second thing to keep in step with the codes it describes, and the Cost stage's whole existence was
+    /// the cost of that separation.
+    public List<SupplierAudit> Supply { get; set; } = [];
 
     /// The SOFT code-finalization checkpoint (UX §4.5). A REVIEW NOTE, not a gate: it records that the
     /// PL/VP/physics review happened. It does not block, and it must never be made to block — the hard gates

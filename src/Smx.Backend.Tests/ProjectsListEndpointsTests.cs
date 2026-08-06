@@ -152,7 +152,7 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
         // physicist's number is exactly the UX failure the spec calls out. awaiting-physics is PHYSICS'
         // ball, awaiting-VP is the VP's — and the park message (StageState.Error) rides as the detail.
         var p = Project("proj-dash", "Acme", "Bottle", "2026-07-16T09:00:00.0000000+00:00");
-        foreach (var s in new[] { Stages.Intake, Stages.Discovery, Stages.Regulatory, Stages.Matrix, Stages.Cost })
+        foreach (var s in new[] { Stages.Intake, Stages.Discovery, Stages.Regulatory, Stages.Matrix })
             p.Stages[s].Status = "done";
         // Dosing genuinely FAILED (the only way a stage stops now); Decision finished its proposal and is
         // waiting on nothing -- its signature is outstanding, which `needsSigning` reports, not `stopped`.
@@ -359,8 +359,8 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
         p.Stages[Stages.Intake].Status = "done";
         p.Stages[Stages.Discovery].Status = "failed";
         p.Stages[Stages.Discovery].Error = "model returned unparseable candidates";
-        p.Stages[Stages.Cost].Status = "needs-review";
-        p.Stages[Stages.Cost].Error = "supplier price unparseable for cas-zr";
+        p.Stages[Stages.Dosing].Status = "needs-review";
+        p.Stages[Stages.Dosing].Error = "no metal loading on file for cas-zr";
         await _store.UpsertProjectAsync(p);
 
         var dash = await _client.GetFromJsonAsync<JsonElement>("/projects/proj-dash-err/dashboard");
@@ -370,9 +370,9 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
         var discovery = Find(stopped, "stage", "discovery");
         Assert.Equal("failed", discovery!.Value.GetProperty("status").GetString());
         Assert.Equal("model returned unparseable candidates", discovery.Value.GetProperty("detail").GetString());
-        var cost = Find(stopped, "stage", "cost");
-        Assert.Equal("needs-review", cost!.Value.GetProperty("status").GetString());
-        Assert.Equal("supplier price unparseable for cas-zr", cost.Value.GetProperty("detail").GetString());
+        var dosing = Find(stopped, "stage", "dosing");
+        Assert.Equal("needs-review", dosing!.Value.GetProperty("status").GetString());
+        Assert.Equal("no metal loading on file for cas-zr", dosing.Value.GetProperty("detail").GetString());
     }
 
     [Fact]

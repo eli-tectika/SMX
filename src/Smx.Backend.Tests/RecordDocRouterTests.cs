@@ -55,19 +55,7 @@ public class RecordDocRouterTests
         Assert.IsType<DosingDoc>(RecordDocRouter.Route(json));
     }
 
-    /// The latent bug this task fixes: a CostDoc on the change feed routed to null, so the Cost stage would
-    /// never dispatch and Plan 5's Decision stage (which triggers off CostDoc) would never fire. Remove the
-    /// Cost arm and this goes red.
-    [Fact]
-    public void Route_DeserializesCostDoc_ByDiscriminator()
-    {
-        var json = System.Text.Json.JsonSerializer.SerializeToElement(new CostDoc
-        {
-            Id = RecordIds.Cost("p1"), ProjectId = "p1", GeneratedAt = "2026-07-15T00:00:00Z",
-        }, Smx.Domain.Json.Options);
-        Assert.IsType<CostDoc>(RecordDocRouter.Route(json));
-    }
-
+    
     /// The DecisionDoc is TERMINAL on the feed: the Decision runner parks the project at `awaiting-VP`
     /// itself (TryDecideAsync, off the CostDoc), and the close hangs off the VP GateDoc — neither waits on
     /// this delivery. So a missing arm is merely inert. The hazard this fact pins is an arm MIS-POINTED at

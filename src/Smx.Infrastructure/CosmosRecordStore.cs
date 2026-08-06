@@ -15,8 +15,6 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
         ReadAsync<MatrixDoc>(RecordIds.Matrix(projectId), projectId, ct);
     public Task<DosingDoc?> GetDosingAsync(string projectId, CancellationToken ct = default) =>
         ReadAsync<DosingDoc>(RecordIds.Dosing(projectId), projectId, ct);
-    public Task<CostDoc?> GetCostAsync(string projectId, CancellationToken ct = default) =>
-        ReadAsync<CostDoc>(RecordIds.Cost(projectId), projectId, ct);
     public Task<DecisionDoc?> GetDecisionAsync(string projectId, CancellationToken ct = default) =>
         ReadAsync<DecisionDoc>(RecordIds.Decision(projectId), projectId, ct);
     public Task<CandidatesDoc?> GetCandidatesAsync(string projectId, CancellationToken ct = default) =>
@@ -137,7 +135,6 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
     public Task UpsertVerdictAsync(VerdictDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertMatrixAsync(MatrixDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertDosingAsync(DosingDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
-    public Task UpsertCostAsync(CostDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertDecisionAsync(DecisionDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertCandidatesAsync(CandidatesDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertPoolAsync(PoolDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
