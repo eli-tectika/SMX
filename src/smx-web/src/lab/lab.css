@@ -1,0 +1,457 @@
+/* ===========================================================================
+   lab.css — the design lab's own stylesheet. DEV ONLY.
+
+   Loaded solely by DesignLab.tsx, which is behind a dynamic import behind
+   `import.meta.env.DEV`, so none of this reaches a production build.
+
+   Two halves:
+     A. OVERRIDES on the real app — the settings that cannot be expressed as a
+        custom property alone (mono scope, table density, sidebar tone).
+     B. The PANEL's own styling, deliberately isolated from the app's tokens.
+
+   Nothing in src/styles/ is edited by this directory, and nothing in src/styles/
+   references it. Everything here keys off a data attribute that only the lab
+   ever sets on <html>, so with the lab closed these selectors match nothing.
+   =========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   A1. MONO SCOPE
+
+   `--font-mono` is the single lever, set at runtime in settings.ts:
+     scope=all          --font-mono -> var(--lab-mono-real)   (today's rule; no rules below fire)
+     scope=identifiers  --font-mono -> var(--font-sans), and the real mono is put BACK on
+                        the two identifier kinds by the rule below
+     scope=none         --font-mono -> var(--font-sans), and it stays there
+
+   The identifier set is CAS and marker code — the two values whose job is to be
+   matched character-by-character against a label, a supplier sheet, or a
+   regulation. A ppm figure, a price and a date are read as quantities; a CAS
+   number is read as a string, and a string being transcribed is the one place
+   where 0-vs-O and 1-vs-l-vs-I actually costs something.
+   --------------------------------------------------------------------------- */
+
+html[data-lab-monoscope='identifiers'] .data[data-kind='cas'],
+html[data-lab-monoscope='identifiers'] .data[data-kind='code'],
+html[data-lab-monoscope='identifiers'] .data[data-kind='id'] {
+  font-family: var(--lab-mono-real);
+}
+
+/* Where the mono face has been withdrawn, figures must still hold their column: a matrix
+   whose digits shift between renders reads as unreliable (base.css says so about .mx, and
+   it is just as true of an inline ppm). This is the substitute for a monospaced face, and
+   it is the whole reason "none" is a serious option rather than a joke. */
+html[data-lab-monoscope='none'] .data,
+html[data-lab-monoscope='identifiers'] .data,
+html[data-lab-monoscope='none'] .chip--mono,
+html[data-lab-monoscope='identifiers'] .chip--mono,
+html[data-lab-monoscope='none'] .prov-hash,
+html[data-lab-monoscope='identifiers'] .prov-hash {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* `.data` carries `font-size: max(var(--t-small), 0.94em)` — an optical correction that
+   exists because IBM Plex MONO runs visually larger than Plex Sans at the same nominal
+   size. Withdraw the mono face and that correction is no longer a correction: it is just
+   a 6% shrink applied to sans set inside sans, which makes every ppm and price quietly
+   smaller than the prose around it. Restore it to 1em wherever the run is no longer mono. */
+html[data-lab-monoscope='none'] .data {
+  font-size: max(var(--t-small), 1em);
+}
+html[data-lab-monoscope='identifiers'] .data:not([data-kind='cas']):not([data-kind='code']):not([data-kind='id']) {
+  font-size: max(var(--t-small), 1em);
+}
+
+/* ---------------------------------------------------------------------------
+   A2. DENSITY
+
+   `.mx th/.mx td` hard-codes `padding: 7px 9px` in base.css, and this directory may not
+   edit that file — so density is an override rather than a token. `--lab-cell-y/x` are
+   written onto <html> at runtime; `default` reproduces 7px 9px exactly.
+   --------------------------------------------------------------------------- */
+
+html[data-lab-density] .mx th,
+html[data-lab-density] .mx td {
+  padding: var(--lab-cell-y) var(--lab-cell-x);
+}
+
+/* ---------------------------------------------------------------------------
+   A3. SIDEBAR TONE
+
+   Read the note above `.sidebar` in shell.css before adopting this. It argues the sidebar
+   is light BECAUSE it carries per-phase status drawn from the verdict palette, and those
+   tones are mixed for a light surface — on navy they either fail contrast or have to be
+   re-mixed into a second, divergent status palette, and two palettes for one meaning is
+   how meanings drift apart.
+
+   This override does not dodge that. It re-mixes every status tone toward white the same
+   way the old icon rail did, so what the customer sees is the REAL cost of the choice —
+   status colours that have moved away from the ones the rest of the app uses — rather
+   than a navy sidebar with illegible glyphs that would fail for the wrong reason.
+   --------------------------------------------------------------------------- */
+
+html[data-lab-sidebar='navy'] .sidebar {
+  background: var(--brand-navy);
+  border-right-color: var(--brand-deep);
+}
+html[data-lab-sidebar='navy'] .sidebar__title {
+  color: color-mix(in srgb, white 62%, var(--brand-navy));
+}
+html[data-lab-sidebar='navy'] .sidebar__item {
+  color: color-mix(in srgb, white 82%, var(--brand-navy));
+}
+html[data-lab-sidebar='navy'] .sidebar__item:hover {
+  background: color-mix(in srgb, white 12%, var(--brand-navy));
+  color: #fff;
+}
+html[data-lab-sidebar='navy'] .sidebar__item.on {
+  background: color-mix(in srgb, white 16%, var(--brand-navy));
+  color: #fff;
+}
+html[data-lab-sidebar='navy'] .sidebar__status {
+  color: color-mix(in srgb, white 55%, var(--brand-navy));
+}
+html[data-lab-sidebar='navy'] .sidebar__item[data-status='done'] .sidebar__status {
+  color: color-mix(in srgb, var(--text-success) 40%, white);
+}
+html[data-lab-sidebar='navy'] .sidebar__item[data-status='parked'] .sidebar__status,
+html[data-lab-sidebar='navy'] .sidebar__item[data-status='awaiting'] .sidebar__status {
+  color: color-mix(in srgb, var(--text-warning) 45%, white);
+}
+html[data-lab-sidebar='navy'] .sidebar__item[data-status='failed'] .sidebar__status,
+html[data-lab-sidebar='navy'] .sidebar__item[data-status='error'] .sidebar__status {
+  color: color-mix(in srgb, var(--text-danger) 45%, white);
+}
+
+/* The panel is fixed on the right; give the app room so nothing important sits under it. */
+html[data-lab='on'] body {
+  padding-right: var(--lab-panel-w, 0px);
+}
+
+/* ===========================================================================
+   B. THE PANEL
+
+   Isolated on purpose. It reads NONE of --font-sans, --font-mono or --t-* except in the
+   specimen strip, where showing the choice IS the point. If it dressed itself in the
+   app's tokens then picking Atkinson at 15px roomy would restyle the control you need in
+   order to pick something else — a panel that becomes unusable at the extremes cannot be
+   used to explore the extremes, which is the only thing it is for.
+   =========================================================================== */
+
+.dlab {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9000; /* over the masthead (25), the sidebar (20) and the scope menu (30) */
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: #14161a;
+  color: #e7e9ec;
+  border-left: 1px solid #2c3037;
+  box-shadow: -8px 0 24px rgb(0 0 0 / 28%);
+  /* Hard-coded, never var(). See the note above. */
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.dlab * {
+  box-sizing: border-box;
+}
+
+.dlab__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #14161a;
+  border-bottom: 1px solid #2c3037;
+}
+.dlab__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f3f5f7;
+}
+.dlab__dev {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #3a2a08;
+  color: #f0c674;
+  border: 1px solid #5c4410;
+}
+.dlab__x {
+  margin-left: auto;
+  background: none;
+  border: 1px solid #2c3037;
+  border-radius: 4px;
+  color: #9aa1ab;
+  font: inherit;
+  cursor: pointer;
+  padding: 2px 7px;
+}
+.dlab__x:hover {
+  color: #fff;
+  border-color: #454b55;
+}
+
+.dlab__body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dlab__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dlab__legend {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #7d858f;
+}
+.dlab__note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #8d959f;
+}
+.dlab__warn {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #f0c674;
+}
+
+.dlab__select {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 5px;
+  border: 1px solid #333941;
+  background: #1c1f25;
+  color: #e7e9ec;
+  font: inherit;
+  cursor: pointer;
+}
+.dlab__select:focus-visible {
+  outline: 2px solid #4b8ef5;
+  outline-offset: 1px;
+}
+
+/* Segmented control — one row of mutually exclusive choices. */
+.dlab__seg {
+  display: flex;
+  border: 1px solid #333941;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.dlab__seg button {
+  flex: 1;
+  padding: 5px 4px;
+  background: #1c1f25;
+  color: #aab1ba;
+  border: none;
+  border-right: 1px solid #333941;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dlab__seg button:last-child {
+  border-right: none;
+}
+.dlab__seg button:hover:not(:disabled) {
+  background: #252a31;
+  color: #fff;
+}
+.dlab__seg button[aria-pressed='true'] {
+  background: #2f6ad9;
+  color: #fff;
+  font-weight: 600;
+}
+.dlab__seg button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.dlab__seg button:focus-visible {
+  outline: 2px solid #4b8ef5;
+  outline-offset: -2px;
+}
+
+/* ---- specimen ---------------------------------------------------------------
+   The strings that actually matter in this product. Two CAS numbers (the ones an
+   operator transcribes), a ratio signature, the confusable set 0O 1lI 5S 8B, an
+   estimated ppm window, a batch mass and a dose. Rendered in the current sans and
+   the current mono at the CURRENT BASE SIZE — judging disambiguation from a 48px
+   pangram is how a font gets chosen that fails at the size it will be read at. */
+
+.dlab__spec {
+  border: 1px solid #333941;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.dlab__specrow {
+  padding: 7px 9px;
+  border-bottom: 1px solid #262b32;
+  background: #fbfbfc;
+  color: #18191b;
+}
+.dlab__specrow:last-child {
+  border-bottom: none;
+}
+.dlab__speclabel {
+  display: block;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b8d93;
+  margin-bottom: 3px;
+}
+.dlab__specline {
+  display: block;
+  font-size: var(--t-small);
+  line-height: 1.65;
+  font-variant-numeric: tabular-nums;
+  word-spacing: 0.35em;
+}
+.dlab__specline--sans {
+  font-family: var(--font-sans);
+}
+.dlab__specline--mono {
+  /* The REAL chosen mono, not var(--font-mono) — the scope control withdraws that one, and
+     the specimen must keep showing the face you picked even while you audition removing it. */
+  font-family: var(--lab-mono-real);
+}
+
+/* ---- metrics ---------------------------------------------------------------- */
+
+.dlab__metrics {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 3px 8px;
+  align-items: center;
+  font-size: 11px;
+}
+.dlab__mname {
+  color: #aab1ba;
+  white-space: nowrap;
+}
+.dlab__mbar {
+  height: 7px;
+  border-radius: 2px;
+  background: #4b8ef5;
+  min-width: 2px;
+}
+.dlab__mbar--w {
+  background: #7d858f;
+}
+.dlab__mval {
+  color: #7d858f;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dlab__resolved {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #8d959f;
+  background: #1c1f25;
+  border: 1px solid #262b32;
+  border-radius: 4px;
+  padding: 6px 7px;
+  word-break: break-word;
+}
+.dlab__missing {
+  color: #f08a8a;
+  font-weight: 600;
+}
+
+.dlab__actions {
+  display: flex;
+  gap: 6px;
+}
+.dlab__btn {
+  flex: 1;
+  padding: 7px 8px;
+  border-radius: 5px;
+  border: 1px solid #333941;
+  background: #1c1f25;
+  color: #e7e9ec;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dlab__btn:hover {
+  background: #252a31;
+  border-color: #454b55;
+}
+.dlab__btn--primary {
+  background: #2f6ad9;
+  border-color: #2f6ad9;
+  color: #fff;
+}
+.dlab__btn--primary:hover {
+  background: #3d78e8;
+  border-color: #3d78e8;
+}
+.dlab__btn:focus-visible {
+  outline: 2px solid #4b8ef5;
+  outline-offset: 1px;
+}
+
+.dlab__out {
+  width: 100%;
+  height: 150px;
+  resize: vertical;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  background: #0f1114;
+  color: #cfd4da;
+  border: 1px solid #262b32;
+  border-radius: 4px;
+  padding: 7px;
+}
+
+/* The closed-state handle, so the panel can be got out of the way without losing it. */
+.dlab-open {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 9000;
+  writing-mode: vertical-rl;
+  padding: 10px 5px;
+  background: #14161a;
+  color: #e7e9ec;
+  border: 1px solid #2c3037;
+  border-right: none;
+  border-radius: 5px 0 0 5px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dlab-open:hover {
+  background: #252a31;
+}

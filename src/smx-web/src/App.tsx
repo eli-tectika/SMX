@@ -8,6 +8,7 @@ import { MarkerLibrary } from './routes/MarkerLibrary';
 import { MsdsRegistry } from './routes/MsdsRegistry';
 import { Projects } from './routes/Projects';
 import { ProjectLayout } from './routes/ProjectLayout';
+import { LabMount } from './lab/LabMount';
 
 export function App() {
   return (
@@ -31,6 +32,9 @@ export function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
+      {/* Dev-only design lab, and only with ?lab in the URL. Compiles to nothing in a
+          production build — see src/lab/LabMount.tsx. */}
+      <LabMount />
     </BrowserRouter>
   );
 }
