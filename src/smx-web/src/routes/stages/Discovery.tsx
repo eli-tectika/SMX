@@ -145,7 +145,7 @@ function ComponentTable({ componentId, rows }: { componentId: string; rows: Read
                 <AbsentCells state={row.discovery} span={DISCOVERY_SPAN} phase="Discovery" />
               )}
               <td>
-                <ReviseButton target={`${row.element} ${row.form}`} />
+                <ReviseButton row={row} />
               </td>
             </tr>
           ))}
@@ -217,8 +217,24 @@ function DiscoveryRow({ cells }: { cells: DiscoveryCells }) {
  * Learned Conclusion. A button that silently did nothing when the panel is collapsed would be a lying
  * affordance, so the draft is shown here instead.
  */
-function ReviseButton({ target }: { target: string }) {
+function ReviseButton({ row }: { row: ReadRow }) {
   const [draft, setDraft] = useState<string | null>(null);
+
+  /*
+   * NAMES THE COMPONENT AND THE CAS, not just the substance.
+   *
+   * The whole record is keyed on (component, CAS) — the same substance legitimately appears in several
+   * components, with its own verdict, its own ppm window and its own outcome in each. "Revise Ce CeO₂
+   * nanopowder" is therefore ambiguous on any real project, and the ambiguity does not stop at the prose:
+   * `apply_revision` takes `cas` and `componentId` as separate arguments, and the model fills them from
+   * what the message says. An under-specified opening line is how a revision lands on the bottle's row
+   * when the operator was looking at the cap's.
+   *
+   * The CAS is in for the same reason one step down: two FORMS of one element can both be candidates in
+   * one component, and the element alone does not separate them.
+   */
+  const target = `${row.element} ${row.form} (${row.cas}) in '${row.componentId}'`;
+
   return (
     <>
       <button

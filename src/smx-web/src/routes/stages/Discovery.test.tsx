@@ -144,16 +144,43 @@ describe('Discovery — the Discovery column group of the one project table', ()
   it('pre-fills the agent composer with the candidate instead of editing the record', async () => {
     view({ withComposer: true });
     await waitFor(() => expect(screen.getByText('bottle')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Revise Y oxide in chat' }));
+    fireEvent.click(screen.getByRole('button', { name: /Revise Y oxide/ }));
     expect(screen.getByLabelText('Message the discovery agent')).toHaveFocus();
     expect(screen.getByTestId('tracked').textContent).toContain('Y oxide');
+  });
+
+  /**
+   * THE PREFILL MUST NAME THE COMPONENT AND THE CAS, not just the substance.
+   *
+   * The record is keyed on (component, CAS) and the SAME substance legitimately appears in several
+   * components, each with its own verdict, ppm window and outcome. "Revise Y oxide" is therefore
+   * ambiguous on any real project — and the ambiguity does not stop at the prose: `apply_revision`
+   * takes `cas` and `componentId` as separate arguments and the model fills them from what the message
+   * says. An under-specified opening line is how a revision lands on the bottle's row when the operator
+   * was looking at the cap's.
+   */
+  it('names the component and the CAS, so two components cannot produce the same message', async () => {
+    view({ withComposer: true });
+    await waitFor(() => expect(screen.getByText('bottle')).toBeInTheDocument());
+
+    const labels = screen
+      .getAllByRole('button', { name: /Revise / })
+      .map((b) => b.getAttribute('aria-label') ?? '');
+
+    // Every button names its component and its CAS...
+    for (const label of labels) {
+      expect(label).toMatch(/in '[^']+'/);
+      expect(label).toMatch(/\(\d{2,7}-\d\d-\d\)/);
+    }
+    // ...and no two rows can hand the agent the same sentence.
+    expect(new Set(labels).size).toBe(labels.length);
   });
 
   /** With the agent column collapsed the button must say so rather than silently do nothing. */
   it('says the agent column is closed rather than failing silently', async () => {
     view({ withComposer: false });
     await waitFor(() => expect(screen.getByText('bottle')).toBeInTheDocument());
-    fireEvent.click(screen.getAllByRole('button', { name: /Revise Y oxide in chat/ })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: /Revise Y oxide/ })[0]);
     expect(screen.getByText(/agent column is closed/i)).toBeInTheDocument();
   });
   /**
