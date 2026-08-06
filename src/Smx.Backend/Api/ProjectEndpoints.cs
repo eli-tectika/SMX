@@ -61,7 +61,19 @@ public static class ProjectEndpoints
             if (await store.GetMatrixAsync(projectId, ct) is not { } matrix) return Results.NotFound();
             if (!string.Equals(format, "xlsx", StringComparison.OrdinalIgnoreCase))
                 return Results.Json(matrix, Json.Options);
-            var bytes = MatrixXlsxWriter.Write(matrix); // Task 6
+
+            // The XLSX is the WIDE table now, not the matrix document — same projection the UI reads
+            // (ProjectTable), so a spreadsheet handed to a customer cannot disagree with the screen it was
+            // exported from. The JSON branch above still serves MatrixDoc verbatim for existing callers.
+            var project = await store.GetProjectAsync(projectId, ct);
+            if (project is null) return Results.NotFound();
+            var rows = ProjectTable.Build(
+                await store.GetCandidatesAsync(projectId, ct),
+                await store.GetVerdictsAsync(projectId, ct),
+                await store.GetDosingAsync(projectId, ct),
+                await store.GetDecisionAsync(projectId, ct),
+                project.Stages);
+            var bytes = MatrixXlsxWriter.Write(rows);
             return Results.File(bytes,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 $"{projectId}-compatibility-matrix.xlsx");
