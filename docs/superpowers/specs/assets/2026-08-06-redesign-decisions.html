@@ -1,0 +1,280 @@
+<title>SMX webapp redesign — decision board</title>
+
+<style>
+  :root {
+    --ground: #fbfbfc; --panel: #ffffff;
+    --ink: #14161a; --ink-2: #55575c; --ink-3: #8b8d93;
+    --rule: #e6e7e9; --rule-2: #d0d2d6;
+    --accent: #1b56d6; --accent-soft: #e9f0fe; --accent-edge: #accbf6;
+    --good: #2c6a1d; --good-bg: #e8f4e4; --good-edge: #b7ddac;
+    --bad:  #a52a2a; --bad-bg:  #fbeaea; --bad-edge: #eebfbf;
+    --warn: #8a5910; --warn-bg: #fdf2e0; --warn-edge: #edd6a4;
+    --pro:  #463cae; --pro-bg:  #eeecfb;
+    --teal: #0f6b62; --teal-bg: #e1f2f0;
+
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans:  ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono:  ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --measure: 66ch;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0f1216; --panel: #171b21;
+      --ink: #e8eaee; --ink-2: #a4a9b3; --ink-3: #7b818c;
+      --rule: #262b33; --rule-2: #333a44;
+      --accent: #7aa5f5; --accent-soft: #16233a; --accent-edge: #2f4a7a;
+      --good: #8fce7c; --good-bg: #172514; --good-edge: #2f4a26;
+      --bad:  #eda3a3; --bad-bg:  #2a1616; --bad-edge: #4d2626;
+      --warn: #e0b467; --warn-bg: #2a2011; --warn-edge: #4d3c1c;
+      --pro:  #b3aae8; --pro-bg:  #1e1b33;
+      --teal: #7fc9c0; --teal-bg: #11241f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0f1216; --panel: #171b21;
+    --ink: #e8eaee; --ink-2: #a4a9b3; --ink-3: #7b818c;
+    --rule: #262b33; --rule-2: #333a44;
+    --accent: #7aa5f5; --accent-soft: #16233a; --accent-edge: #2f4a7a;
+    --good: #8fce7c; --good-bg: #172514; --good-edge: #2f4a26;
+    --bad:  #eda3a3; --bad-bg:  #2a1616; --bad-edge: #4d2626;
+    --warn: #e0b467; --warn-bg: #2a2011; --warn-edge: #4d3c1c;
+    --pro:  #b3aae8; --pro-bg:  #1e1b33;
+    --teal: #7fc9c0; --teal-bg: #11241f;
+  }
+  :root[data-theme="light"] {
+    --ground: #fbfbfc; --panel: #ffffff;
+    --ink: #14161a; --ink-2: #55575c; --ink-3: #8b8d93;
+    --rule: #e6e7e9; --rule-2: #d0d2d6;
+    --accent: #1b56d6; --accent-soft: #e9f0fe; --accent-edge: #accbf6;
+    --good: #2c6a1d; --good-bg: #e8f4e4; --good-edge: #b7ddac;
+    --bad:  #a52a2a; --bad-bg:  #fbeaea; --bad-edge: #eebfbf;
+    --warn: #8a5910; --warn-bg: #fdf2e0; --warn-edge: #edd6a4;
+    --pro:  #463cae; --pro-bg:  #eeecfb;
+    --teal: #0f6b62; --teal-bg: #e1f2f0;
+  }
+
+  body {
+    background: var(--ground); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1080px; margin: 0 auto; padding: 56px 24px 96px; display: flex; flex-direction: column; gap: 52px; }
+  p { max-width: var(--measure); }
+
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); }
+  h1 { font-family: var(--serif); font-size: clamp(30px,4.4vw,44px); line-height: 1.12; font-weight: 600; letter-spacing: -.012em; text-wrap: balance; margin: 10px 0 0; }
+  h2 { font-family: var(--serif); font-size: 25px; font-weight: 600; line-height: 1.22; letter-spacing: -.008em; text-wrap: balance; margin: 0; }
+  h3 { font-size: 16px; font-weight: 650; line-height: 1.35; margin: 0; }
+  .lede { font-size: 17.5px; color: var(--ink-2); margin-top: 14px; }
+  header .rule { height: 3px; width: 64px; background: var(--accent); margin-top: 26px; }
+
+  .settled { display: flex; flex-direction: column; border-top: 1px solid var(--rule); }
+  .settled .row { display: grid; grid-template-columns: 34px minmax(180px,1fr) 2.1fr; gap: 20px; padding: 14px 0; border-bottom: 1px solid var(--rule); align-items: baseline; }
+  .settled .num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+  .settled .what { font-weight: 620; }
+  .settled .ans { color: var(--ink-2); font-size: 15px; max-width: none; margin: 0; }
+  .settled .ans b { color: var(--ink); font-weight: 620; }
+  @media (max-width: 640px) { .settled .row { grid-template-columns: 26px 1fr; } .settled .ans { grid-column: 2; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--rule-2); border-radius: 10px; padding: 28px; display: flex; flex-direction: column; gap: 24px; }
+  .rec { border-color: var(--accent-edge); background: var(--accent-soft); gap: 12px; }
+  .rec h2 { font-size: 21px; } .rec p { color: var(--ink-2); margin: 0; } .rec p b { color: var(--ink); font-weight: 620; }
+
+  .callout { border-left: 3px solid var(--bad-edge); background: var(--bad-bg); padding: 16px 18px; border-radius: 0 8px 8px 0; max-width: none; }
+  .callout .k { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--bad); font-weight: 700; }
+  .callout p { margin: 6px 0 0; color: var(--ink-2); max-width: none; }
+  .callout p b { color: var(--ink); font-weight: 620; }
+
+  /* before / after */
+  .ba { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 820px) { .ba { grid-template-columns: 1fr 1fr; } }
+  .ba > div { border: 1px solid var(--rule); border-radius: 8px; padding: 16px 18px; }
+  .ba .was { background: var(--bad-bg); border-color: var(--bad-edge); }
+  .ba .now { background: var(--good-bg); border-color: var(--good-edge); }
+  .ba .cap2 { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; margin-bottom: 10px; }
+  .ba .was .cap2 { color: var(--bad); } .ba .now .cap2 { color: var(--good); }
+  .ba ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 14.5px; }
+  .ba li { margin-bottom: 5px; }
+  .ba code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+
+  /* dependency table */
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--rule-2); border-radius: 8px; }
+  table.dep { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 14px; }
+  table.dep th, table.dep td { padding: 10px 13px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  table.dep th { background: var(--accent-soft); color: var(--accent); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; border-bottom: 1px solid var(--rule-2); }
+  table.dep tr:last-child td { border-bottom: 0; }
+  table.dep code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+  table.dep td.why { color: var(--ink-3); font-size: 13px; }
+  .chip { display: inline-block; font-size: 11.5px; font-weight: 650; padding: 2px 8px; border-radius: 20px; margin: 0 3px 3px 0; white-space: nowrap; }
+  .c-dis { background: var(--accent-soft); color: var(--accent); }
+  .c-reg { background: var(--pro-bg); color: var(--pro); }
+  .c-dos { background: var(--teal-bg); color: var(--teal); }
+  .c-dec { background: var(--warn-bg); color: var(--warn); }
+  .c-non { background: var(--rule); color: var(--ink-3); }
+
+  /* flow */
+  .flow { display: flex; flex-direction: column; gap: 0; }
+  .flow .step { display: grid; grid-template-columns: 26px 1fr; gap: 16px; padding-bottom: 18px; position: relative; }
+  .flow .step:not(:last-child)::before { content: ""; position: absolute; left: 12px; top: 24px; bottom: 0; width: 1px; background: var(--rule-2); }
+  .flow .dot { width: 25px; height: 25px; border-radius: 50%; background: var(--accent-soft); border: 1px solid var(--accent-edge); color: var(--accent); font-family: var(--mono); font-size: 11px; font-weight: 700; display: grid; place-items: center; z-index: 1; }
+  .flow .step.stop .dot { background: var(--warn-bg); border-color: var(--warn-edge); color: var(--warn); }
+  .flow .t { font-weight: 620; }
+  .flow p { margin: 3px 0 0; font-size: 14.5px; color: var(--ink-2); }
+  .flow p b { color: var(--ink); font-weight: 620; }
+  .flow .said { font-family: var(--mono); font-size: 13px; background: var(--rule); color: var(--ink); padding: 2px 7px; border-radius: 4px; }
+
+  .footnote { color: var(--ink-3); font-size: 13.5px; border-top: 1px solid var(--rule); padding-top: 18px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+</style>
+
+<div class="page">
+
+  <header>
+    <div class="eyebrow">SMX Marker System · webapp redesign</div>
+    <h1>Nothing waits. Everything is provisional until someone signs it.</h1>
+    <p class="lede">The execution model changes, not just the layout: parks are deleted, the pipeline always runs to the end, and new information reruns exactly the stages that depend on it.</p>
+    <div class="rule"></div>
+  </header>
+
+  <section>
+    <h2 style="margin-bottom:18px">Settled so far</h2>
+    <div class="settled">
+      <div class="row"><span class="num">01</span><span class="what">Cost stops being a phase</span>
+        <p class="ans">Never an agent — a price lookup whose <b>BestQuote is usually null</b>, and there are no prices. Dosing gains <b>Amount</b> and <b>Availability</b> columns; the stage is deleted.</p></div>
+      <div class="row"><span class="num">02</span><span class="what">Intake runs during project creation</span>
+        <p class="ans">Interview ends → <b>“Creating project…”</b> runs the intake agent → the project opens with a CTA to start the analysis.</p></div>
+      <div class="row"><span class="num">03</span><span class="what">Background is not a phase</span>
+        <p class="ans">An <em>input</em>, not a step. The XRF entry form belongs on Dosing.</p></div>
+      <div class="row"><span class="num">04</span><span class="what">Matrix is a view, not a phase</span>
+        <p class="ans">Every record from Discovery on is keyed <b>(component, CAS)</b>. Each phase contributes a column group; “full matrix” joins them.</p></div>
+      <div class="row"><span class="num">05</span><span class="what">Three phases, plus a sign-off</span>
+        <p class="ans"><b>Discovery → Regulatory → Dosing</b>, then the VP sign-off.</p></div>
+      <div class="row"><span class="num">06</span><span class="what">The DMPP shape</span>
+        <p class="ans">Labelled sidebar, generous content, agent collapsible on the right.</p></div>
+      <div class="row"><span class="num">07</span><span class="what">Scope lives in the top bar</span>
+        <p class="ans">One sidebar. A project selector sets scope; <b>Reference pins to the bottom edge</b> so it never moves.</p></div>
+      <div class="row"><span class="num">08</span><span class="what">Nothing parks</span>
+        <p class="ans">The pipeline always runs to the end on the best data it has. What remains outstanding is a <b>signature</b> or <b>better input</b> — never a stalled computation.</p></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <header><div class="eyebrow">The reframe</div><h2>A “park” was two different things wearing one word</h2></header>
+
+    <p style="margin:0;color:var(--ink-2)">Every <code style="font-family:var(--mono);font-size:14px">awaiting-*</code> status conflated <em>the pipeline cannot compute</em> with <em>a human has not signed</em>. It is almost always the second — and the data model was already built for the first.</p>
+
+    <div class="ba">
+      <div class="was">
+        <div class="cap2">Was</div>
+        <ul>
+          <li><code>awaiting-physics</code> — Dosing stops because <code>DetectionFloor.Compute</code> refuses without a measured XRF background.</li>
+          <li><code>awaiting-RE</code> — Regulatory stops for the expert's determination.</li>
+          <li><code>awaiting-VP</code> — Decision stops at the final gate.</li>
+          <li><code>awaiting-samples</code> — stops for the client.</li>
+          <li><code>awaiting-confirmation</code> — stops before anything runs at all.</li>
+        </ul>
+      </div>
+      <div class="now">
+        <div class="cap2">Now</div>
+        <ul>
+          <li>Dosing runs and emits a floor of kind <code>estimate</code> instead of <code>measured</code>. <strong>The type already exists</strong> — <code>BoundKinds</code> models exactly this, and the ppm chart already draws an estimated end differently from a known one.</li>
+          <li>Regulatory runs and writes <code>ProposedDetermination</code>. The <em>analysis</em> is finished; the <em>ruling</em> is outstanding.</li>
+          <li>Decision assembles the full recommendation and holds at <strong>complete, unsigned</strong>.</li>
+          <li>Deleted with decision 02.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="k">The line that does not move</div>
+      <p><b>“Runs end to end” must never come to mean “signs itself.”</b> There is already an <code style="font-family:var(--mono)">auto-approve</code> path in the codebase, and the UI renders it as an alarm in the largest type on the screen — for good reason. The terminal state of an unattended run is <b>complete, unsigned</b>, not <em>done</em>. Both hard gates stay human, or the product becomes a machine that recommends taggants into food-contact plastic with nobody in the loop.</p>
+      <p>Its corollary: <b>a provisional number must look provisional everywhere</b> — matrix column, ppm chart, and the Excel export alike. A cell reading “60 ppm” with no provenance mark is the dangerous version of this feature.</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <header><div class="eyebrow">Rerun scope</div><h2>What each new fact invalidates</h2></header>
+
+    <p style="margin:0;color:var(--ink-2)">You are right that a background measurement has no bearing on a regulatory verdict. The rule that follows is <strong>data dependency, not pipeline position</strong> — and the writable-field allow-list that already exists (<code style="font-family:var(--mono);font-size:14px">IntakeAnswers.AllowedFields</code>) turns out to be exactly the list that needs blast radii declared beside it.</p>
+
+    <div class="tbl-wrap">
+      <table class="dep">
+        <thead><tr><th>New information</th><th>Reruns</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td><code>markets</code></td>
+            <td><span class="chip c-reg">Regulatory</span><span class="chip c-dec">Sign-off</span></td>
+            <td class="why">Target markets are a direct input to the per-component application check. Chemistry doesn't change.</td></tr>
+          <tr><td><code>application</code></td>
+            <td><span class="chip c-reg">Regulatory</span><span class="chip c-dec">Sign-off</span></td>
+            <td class="why">Same check, other axis.</td></tr>
+          <tr><td><code>clientRestrictedList</code></td>
+            <td><span class="chip c-reg">Regulatory</span><span class="chip c-dec">Sign-off</span></td>
+            <td class="why">A client ban behaves as a regulatory constraint.</td></tr>
+          <tr><td><code>material</code></td>
+            <td><span class="chip c-dis">Discovery</span><span class="chip c-reg">Regulatory</span><span class="chip c-dos">Dosing</span><span class="chip c-dec">Sign-off</span></td>
+            <td class="why">The polymer decides which chemistry is compatible at all. The expensive one.</td></tr>
+          <tr><td><code>objective</code></td>
+            <td><span class="chip c-dis">Discovery</span><span class="chip c-reg">Regulatory</span><span class="chip c-dos">Dosing</span><span class="chip c-dec">Sign-off</span></td>
+            <td class="why">What Discovery is optimising for.</td></tr>
+          <tr><td><code>batchMassKg</code></td>
+            <td><span class="chip c-dos">Dosing</span><span class="chip c-dec">Sign-off</span></td>
+            <td class="why">A pure multiplier on order amounts. The cheapest rerun there is — and proof the table earns its keep.</td></tr>
+          <tr><td>XRF background + device LODs</td>
+            <td><span class="chip c-dos">Dosing</span><span class="chip c-dec">Sign-off</span></td>
+            <td class="why">The detection floor. <strong>Note for later:</strong> when the deferred XRF <em>filter</em> is built it also feeds <span class="chip c-dis" style="margin:0">Discovery</span> — an element already loud in the substrate is a poor marker. Two different uses of one measurement; record it now.</td></tr>
+          <tr><td>R.E. determination</td>
+            <td><span class="chip c-dec">Sign-off</span></td>
+            <td class="why">The analysis is untouched; what changed is the ruling over it.</td></tr>
+          <tr><td>Operator revision of a candidate</td>
+            <td><span class="chip c-dis">Discovery</span><span class="chip c-reg">Regulatory</span><span class="chip c-dos">Dosing</span><span class="chip c-dec">Sign-off</span></td>
+            <td class="why">The existing revise-with-reason path, unchanged.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p style="margin:0;color:var(--ink-2)">Keep this table <strong>next to the allow-list, as code</strong> — a writable field with no declared blast radius should fail the build, the same discipline that made the parked-status family a compile error rather than a review problem.</p>
+  </section>
+
+  <section class="panel">
+    <header><div class="eyebrow">Amendments</div><h2>How the operator adds what the customer just told them</h2></header>
+
+    <p style="margin:0;color:var(--ink-2)">The mechanism is already built and already correct — it simply has no home in the UI once Intake stops being a phase. <code style="font-family:var(--mono);font-size:14px">IntakeAnswers.Patch</code> is an <strong>allow-list</strong>: operator-known product facts are writable through chat, and the physicist's measured data is refused by construction, by name, with an explanation aimed at the model. That is the amendment API.</p>
+
+    <div class="flow">
+      <div class="step">
+        <div class="dot">1</div>
+        <div><div class="t">The operator says it, on Overview</div>
+          <p>No form. The intake agent has a composer on the project's Overview screen, beside the brief it wrote. <span class="said">“Customer confirmed they're shipping to Japan as well.”</span></p></div>
+      </div>
+      <div class="step">
+        <div class="dot">2</div>
+        <div><div class="t">The agent records it as an amendment</div>
+          <p>Through <code>record_answer</code>, onto <code>components.bottle.markets</code>. Appended to an <b>amendment log</b> with when, what changed, and the operator's stated reason — the same instinct as a Learned Conclusion: <b>the “why” is the point, not the value.</b></p></div>
+      </div>
+      <div class="step">
+        <div class="dot">3</div>
+        <div><div class="t">The table says what it costs before anything runs</div>
+          <p><span class="said">markets → Regulatory, Sign-off</span> — so Discovery's twelve candidates stand, and only the verdicts are stale.</p></div>
+      </div>
+      <div class="step stop">
+        <div class="dot">!</div>
+        <div><div class="t">If a signature is in the blast radius, stop and ask</div>
+          <p>An unsigned project just reruns — nothing waits, per decision 08. But if the regulatory gate is <b>already signed</b>, that rerun voids a human signature, and the code already voids <code>ApprovedAt</code> and <code>ApprovedBy</code> as a pair. Silently un-signing someone's approval is not a thing software should do quietly. <b>This is the one place a confirmation earns its interruption.</b></p></div>
+      </div>
+      <div class="step">
+        <div class="dot">5</div>
+        <div><div class="t">The rerun reports its diff</div>
+          <p><span class="said">Regulatory reran · 2 verdicts changed · Eu now fails the element gate</span> — because a rerun that silently mutates a record the operator has already read and reasoned about is worse than no rerun at all.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="rec">
+    <h2>What this does to the dashboard</h2>
+    <p>It answers the question I asked last round, so ignore it: <b>grouping by “who are we waiting on” is dead</b>, because nobody is waited on. The buckets that survive are about state of belief, not state of queue — <b>needs your signature</b>, <b>provisional</b> (running on estimates; real data would sharpen it), and <b>closed</b>. Which is a better dashboard than either version we discussed.</p>
+    <p style="color:var(--ink-3);font-size:14.5px">Agreed too that the dashboard's whole look gets redone rather than patched — that's a separate pass, and it is now downstream of this model rather than upstream of it.</p>
+  </section>
+
+  <p class="footnote">Field names and refusal behaviour from <span style="font-family:var(--mono);font-size:13px">Smx.Domain/IntakeAnswers.cs</span>; bound kinds from <span style="font-family:var(--mono);font-size:13px">DosingDoc.cs</span>; gate-voiding from <span style="font-family:var(--mono);font-size:13px">PipelineRunner.cs</span>. Blast radii in the table are proposed, not yet in code.</p>
+
+</div>
