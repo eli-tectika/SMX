@@ -174,9 +174,53 @@ public static class DecisionEndpoints
             if (decision is null || decision.Procurement.Status != ProcurementStatus.Released)
                 return Results.UnprocessableEntity(new { error = "procurement is not released — only the VP gate's signature releases it" });
 
+            // THE SIGNATURE IS NOT SELF-PROVING, re-checked here. A GateDoc carries no binding to the
+            // verdicts it was signed over, so `approved` alone is not proof the CURRENT analysis was
+            // reviewed: a fresh unreviewed non-pass verdict can land under an existing signature (a
+            // revise's leftovers, a race with a late Regulatory child).
+            //
+            // This check used to live in RunDosingAsync, where it stopped the PIPELINE. The pipeline no
+            // longer stops for anything (execution-core §8), so it moved to the irreversible act — which is
+            // where it always belonged. Ordering a chemical is the thing that must not happen over an
+            // analysis the signature no longer covers.
+            var candidates = await store.GetCandidatesAsync(projectId, ct);
+            var verdicts = await store.GetVerdictsAsync(projectId, ct);
+            // Null AND empty, both. An empty CandidatesDoc is not "nothing failed" — it is every verdict
+            // orphaned, i.e. no analysis at all, which is what the compliance-package export already refuses
+            // for the same reason. Read as a clean bill of health it would be the most permissive state in
+            // the system: RegulatoryGate.Armable over zero candidates has nothing to object to.
+            if (candidates is null || candidates.Substances.Count == 0)
+                return Results.UnprocessableEntity(new
+                {
+                    error = "no candidates on file — there is no analysis under the regulatory signature",
+                });
+            if (RegulatoryGate.Armable(candidates, verdicts) is { Ok: false } uncovered)
+                return Results.UnprocessableEntity(new
+                {
+                    error = "the regulatory signature no longer covers the current analysis",
+                    blockers = uncovered.Blockers,
+                });
+
+            var dosing = await store.GetDosingAsync(projectId, ct);
+
+            // A PROVISIONAL dosing rests on the agent's own proposals, an estimated detection floor, or
+            // both (spec §10.1). The VP's signature does not retroactively re-run Dosing, so a project can
+            // legitimately reach `Released` with ppms derived from a set the operator never ruled on —
+            // and ordering against those would put a chemical in a customer's product at a dose nobody
+            // approved, above a floor nobody measured.
+            //
+            // This is the flag's entire purpose: it blocks the ORDER, never the pipeline. Rerun Dosing once
+            // the determinations and the measurement are on file.
+            if (dosing is { Provisional: true })
+                return Results.UnprocessableEntity(new
+                {
+                    error = "this dosing is provisional and cannot be ordered against — rerun Dosing once " +
+                            "the missing determinations and measurements are on file",
+                    blockers = dosing.ProvisionalReasons,
+                });
+
             // You cannot order what the VP did not sign: the orderable set is exactly the markers of the
             // CONFIRMED codes (never the proposals — Law 9 reaches procurement too).
-            var dosing = await store.GetDosingAsync(projectId, ct);
             var signed = decision.Components
                 .Where(c => c.ConfirmedCode is not null)
                 .SelectMany(c => (dosing?.Codes ?? [])
