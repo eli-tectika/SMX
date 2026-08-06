@@ -480,17 +480,22 @@ public class OperatorEntryPointWiringTests : IClassFixture<WebApplicationFactory
     /// change feed re-runs Dosing off this write" — there is no change feed, so the loading was accepted, the
     /// stage was flipped to `pending`, and the project sat there looking about to run.
     [Fact]
-    public async Task Loading_ResumesTheParkedDosingStage()
+    public async Task Loading_ReopensDosing_SoTheDroppedSubstanceGetsDosed()
     {
         await SeedProjectAsync(
             (Stages.Intake, "done"), (Stages.Discovery, "done"), (Stages.Regulatory, "done"),
             (Stages.Matrix, "done"));
         await SeedComplianceAsync();
 
-        // The park is real, not seeded: the first pass reaches Dosing and stops on the absent loading.
+        // Was an awaiting-operator PARK. The pipeline no longer parks (execution-core §8): a substance whose
+        // metal loading is unknown is DROPPED and named instead — and here it was the only dosable one, so
+        // the stage lands needs-review with nothing dosed. This endpoint is still the answer to that, and
+        // re-opening Dosing to `pending` is still what makes the second pass happen.
         Assert.True(_supervisor.TryStart(P));
         await _supervisor.Completion(P);
-        Assert.Equal(StageStatus.AwaitingOperator, (await StageAsync(Stages.Dosing)).Status);
+        var stopped = await StageAsync(Stages.Dosing);
+        Assert.Equal(StageStatus.NeedsReview, stopped.Status);
+        Assert.Contains("metal loading", stopped.Error);
 
         var res = await Client().PostAsJsonAsync($"/projects/{P}/dosing/loading", new
         {

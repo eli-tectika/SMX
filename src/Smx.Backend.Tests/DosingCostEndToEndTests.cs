@@ -137,10 +137,15 @@ public class DosingCostEndToEndTests : IClassFixture<WebApplicationFactory<Progr
         Assert.Equal(HttpStatusCode.OK, approve.StatusCode);
 
         // 4. Record the signature, then re-enter the pipeline (in production the supervisor does this).
-        //    Dosing runs, finds the metal loadings unknown, and PARKS — it does not guess a mass fraction.
+        //    Dosing runs, finds every metal loading unknown, and DROPS those substances by name — it does not
+        //    guess a mass fraction. With all of them dropped there is nothing left to dose, so the stage
+        //    stops at needs-review. (It used to park at awaiting-operator; execution-core §8 deleted parks,
+        //    and dropping-and-naming is what replaced this one.)
         await _dispatcher.OnGateAsync(Delivered((await _store.GetGateAsync(P, GateTypes.Regulatory))!), default);
         await _dispatcher.RunAsync(P, default);
-        Assert.Equal("awaiting-operator", (await DosingStageAsync()).Status);
+        var stopped = await DosingStageAsync();
+        Assert.Equal(StageStatus.NeedsReview, stopped.Status);
+        Assert.Contains("metal loading", stopped.Error);
         Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/projects/{P}/dosing")).StatusCode);
 
         // 5. Script the fake Dosing agent to produce a floor-respecting doc from the REAL floors the dispatcher

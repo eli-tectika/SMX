@@ -89,22 +89,32 @@ public class DosingDispatchTests
     private static async Task SeedAsync(
         InMemoryRecordStore store, InMemoryKnowledgeStore knowledge,
         string gateStatus = "approved", bool withBackground = true, bool withLoading = true,
-        VerdictDoc? casNo = null)
+        VerdictDoc? casNo = null, VerdictDoc? casOk = null)
     {
         var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
         project.Stages[Stages.Intake].Status = "done";
         project.Stages[Stages.Discovery].Status = "done";
-        project.Stages[Stages.Regulatory].Status = "awaiting-RE"; // OnGateAsync flips this to done
+        project.Stages[Stages.Regulatory].Status = "done";  // lands done with its verdicts (execution-core §8)
         project.Stages[Stages.Matrix].Status = "done";
         // Dosing stays "pending".
         await store.UpsertProjectAsync(project);
 
         await store.UpsertConstraintsAsync(Constraints(withBackground));
         await store.UpsertCandidatesAsync(Candidates());
-        await store.UpsertVerdictAsync(Verdict("cas-ok", "Zr", VerdictStatus.Pass, reviewed: true, Determinations.Recommended));
+        await store.UpsertVerdictAsync(casOk ?? Verdict("cas-ok", "Zr", VerdictStatus.Pass, reviewed: true, Determinations.Recommended));
         await store.UpsertVerdictAsync(casNo ?? Verdict("cas-no", "Ba", VerdictStatus.Pass, reviewed: true, Determinations.Rejected));
         await store.UpsertGateAsync(Gate(gateStatus));
         if (withLoading) await knowledge.UpsertSubstancePropertyAsync(Loading("cas-ok", "Zr"));
+    }
+
+    /// A verdict nobody has ruled on, carrying only the AGENT'S proposal. The state every project is in
+    /// immediately after Regulatory now that the pipeline does not park (spec §10.1).
+    private static VerdictDoc Proposed(string cas, string element, VerdictStatus status)
+    {
+        var v = Verdict(cas, element, status, reviewed: true, determination: null);
+        v.ProposedDetermination = Determinations.Recommended;
+        v.ProposedReason = "the agent's proposal";
+        return v;
     }
 
     private static StageState DosingStage(InMemoryRecordStore store) =>
@@ -143,79 +153,85 @@ public class DosingDispatchTests
     }
 
     [Fact]
-    public async Task AnAssembledButUNSIGNEDProject_DoesNotDose()
+    public async Task AnAssembledButUNSIGNEDProject_DosesPROVISIONALLY()
     {
-        // THE GATE-BYPASS GUARD. The matrix assembles on verdict COMPLETENESS — the operator has determined a
-        // few substances but has NOT signed the regulatory gate. The runner walks the whole pipeline
-        // regardless, so if reaching Dosing were permission to dose, those substances would be dosed anyway:
-        // the hard regulatory gate bypassed by the stage right after it. The state below is FULLY doseable
-        // (floor inputs present, loading known) except for the one thing that matters — the signature.
+        // Was AnAssembledButUNSIGNEDProject_DoesNotDose. Execution-core §8/D10 removed the gate as a pipeline
+        // precondition: the operator sees a complete proposed answer in one sitting. What replaces the old
+        // guard is NOT weaker, it just sits somewhere else — the dosing is stamped PROVISIONAL, and
+        // procurement refuses over that flag (UnattendedRunTests). The gate still governs the two
+        // irreversible acts; it no longer governs whether agents may run.
         var (d, store, agents, knowledge) = Sut();
         await SeedAsync(store, knowledge, gateStatus: "locked");   // determined, NOT signed
 
         await d.RunAsync(P, default);
 
-        Assert.Equal(0, agents.DosingCalls);
-        Assert.Null(await store.GetDosingAsync(P));
-        Assert.Equal("pending", DosingStage(store).Status);       // the stage never moved
+        Assert.Equal(1, agents.DosingCalls);
+        var dosing = await store.GetDosingAsync(P);
+        Assert.NotNull(dosing);
+        Assert.Equal("done", DosingStage(store).Status);
+
+        // The seeded verdict carries an OPERATOR determination, so nothing here rests on a proposal and the
+        // dosing is NOT provisional on that account. This is the case that proves the flag tracks evidence
+        // quality rather than merely "is the gate signed".
+        Assert.False(dosing!.Provisional);
     }
 
-    // ---- park, do not guess ----------------------------------------------------------------------------
-
     [Fact]
-    public async Task Dosing_REFUSES_WhenTheGateIsSignedButNoLongerArmable()
+    public async Task Dosing_IsProvisional_WhenASubstanceRestsOnTheAgentsProposalAlone()
     {
-        // Defense in depth. A GateDoc carries no binding to the verdicts it was signed over, so `approved`
-        // alone is not proof the CURRENT analysis was reviewed. Here a fresh, unreviewed, FAILING verdict is
-        // live under the existing signature (the race POST /approve vs. a late verdict). Dosing must NOT run:
-        // it re-checks RegulatoryGate.Armable and parks for review.
+        // Spec §10.1, the whole reason ProvisionalSet exists. Nobody has ruled; the agent proposed. Dosing
+        // runs (otherwise the operator would get an empty answer that looked finished) and says so.
         var (d, store, agents, knowledge) = Sut();
-        await SeedAsync(store, knowledge,
-            casNo: Verdict("cas-no", "Ba", VerdictStatus.Fail, reviewed: false, determination: null));
+        await SeedAsync(store, knowledge, gateStatus: "locked",
+            casOk: Proposed("cas-ok", "Zr", VerdictStatus.Pass));
 
         await d.RunAsync(P, default);
 
-        Assert.Equal(0, agents.DosingCalls);
-        Assert.Null(await store.GetDosingAsync(P));
-        var stage = DosingStage(store);
-        Assert.Equal("needs-review", stage.Status);
-        Assert.Contains("unreviewed", stage.Error);
-        Assert.Contains("cas-no", stage.Error);
+        var dosing = await store.GetDosingAsync(P);
+        Assert.NotNull(dosing);
+        Assert.True(dosing!.Provisional);
+        Assert.Contains(dosing.ProvisionalReasons, r => r.Contains("proposal alone"));
+        Assert.Contains(dosing.ProvisionalReasons, r => r.Contains("cas-ok"));
     }
 
+    // ---- flag, do not guess ----------------------------------------------------------------------------
+
     [Fact]
-    public async Task Dosing_ParksInAwaitingPhysics_WhenTheMeasuredBackgroundIsMissing()
+    public async Task Dosing_UsesTheDefaultFloor_AndFlagsIt_WhenTheMeasuredBackgroundIsMissing()
     {
-        // The detection floor is computed from a MEASUREMENT, and an absent one is not a zero. Without it the
-        // floor cannot be targeted at the device that must read the marker — so Dosing parks awaiting-physics
-        // and produces nothing, rather than running the agent on a floor it would have to invent.
+        // Was Dosing_ParksInAwaitingPhysics_*. The floor is still never INVENTED — DetectionFloor still
+        // refuses — but the caller now falls back to the device's generic limit of detection and flags the
+        // component (§8: "estimated floor — no physicist measurement on file"). The flag blocks the ORDER,
+        // not the pipeline.
         var (d, store, agents, knowledge) = Sut();
         await SeedAsync(store, knowledge, withBackground: false);
 
         await d.RunAsync(P, default);
 
-        Assert.Equal(0, agents.DosingCalls);
-        Assert.Null(await store.GetDosingAsync(P));
-        var stage = DosingStage(store);
-        Assert.Equal("awaiting-physics", stage.Status);
-        Assert.Contains("Zr", stage.Error);   // the gap names the element the physicist must measure
+        Assert.Equal(1, agents.DosingCalls);
+        var dosing = await store.GetDosingAsync(P);
+        Assert.NotNull(dosing);
+        Assert.Equal("done", DosingStage(store).Status);
+        Assert.True(dosing!.Provisional);
+        Assert.Contains(dosing.ProvisionalReasons, r => r.Contains("no physicist measurement"));
+        Assert.Contains(dosing.ProvisionalReasons, r => r.Contains("Zr"));
     }
 
     [Fact]
-    public async Task Dosing_ParksInAwaitingOperator_WhenAMetalLoadingIsUnknown()
+    public async Task Dosing_DropsTheSubstance_AndFlagsIt_WhenAMetalLoadingIsUnknown()
     {
-        // The order amount is the mass of COMPOUND to buy, which needs the element's mass fraction — a number
-        // in no catalog we have. When it is unknown the stage parks awaiting-operator and names the CAS; it is
-        // entered once and kept forever (cross-project knowledge layer). It is never assumed to be 1.0.
+        // Was Dosing_ParksInAwaitingOperator_*. The mass fraction still cannot be defaulted — an absent
+        // loading is not 1.0, which would under-order an oxide — so the substance is DROPPED from this run
+        // and named. What changed is that it no longer stops the run for everything else.
         var (d, store, agents, knowledge) = Sut();
         await SeedAsync(store, knowledge, withLoading: false);
 
         await d.RunAsync(P, default);
 
-        Assert.Equal(0, agents.DosingCalls);
-        Assert.Null(await store.GetDosingAsync(P));
         var stage = DosingStage(store);
-        Assert.Equal("awaiting-operator", stage.Status);
+        // Every dosable substance was dropped here, so there was nothing left to dose at all.
+        Assert.Equal(0, agents.DosingCalls);
+        Assert.Equal("needs-review", stage.Status);
         Assert.Contains("cas-ok", stage.Error);
         Assert.Contains("metal loading", stage.Error);
     }

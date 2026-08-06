@@ -137,7 +137,11 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
         Assert.Equal(HttpStatusCode.OK, approve.StatusCode);
         await _dispatcher.OnGateAsync(Delivered((await _store.GetGateAsync(P, GateTypes.Regulatory))!), default);
         await _dispatcher.RunAsync(P, default);   // in production the supervisor re-enters the pipeline here
-        Assert.Equal("awaiting-operator", (await StageAsync(Stages.Dosing)).Status);
+        // Every metal loading is unknown, so every dosable substance is dropped by name and there is nothing
+        // left to dose (execution-core §8 replaced the awaiting-operator park with drop-and-name).
+        var stopped = await StageAsync(Stages.Dosing);
+        Assert.Equal(StageStatus.NeedsReview, stopped.Status);
+        Assert.Contains("metal loading", stopped.Error);
 
         // The scripted fake Dosing agent from DosingCostEndToEndTests, verbatim: a floor-respecting doc
         // from the REAL floors the dispatcher computes and hands it.

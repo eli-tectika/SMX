@@ -620,57 +620,82 @@ public sealed class PipelineRunner(
     {
         var projectId = trail.Run.ProjectId;
         // The status, not the DosingDoc: POST /projects/{id}/dosing/loading records a metal loading and
-        // re-opens Dosing to `pending`, and that re-open is the ONLY thing that lets an awaiting-operator
-        // park ever resume.
+        // re-opens Dosing to `pending`, which is how a run that left substances undosed gets a second pass.
         if (await HasRunAsync(projectId, Stages.Dosing, ct)) return Skip();
 
-        // The signature is not self-proving, but its ABSENCE is decisive: Dosing consumes the signed
-        // compliant set, so an unsigned gate means there is nothing yet to dose — the pipeline stops here
-        // and waits for the R.E. This is the ONE lane where an operator signature is still a precondition
-        // rather than a record (design §8 relaxes it; A1 must not).
-        var gate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
-        if (gate?.Status != "approved") return Skip();
-
+        // NO GATE CHECK. Dosing used to skip behind an unsigned regulatory gate, which made the R.E.'s
+        // signature a pipeline precondition. Execution-core §8/D10 removed that: the operator sees a
+        // complete proposed answer in one sitting, and the signature governs the two IRREVERSIBLE acts —
+        // the compliance-package export and placing an order — not whether agents may run.
         var constraints = await store.GetConstraintsAsync(projectId, ct);
         var candidates = await store.GetCandidatesAsync(projectId, ct);
         if (constraints is null || candidates is null) return Skip();
 
         var verdicts = await store.GetVerdictsAsync(projectId, ct);
-        var compliant = CompliantSet.Of(verdicts);
+        // ProvisionalSet, NOT CompliantSet — see the 2026-08-06 redesign spec §10.1. With no park, Regulatory
+        // lands with only the agent's PROPOSED determinations on it, and CompliantSet reads only the
+        // operator's. Dosing over CompliantSet here would dose an empty set and produce nothing while looking
+        // finished. So it computes over `Determination ?? ProposedDetermination` and records what that cost;
+        // every irreversible act downstream still reads CompliantSet.
+        var dosable = ProvisionalSet.Of(verdicts);
+        var provisionalReasons = new List<string>(ProvisionalSet.ProvisionalReasons(verdicts));
 
         await trail.StepAsync(RunStepKind.Started,
-            $"Dosing {compliant.Count} compliant substances above the measured detection floor.", ct: ct);
+            $"Dosing {dosable.Count} substances above the detection floor.", ct: ct);
         await SetStageAsync(projectId, Stages.Dosing, s => s.Status = "running", ct);
 
-        if (RegulatoryGate.Armable(candidates, verdicts) is { Ok: false } blocked)
+        if (dosable.Count == 0)
             return new StageResult(RunOutcome.NeedsReview,
-                "the regulatory gate is signed but no longer covers the current analysis: " +
-                string.Join("; ", blocked.Blockers), null, null);
+                "nothing may be dosed: no substance carries an operator determination OR an agent proposal " +
+                "of 'recommended'.", null, null);
 
-        if (compliant.Count == 0)
-            return new StageResult(RunOutcome.NeedsReview,
-                "the compliant set is empty — no substance carries an R.E. determination of " +
-                "'recommended', so there is nothing that may be dosed.", null, null);
-
-        // Resolve EVERY input first and PARK on any gap — do not run the agent on a partial picture and let
-        // it improvise the holes. The two missing things are a MEASUREMENT and a MASS FRACTION; a model
-        // that invents either produces a marker nobody can detect or a batch nobody dosed right.
+        // Resolve every input first. A gap is no longer a park — it is a FLAG that blocks the order (§8).
+        // What must never happen is the agent improvising the hole: a model that invents a measurement or a
+        // mass fraction produces a marker nobody can detect or a batch nobody dosed right. So a substance
+        // whose input is missing is DROPPED and named, never dosed against a guess.
         var (floors, loadings, physicsGaps, loadingGaps) =
-            await ResolveDosingInputsAsync(constraints, compliant, ct);
-        if (physicsGaps.Count > 0)
-            return new StageResult(RunOutcome.NeedsReview, string.Join(" | ", physicsGaps.Distinct()),
-                null, null, StageStatus.AwaitingPhysics);
-        if (loadingGaps.Count > 0)
-            return new StageResult(RunOutcome.NeedsReview,
-                "the metal loading (mass fraction of the marker element in the compound) is not on file " +
-                "for: " + string.Join(", ", loadingGaps) + ". Enter it once via " +
-                "POST /projects/{id}/dosing/loading — it is kept for every future project that uses the " +
-                "same compound.", null, null, StageStatus.AwaitingOperator);
+            await ResolveDosingInputsAsync(constraints, dosable, ct);
+        provisionalReasons.AddRange(physicsGaps.Distinct());
 
-        var result = await agents.RunDosingAsync(constraints, compliant, floors, loadings, null, trail, ct);
+        // Was awaiting-operator. An unknown metal loading cannot be defaulted — an absent loading is not 1.0,
+        // which would under-order an oxide — so these substances leave this run undosed.
+        if (loadingGaps.Count > 0)
+        {
+            var dropped = loadingGaps.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            dosable = [.. dosable.Where(v => !dropped.Contains(v.Cas))];
+            provisionalReasons.Add(
+                "no metal loading (mass fraction of the marker element in the compound) is on file for: " +
+                string.Join(", ", loadingGaps) + ". These substances were left undosed. Enter the loading " +
+                "once via POST /projects/{id}/dosing/loading — it is kept for every future project using the " +
+                "same compound — and rerun Dosing.");
+        }
+
+        // Neither a measurement nor a device limit: there is no floor to dose above at all. Dropped by name,
+        // for the same reason — a ppm with no floor under it is a marker nobody can read.
+        var floorless = dosable.Where(v => !floors.ContainsKey((v.ComponentId, v.Element))).ToList();
+        if (floorless.Count > 0)
+        {
+            dosable = [.. dosable.Except(floorless)];
+            provisionalReasons.Add(
+                "no ppm floor could be established (no measured background and no device limit of detection) " +
+                "for: " + string.Join(", ", floorless.Select(v => $"{v.Element} in '{v.ComponentId}'")) +
+                ". These substances were left undosed.");
+        }
+
+        if (dosable.Count == 0)
+            return new StageResult(RunOutcome.NeedsReview,
+                "every dosable substance was dropped for a missing input — " +
+                string.Join(" | ", provisionalReasons), null, null);
+
+        var result = await agents.RunDosingAsync(constraints, dosable, floors, loadings, null, trail, ct);
         if (!result.Succeeded) return new StageResult(RunOutcome.NeedsReview, result.Error, null, null);
 
         var dosing = result.Output!;
+        // What this dosing rests on, stamped onto the document itself so procurement can refuse over it
+        // without re-deriving the reasoning. Set together — a `Provisional` with no reasons is an alarm
+        // nobody can act on, and reasons with no flag are an alarm nobody sees.
+        dosing.ProvisionalReasons = provisionalReasons;
+        dosing.Provisional = provisionalReasons.Count > 0;
         await store.UpsertDosingAsync(dosing, ct);
         // A SELECTED marker is the strongest signal there is that we will need its sheet: MSDS-before-order
         // blocks procurement on exactly this, three stages downstream. The FORM comes from the candidate the
@@ -946,8 +971,22 @@ public sealed class PipelineRunner(
             if (floorAttempted.Add((v.ComponentId, v.Element)))
             {
                 var (floor, error) = DetectionFloor.Compute(c.MeasuredBackgrounds, c.Device, v.ComponentId, v.Element);
-                if (floor is null) physicsGaps.Add(error!);
-                else floors[(v.ComponentId, v.Element)] = floor;
+                if (floor is not null)
+                    floors[(v.ComponentId, v.Element)] = floor;
+                // The measurement is absent or unusable. Execution-core §8: this no longer PARKS the
+                // pipeline. Fall back to the device's generic limit of detection, and report the fallback's
+                // own basis as the gap — that string is what stamps the DosingDoc provisional and blocks the
+                // order. DetectionFloor itself is untouched and still refuses; choosing the weaker number
+                // happens here, in the open.
+                else if (DefaultDetectionFloor.Of(c.Device, v.Element) is { } fallback)
+                {
+                    floors[(v.ComponentId, v.Element)] = fallback;
+                    physicsGaps.Add($"{v.Element} in '{v.ComponentId}': {fallback.Basis}");
+                }
+                // Neither a measurement NOR a device limit. There is no floor to dose above at all, so this
+                // (component, element) gets no entry — RunDosingAsync drops its substances by name rather
+                // than dosing them against nothing.
+                else physicsGaps.Add(error!);
             }
 
             // The loading key is the CAS: it is a property of the COMPOUND, not the component, so it is

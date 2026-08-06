@@ -278,7 +278,9 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
         var project = ProjectDoc.Create("p1", "Acme", "P", JsonDocument.Parse("{}").RootElement);
         foreach (var stage in new[] { Stages.Intake, Stages.Discovery, Stages.Matrix })
             project.Stages[stage].Status = "done";
-        project.Stages[Stages.Regulatory].Status = StageStatus.AwaitingRe;
+        // Regulatory lands `done` off its own run now (execution-core §8) — the signature is recorded on the
+        // GateDoc, not in the stage's status.
+        project.Stages[Stages.Regulatory].Status = "done";
         await store.UpsertProjectAsync(project);
         await store.UpsertConstraintsAsync(new ConstraintsDoc
         {
@@ -316,12 +318,20 @@ public class RegulatoryGateEndpointsTests : IClassFixture<WebApplicationFactory<
 
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         await supervisor.Completion("p1");
-        // The stamp: the stage leaves `awaiting-RE` the moment the signature lands.
+
+        // The signature is recorded on the GATE, which is now the only place it lives. The stage status is
+        // about whether the stage's own agent ran, and approving does not change that.
+        Assert.Equal("approved", (await store.GetGateAsync("p1", GateTypes.Regulatory))!.Status);
         Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
-        // The re-entry: Dosing RAN — it is no longer `pending`. It parks on the physicist because no measured
-        // background is on file, which is the correct next stop, and is the proof it executed at all.
-        Assert.Equal(StageStatus.AwaitingPhysics,
-            (await store.GetProjectAsync("p1"))!.Stages[Stages.Dosing].Status);
+
+        // The re-entry, which is what this test is really for: POST /approve stamps the record and then hands
+        // off to the supervisor rather than blocking in Foundry on the caller's thread. Dosing RAN — it left
+        // `pending`, which is the proof it executed. It stops at needs-review because this project has NO
+        // device and NO measured background, so there is no floor and no generic limit to fall back to, and
+        // its only substance is dropped by name rather than dosed against nothing.
+        var dosing = (await store.GetProjectAsync("p1"))!.Stages[Stages.Dosing];
+        Assert.Equal(StageStatus.NeedsReview, dosing.Status);
+        Assert.Contains("floor", dosing.Error);
     }
 
     [Fact]
