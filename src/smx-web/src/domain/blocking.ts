@@ -1,5 +1,4 @@
-import { isAwaiting } from '../api/types';
-import type { AwaitingStatus, ProjectSummary, StageState } from '../api/types';
+import type { ProjectGates, ProjectSummary, StageState } from '../api/types';
 import type { MatrixSummary } from './matrixSummary';
 
 /**
@@ -8,15 +7,18 @@ import type { MatrixSummary } from './matrixSummary';
  *
  * A hard rule runs through all of it: we report only what the record proves.
  *
- * That rule used to mean we NEVER named an awaited human, because the backend had
- * no park states and mapping `pending` to "awaiting physics XRF" would have been a
- * fabrication. The dispatcher now writes `awaiting-physics`, `awaiting-operator`
- * and `awaiting-RE` (and the interview writes `awaiting-confirmation`), so naming
- * the wait is no longer a guess — it is the record speaking. The rule is unchanged;
- * what changed is what the record proves.
+ * The park states are GONE (execution-core §8), and with them the whole "awaiting a named human"
+ * vocabulary this file used to speak. Nothing waits on anybody now: the pipeline runs end to end, so the
+ * only ways a project needs a human are a stage that genuinely FAILED, and a SIGNATURE that is outstanding.
  *
- * `pending` still means "the agent has not started" and must never be dressed up as
- * a park. The two are different facts and stay different sentences.
+ * THE TRAP THIS FILE NOW EXISTS TO AVOID, and it points the opposite way to the old one: `done` NO LONGER
+ * MEANS SIGNED. Every stage can read `done` on a project whose gates are both unsigned and whose
+ * procurement is refused. The old code returned `null` — "nothing blocking" — for exactly that record,
+ * which would paint a fully-computed, entirely unsigned project as finished. Four times this codebase has
+ * shipped a park rendering as not-started; this is the same failure wearing the other face.
+ *
+ * `pending` still means "the agent has not started" and is still a different sentence from every other
+ * state.
  */
 
 export type BlockTone = 'danger' | 'warning' | 'accent' | 'muted';
@@ -41,7 +43,7 @@ const UPSTREAM: Record<string, string | undefined> = {
   regulatory: 'discovery',
   matrix: 'regulatory',
   dosing: 'regulatory',
-  cost: 'dosing',
+  decision: 'dosing',
 };
 
 const LABEL: Record<string, string> = {
@@ -50,39 +52,25 @@ const LABEL: Record<string, string> = {
   regulatory: 'Regulatory',
   matrix: 'Matrix',
   dosing: 'Dosing',
-  cost: 'Cost',
-  decision: 'Decision',
+  decision: 'Sign-off',
 };
 
-/** Who each park is stopped on — the record's own claim, in the operator's words. */
-const AWAITED: Record<AwaitingStatus, string> = {
-  'awaiting-operator': 'you — the record needs an input',
-  'awaiting-physics': 'physics — the XRF background',
-  'awaiting-RE': "the Regulatory Expert's determination",
-};
+/**
+ * Whether a gate is signed. Anything that is not exactly "approved" is UNSIGNED — a locked gate, an absent
+ * one, and a status this build has never heard of all land the same way. The safe asymmetry: an
+ * unrecognised value must never read as a signature.
+ */
+const signed = (status: string | undefined) => status === 'approved';
 
 function attemptSuffix(s: StageState): string {
   return s.attempts > 1 ? ` · attempt ${s.attempts}` : '';
 }
 
-/**
- * The single most important line on a project card. One tone, one icon, one
- * sentence — in strict priority order, worst first.
- *
- * This is the DASHBOARD's sentence. It used to take a `where: 'list' | 'project'` so the same
- * function could also address an operator already inside a project, and `ContextBar` was the one
- * caller that passed `'project'`. The 2026-07-29 redesign replaced that bar with `NextAction`,
- * which asks a different question — not "what is blocking" but "what do I press" — and answers it
- * from `domain/nextAction.ts` with its own copy. So the parameter had exactly zero callers and is
- * gone rather than left as an option nobody exercises.
- *
- * The two files DO encode the same priority ladder twice; the tripwire in `stages.test.ts`
- * documents the one invariant that keeps them from contradicting each other.
- */
 export function whatsBlocking(
   project: ProjectSummary,
   matrix?: MatrixSummary,
   unopenedFlagged = 0,
+  gates?: ProjectGates,
 ): Blocking | null {
   const stages = project.stages;
   const entries = Object.entries(stages);
@@ -117,71 +105,27 @@ export function whatsBlocking(
     };
   }
 
-  // 4. Created by the interview agent and never started. The dossier is full and the card looks
-  //    complete, but NOTHING has been dispatched and nothing will be until the operator presses
-  //    Start Processing. Said plainly, and above the queue rules, so it cannot read as "in flight".
-  if (entries.some(([, s]) => s.status === 'awaiting-confirmation')) {
+  // 4. Created and never authorised. The dossier is full and the card looks complete, but the operator
+  //    has not pressed Start — intake transcribed the brief and NOTHING past it will run until they do.
+  //    Said plainly and above the queue rules so it cannot read as "in flight".
+  //
+  //    Read from `analysisStartedAt`, not from a stage status: that is the whole reason the authorisation
+  //    moved onto the project. A stage status answers "did this stage's agent run" and nothing else.
+  if (project.analysisStartedAt === null) {
     return {
       tone: 'warning',
       icon: 'ti-player-play',
-      text: 'Created but not started — open it and press Start Processing to dispatch the agents',
+      text: 'Created but not started — open it and press Start analysis',
     };
   }
 
-  // 5. A park the operator can clear RIGHT NOW. Ranked above the other parks because it is the only
-  //    one they can act on without chasing anybody, and above needs-review because the record says
-  //    exactly what it wants — `error` carries the dispatcher's own instruction, verbatim.
-  const awaitingOperator = entries.find(([, s]) => s.status === 'awaiting-operator');
-  if (awaitingOperator) {
-    const [name, s] = awaitingOperator;
-    return {
-      tone: 'warning',
-      icon: 'ti-player-pause',
-      text: `${LABEL[name] ?? name} awaiting ${AWAITED['awaiting-operator']}`,
-      detail: s.error ?? undefined,
-    };
-  }
-
-  // 6. The agent stopped and wants a human.
+  // 5. The agent stopped and wants a human. The only remaining way a STAGE needs somebody.
   const parked = entries.find(([, s]) => s.status === 'needs-review');
   if (parked) {
     return {
       tone: 'warning',
       icon: 'ti-player-pause',
-      text: `${LABEL[parked[0]] ?? parked[0]} parked — the agent stopped and wants a human`,
-    };
-  }
-
-  // 7. Parked on someone offline. Nothing in this app will move it — the operator has to go and get
-  //    the answer from a person, so we name the person rather than implying a button exists.
-  const awaitingPerson = entries.find(
-    ([, s]) => s.status === 'awaiting-physics' || s.status === 'awaiting-RE',
-  );
-  if (awaitingPerson) {
-    const [name, s] = awaitingPerson;
-    return {
-      tone: 'warning',
-      icon: 'ti-player-pause',
-      text: `${LABEL[name] ?? name} awaiting ${AWAITED[s.status as AwaitingStatus]}`,
-      detail: s.error ?? undefined,
-    };
-  }
-
-  // 7b. Parked on the VP's determination — the last signature in the journey, and the same shape
-  //     as the awaiting-RE park above: an offline person's ruling the operator goes and records.
-  //     Not folded into `awaitingPerson` because `awaiting-VP` is not an AwaitingStatus and has no
-  //     entry in AWAITED — PipelineRunner parks Decision with `error` deliberately null, so there is
-  //     no dispatcher instruction to surface, only the wait itself. `bucket()` below already
-  //     special-cases this status, with a comment explaining why leaving it out is the one direction
-  //     a mis-bucketing must not go (it would read as settled); this is the matching text branch —
-  //     without it, the card said nothing at all for the highest-consequence wait in the pipeline.
-  const awaitingVp = entries.find(([, s]) => s.status === 'awaiting-VP');
-  if (awaitingVp) {
-    const [name] = awaitingVp;
-    return {
-      tone: 'warning',
-      icon: 'ti-player-pause',
-      text: `${LABEL[name] ?? name} awaiting the VP's determination`,
+      text: `${LABEL[parked[0]] ?? parked[0]} stopped — the agent could not finish and wants a human`,
     };
   }
 
@@ -231,6 +175,42 @@ export function whatsBlocking(
     };
   }
 
+  // 9. EVERY STAGE IS DONE — and that is not the same as finished.
+  //
+  // This branch is the whole reason this file was rewritten. `done` used to imply signed, because Decision
+  // only left `awaiting-VP` when the VP signed and Regulatory only left `awaiting-RE` when the R.E. did.
+  // Neither is true now: a stage reaching `done` means its AGENT RAN. A project can sit here with the
+  // analysis complete, both gates unsigned, the compliance package refused and every order refused.
+  //
+  // Falling through to `return null` there would render as "nothing blocking" — a finished project. That is
+  // the same class of bug as a park rendering as not-started, pointed the other way, and it is worse:
+  // not-started under-claims progress, this one over-claims completion on the record that releases
+  // procurement.
+  if (!gates) {
+    // No gate information reached us. We must NOT infer "signed" from silence — and equally must not
+    // invent a specific outstanding gate. Say only what is certain: the analysis is done and the
+    // signatures are unverified from here.
+    return {
+      tone: 'muted',
+      icon: 'ti-signature',
+      text: 'Analysis complete — signatures not checked on this view',
+    };
+  }
+
+  const outstanding = [
+    signed(gates.regulatory) ? null : 'the regulatory sign-off',
+    signed(gates.vp) ? null : 'the VP determination',
+  ].filter((g): g is string => g !== null);
+
+  if (outstanding.length > 0) {
+    return {
+      tone: 'warning',
+      icon: 'ti-signature',
+      text: `Analysis complete — needs ${outstanding.join(' and ')}`,
+    };
+  }
+
+  // Genuinely finished: every stage ran and both signatures are on file.
   return null;
 }
 
@@ -240,31 +220,37 @@ export function bucket(
   project: ProjectSummary,
   matrix?: MatrixSummary,
   unopenedFlagged = 0,
+  gates?: ProjectGates,
 ): Bucket {
   const states = Object.values(project.stages);
 
-  // A park is "needs you" whoever it names: either you enter something, or you go and get it from the
-  // person who owes it. Either way the project is stopped and will not move on its own.
-  //
-  // `awaiting-VP` is named explicitly rather than folded into AWAITING_STATES: that constant is about
-  // surfacing a dispatcher-written instruction, and the Decision park carries none. But it is a park
-  // all the same — the record is stopped on the VP, and the gate is signable the moment their answer
-  // comes back. Left out, it fell through to `settled`, which is wrong in the direction that HIDES
-  // work: the last and highest-consequence signature in the journey would sit filed as finished.
+  // "Needs you" is now two things: a stage that genuinely stopped, and a record that is wrong.
   if (
-    states.some(
-      (s) => s.status === 'failed' || s.status === 'needs-review' || isAwaiting(s.status) || s.status === 'awaiting-VP',
-    ) ||
+    states.some((s) => s.status === 'failed' || s.status === 'needs-review') ||
     (matrix && (matrix.inconsistent > 0 || matrix.uncited > 0)) ||
     unopenedFlagged > 0
   ) {
     return 'needs-you';
   }
-  // Ahead of `running`: an interview-created project has pending stages behind its unconfirmed
-  // intake, and nothing dispatches them. Counted as running it would look like work in flight,
-  // counted as settled like work finished; either way the operator stops looking at it.
-  if (states.some((s) => s.status === 'awaiting-confirmation')) return 'not-started';
+
+  // Ahead of `running`: a created-but-unauthorised project has pending stages that nothing will
+  // dispatch. Counted as running it looks like work in flight, counted as settled like work finished;
+  // either way the operator stops looking at it. Read from the project, not from a stage status —
+  // that is what `analysisStartedAt` is for.
+  if (project.analysisStartedAt === null) return 'not-started';
+
   if (states.some((s) => s.status === 'running' || s.status === 'pending')) return 'running';
+
+  // EVERY STAGE DONE IS NOT SETTLED. It was, once, because Decision only reached `done` when the VP
+  // signed. Now `done` means the agent ran, so a project whose analysis is complete and whose gates are
+  // both unsigned would file itself as finished and drop out of the operator's attention entirely —
+  // with the compliance package and every order still refused.
+  //
+  // No gate information ⇒ NOT settled. Silence is not a signature, and the safe direction here is to
+  // keep the project visible rather than to file it away on an assumption.
+  if (!gates) return 'needs-you';
+  if (gates.regulatory !== 'approved' || gates.vp !== 'approved') return 'needs-you';
+
   return 'settled';
 }
 

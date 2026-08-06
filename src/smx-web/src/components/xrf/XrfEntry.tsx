@@ -13,7 +13,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { NotFound, confirmXrf, getXrfState, parseXrf, xrfTemplateUrl } from '../../api/client';
-import type { XrfProposal, XrfState } from '../../api/types';
+import type { AmendmentConflict, XrfProposal, XrfState } from '../../api/types';
 import { SectionHeader } from '../ui/Primitives';
 import { XrfProposalTable } from './XrfProposalTable';
 
@@ -81,6 +81,8 @@ export function XrfEntry({
   const [sheetProblems, setSheetProblems] = useState<string[]>([]);
   const [manual, setManual] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** The 409 body when confirming would void the VP's signature. Null until the server says so. */
+  const [voidWarning, setVoidWarning] = useState<AmendmentConflict | null>(null);
 
   // Which read is the current one. A late reply from a previous project must not overwrite this one.
   const reqId = useRef(0);
@@ -133,11 +135,21 @@ export function XrfEntry({
   );
 
   const confirm = useCallback(
-    async (rows: XrfProposal[]) => {
+    async (rows: XrfProposal[], acknowledgeSignatureVoid = false) => {
       setBusy(true);
       setError(null);
       try {
-        await confirmXrf(projectId, rows);
+        const res = await confirmXrf(projectId, rows, acknowledgeSignatureVoid);
+
+        // A 409 is not a failure — it is the system asking a question. Confirming a measurement RE-DOSES
+        // the project, and re-dosing voids the VP's signature. Surfacing it as an error would leave the
+        // operator with a refusal they cannot act on; surfacing it as a prompt lets them see exactly which
+        // signature goes and press again. Without the second press nothing is written.
+        if (!res.ok) {
+          setVoidWarning(res.conflict);
+          return;
+        }
+        setVoidWarning(null);
         setProposals(null);
         setSheetProblems([]);
         setManual(false);
@@ -200,6 +212,29 @@ export function XrfEntry({
           The physicist measures; you transcribe and confirm.
         </p>
       </header>
+
+      {/* Confirming would void a signature. NOT an error slot: the operator has to be able to proceed
+          from here, so this states exactly what goes and offers the second press that writes it. */}
+      {voidWarning && proposals && (
+        <div className="banner warning" role="alert">
+          <i className="ti ti-signature" aria-hidden="true" />
+          <div>
+            <div className="data small">{voidWarning.error}</div>
+            <div className="tiny">
+              This will void: {voidWarning.voids.join(', ')} · and re-run:{' '}
+              {voidWarning.rerun.join(', ')}
+            </div>
+            <button
+              type="button"
+              className="btn danger"
+              disabled={busy}
+              onClick={() => confirm(proposals, true)}
+            >
+              Record the measurement and void the signature
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* The one error slot. */}
       {error && (

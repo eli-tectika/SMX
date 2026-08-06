@@ -118,6 +118,37 @@ public class RerunScopeTests
     }
 
     [Fact]
+    public void XrfConfirmation_DeclaresItsScope_ThoughItCanNeverBeAMapEntry()
+    {
+        // The physicist's data is UNAMENDABLE by construction — IntakeAnswers refuses `measuredBackground`,
+        // `device` and `elementPools` by name, because a model transcribing measured numbers is how a shaved
+        // background ships a marker under the detection floor. The drift assertion above therefore CANNOT
+        // carry it, and a field with an undeclared blast radius is the exact hazard this file exists for. So
+        // it is declared beside the map instead, and this pins that it stays declared.
+        Assert.DoesNotContain("measuredBackground", RerunScope.Map.Keys);
+        Assert.DoesNotContain("device", RerunScope.Map.Keys);
+        Assert.NotEmpty(RerunScope.XrfConfirmation);
+    }
+
+    [Fact]
+    public void XrfConfirmation_ReDosesAndNothingUpstream()
+    {
+        // Spec §9.3: "XRF background + device LODs → Dosing, Sign-off — the detection floor." The
+        // measurement moves no chemistry and no verdict, so re-running Regulatory for it would void the
+        // R.E.'s signature over an analysis that did not change. The row also says Discovery joins this
+        // scope WHEN THE DEFERRED XRF FILTER LANDS — an element already loud in the substrate is a poor
+        // marker — and this assertion is what will fail when that day comes.
+        Assert.Equal([Stages.Dosing, Stages.Decision], RerunScope.XrfConfirmation);
+        Assert.DoesNotContain(Stages.Regulatory, RerunScope.XrfConfirmation);
+        Assert.DoesNotContain(Stages.Discovery, RerunScope.XrfConfirmation);
+
+        // Only the VP's signature is ever at risk: the R.E.'s covers the regulatory analysis, which this
+        // does not touch. A confirmation prompt that cries wolf is one the operator learns to click through.
+        Assert.Equal([GateTypes.Vp], RerunScope.SignaturesAtRisk(
+            RerunScope.XrfConfirmation, regulatorySigned: true, vpSigned: true));
+    }
+
+    [Fact]
     public void SignaturesAtRisk_IsEmpty_WhenNothingIsSigned()
     {
         // Nothing signed ⇒ nothing to warn about ⇒ the amendment just runs. "Nothing waits" is the default;

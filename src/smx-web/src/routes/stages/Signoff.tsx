@@ -6,6 +6,7 @@ import {
   getDecision,
   getDosing,
   getMsdsRegistry,
+  getRegulatoryGate,
   getVpGate,
   orderSubstance,
   recordVpDetermination,
@@ -16,6 +17,7 @@ import type {
   DecisionRow,
   DosingDoc,
   MsdsEntry,
+  RegulatoryGate,
   VpGate as VpGateState,
 } from '../../api/types';
 import { Loading } from '../../components/Loading';
@@ -24,34 +26,57 @@ import { Data } from '../../components/ui/Data';
 import { EmptyState, SectionHeader, StatCard } from '../../components/ui/Primitives';
 import type { ScreenProps } from '../ProjectLayout';
 
-const CRITERIA = ['regulatory', 'dosing', 'cost'] as const;
+/**
+ * The three criteria a decision row must clear.
+ *
+ * `availability` replaced `cost` when the Cost stage was deleted (spec §6): there are no prices to be
+ * had, but supply is a real procurement blocker and dropping it silently would lose the only supply
+ * signal in the product. The frontend `ClearedCriteria` type still names `cost` — that file belongs to
+ * another change in flight — so the criterion is read through a string index rather than through the
+ * type. That reads `false` for a key the record does not carry, which renders as BLOCKING: the loud
+ * direction, and the only safe one for a checklist that gates procurement.
+ */
+const CRITERIA = ['regulatory', 'dosing', 'availability'] as const;
 type Criterion = (typeof CRITERIA)[number];
 
-/** Each criterion is owned by the stage that produced it, so "trace" is a link plus the record id. */
-const OWNER: Record<Criterion, { stage: string; label: string }> = {
-  regulatory: { stage: 'regulatory', label: 'Regulatory gate' },
-  dosing: { stage: 'dosing', label: 'Dosing & codes' },
-  cost: { stage: 'cost', label: 'Cost & availability' },
+/** Each criterion is owned by the phase that produced it, so "trace" is a link plus the record id. */
+const OWNER: Record<Criterion, { slug: string; label: string; trace: 'verdict' | 'window' }> = {
+  regulatory: { slug: 'regulatory', label: 'Regulatory', trace: 'verdict' },
+  dosing: { slug: 'dosing', label: 'Dosing', trace: 'window' },
+  // Availability rides on the dosing document — the supply audit moved there with Cost's deletion, so
+  // a third trace ref would repeat `window` on every row.
+  availability: { slug: 'dosing', label: 'Dosing — supply', trace: 'window' },
 };
 
 /**
- * WHO signed the VP gate, folded to two cases — and `null` and `undefined` collapse to the same one.
+ * The compliance-package export — what the REGULATORY signature releases.
  *
- * `'operator'` is the human recording VP R&D's determination, the only writer this endpoint has.
- * `null` is "the record does not say" (a gate written before the field existed) and an absent key is
- * an older API build or a skewed deploy. Neither is evidence a person signed, so both land on
- * `unknown`. Written as an allow-list rather than `?? 'unknown'` on purpose: a signer string this
- * build has never heard of — a future `'vp'`, a typo in a seed script — must also fall to unknown
+ * Built here rather than in `client.ts` because the client has no export helper yet and this screen may
+ * not add one. It is the same shape `matrixXlsxUrl` uses (a plain href, same-origin through the Vite
+ * proxy in dev and App Gateway's `/api/*` rule in Azure), and it should move into the client the moment
+ * that file grows an export surface — two places knowing the API prefix is one too many.
+ */
+const compliancePackageUrl = (projectId: string) =>
+  `/api/projects/${encodeURIComponent(projectId)}/regulatory/compliance-package`;
+
+/**
+ * WHO signed, folded through an allow-list — and `null` and `undefined` collapse to the same case.
+ *
+ * `'operator'` is the human recording the determination. `null` is "the record does not say" (a gate
+ * written before the field existed) and an absent key is an older API build or a skewed deploy.
+ * Neither is evidence a person signed, so both land on `unknown`. Never `?? 'unknown'`: a signer string
+ * this build has never heard of — a future `'vp'`, a typo in a seed script — must also fall to unknown
  * rather than through a default that happens to read as a person.
  *
- * Only meaningful on an APPROVED gate: a locked gate can carry a stale signer for one write, and a
- * screen that rendered the signer whenever it was non-null would print a signature over a gate
- * nothing has approved.
+ * `auto-approve` exists on the REGULATORY gate only, and it stays rendered as an alarm: it means no
+ * human reviewed anything and the machine wrote the same fields a person's ruling writes.
  */
-type Signer = 'operator' | 'unknown';
+type Signer = 'operator' | 'auto-approve' | 'unknown';
 
-function signerOf(gate: VpGateState): Signer {
-  return gate.approvedBy === 'operator' ? 'operator' : 'unknown';
+function signerOf(gate: { approvedBy?: string | null } | null): Signer {
+  if (gate?.approvedBy === 'operator') return 'operator';
+  if (gate?.approvedBy === 'auto-approve') return 'auto-approve';
+  return 'unknown';
 }
 
 /** A date, or nothing. Never a slice of whatever the wire happened to carry. */
@@ -62,51 +87,60 @@ function signedOn(at: string | null | undefined): string | null {
 /*
  * Every read below is defensive. `client.ts` casts responses with `as` and validates nothing, so a
  * backend that drifts on any of these arrays turns a `.map` into a TypeError — and a throw here
- * unmounts the screen that signs the last hard gate. Degrade inside the region instead.
+ * unmounts the screen that signs the last hard gate.
  */
 const componentsOf = (doc: DecisionDoc | null): ComponentDecision[] =>
   doc && Array.isArray(doc.components) ? doc.components.filter((c) => Boolean(c)) : [];
 const rowsOf = (c: ComponentDecision): DecisionRow[] => (Array.isArray(c.rows) ? c.rows : []);
-const isClear = (r: DecisionRow, k: Criterion): boolean => r.cleared?.[k] === true;
+const isClear = (r: DecisionRow, k: Criterion): boolean =>
+  (r.cleared as unknown as Record<string, unknown> | undefined)?.[k] === true;
+const traceOf = (r: DecisionRow, k: Criterion): string =>
+  (((r.traceability as unknown as Record<string, unknown> | undefined)?.[OWNER[k].trace] as string) ??
+    '') || '—';
 
 /**
- * Decision — the signed close, read as one sequence: what was decided, the determination, and what
- * the determination releases.
+ * Sign-off — BOTH signatures, each labelled with what it releases, and the procurement they gate.
  *
- * The three sections are steps in time, not three views of the same thing, and the order is the
- * anti-rubber-stamping law as layout: the evidence comes BEFORE the pen, and procurement exists only
- * after the pen. Four things this screen exists to get right:
+ * A signature is a single act, not a workspace you return to, which is why this is its own screen and
+ * not the tail of a phase (spec §4). Two of them exist and they release different things:
  *
- *  1. **A proposal is not a signature.** `proposedCode` is the agent's offer, `confirmedCode` the
- *     VP's; they never share a treatment. And the proposal is HISTORY — once signed it stays on
- *     screen beside the signature, because the audit trail is what the agent said next to what the
- *     VP signed, not the second overwriting the first.
- *  2. **Armability is the server's word.** `GET /gate/vp` runs the same checks the POST enforces,
- *     including the two the browser cannot see (a stage no longer parked at `awaiting-VP`, a
- *     revision in flight). A tally assembled here could advertise a pen the POST refuses, and the
- *     POST re-checks — so when it refuses, we re-read and show the fresh blockers.
+ *   Regulatory  → the compliance-package export
+ *   VP R&D      → procurement, and each order is still held behind MSDS-before-order
+ *
+ * Both are stated here even though only one is SIGNED here: the regulatory pen lives on the Regulatory
+ * screen beside the verdicts it rules on, and duplicating it would be two controls over one gate, each
+ * with its own idea of what arms it. What belongs here is the status, who signed, and what is still
+ * withheld — because "am I finished" is this screen's question and no stage status can answer it.
+ *
+ * THE TRAP: `done` no longer means signed. The pipeline runs end to end with nobody's signature on
+ * anything, so every stage can read `done` on a project whose gates are both unsigned, whose export is
+ * refused and whose every order is refused. Nothing on this screen is inferred from a stage status.
+ *
+ * Four things it exists to get right:
+ *
+ *  1. **A proposal is not a signature.** `proposedCode` is the agent's offer, `confirmedCode` the VP's;
+ *     they never share a treatment. And the proposal is HISTORY — once signed it stays on screen beside
+ *     the signature, because the audit trail is what the agent said next to what the VP signed.
+ *  2. **Armability is the server's word.** `GET /gate/vp` runs the same checks the POST enforces. A
+ *     tally assembled here could advertise a pen the POST refuses.
  *  3. **Who signed is a fact, not a default.** An approved gate with no recorded signer reads as
  *     unknown provenance and never as a person.
- *  4. **MSDS-before-order is a hard precondition, stated where the order is placed.** It is not a
- *     condition of the gate — it gates each individual order, and release itself is eventually
- *     consistent (the pipeline flips procurement by reacting to the approved gate, not by the
- *     signing call), so signing re-reads rather than assuming.
+ *  4. **MSDS-before-order is a hard precondition, stated where the order is placed.** Release itself is
+ *     eventually consistent — the pipeline flips procurement by reacting to the approved gate, not by
+ *     the signing call — so signing re-reads rather than assuming.
  */
-export function Decision({ project, refreshProject }: ScreenProps) {
-  const stage = project.stages.decision;
-  const status = stage?.status;
+export function Signoff({ project, refreshProject }: ScreenProps) {
+  const status = project.stages.decision?.status;
 
   const [doc, setDoc] = useState<DecisionDoc | null>(null);
-  const [gate, setGate] = useState<VpGateState | null>(null);
+  const [vpGate, setVpGate] = useState<VpGateState | null>(null);
+  const [regGate, setRegGate] = useState<RegulatoryGate | null>(null);
   const [dosing, setDosing] = useState<DosingDoc | null>(null);
   const [sheets, setSheets] = useState<MsdsEntry[]>([]);
   /**
-   * How far the MSDS read has got — NOT a boolean, and not derivable from `sheets` being empty.
-   *
-   * `phase` reaches `ready` on the three project reads while this one is still in flight (see
-   * `load`), so `[]` covers three different situations: not read yet, read and empty, could not be
-   * read. Only the middle one may be described as "no sheet on file", and this is the screen that
-   * PLACES the order. See `SheetsState`.
+   * How far the MSDS read has got — NOT a boolean, and not derivable from `sheets` being empty. `[]`
+   * covers three different situations: not read yet, read and empty, could not be read. Only the middle
+   * one may be described as "no sheet on file", and this is the screen that PLACES the order.
    */
   const [sheetsState, setSheetsState] = useState<SheetsState>('unread');
   const [phase, setPhase] = useState<'loading' | 'ready' | 'absent' | 'error'>('loading');
@@ -123,23 +157,15 @@ export function Decision({ project, refreshProject }: ScreenProps) {
   /**
    * That a rejection was recorded IN THIS SESSION.
    *
-   * It has to be held here because the wire cannot tell us: `GET /gate/vp` reports
-   * `status = gate?.Status ?? "locked"`, and the rejection branch writes a gate whose status is
-   * literally `"locked"` — so *rejected* and *never signed* are the same three bytes. The stage also
-   * stays parked at `awaiting-VP` and no `confirmedCode` is written, so nothing else on the record
-   * moves either, and without this flag a successful rejection looks exactly like a no-op.
-   *
-   * The durable fix is a BACKEND change: `GET /gate/vp` would have to project the gate's `Reason`
-   * and a status that distinguishes a rejection from an unsigned gate. Until then a reload loses it.
+   * The wire cannot tell us: the rejection branch writes a gate whose status is literally `"locked"`,
+   * so *rejected* and *never signed* are the same three bytes, and no `confirmedCode` is written
+   * either. Without this flag a successful rejection looks exactly like a no-op. The durable fix is a
+   * backend change — `GET /gate/vp` projecting the gate's reason — and a reload loses it until then.
    */
   const [rejectedHere, setRejectedHere] = useState(false);
-  /** The `generatedAt` of the doc currently in state — how a re-read notices the decision changed. */
+  /** The `generatedAt` of the doc in state — how a re-read notices the decision changed underneath. */
   const generatedAtRef = useRef<string | null>(null);
-  /**
-   * A cancellation token for the re-reads that happen OUTSIDE the effect (after a sign, a rejection
-   * or an order). The effect owns a local one; these calls had none, so an unmount mid-flight left
-   * them writing into a dead component.
-   */
+  /** A cancellation token for the re-reads that happen OUTSIDE the effect (after a sign or an order). */
   const alive = useRef({ cancelled: false });
   useEffect(() => {
     const token = alive.current;
@@ -151,23 +177,24 @@ export function Decision({ project, refreshProject }: ScreenProps) {
 
   const load = useCallback(
     async (signal?: { cancelled: boolean }, opts?: { keepRecord?: boolean }) => {
-      // The MSDS read fails INDEPENDENTLY of the three project reads: the registry is a CROSS-PROJECT
-      // surface that only the order rows need, and a hiccup on it must not replace the decision, the
-      // evidence and the gate with "the decision record could not be read" — a sentence that would
-      // also be false, since it was read.
+      // The MSDS read fails INDEPENDENTLY of the project reads: the registry is a CROSS-PROJECT surface
+      // that only the order rows need, and a hiccup on it must not replace the decision and the gates
+      // with "the decision record could not be read" — a sentence that would also be false.
       const sheetsRead = getMsdsRegistry().then(
         (entries) => ({ ok: true, entries }),
         () => ({ ok: false, entries: [] as MsdsEntry[] }),
       );
       try {
-        const [d, g, dose] = await Promise.all([
+        const [d, vp, reg, dose] = await Promise.all([
           getDecision(project.projectId),
           getVpGate(project.projectId),
+          getRegulatoryGate(project.projectId),
           getDosing(project.projectId),
         ]);
         if (signal?.cancelled) return;
         setStaleMsg(null);
-        setGate(g);
+        setVpGate(vp);
+        setRegGate(reg);
         setDosing(dose === NotFound ? null : dose);
         if (d === NotFound) {
           setDoc(null);
@@ -175,8 +202,8 @@ export function Decision({ project, refreshProject }: ScreenProps) {
           setPhase('absent');
         } else {
           // The operator's per-component overrides are picks against a SPECIFIC decision. When the
-          // decision itself has been regenerated underneath them (a revise, a re-pick), a surviving
-          // pick is a choice nobody made about the rows now on screen — and it is still submittable.
+          // decision has been regenerated underneath them, a surviving pick is a choice nobody made
+          // about the rows now on screen — and it is still submittable.
           if (generatedAtRef.current !== null && generatedAtRef.current !== d.generatedAt) {
             setChoice({});
           }
@@ -188,10 +215,9 @@ export function Decision({ project, refreshProject }: ScreenProps) {
         if (signal?.cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
         if (opts?.keepRecord) {
-          // A POST-ACTION re-read. Blanking the screen here would unmount the `ready` subtree and
-          // take the banner explaining WHY the determination was refused with it — the single most
-          // important message on this screen, destroyed by a transient failure to re-read. The
-          // record is already on screen; keep it, and say plainly that it may now be stale.
+          // A POST-ACTION re-read. Blanking the screen would unmount the banner explaining WHY the
+          // determination was refused — the single most important message on this screen — over a
+          // transient failure to re-read. Keep the record and say plainly that it may be stale.
           setStaleMsg(msg);
         } else {
           setErrMsg(msg);
@@ -231,18 +257,9 @@ export function Decision({ project, refreshProject }: ScreenProps) {
     [doc, choice],
   );
 
-  /*
-   * All three actions re-read with `keepRecord`, and the re-read is EXPLICIT rather than left to
-   * `refreshProject()`. It has to be: the load effect keys on the stage `status`, and neither ruling
-   * changes it synchronously — a rejection leaves the stage parked at `awaiting-VP` forever, and an
-   * approval is closed by the pipeline reacting to the gate, seconds later. Dropping the explicit
-   * call would leave a signed determination showing an unsigned, armed gate.
-   */
   const sign = useCallback(async () => {
     const reason = note.trim();
     if (!reason) {
-      // Unreachable while the button honours `canSign`. Kept as a loud refusal rather than a silent
-      // `return`: a signature that quietly does nothing is the worst outcome available here.
       setSignError('A note is required — it records what was reviewed.');
       return;
     }
@@ -258,8 +275,8 @@ export function Decision({ project, refreshProject }: ScreenProps) {
       refreshProject();
       await load(alive.current, { keepRecord: true });
     } catch (err) {
-      // The server re-checks and can refuse a button that looked enabled (a concurrent revise, a
-      // stage that left its park). Show its words and re-read the gate for the fresh blockers.
+      // The server re-checks and can refuse a button that looked enabled (a concurrent revise). Show
+      // its words and re-read the gate for the fresh blockers.
       setSignError(err instanceof ApiError ? err.message : String(err));
       await load(alive.current, { keepRecord: true });
     } finally {
@@ -278,8 +295,8 @@ export function Decision({ project, refreshProject }: ScreenProps) {
     try {
       await recordVpDetermination(project.projectId, { determination: 'rejected', reason });
       setRejectedHere(true);
-      // A recorded ruling consumes its reason: the gate stays live, and a SECOND ruling is a second
-      // ruling, which needs its own words rather than inheriting the ones already on the record.
+      // A recorded ruling consumes its reason: a SECOND ruling needs its own words rather than
+      // inheriting the ones already on the record.
       setNote('');
       refreshProject();
       await load(alive.current, { keepRecord: true });
@@ -328,50 +345,57 @@ export function Decision({ project, refreshProject }: ScreenProps) {
   const released = doc?.procurement?.status === 'released';
   const orderedCas = Array.isArray(doc?.procurement?.orderedCas) ? doc!.procurement.orderedCas : [];
   const codes = Array.isArray(dosing?.codes) ? dosing!.codes : [];
-  const blockers = Array.isArray(gate?.blockers) ? gate!.blockers : [];
+  const blockers = Array.isArray(vpGate?.blockers) ? vpGate!.blockers : [];
 
-  const approved = gate?.status === 'approved';
-  /** Only read on an approved gate — see `Signer`. */
-  const signer: Signer | null = approved && gate ? signerOf(gate) : null;
-  const when = approved ? signedOn(gate?.approvedAt) : null;
+  const vpApproved = vpGate?.status === 'approved';
+  const vpSigner: Signer | null = vpApproved ? signerOf(vpGate) : null;
+  const vpWhen = vpApproved ? signedOn(vpGate?.approvedAt) : null;
 
   /**
-   * The determination has been made — either the gate record says so, or every component carries a
-   * signature (both are written by the same endpoint, and either alone is proof one ran).
+   * The determination has been made — either the gate says so, or every component carries a signature
+   * (both are written by the same endpoint, and either alone is proof one ran).
    *
-   * When it has, the pen is WITHDRAWN entirely rather than left on screen disabled. Once the stage
-   * leaves `awaiting-VP` the POST refuses both rulings, so every control here is dead — and a
-   * signing block that keeps drawing a dead "Approve & close project" beside a signed determination
-   * is inviting a second pen at exactly the moment there is none.
+   * When it has, the pen is WITHDRAWN rather than left on screen disabled: the POST refuses both
+   * rulings once the determination exists, and a signing block that keeps drawing a dead "Approve &
+   * close project" beside a signed determination invites a second pen at the moment there is none.
    */
-  const determined = approved || (components.length > 0 && confirmed === components.length);
+  const determined = vpApproved || (components.length > 0 && confirmed === components.length);
 
-  /** The codes dosing actually finalized for a component — the only signable set (POST 422s any other). */
+  /** The codes dosing actually finalized for a component — the only signable set (the POST 422s others). */
   const finalized = (componentId: string) =>
     codes.filter((k) => k.componentId === componentId).map((k) => k.ratioSignature);
 
   /**
-   * The components whose chosen code the POST would reject: none chosen (`''`), or one that is not
-   * in the DosingDoc. This mirrors the endpoint's own membership check rather than guessing at
-   * armability — and it can only ever WITHHOLD the pen, never grant it, because arming still
-   * requires `gate.armable` from the server.
+   * The components whose chosen code the POST would reject: none chosen (`''`), or one that is not in
+   * the DosingDoc. This mirrors the endpoint's own membership check rather than guessing at armability
+   * — and it can only ever WITHHOLD the pen, never grant it, because arming still requires
+   * `gate.armable` from the server.
    */
   const unsignable = confirmations.filter((c) => !finalized(c.componentId).includes(c.code));
 
-  const armable = gate?.armable === true;
+  const armable = vpGate?.armable === true;
   const codesReady = components.length > 0 && unsignable.length === 0;
   const noteReady = note.trim().length > 0;
   /*
-   * Rejection arms on the server's blockers but NOT on the codes: `DecisionEndpoints.cs` returns
-   * from its `rejected` branch — writing the locked gate and the reason — before it reads dosing or
-   * walks the confirmations. So a component with no signable code blocks an approval and not a
-   * rejection, and rejection is the escape hatch on exactly that state.
+   * Rejection arms on the server's blockers but NOT on the codes: the endpoint returns from its
+   * `rejected` branch before it reads dosing or walks the confirmations. So a component with no
+   * signable code blocks an approval and not a rejection, and rejection is the escape hatch on exactly
+   * that state.
    */
   const canSign = armable && codesReady && noteReady && busy === null;
   const canReject = armable && noteReady && busy === null;
 
   return (
     <>
+      <section className="screen">
+        <SectionHeader
+          title="The two signatures"
+          headingLevel={3}
+          hint="each releases one irreversible act — and nothing else does"
+        />
+        <RegulatorySignature projectId={project.projectId} gate={regGate} />
+      </section>
+
       <section className="screen">
         <SectionHeader
           title="What was decided"
@@ -385,8 +409,8 @@ export function Decision({ project, refreshProject }: ScreenProps) {
             <i className="ti ti-alert-triangle" aria-hidden="true" />
             <div className="prose">
               <b>The decision record came back in a shape this screen cannot read.</b> It carries no
-              component list, so nothing below can be shown and nothing here can be signed. Do not
-              treat the empty screen as an empty decision.
+              component list, so nothing below can be shown and nothing here can be signed. Do not treat
+              the empty screen as an empty decision.
             </div>
           </div>
         )}
@@ -397,8 +421,8 @@ export function Decision({ project, refreshProject }: ScreenProps) {
             title="No decision assembled yet."
             body={
               <>
-                The Decision stage assembles the matrix from the compliant set once the regulatory
-                gate is signed and dosing has produced codes. There is nothing to sign until it has.
+                Decision assembles from the compliant set once dosing has produced codes. There is
+                nothing to sign until it has.
               </>
             }
           />
@@ -406,13 +430,8 @@ export function Decision({ project, refreshProject }: ScreenProps) {
 
         {phase === 'ready' && !malformed && (
           <>
-            {/*
-              Two tiles, and both are things the operator can act on: a blocking row is why the
-              determination is not obvious, and an unsigned component is what the approval is
-              waiting for. Procurement status and an ordered count were on this strip and are not
-              any more — they are consequences of the signature, and the procurement section below
-              states them where they are actionable.
-            */}
+            {/* Two tiles, and both are things the operator can act on: a blocking row is why the
+                determination is not obvious, and an unsigned component is what the approval waits on. */}
             <div className="stat-strip">
               <StatCard
                 label="Blocking rows"
@@ -449,14 +468,18 @@ export function Decision({ project, refreshProject }: ScreenProps) {
       </section>
 
       <section className="screen">
-        <SectionHeader title="The determination" headingLevel={3} />
+        <SectionHeader
+          title="VP R&D determination"
+          headingLevel={3}
+          hint="releases procurement — each order still held behind its safety sheet"
+        />
 
         {staleMsg && (
           <div className="banner warn" role="alert">
             <i className="ti ti-alert-triangle" aria-hidden="true" />
             <div className="prose">
-              <b>The record could not be re-read after that action.</b> What is shown is the last
-              good read and may now be out of date — reload before acting on it. {staleMsg}
+              <b>The record could not be re-read after that action.</b> What is shown is the last good
+              read and may now be out of date — reload before acting on it. {staleMsg}
             </div>
           </div>
         )}
@@ -472,28 +495,27 @@ export function Decision({ project, refreshProject }: ScreenProps) {
 
         {/*
           The acknowledgment a rejection otherwise never gets. The server records it and then nothing
-          observable moves: the gate stays "locked", the stage stays parked, no `confirmedCode`
-          appears — so the block below re-renders live and armed, which is correct (the endpoint
-          really does allow a re-determination) but reads as "nothing happened" while still offering
-          "Approve & close project". Saying so is the whole fix available from here.
+          observable moves: the gate stays "locked" and no `confirmedCode` appears — so the block below
+          re-renders live and armed, which is correct (the endpoint really does allow a
+          re-determination) but reads as "nothing happened".
         */}
         {rejectedHere && !determined && (
           <div className="banner info" role="status">
             <i className="ti ti-ban" aria-hidden="true" />
             <div className="prose">
-              <b>The rejection was recorded with your reason; the gate is locked.</b> The stage stays
-              parked at <Data kind="code">awaiting-VP</Data>, so the gate below is still live — the
-              endpoint permits a re-determination after a rejection. Approving now would supersede it.
+              <b>The rejection was recorded with your reason; the gate is locked.</b> The endpoint
+              permits a re-determination after a rejection, so the block below is still live —
+              approving now would supersede it.
             </div>
           </div>
         )}
 
         {determined ? (
-          <SignedPanel signer={signer} when={when} released={released} />
+          <VpSignedPanel signer={vpSigner} when={vpWhen} released={released} />
         ) : (
           <SignBlock
             armable={armable}
-            gateUnread={gate === null}
+            gateUnread={vpGate === null}
             blockers={blockers}
             codesReady={codesReady}
             unsignable={unsignable}
@@ -514,7 +536,7 @@ export function Decision({ project, refreshProject }: ScreenProps) {
           <SectionHeader
             title="Procurement"
             headingLevel={3}
-            hint="what the signature released — each order still behind its safety sheet"
+            hint="what the VP signature released — each order still behind its safety sheet"
           />
           <Procurement
             components={components}
@@ -533,12 +555,97 @@ export function Decision({ project, refreshProject }: ScreenProps) {
 }
 
 /**
- * Who signed, and when, in one line — or, where the record cannot say, in as many as it takes.
+ * The regulatory signature, STATED here and signed on the Regulatory screen.
  *
- * The branches are deliberately not one parameterised box with a `tone`. They differ in what they
- * claim about a person, and that is exactly the difference a shared shell would flatten.
+ * It is on this screen because "what is still outstanding" is this screen's question, and because a
+ * signature described without the act it releases is a chore rather than a decision. It is not SIGNED
+ * here because the pen belongs beside the verdicts it rules on — two controls over one gate would each
+ * carry their own idea of what arms it, and the export link below is what the signature is FOR.
  */
-function SignedPanel({
+function RegulatorySignature({
+  projectId,
+  gate,
+}: {
+  projectId: string;
+  gate: RegulatoryGate | null;
+}) {
+  if (!gate) {
+    return (
+      <div className="banner danger" role="alert">
+        <i className="ti ti-alert-triangle" aria-hidden="true" />
+        <div className="prose">
+          <b>The regulatory gate could not be read.</b> This screen cannot say whether the compliance
+          package is released — not that it is not.
+        </div>
+      </div>
+    );
+  }
+
+  const approved = gate.status === 'approved';
+  const signer = signerOf(gate);
+  const when = signedOn(gate.approvedAt);
+
+  return (
+    <div
+      className="banner"
+      data-gate="regulatory"
+      data-signer={approved ? signer : undefined}
+      style={
+        approved && signer === 'operator'
+          ? {
+              background: 'var(--bg-teal)',
+              borderColor: 'var(--border-teal)',
+              color: 'var(--text-teal)',
+            }
+          : undefined
+      }
+    >
+      <i className={`ti ${approved ? 'ti-writing-sign' : 'ti-signature'}`} aria-hidden="true" />
+      <div className="prose">
+        {!approved ? (
+          <>
+            <b>Regulatory sign-off — not signed.</b> The compliance package cannot be exported until the
+            Regulatory Expert&rsquo;s determination is recorded.{' '}
+            <Link to={`/p/${projectId}/regulatory`}>Rule on the verdicts and sign it</Link>.
+          </>
+        ) : signer === 'auto-approve' ? (
+          /* The machine signed. Rendered as an alarm wherever it appears — every determination under
+             it is the machine's, and it wrote the same fields a person's ruling writes. */
+          <span style={{ color: 'var(--text-danger)', fontWeight: 600 }}>
+            Regulatory sign-off was made by the MACHINE{when ? ` on ${when}` : ''}. No human reviewed
+            anything, and every regulatory determination on this project is the agent&rsquo;s own.{' '}
+            <Link to={`/p/${projectId}/regulatory`}>Open the verdicts and sign it for real</Link>.
+          </span>
+        ) : signer === 'unknown' ? (
+          <>
+            <b>Regulatory sign-off — approved{when ? ` on ${when}` : ''}, signer not recorded.</b> The
+            compliance package can be exported on it, but do not read it as a human ruling.
+          </>
+        ) : (
+          <>
+            <b>Regulatory sign-off — signed{when ? ` on ${when}` : ''}.</b> The compliance package is
+            released.
+          </>
+        )}
+        {approved && (
+          <div style={{ marginTop: 'var(--s2)' }}>
+            <a className="btn" href={compliancePackageUrl(projectId)} download>
+              <i className="ti ti-download" aria-hidden="true" /> Compliance package
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Who signed the VP gate, and when — or, where the record cannot say, in as many lines as it takes.
+ *
+ * The branches are deliberately not one parameterised box with a `tone`. They differ in what they claim
+ * about a person, and that is exactly the difference a shared shell would flatten.
+ */
+function VpSignedPanel({
   signer,
   when,
   released,
@@ -548,13 +655,13 @@ function SignedPanel({
   released: boolean;
 }) {
   /* Procurement release is eventually consistent: the pipeline flips it by reacting to the approved
-     gate, not by the signing call. So an unreleased determination is normal for a few seconds, and
-     this screen says so rather than inventing order controls ahead of the record. */
+     gate, not by the signing call. So an unreleased determination is normal for a few seconds, and this
+     screen says so rather than inventing order controls ahead of the record. */
   const tail = released ? null : (
     <>
       {' '}
-      Procurement is not released yet — the pipeline releases it by reacting to the signed gate, not
-      by the signing call. Reload in a moment for the order controls.
+      Procurement is not released yet — the pipeline releases it by reacting to the signed gate, not by
+      the signing call. Reload in a moment for the order controls.
     </>
   );
 
@@ -571,31 +678,30 @@ function SignedPanel({
       >
         <i className="ti ti-writing-sign" aria-hidden="true" />
         <div className="prose">
-          <b>You recorded VP R&amp;D&rsquo;s determination{when ? ` on ${when}` : ''}.</b> It wrote
-          the Marker Library entry and the close conclusion, and released procurement. There is no
-          second pen: a determination is made once, and the endpoint refuses another as soon as the
-          stage leaves its park.
+          <b>You recorded VP R&amp;D&rsquo;s determination{when ? ` on ${when}` : ''}.</b> It wrote the
+          Marker Library entry and the close conclusion, and released procurement. There is no second
+          pen: a determination is made once, and the endpoint refuses another.
           {tail}
         </div>
       </div>
     );
   }
 
-  if (signer === 'unknown') {
+  if (signer === 'unknown' || signer === 'auto-approve') {
     return (
       /*
        * Approved, signer unrecorded. The temptation is to read this as the operator, because in
-       * practice it was — and that is precisely why it must not: a gate written before the record
-       * named its signer cannot be retroactively claimed as a person's, and the one build that
-       * signs this gate without a person is the build whose gates would go unattributed. Withhold.
+       * practice it was — and that is precisely why it must not: a gate written before the record named
+       * its signer cannot be retroactively claimed as a person's, and the one build that signs this
+       * gate without a person is the build whose gates would go unattributed. Withhold.
        */
       <div className="banner warn" data-signer="unknown" role="status">
         <i className="ti ti-help-circle" aria-hidden="true" />
         <div className="prose">
-          <b>Approved{when ? ` on ${when}` : ''} &mdash; the record does not say who signed it.</b>{' '}
-          The Marker Library entry and the close conclusion were written on this approval and
-          procurement was released on it, but no signer is on the record. Do not read it as a
-          person&rsquo;s determination.
+          <b>Approved{when ? ` on ${when}` : ''} &mdash; the record does not say who signed it.</b> The
+          Marker Library entry and the close conclusion were written on this approval and procurement was
+          released on it, but no signer is on the record. Do not read it as a person&rsquo;s
+          determination.
           {tail}
         </div>
       </div>
@@ -604,17 +710,17 @@ function SignedPanel({
 
   /*
    * Every component carries a signed code while the gate record does not report an approval — the
-   * window between the POST landing and the gate read catching up, and also what a partially
-   * written record looks like. The determination is real (the codes below are signed and name their
-   * signer) but the gate is not this screen's witness to it, so nothing here is attributed.
+   * window between the POST landing and the gate read catching up, and also what a partially written
+   * record looks like. The determination is real (the codes above are signed and name their signer) but
+   * the gate is not this screen's witness to it, so nothing here is attributed.
    */
   return (
     <div className="banner info" data-signer="components" role="status">
       <i className="ti ti-signature" aria-hidden="true" />
       <div className="prose">
-        <b>Every component carries a signed code.</b> The gate record does not report an approval
-        yet, so this screen will not say who signed or when — each component above names its own
-        signer. The pen is withdrawn regardless: the endpoint refuses a second determination.
+        <b>Every component carries a signed code.</b> The gate record does not report an approval yet,
+        so this screen will not say who signed or when — each component above names its own signer. The
+        pen is withdrawn regardless: the endpoint refuses a second determination.
         {tail}
       </div>
     </div>
@@ -622,13 +728,11 @@ function SignedPanel({
 }
 
 /**
- * The signature, with its preconditions attached to the buttons rather than floating above them in
- * a panel of their own.
+ * The signature, with its preconditions attached to the buttons rather than floating above them.
  *
- * `armable` is the SERVER's answer and it is what enables the press. The checks below are the
- * server's blockers plus the one condition this screen owns, and they EXPLAIN the answer — they do
- * not compute it. A tally assembled in the browser can disagree with the endpoint that is about to
- * refuse it, and the direction it disagrees in is a live-looking button over an unarmed gate.
+ * `armable` is the SERVER's answer and it is what enables the press. The checks EXPLAIN the answer —
+ * they do not compute it. A tally assembled in the browser can disagree with the endpoint that is about
+ * to refuse it, and the direction it disagrees in is a live-looking button over an unarmed gate.
  */
 function SignBlock({
   armable,
@@ -662,14 +766,13 @@ function SignBlock({
   return (
     <div>
       <p className="prose" style={{ margin: '0 0 var(--s3)' }}>
-        The last hard gate. Approving records VP R&amp;D&rsquo;s determination, writes the Marker
-        Library entry and the close conclusion, and releases procurement — where each order is still
-        held behind a reviewed safety sheet. Rejecting records the refusal and its reason, and leaves
-        the project open.
+        The last hard gate. Approving records VP R&amp;D&rsquo;s determination, writes the Marker Library
+        entry and the close conclusion, and releases procurement — where each order is still held behind
+        a safety sheet on file. Rejecting records the refusal and its reason, and leaves the project open.
       </p>
 
-      {/* Named, because it is the one list on this screen a reader needs to be able to find: it is
-          what stands between the operator and the last hard gate. */}
+      {/* Named, because it is the one list on this screen a reader needs to be able to find: it is what
+          stands between the operator and the last hard gate. */}
       <ul
         aria-label="Determination preconditions"
         style={{ listStyle: 'none', margin: '0 0 var(--s3)', padding: 0 }}
@@ -681,8 +784,8 @@ function SignBlock({
             gateUnread ? (
               'The gate could not be read, so this screen cannot say what it would accept. Nothing can be signed until it can.'
             ) : blockers.length > 0 ? (
-              /* The VP gate's blockers are plain-English sentences meant to be shown verbatim —
-                 unlike the regulatory gate's parseable "unreviewed: {cas}|{comp}" strings. */
+              /* The VP gate's blockers are plain-English sentences meant to be shown verbatim — unlike
+                 the regulatory gate's parseable "unreviewed: {cas}|{comp}" strings. */
               <ul style={{ margin: 0, paddingLeft: 16 }}>
                 {blockers.map((b) => (
                   <li key={b}>{b}</li>
@@ -695,8 +798,8 @@ function SignBlock({
         />
         <Check
           met={codesReady}
-          // "approval only" is in the LABEL, not just the detail: an operator reading an unmet row
-          // needs to know there, in the row, that it does not stand between them and a rejection.
+          // "approval only" is in the LABEL, not just the detail: an operator reading an unmet row needs
+          // to know there, in the row, that it does not stand between them and a rejection.
           label="A finalized code chosen for every component (approval only)"
           detail={
             noComponents
@@ -714,8 +817,8 @@ function SignBlock({
         />
       </ul>
 
-      {/* One note, for whichever ruling is made. A rejection is a ruling and needs its reason
-          exactly as much as an approval does — the backend 422s a blank one either way. */}
+      {/* One note, for whichever ruling is made. A rejection is a ruling and needs its reason exactly as
+          much as an approval does — the backend 422s a blank one either way. */}
       <textarea
         value={note}
         onChange={(e) => setNote(e.target.value)}
@@ -813,7 +916,8 @@ function Check({
     >
       <i
         className={`ti ${met ? 'ti-check' : 'ti-x'}`}
-        aria-hidden="true"
+        role="img"
+        aria-label={met ? 'met' : 'not met'}
         style={{ color: met ? 'var(--text-muted)' : 'var(--text-warning)', marginTop: 2 }}
       />
       <span style={{ flex: 1, minWidth: 0 }}>
@@ -856,11 +960,7 @@ function ComponentBand({
 
   return (
     <div style={{ marginBottom: 'var(--s5)' }}>
-      <SectionHeader
-        eyebrow={c.componentId}
-        count={rows.length}
-        hint="substances in this decision"
-      />
+      <SectionHeader eyebrow={c.componentId} count={rows.length} hint="substances in this decision" />
 
       {signed ? (
         <div className="card" style={{ marginBottom: 10 }}>
@@ -877,8 +977,8 @@ function ComponentBand({
           {/*
             The proposal is HISTORY and is never overwritten: the audit trail keeps what the agent
             offered beside what the VP signed. Dropping it once signed would leave an override
-            indistinguishable from a confirmation, which is the one comparison this record exists
-            to make. Muted and labelled — it is a past offer, not a live one.
+            indistinguishable from a confirmation, which is the one comparison this record exists to
+            make. Muted and labelled — it is a past offer, not a live one.
           */}
           {proposal !== undefined && (
             <p className="small muted" style={{ margin: '8px 0 0' }}>
@@ -894,10 +994,9 @@ function ComponentBand({
             <span className="small muted">Proposed by the agent</span>
             {/*
               The signature appears ONCE, and where the decision is actually made: inside the picker,
-              whose default is the proposal. Printing it as a chip beside the picker as well would
-              put the same code on screen twice in two treatments, and the read-only one is exactly
-              the shape a signed code takes — which is how a proposal starts looking like a
-              signature. The chip is therefore the FALLBACK, for when dosing offers nothing to pick.
+              whose default is the proposal. Printing it as a chip beside the picker as well would put
+              the same code on screen twice in two treatments, and the read-only one is exactly the
+              shape a signed code takes — which is how a proposal starts looking like a signature.
             */}
             {!c.proposedCode ? (
               <span className="small" style={{ color: 'var(--text-danger)' }}>
@@ -916,8 +1015,7 @@ function ComponentBand({
               {c.proposedCode.rationale}
             </p>
           )}
-          {/* The wrapping <label> IS the accessible name. An identical `aria-label` on the select was
-              a second, competing source for the same string — one label, not two. */}
+          {/* The wrapping <label> IS the accessible name — one label, not two. */}
           {codes.length > 0 && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span className="small muted">Code to confirm for {c.componentId}</span>
@@ -941,8 +1039,7 @@ function ComponentBand({
       <table className="mx">
         <caption className="sr-only">
           The substances in {c.componentId}&rsquo;s decision: each row&rsquo;s determination, its
-          recommended ppm, and whether it clears regulatory, dosing and cost. &ldquo;View&rdquo;
-          opens the trace to the stage that owns each criterion.
+          recommended ppm, and whether it clears regulatory, dosing and availability.
         </caption>
         <thead>
           <tr>
@@ -967,10 +1064,10 @@ function ComponentBand({
                   <td>
                     <span style={{ fontWeight: 500 }}>{r.element}</span>{' '}
                     <span className="tiny muted">
-                      <Data kind="code">{r.cas}</Data>
+                      <Data kind="cas">{r.cas}</Data>
                     </span>
                   </td>
-                  <td className="tiny">{r.determination}</td>
+                  <td className="small">{r.determination}</td>
                   <td className="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>
                     {r.recommendedPpm}
                   </td>
@@ -981,8 +1078,8 @@ function ComponentBand({
                         title={`${k} — ${isClear(r, k) ? 'clear' : 'blocking'} (owned by ${OWNER[k].label})`}
                       >
                         {isClear(r, k) ? '✓' : '✕'}
-                        {/* The glyph and the `title` carry the meaning visually; neither is
-                            announced reliably. Whether a criterion BLOCKS is the cell's content. */}
+                        {/* The glyph and the `title` carry the meaning visually; neither is announced
+                            reliably. Whether a criterion BLOCKS is the cell's content. */}
                         <span className="sr-only">
                           {' '}
                           {k} — {isClear(r, k) ? 'clear' : 'blocking'}
@@ -1003,16 +1100,11 @@ function ComponentBand({
                 </tr>
                 {isOpen && (
                   <tr>
-                    <td
-                      colSpan={4 + CRITERIA.length}
-                      style={{ padding: 0, background: 'var(--surface-2)' }}
-                    >
-                      <div
-                        style={{ borderLeft: '2px solid var(--text-accent)', padding: 'var(--s3)' }}
-                      >
+                    <td colSpan={4 + CRITERIA.length} style={{ padding: 0, background: 'var(--surface-2)' }}>
+                      <div style={{ borderLeft: '2px solid var(--text-accent)', padding: 'var(--s3)' }}>
                         <div className="small muted" style={{ marginBottom: 6 }}>
-                          Each criterion is owned by the stage that produced it. The record id is
-                          what the claim was read from — the record is the truth, not this copy of it.
+                          Each criterion is owned by the phase that produced it. The record id is what
+                          the claim was read from — the record is the truth, not this copy of it.
                         </div>
                         {CRITERIA.map((k) => (
                           <div className="step" key={k}>
@@ -1027,16 +1119,10 @@ function ComponentBand({
                             <div>
                               <span style={{ textTransform: 'capitalize' }}>{k}</span> —{' '}
                               {isClear(r, k) ? 'clear' : <b>blocking</b>}{' '}
-                              <Link to={`/p/${projectId}/${OWNER[k].stage}`}>
+                              <Link to={`/p/${projectId}/${OWNER[k].slug}`}>
                                 {OWNER[k].label} <i className="ti ti-arrow-right" aria-hidden="true" />
                               </Link>{' '}
-                              <Data kind="code">
-                                {k === 'regulatory'
-                                  ? r.traceability?.verdict
-                                  : k === 'dosing'
-                                    ? r.traceability?.window
-                                    : r.traceability?.audit}
-                              </Data>
+                              <Data kind="id">{traceOf(r, k)}</Data>
                             </div>
                           </div>
                         ))}

@@ -15,10 +15,12 @@ import { useEffect, useRef, useState } from 'react';
  */
 const KEYS: { keys: string; what: string; where?: string }[] = [
   { keys: '⌘K / Ctrl K', what: 'Open the finder', where: 'anywhere' },
-  // Bound only where a collapse control exists (WorkArea's `collapsible`), which is Matrix and
-  // Dosing — the two screens whose artifact is genuinely width-starved. Elsewhere the agent
-  // column has no control to bring it back, so the key is deliberately not listened for.
-  { keys: '⌘\\ / Ctrl \\', what: 'Show or hide the agent panel', where: 'the matrix and dosing' },
+  // Bound wherever a collapse control exists. That used to be Matrix and Dosing alone — the two
+  // artifacts that were genuinely width-starved beside a permanent 390px agent column. The panel is
+  // collapsible on every project screen now, so the binding follows it. Where there is NO panel
+  // (Overview) the key is deliberately not listened for: a shortcut that silently does nothing is
+  // worse than one the sheet never promised.
+  { keys: '⌘\\ / Ctrl \\', what: 'Show or hide the agent panel', where: 'any project screen that has one' },
   { keys: '↵', what: 'Send the message', where: 'the interview' },
   { keys: '⌘↵ / Ctrl ↵ / ⇧↵', what: 'Start a new line', where: 'the interview' },
   { keys: 'F', what: 'Jump to the next flagged cell', where: 'the matrix' },

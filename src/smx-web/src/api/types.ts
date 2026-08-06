@@ -19,44 +19,31 @@ export const VERDICT_DIMENSIONS = [
 export type VerdictDimension = (typeof VERDICT_DIMENSIONS)[number];
 
 /**
- * StageState.Status — src/Smx.Domain/Records/ProjectDoc.cs (StageStatus) + StageDispatcher.
+ * StageState.Status — src/Smx.Domain/Records/ProjectDoc.cs (StageStatus).
  *
- * The three `awaiting-*` PARK states are real: the dispatcher writes `awaiting-physics`/`awaiting-operator`
- * on Dosing and `awaiting-RE` on Regulatory. They are not "pending" — `pending` means the agent has not
- * started; an `awaiting-*` means the record is stopped on a named human, and for `awaiting-operator` the
- * stage's `error` string says exactly what to enter.
+ * FIVE VALUES, and there used to be ten. The five `awaiting-*` PARK states are deleted (execution-core
+ * design §8, implemented 2026-08-06): the pipeline runs end to end on the best data it has, so a stage
+ * status now answers exactly one question — DID THIS STAGE'S AGENT RUN — and nothing else.
  *
- * `awaiting-confirmation` is a fourth, different kind of wait: intake only, set by the interview agent when
- * it creates the project. No agent has run and none will until the operator presses Start Processing. It is
- * deliberately NOT one of AWAITING_STATES below — those carry a dispatcher-written `error` to surface, and
- * this one does not; the Projects list and the intake screen handle it on their own.
+ * What a park used to carry is carried by better-placed facts:
+ *   - "the operator has not authorised the analysis" → `analysisStartedAt` on the project
+ *   - "a signature is outstanding"                   → the gate records, via the dashboard's
+ *                                                      `outstandingSignatures`
+ *   - "this rests on estimates or proposals"         → `DosingDoc.provisional` and `orderBlockers`
  *
- * `awaiting-VP` is the fifth, and is where the Decision stage PARKS: StageDispatcher writes it instead of
- * `done` (with `error` deliberately null), because only the VP gate's signature completes that stage. It is
- * likewise not in AWAITING_STATES — there is no dispatcher-written instruction to surface, and the VP gate
- * screen is the whole story. See the note in Decision.tsx: nothing may infer armability from this status;
- * GET /gate/vp is the only authority on whether the pen is live.
+ * THE TRAP THIS REPLACES ONE FAMILY OF BUGS WITH: `done` NO LONGER MEANS SIGNED. A project can have every
+ * stage `done` with both gates unsigned and procurement refused. A screen that reads `done` as "finished"
+ * tells the operator the opposite of the truth — which is the same shape as the four park-renders-as-
+ * not-started bugs, pointing the other way.
  */
 export type StageStatus =
   | 'pending'
   | 'running'
   | 'failed'
   | 'needs-review'
-  | 'done'
-  | 'awaiting-RE'
-  | 'awaiting-physics'
-  | 'awaiting-operator'
-  | 'awaiting-VP'
-  | 'awaiting-confirmation';
+  | 'done';
 
-/** The park states, and who each one is stopped on. Order = the operator's ability to act. */
-export const AWAITING_STATES = ['awaiting-operator', 'awaiting-physics', 'awaiting-RE'] as const;
-export type AwaitingStatus = (typeof AWAITING_STATES)[number];
-export const isAwaiting = (s: StageStatus): s is AwaitingStatus =>
-  (AWAITING_STATES as readonly string[]).includes(s);
-
-/** Stage keys the backend actually tracks — src/Smx.Domain/Records/RecordIds.cs (Stages.All). */
-export const BACKED_STAGES = ['intake', 'discovery', 'regulatory', 'matrix', 'dosing', 'cost'] as const;
+export const BACKED_STAGES = ['intake', 'discovery', 'regulatory', 'matrix', 'dosing'] as const;
 export type BackedStage = (typeof BACKED_STAGES)[number];
 
 /** ComponentSpec — src/Smx.Domain/Records/ConstraintsDoc.cs */
@@ -367,6 +354,14 @@ export interface ProjectSummary {
   product: string;
   stages: Record<string, StageState>;
   payload?: ProjectPayload;
+  /**
+   * When the operator authorised the analysis; null until they press Start (ProjectDoc.AnalysisStartedAt).
+   *
+   * `null`, never `undefined`: the backend serializes it even when null precisely so the UI reads
+   * "not started" off the wire instead of inferring it from an absent key. Typed non-optional here so a
+   * screen cannot quietly treat a missing field as "started".
+   */
+  analysisStartedAt: string | null;
 }
 
 /**
@@ -383,8 +378,29 @@ export interface ProjectListItem {
   product: string;
   stages: Record<string, StageState>;
   createdAt: string;
+  /**
+   * Null until the operator presses Start. The card needs it for the same reason the detail route does:
+   * "created but never authorised" is a state, and it is not `pending` — nothing will dispatch those
+   * pending stages until this is set.
+   */
+  analysisStartedAt: string | null;
   /** The run in flight, if any — the list endpoint projects the newest running run. */
   activeRun?: ActiveRun | null;
+  /**
+   * Both gate statuses, from GET /projects.
+   *
+   * The card CANNOT answer "is this project finished" without them any more. Every stage reaching `done`
+   * used to imply the signatures were in, because the Decision stage only left `awaiting-VP` when the VP
+   * signed. It does not imply that now — `done` means the agent ran — so a card reading stage statuses
+   * alone would paint a fully-computed, entirely unsigned project as complete.
+   */
+  gates?: ProjectGates;
+}
+
+/** GateDoc.Status per gate: "locked" until signed, "approved" after. */
+export interface ProjectGates {
+  regulatory: string;
+  vp: string;
 }
 
 /**
@@ -611,12 +627,37 @@ export interface MarkerCode {
 }
 
 /** DosingDoc — DosingDoc.cs:70-84. One per project; the per-component split lives INSIDE, on each row. */
+/**
+ * Who sells one substance, and what is risky about that. `risks` are "single-source" | "not-off-the-shelf".
+ * Neither was ever derived from a price, which is why deleting the Cost stage cost this record nothing.
+ */
+export interface SupplierAudit {
+  cas: string;
+  element: string;
+  suppliers: string[];
+  risks: string[];
+}
+
 export interface DosingDoc {
   id: string;
   projectId: string;
   type: string;
   windows: PpmWindow[];
   codes: MarkerCode[];
+  /** Availability per substance, from the reference catalog — formerly the payload of the Cost stage. */
+  supply: SupplierAudit[];
+  /**
+   * TRUE when this dosing rests on something weaker than a signature or a measurement: a substance present
+   * on the agent's PROPOSAL alone, or a window computed over a default detection floor rather than the
+   * physicist's number.
+   *
+   * It is the ORDER-BLOCKING flag — procurement refuses over it. Serialized by the backend even when false
+   * so the UI reads "not provisional" off the wire rather than inferring it from a missing key; a build
+   * skew would otherwise turn an absent alarm into a clean bill of health.
+   */
+  provisional: boolean;
+  /** One NAMED line per reason, never a count — "3 substances are provisional" is not actionable. */
+  provisionalReasons: string[];
   /** The SOFT checkpoint (UX §4.5). A review note, NOT a gate — it blocks nothing and must never be made to. */
   reviewNote?: string;
   reviewedAt?: string;
@@ -643,46 +684,15 @@ export interface DosingReviewRequest {
   note: string;
 }
 
-/* ---------------------------------------------------------------------------
-   COST — src/Smx.Domain/Records/CostDoc.cs. Read-only: Cost holds no agent and is not revisable.
-   --------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------------------------------
+   COST IS DELETED (redesign spec §6). PriceQuote / SupplierAudit / CostDoc lived here.
 
-/** A price and the listing it came from (CostDoc.cs:5). Per GRAM. `currency` can only ever be "USD". */
-export interface PriceQuote {
-  usdPerGram: number;
-  currency: string;
-  supplier: string;
-  pack: string;
-  citation: Citation;
-}
+   The customer confirmed there are no price details, so the stage that existed to attach one is gone. What
+   procurement actually acts on — who sells the substance and what is risky about that — survives as
+   `SupplierAudit` inside DosingDoc, reachable on the wire as `DosingCells.suppliers` / `.risks`, and the
+   ORDER AMOUNT was always in Dosing (`CodeMarker.compoundMassMg`), never in Cost.
+   --------------------------------------------------------------------------------------------------- */
 
-/**
- * The audit for one substance (CostDoc.cs:11-16).
- *
- * `bestQuote` is ABSENT (nulls are omitted) when nothing parseable was on file, and `priceNote` says so in
- * words. Nothing is interpolated, averaged, or currency-converted into existence — a Cost stage that invented
- * a price would be fabricating the single number procurement acts on. Render the absence, never a zero.
- *
- * `suppliers` is NAMES ONLY — there is no per-supplier price to compare, and no lead time anywhere in Cost.
- */
-export interface SupplierAudit {
-  cas: string;
-  element: string;
-  suppliers: string[];
-  bestQuote?: PriceQuote;
-  priceNote: string;
-  /** "single-source" | "not-off-the-shelf" — CostAudit.cs:46,48 */
-  risks: string[];
-}
-
-/** CostDoc — CostDoc.cs:18-25. Note the field is `substances`, not `molecules`. */
-export interface CostDoc {
-  id: string;
-  projectId: string;
-  type: string;
-  substances: SupplierAudit[];
-  generatedAt: string;
-}
 
 /* ---------------------------------------------------------------------------
    DECISION — src/Smx.Domain/Records/DecisionDoc.cs. The last stage of the journey.
@@ -698,14 +708,23 @@ export interface CostDoc {
 export interface ClearedCriteria {
   regulatory: boolean;
   dosing: boolean;
-  cost: boolean;
+  /**
+   * Was `cost`. With no price data to be had, what this criterion can honestly assert is that somebody
+   * SELLS the substance. Renamed rather than removed: silently dropping a criterion would shrink what the
+   * VP signs over without anyone deciding to.
+   */
+  availability: boolean;
 }
 
-/** Where each claim in a row came from — RECORD IDS, so every figure is traceable end-to-end (§3.5). */
+/**
+ * Where each claim in a row came from — RECORD IDS, so every figure is traceable end-to-end (§3.5).
+ *
+ * TWO refs, not three. `audit` pointed at the cost document; with the supply audit folded into the dosing
+ * doc it would be the same id as `window` on every row — a trace that traces to itself.
+ */
 export interface TraceRefs {
   verdict: string;
   window: string;
-  audit: string;
 }
 
 /** One substance's line in a component's decision. `determination` is the R.E.'s word, not the agent's. */
@@ -1067,4 +1086,106 @@ export interface IntakeBrief {
   attachments: SessionAttachment[];
   transcript: InterviewTurn[];
   createdAt: string;
+}
+
+/* ---------------------------------------------------------------------------------------------------
+   The unified project table — GET /projects/{id}/table (src/Smx.Domain/ProjectTable.cs).
+
+   Every record from Discovery onward is keyed on (component, CAS), so the whole project record IS one
+   wide table. Each phase contributes a column group; a phase screen renders its own group and the full
+   matrix renders all of them, from ONE projection — the screen and the XLSX export cannot disagree.
+   --------------------------------------------------------------------------------------------------- */
+
+export interface DiscoveryCells {
+  tier: string;
+  preferred: boolean;
+  rationale: string;
+  sources: number;
+}
+
+/**
+ * `proposedDetermination` and `determination` are SEPARATE fields, exactly as they are on the record.
+ * Rendering them in one column would be the agent signing the regulatory gate at the presentation layer —
+ * the thing the two-field split exists to prevent. Never collapse them.
+ */
+export interface RegulatoryCells {
+  overall: VerdictStatus;
+  dimensions: DimensionVerdict[];
+  proposedDetermination: string | null;
+  determination: string | null;
+  evidenceReviewed: boolean;
+}
+
+/** Both bounds travel WHOLE: a ppm without its `kind` is a number whose provenance was thrown away. */
+export interface DosingCells {
+  floor: Bound;
+  upper: Bound;
+  recommendedPpm: number;
+  compoundMassMg: number;
+  suppliers: string[];
+  risks: string[];
+}
+
+export interface OutcomeCells {
+  inCode: string | null;
+  ordered: boolean;
+}
+
+/**
+ * One substance in one component, with each phase's contribution as a separate group.
+ *
+ * EVERY GROUP IS `| null`, NEVER OPTIONAL (`?`). The backend serializes these even when null so that
+ * absence is explicit on the wire; typing them optional would let `undefined` (key absent — an older
+ * bundle, a deploy skew) and `null` (the phase produced nothing) both arrive here meaning different
+ * things, which is precisely the ambiguity the backend went out of its way to remove.
+ *
+ * `stoppedAt` is what distinguishes the two readings of an empty group: a phase that RAN and dropped this
+ * row, versus a phase that has not run yet. Rendering those alike is the bug family this codebase has
+ * shipped four times.
+ */
+export interface TableRow {
+  componentId: string;
+  cas: string;
+  element: string;
+  form: string;
+  discovery: DiscoveryCells | null;
+  regulatory: RegulatoryCells | null;
+  dosing: DosingCells | null;
+  outcome: OutcomeCells | null;
+  stoppedAt: string | null;
+  stoppedReason: string | null;
+}
+
+export interface ProjectTable {
+  projectId: string;
+  rows: TableRow[];
+}
+
+/* ---------------------------------------------------------------------------------------------------
+   Amendments — GET/POST /projects/{id}/amendments (src/Smx.Backend/Api/AmendmentEndpoints.cs).
+   --------------------------------------------------------------------------------------------------- */
+
+/**
+ * One requirement the operator changed after intake.
+ *
+ * `rerun` and `voidedSignatures` are what the amendment ACTUALLY cost at the time, recorded rather than
+ * re-derived: the rerun map may legitimately change as the pipeline does, and the log has to say what
+ * happened that day.
+ */
+export interface Amendment {
+  at: string;
+  componentId: string;
+  field: string;
+  from: string;
+  to: string;
+  reason: string;
+  rerun: string[];
+  voidedSignatures: string[];
+}
+
+/** The 409 body when an amendment would void a signature already on file. */
+export interface AmendmentConflict {
+  error: string;
+  voids: string[];
+  rerun: string[];
 }

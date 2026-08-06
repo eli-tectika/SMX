@@ -3,15 +3,15 @@ import { MemoryRouter } from 'react-router-dom';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Discovery } from './Discovery';
-import type { CandidatesDoc, CandidateSubstance, ProjectSummary } from '../../api/types';
+import type { ProjectSummary } from '../../api/types';
 
 vi.mock('../../api/client', () => ({
   NotFound: Symbol.for('NotFound'),
-  getCandidates: vi.fn(),
+  getTable: vi.fn(),
   getRevisions: vi.fn().mockResolvedValue([]),
   reviseStage: vi.fn(),
-  // Both screens now show the proposed pool. These cases are about their own data, so it
-  // resolves to the not-yet-run state and renders one honest waiting line.
+  // The pool is Discovery's input and every case here is about the candidates, so it resolves to the
+  // not-yet-run state and renders one honest waiting line.
   getPool: vi.fn().mockResolvedValue(Symbol.for('NotFound')),
 }));
 import * as api from '../../api/client';
@@ -20,48 +20,30 @@ const project: ProjectSummary = {
   projectId: 'proj-1',
   client: 'Acme',
   product: 'PET bottle',
-  stages: {
-    intake: { status: 'done', attempts: 0 },
-    discovery: { status: 'done', attempts: 0 },
-  },
+  stages: { discovery: { status: 'done', attempts: 0 } },
+  analysisStartedAt: '2026-08-01T09:00:00Z',
 };
 
-const candidate = (over: Partial<CandidateSubstance> = {}): CandidateSubstance => ({
+const row = (over: Record<string, unknown> = {}) => ({
   componentId: 'bottle',
+  cas: '1314-36-9',
   element: 'Y',
   form: 'oxide',
-  cas: '1314-36-9',
-  preferred: false,
-  tier: 'A',
-  rationale: 'Corroborated by two catalog entries.',
-  citations: [{ source: 'Sigma-Aldrich', reference: '205168', retrievedAt: '2026-07-01T00:00:00Z' }],
+  discovery: { tier: 'A', preferred: false, rationale: 'Corroborated by two catalog entries.', sources: 2 },
+  regulatory: null,
+  dosing: null,
+  outcome: null,
+  stoppedAt: null,
+  stoppedReason: null,
   ...over,
 });
 
-const doc: CandidatesDoc = {
-  id: 'proj-1|candidates',
-  projectId: 'proj-1',
-  type: 'candidates',
-  substances: [
-    candidate({ preferred: true }),
-    candidate({
-      element: 'Zr',
-      cas: '1314-23-4',
-      tier: 'B',
-      componentId: 'lid',
-      citations: [{ source: 'Alfa Aesar', reference: '11081', retrievedAt: '2026-06-20T00:00:00Z' }],
-    }),
-  ],
-};
-
 /**
- * A stand-in for the docked chat's composer input (AgentPanel.tsx). Discovery has no reference to
- * AgentPanel — ProjectLayout mounts the two side by side, and Discovery's "revise in chat" button
- * finds the real composer already in the page by its aria-label and drives it as a user would. This
- * decoy is deliberately a CONTROLLED input with its own React state, exactly like the real composer,
- * so the test proves the button's native-setter + dispatchEvent trick actually reaches React's
- * `onChange` — a naive `input.value = …` would change the pixel but never update tracked state, and
- * `data-testid="tracked"` is what would catch that regression.
+ * A stand-in for the agent panel's composer. Discovery has no reference to it — the shell mounts the
+ * two side by side — so the revise button finds the real composer already in the page by its label and
+ * drives it as a user would. The decoy is a CONTROLLED input with its own state, exactly like the real
+ * composer, so the test proves the native-setter + dispatchEvent trick reaches React's `onChange`: a
+ * naive `input.value = …` would change the pixel and never the tracked state.
  */
 function DecoyComposer() {
   const [value, setValue] = useState('');
@@ -73,7 +55,7 @@ function DecoyComposer() {
   );
 }
 
-const view = (opts?: { withComposer?: boolean; doc?: CandidatesDoc }) =>
+const view = (opts?: { withComposer?: boolean }) =>
   render(
     <MemoryRouter>
       {opts?.withComposer && <DecoyComposer />}
@@ -82,143 +64,96 @@ const view = (opts?: { withComposer?: boolean; doc?: CandidatesDoc }) =>
   );
 
 beforeEach(() => {
-  vi.mocked(api.getCandidates).mockResolvedValue(doc);
+  vi.mocked(api.getTable).mockResolvedValue({
+    projectId: 'proj-1',
+    rows: [row(), row({ componentId: 'lid', cas: '1314-23-4', element: 'Zr', discovery: { tier: 'B', preferred: true, rationale: 'Web-only.', sources: 1 } })],
+  } as never);
 });
 
-describe('Discovery', () => {
-  it('renders each candidate from the record, grouped by component', async () => {
+describe('Discovery — the Discovery column group of the one project table', () => {
+  it('renders each row from the projection, grouped by component', async () => {
     view();
     await waitFor(() => expect(screen.getByText('bottle')).toBeInTheDocument());
     expect(screen.getByText('lid')).toBeInTheDocument();
-    expect(screen.getByText(/1314-36-9/)).toBeInTheDocument();
-    expect(screen.getByText(/1314-23-4/)).toBeInTheDocument();
+    expect(screen.getByText('1314-36-9')).toBeInTheDocument();
+    expect(screen.getByText('1314-23-4')).toBeInTheDocument();
   });
 
   /**
-   * The fixture hard-coded reference="catalog" and a fabricated retrievedAt on every chip. A citation
-   * without the date it was retrieved is not a citation, it is a claim — so the real values must reach
-   * the chip verbatim.
+   * `preferred` traces to the record's own flag. The tier-A row sorts FIRST in its own component, and
+   * it is the tier-B row on the OTHER component the record marks — so a screen that derived "preferred"
+   * from tier or from list position would put the chip on the wrong substance.
    */
-  it('renders each citation with the source and reference the agent recorded', async () => {
+  it('renders preferred only where the record marks it', async () => {
     view();
-    await waitFor(() => expect(screen.getByText(/Sigma-Aldrich/)).toBeInTheDocument());
-    expect(screen.getAllByText('205168').length).toBeGreaterThan(0);
-    expect(screen.queryByText('catalog')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('lid')).toBeInTheDocument());
+    const chips = screen.getAllByText('preferred');
+    expect(chips).toHaveLength(1);
+    expect(chips[0].closest('tr')?.textContent).toContain('1314-23-4');
   });
 
-  /** A 404 is the pre-run state, not a failure. It must not render as an error. */
-  it('renders an empty state, not an error, before Discovery has run', async () => {
-    vi.mocked(api.getCandidates).mockResolvedValue(Symbol.for('NotFound') as never);
+  /** A candidate resting on no source is the heaviest provenance failure Discovery can produce. */
+  it('flags a candidate with no sources rather than printing a quiet zero', async () => {
+    vi.mocked(api.getTable).mockResolvedValue({
+      projectId: 'proj-1',
+      rows: [row({ discovery: { tier: 'C', preferred: false, rationale: '', sources: 0 } })],
+    } as never);
     view();
-    await waitFor(() => expect(screen.getByText(/no candidates/i)).toBeInTheDocument());
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  /** The whole point of the change: nothing on this screen is fabricated. */
-  it('carries no mock provenance marker', async () => {
-    const { container } = view();
-    await waitFor(() => expect(screen.getByText('bottle')).toBeInTheDocument());
-    expect(container.querySelector('[data-provenance]')).toBeNull();
-    expect(screen.queryByText(/Mock data/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/none/i)).toBeInTheDocument());
   });
 
   /**
-   * The fixture's other two candidates sit on different components, so within-component ordering
-   * was never exercised — exactly the gap that let a bare `.filter()` (record order, unsorted) pass
-   * review. This seeds a THIRD bottle candidate at tier C and puts it FIRST in the record, ahead of
-   * the tier-A bottle candidate. A component that renders record order verbatim would show the tier-C
-   * CAS before the tier-A one; the doc comment (and the ribbon drawn A-then-B-then-C) promise otherwise.
+   * Within a component only the TIER bucket is imposed; inside a tier the agent's order is a ranking it
+   * chose and the UI must not re-do it. A bare `.map` over the projection's order would show the tier-C
+   * row above the tier-A one.
    */
-  it("orders candidates within a component by tier, not by the record's raw order", async () => {
-    const outOfOrder: CandidatesDoc = {
-      ...doc,
-      substances: [
-        candidate({ tier: 'C', cas: '7440-00-0', rationale: 'Web-only; capped below preferred.' }),
-        doc.substances[0], // the tier-A bottle candidate, cas 1314-36-9 — listed second in the record
-        doc.substances[1], // the lid candidate — a different component, unaffected either way
+  it('orders a component by tier, not by the projection order', async () => {
+    vi.mocked(api.getTable).mockResolvedValue({
+      projectId: 'proj-1',
+      rows: [
+        row({ cas: '7440-00-0', discovery: { tier: 'C', preferred: false, rationale: '', sources: 1 } }),
+        row(),
       ],
-    };
-    vi.mocked(api.getCandidates).mockResolvedValue(outOfOrder);
+    } as never);
     const { container } = view();
-    await waitFor(() => expect(screen.getByText(/7440-00-0/)).toBeInTheDocument());
-
+    await waitFor(() => expect(screen.getByText('7440-00-0')).toBeInTheDocument());
     const text = container.textContent ?? '';
-    expect(text.indexOf('1314-36-9')).toBeGreaterThanOrEqual(0);
     expect(text.indexOf('1314-36-9')).toBeLessThan(text.indexOf('7440-00-0'));
   });
 
-  /**
-   * `preferred` must trace straight to the record's own flag. The tier-A candidate sorts FIRST in
-   * this component's list (the ribbon and the card order both promise A before B), but it is the
-   * tier-B candidate the record marks `preferred: true` — so a component that derived "preferred"
-   * from tier, or from list position, would put the chip on the wrong card.
-   */
-  it('renders `preferred` only on the candidate the record marks, never inferred from tier or ranking', async () => {
-    const mixed: CandidatesDoc = {
-      ...doc,
-      substances: [
-        candidate({ tier: 'A', preferred: false, cas: '1111-11-1' }),
-        candidate({ tier: 'B', preferred: true, cas: '2222-22-2' }),
-      ],
-    };
-    vi.mocked(api.getCandidates).mockResolvedValue(mixed);
-    const { container } = view();
-    await waitFor(() => expect(screen.getByText(/2222-22-2/)).toBeInTheDocument());
-
-    const preferredChips = screen.getAllByText('preferred');
-    expect(preferredChips).toHaveLength(1);
-    const card = preferredChips[0].closest('.card');
-    expect(card?.textContent).toContain('2222-22-2');
-    expect(card?.textContent).not.toContain('1111-11-1');
-    void container;
-  });
-
-  /** A malformed record must degrade inside this screen's own region, never throw past it. */
-  it('drops a malformed candidate from the record instead of throwing', async () => {
-    const malformed = {
-      ...doc,
-      substances: [
-        candidate({ cas: '9999-99-9' }),
-        { element: 'Bad', form: 'row', preferred: true }, // no componentId, no cas, no citations array
-      ],
-    } as unknown as CandidatesDoc;
-    vi.mocked(api.getCandidates).mockResolvedValue(malformed);
+  /** An empty projection is a young project, not an error. */
+  it('renders an empty state, not an alert, before Discovery has produced anything', async () => {
+    vi.mocked(api.getTable).mockResolvedValue({ projectId: 'proj-1', rows: [] } as never);
     view();
-    await waitFor(() => expect(screen.getByText(/9999-99-9/)).toBeInTheDocument());
-    expect(screen.queryByText('Bad row')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/no candidates on the record/i)).toBeInTheDocument());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   /**
-   * The per-card form is gone: revising is now "focus the docked chat with the target pre-filled".
-   * The composer is a sibling in the page (ProjectLayout mounts it beside the screen, not through
-   * it), so this proves the button drives the REAL aria-labelled input already in the DOM — focusing
-   * it and pushing the candidate's name into its (React-controlled) value.
+   * A failed read and an empty record must never look alike. "Discovery found nothing" when the truth
+   * is "I could not ask" is a claim about the chemistry made out of a network error.
    */
-  it('focuses the docked composer and pre-fills the candidate as the revision target', async () => {
+  it('distinguishes a failed table read from an empty one', async () => {
+    vi.mocked(api.getTable).mockRejectedValue(new Error('boom'));
+    view();
+    await waitFor(() => expect(screen.getByText(/could not be read/i)).toBeInTheDocument());
+    expect(screen.queryByText(/no candidates on the record/i)).not.toBeInTheDocument();
+  });
+
+  /** No direct edits (Law 4): the button hands the candidate to the agent, it does not re-tier it. */
+  it('pre-fills the agent composer with the candidate instead of editing the record', async () => {
     view({ withComposer: true });
     await waitFor(() => expect(screen.getByText('bottle')).toBeInTheDocument());
-
-    const button = screen.getByRole('button', { name: 'Revise Y oxide in chat' });
-    fireEvent.click(button);
-
-    const input = screen.getByLabelText('Message the discovery agent') as HTMLInputElement;
-    expect(input).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Revise Y oxide in chat' }));
+    expect(screen.getByLabelText('Message the discovery agent')).toHaveFocus();
     expect(screen.getByTestId('tracked').textContent).toContain('Y oxide');
   });
 
-  /** With no docked chat in the page (this file's own render tree), the button must not throw. */
-  it('does nothing, and does not throw, when the composer is not mounted', async () => {
+  /** With the agent column collapsed the button must say so rather than silently do nothing. */
+  it('says the agent column is closed rather than failing silently', async () => {
     view({ withComposer: false });
     await waitFor(() => expect(screen.getByText('bottle')).toBeInTheDocument());
-    const button = screen.getByRole('button', { name: 'Revise Y oxide in chat' });
-    expect(() => fireEvent.click(button)).not.toThrow();
-  });
-
-  /** The old per-card form and its endpoint are gone; revising happens in the docked chat instead. */
-  it('carries no per-card revision form', async () => {
-    view();
-    await waitFor(() => expect(screen.getByText('bottle')).toBeInTheDocument());
-    expect(screen.queryByLabelText('Revision reason')).not.toBeInTheDocument();
-    expect(screen.queryByText(/ask the agent to revise/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: /Revise Y oxide in chat/ })[0]);
+    expect(screen.getByText(/agent column is closed/i)).toBeInTheDocument();
   });
 });

@@ -55,6 +55,29 @@ public static class RerunScope
             ["batchMassKg"] = DosingLane,
         };
 
+    /// WHAT CONFIRMING AN XRF MEASUREMENT INVALIDATES — spec §9.3's row "XRF background + device LODs →
+    /// Dosing, Sign-off". Same table, same reasoning, DELIBERATELY OUTSIDE <see cref="Map"/>.
+    ///
+    /// WHY IT CANNOT BE A MAP ENTRY. `Map` is asserted, field for field, to equal
+    /// <see cref="IntakeAnswers"/>'s allow-list (RerunScopeTests) — and that allow-list refuses
+    /// `measuredBackground`, `device` and `elementPools` BY NAME, because the physicist's data must not be
+    /// writable through a model's tool call. Adding them here would either break that assertion or force the
+    /// allow-list open, and the allow-list being closed is a safety property: a floor that reads low ships a
+    /// marker nobody can detect in the field. So the field is unamendable and its blast radius still has to
+    /// be declared — hence a named constant beside the map rather than a row inside it.
+    ///
+    /// Its consumer is POST /projects/{id}/xrf/confirm, which is the ONLY writer of measured backgrounds.
+    /// Without the reset that endpoint was a no-op on the analysis: the physicist's number landed in the
+    /// record, `HasRunAsync` counted Dosing as already run, and the ppm windows went on being the ones
+    /// computed from <see cref="DefaultDetectionFloor"/> — knowingly optimistic, and marked provisional for
+    /// exactly that reason. The operator supplied the input the flag asked for and nothing happened.
+    ///
+    /// KNOWN GAP, spec-sanctioned: it does NOT rerun Discovery. Today the measurement's only analytical
+    /// consumer is the detection floor. When the deferred XRF FILTER lands — an element already loud in the
+    /// substrate is a poor marker — this must grow to include Discovery, and §9.3 says so in the same row.
+    /// Widening it before then would void the R.E.'s signature over an analysis that did not move.
+    public static readonly IReadOnlyList<string> XrfConfirmation = DosingLane;
+
     /// The stages an amendment to <paramref name="field"/> invalidates, in pipeline order.
     ///
     /// THROWS on an undeclared field rather than returning empty. Empty would read as "this change

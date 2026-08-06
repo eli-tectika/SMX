@@ -210,6 +210,40 @@ public sealed class PipelineRunner(
         _ => error ?? outcome,
     };
 
+    /// Put a rerun's diff (spec §9.5) where the operator will find it: on the run that produced it.
+    ///
+    /// WHY THE RUN TRAIL AND NOT THE AMENDMENT RECORD — the other candidate, and it looks tempting because
+    /// the amendment log is the operator's home for "what did I change". Three things decided it:
+    ///
+    /// 1. CORRELATION. POST /amendments returns the moment it has patched the constraints; the rerun happens
+    ///    minutes later, on the supervisor's thread, across a SET of stages. To write the diff onto an
+    ///    Amendment the runner would have to guess which of a project's amendments this rerun belongs to, and
+    ///    two amendments queued back to back have no honest answer. A RunDoc IS the rerun — one run, one
+    ///    stage, one execution — so the correlation is free and cannot be wrong.
+    /// 2. ABSENCE MEANS THE RIGHT THING. A run doc only exists if the stage actually ran (RunTrail opens
+    ///    lazily, and a body that skips writes nothing). So "no diff on the trail" reads as "this stage did
+    ///    not re-run" — which is TRUE and useful. A nullable field on the Amendment would be null both when
+    ///    the rerun changed nothing and when the rerun never happened, collapsing the two states this whole
+    ///    feature exists to keep apart.
+    /// 3. GRAIN. The Amendment record is a fact about a moment — what was changed, from what, why, at what
+    ///    cost — and it is deliberately immutable after the endpoint writes it. The run trail is already the
+    ///    append-only "what happened" channel, in its own Cosmos container so telemetry never turns up in a
+    ///    query that reads project state. A diff is telemetry about an execution, not a property of a
+    ///    requirement change.
+    ///
+    /// Every line goes out as its own `output` step, and the list is NOT capped: a diff that elides its
+    /// fourteenth changed verdict hides the one nobody expected, which is the entire point of showing it.
+    ///
+    /// `null` ⇒ the stage has never run before, so there is no rerun to report and nothing is emitted. That
+    /// is not the "no prior state" case — <see cref="RerunDiff"/> owns that, and it is a SENTENCE, because a
+    /// rerun that cannot be compared must say so rather than fall silent.
+    private static async Task ReportDiffAsync(RunTrail trail, RerunDiff.Diff? diff, CancellationToken ct)
+    {
+        if (diff is null) return;
+        foreach (var line in diff.AllLines)
+            await trail.StepAsync(RunStepKind.Output, line, ct: ct);
+    }
+
     /// Has this stage already produced its output?
     ///
     /// For Intake, Pool and Discovery the answer is "is the output doc on file" — those docs are written
@@ -227,6 +261,25 @@ public sealed class PipelineRunner(
     private async Task<bool> HasRunAsync(string projectId, string stage, CancellationToken ct) =>
         (await store.GetProjectAsync(projectId, ct))?.Stages.GetValueOrDefault(stage)?.Status
             is not (null or StageStatus.Pending or StageStatus.Running);
+
+    /// Has this stage been RE-OPENED — pushed back to `pending` after it had already produced output?
+    ///
+    /// The counterpart to <see cref="HasRunAsync"/> for the three stages whose skip guard is DOC EXISTENCE
+    /// rather than stage status (Pool, Discovery, and Regulatory's inline copy of this test). Those guards
+    /// were written for a world where nothing invalidated their output in place; POST /amendments and POST
+    /// /xrf/confirm both do, and a stage reset that the runner then skips is a rerun the endpoint reported
+    /// and never performed.
+    ///
+    /// EVERY CALLER MUST AND THIS WITH "the stage's own output is on file". `pending` alone is also the
+    /// status of a stage that has never run, and re-opening on that would mean nothing at all. `pending` +
+    /// prior output is the signature of a reset and of nothing else: a resumed run is `running`, a completed
+    /// one is `done`, a broken one is `failed` or `needs-review`.
+    ///
+    /// This is NOT a weakening of HasRunAsync, which protects finished work from at-least-once redelivery
+    /// re-running it. `done` still never re-enters here.
+    private async Task<bool> ReopenedAsync(string projectId, string stage, CancellationToken ct) =>
+        (await store.GetProjectAsync(projectId, ct))?.Stages.GetValueOrDefault(stage)?.Status
+            == StageStatus.Pending;
 
     // ---------------------------------------------------------------------------------------------
     // The stages.
@@ -262,10 +315,31 @@ public sealed class PipelineRunner(
     private async Task<StageResult> RunPoolAsync(RunTrail trail, CancellationToken ct)
     {
         var projectId = trail.Run.ProjectId;
-        if (await store.GetPoolAsync(projectId, ct) is not null) return Skip();
-        // OnConstraintsAsync's top guard, kept: a project that already has a candidate set got one somehow,
-        // and proposing a pool to feed a Discovery run that will not happen is work nobody asked for.
-        if (await store.GetCandidatesAsync(projectId, ct) is not null) return Skip();
+
+        // AN AMENDMENT MUST ACTUALLY RE-PROPOSE. `material` and `objective` declare `Everything` as their
+        // blast radius — the polymer and the objective decide which chemistry is a candidate at all — but
+        // both guards below are DOC-EXISTENCE guards, so the reset landed, the runner arrived, found a
+        // PoolDoc on file and skipped. The endpoint reported `rerun: [pool, discovery, …]` over a pool
+        // proposed for a polymer the customer no longer uses. Same defeat as Regulatory's, one stage earlier.
+        //
+        // `pending` WITH a PoolDoc on file is the precise signature of that reset and of nothing else: a
+        // first run has no PoolDoc, a resumed run is `running` (the status is stamped BEFORE the agent runs,
+        // and the doc is written after), a completed one is `done`, a broken one is `failed`/`needs-review`.
+        // A pool stage that legitimately never runs — provided candidates, an operator element pool — sits at
+        // `pending` forever with NO PoolDoc, so it cannot be mistaken for a reset.
+        var priorPool = await store.GetPoolAsync(projectId, ct);
+        var reopened = priorPool is not null && await ReopenedAsync(projectId, Stages.Pool, ct);
+
+        if (!reopened)
+        {
+            if (priorPool is not null) return Skip();
+            // OnConstraintsAsync's top guard, kept: a project that already has a candidate set got one
+            // somehow, and proposing a pool to feed a Discovery run that will not happen is work nobody asked
+            // for. It is skipped on the reopened path because `Everything` resets Discovery too — the
+            // Discovery run this pool feeds is exactly the one that is about to happen.
+            if (await store.GetCandidatesAsync(projectId, ct) is not null) return Skip();
+        }
+
         if (await store.GetConstraintsAsync(projectId, ct) is not { } c) return Skip();
         // The need-only condition, from OnConstraintsAsync: an operator/eval pool or provided candidates
         // mean the pool agent has nothing to propose.
@@ -308,8 +382,23 @@ public sealed class PipelineRunner(
     private async Task<StageResult> RunDiscoveryAsync(RunTrail trail, CancellationToken ct)
     {
         var projectId = trail.Run.ProjectId;
-        if (await store.GetCandidatesAsync(projectId, ct) is not null) return Skip();
+
+        // AN AMENDMENT MUST ACTUALLY RE-DISCOVER — the same defeat as Pool's and Regulatory's. `material`
+        // and `objective` reset this stage to `pending`; the guard below asked only whether a CandidatesDoc
+        // existed, so the reset was silently skipped and the project went on displaying candidates found for
+        // a polymer that changed. See ReopenedAsync for why `pending` + prior output is the exact signature.
+        var priorCandidates = await store.GetCandidatesAsync(projectId, ct);
+        var reopened = priorCandidates is not null
+                       && await ReopenedAsync(projectId, Stages.Discovery, ct);
+        if (!reopened && priorCandidates is not null) return Skip();
         if (await store.GetConstraintsAsync(projectId, ct) is not { } c) return Skip();
+
+        // The "before" half of the orphan report, captured before the CandidatesDoc is replaced. Only on a
+        // re-run: a first Discovery has no verdicts, and OfVerdicts would answer "no prior state to compare"
+        // — a sentence whose whole value is that it is unusual enough to read.
+        var priorVerdicts = reopened
+            ? RerunDiff.VerdictSnapshot.Of(await store.GetVerdictsAsync(projectId, ct))
+            : null;
 
         // Known-candidate mode: bypass the Discovery agent when the operator/eval supplied candidates.
         if (c.ProvidedCandidates.Count > 0)
@@ -340,11 +429,13 @@ public sealed class PipelineRunner(
                     null, null);
             }
 
-            await store.UpsertCandidatesAsync(new CandidatesDoc
+            var provided = new CandidatesDoc
             {
                 Id = RecordIds.Candidates(projectId), ProjectId = projectId,
                 Substances = [.. c.ProvidedCandidates],
-            }, ct);
+            };
+            await store.UpsertCandidatesAsync(provided, ct);
+            await PruneOrphanedVerdictsAsync(provided, priorVerdicts, trail, ct);
             // Known-candidate mode bypasses the AGENT, not the ledger: an operator-provided candidate is a
             // substance in play by exactly the same measure, and the order gate blocks on its sheet just the
             // same.
@@ -378,6 +469,7 @@ public sealed class PipelineRunner(
 
         var candidates = result.Output!;
         await store.UpsertCandidatesAsync(candidates, ct);
+        await PruneOrphanedVerdictsAsync(candidates, priorVerdicts, trail, ct);
         // AFTER the persist, never before: the ledger enrolls substances the record actually carries. A
         // candidate that failed to persist is not in play, and enrolling it would put the sweep to work on a
         // substance no project is evaluating.
@@ -388,6 +480,58 @@ public sealed class PipelineRunner(
             $"{candidates.Substances.Count(s => s.Tier == "A")} Tier A, " +
             $"{candidates.Substances.Count(s => s.Tier == "B")} Tier B.",
             RecordIds.Candidates(projectId));
+    }
+
+    /// WHAT A DISCOVERY RE-RUN DOES TO THE VERDICTS IT ORPHANS — the decision, and why it went this way.
+    ///
+    /// Re-running Discovery REPLACES the CandidatesDoc. Every other record in `record` is upserted by a
+    /// deterministic id, so a re-run overwrites its own predecessor; verdicts are the exception — one
+    /// document per (cas, component) — so a candidate that the new set drops leaves a verdict behind
+    /// describing a cell nobody is screening.
+    ///
+    /// TWO OPTIONS. (a) delete the orphans. (b) leave them and rely on the live-candidate filtering that
+    /// MatrixAssembler.Cells, RegulatoryGate.Armable, the compliance-package export and ProjectTable.Build
+    /// already do. (b) has real precedent and it is NOT chosen, for two reasons:
+    ///
+    /// 1. THE FILTERING IS NOT UNIVERSAL, AND THE TWO PLACES IT IS MISSING ARE THE DANGEROUS ONES.
+    ///    `GET /projects/{id}/verdicts` serves the partition raw — an orphan renders on the regulatory
+    ///    screen looking exactly as current as a live verdict. Worse, RunDosingAsync folds
+    ///    `ProvisionalSet.Of(verdicts)` over ALL verdicts with no live-candidate filter at all, so an orphan
+    ///    carrying `recommended` is dosed into a code for a substance the current analysis rejected — and
+    ///    from there into a compliance package and an order. Read-side repair is a rule every future reader
+    ///    has to remember; four remembered and two did not. A document that is not there cannot be misread.
+    /// 2. THE §9.5 DIFF CANNOT REPORT A REMOVAL IT CANNOT SEE. RerunDiff's loudest line is "NO LONGER
+    ///    SCREENED", and with orphans left on file that branch is unreachable on this path: the substance is
+    ///    in `before` and still in `after`. A rerun that quietly drops a substance from the analysis and says
+    ///    nothing is precisely the failure §9.5 exists to prevent.
+    ///
+    /// Nothing the audit needs is lost. The run trail — a separate, append-only container, deliberately not
+    /// the one that holds project state — still records the screen that produced the verdict, and the diff
+    /// below names every document this removes.
+    ///
+    /// The live set is <see cref="MatrixAssembler.Cells"/>, not "any substance in the new doc": a candidate
+    /// re-tiered to C is excluded from screening, so its old verdict is an orphan by exactly the definition
+    /// every other reader already uses. One definition, one place.
+    ///
+    /// <paramref name="before"/> null or empty ⇒ this is not a re-run, or nothing was on file. Either way
+    /// there is nothing to orphan and nothing to report.
+    private async Task PruneOrphanedVerdictsAsync(
+        CandidatesDoc candidates, IReadOnlyList<RerunDiff.VerdictSnapshot>? before,
+        RunTrail trail, CancellationToken ct)
+    {
+        if (before is null || before.Count == 0) return;
+
+        var projectId = candidates.ProjectId;
+        var live = MatrixAssembler.Cells(candidates).ToHashSet();
+        foreach (var v in await store.GetVerdictsAsync(projectId, ct))
+            if (!live.Contains((v.Cas, v.ComponentId)))
+                await store.DeleteVerdictAsync(projectId, v.Cas, v.ComponentId, ct);
+
+        // Read back from the RECORD, never narrated by the code that just wrote it (RerunDiff rule 1). The
+        // survivors are byte-identical on both sides, so the only lines this can produce are removals — which
+        // is the whole point: this is the one place in the pipeline where a substance leaves the analysis.
+        await ReportDiffAsync(trail, RerunDiff.OfVerdicts(
+            before, RerunDiff.VerdictSnapshot.Of(await store.GetVerdictsAsync(projectId, ct))), ct);
     }
 
     /// The pool → element-pool mapping Discovery consumes. Discovery needs only (component, element); the
@@ -451,11 +595,41 @@ public sealed class PipelineRunner(
         var candidates = await store.GetCandidatesAsync(projectId, ct);
         if (constraints is null || candidates is null) return Skip();
 
-        var existing = (await store.GetVerdictsAsync(projectId, ct))
-            .Select(v => (v.Cas, v.ComponentId)).ToHashSet();
+        var prior = await store.GetVerdictsAsync(projectId, ct);
+        var existing = prior.Select(v => (v.Cas, v.ComponentId)).ToHashSet();
+
+        // AN AMENDMENT MUST ACTUALLY RE-SCREEN. Without this the whole rerun mechanism is decorative on this
+        // stage: POST /projects/{id}/amendments resets Regulatory to `pending` for a markets/application/
+        // clientRestrictedList change, the runner arrives here, finds a verdict already on file for every
+        // candidate, and skips — so the record goes on displaying an analysis screened against markets the
+        // customer no longer sells into, with no error anywhere. That is exactly the failure RerunScope's own
+        // comment says the map exists to prevent, defeated one layer lower down.
+        //
+        // `pending` WITH verdicts on file is the precise signature of that reset and of nothing else: a first
+        // run has no verdicts, a resumed run is `running`, a completed one is `done`, and a broken one is
+        // `failed` or `needs-review`. The amendment endpoint is the only writer of `pending` over a screened
+        // stage, and RerunDiffWiringTests pins all four statuses that must NOT re-screen — re-screening on
+        // `done` would re-run the whole fan-out on every idle pipeline pass, burning Foundry time forever and
+        // clearing the operator's determinations for nothing.
+        var state = (await store.GetProjectAsync(projectId, ct))?.Stages.GetValueOrDefault(Stages.Regulatory);
+        var stale = prior.Count > 0 && state?.Status == StageStatus.Pending;
+
+        // "Has this stage been entered before" — the condition for reporting a diff at all, and deliberately
+        // NOT "is there prior state on file". `Attempts` is stamped at the END of every entry (StampAsync),
+        // so it is the one field that separates a genuine RE-run from a first run. Keying the report on prior
+        // state instead would silently skip the diff in the case that most needs it: a stage that failed
+        // before writing anything, then re-ran and succeeded, would report nothing at all rather than
+        // "no prior state to compare".
+        var reran = state?.Attempts > 0;
+
         var missing = candidates.Substances
-            .Where(s => s.Tier != "C" && !existing.Contains((s.Cas, s.ComponentId))).ToList();
+            .Where(s => s.Tier != "C" && (stale || !existing.Contains((s.Cas, s.ComponentId)))).ToList();
         if (missing.Count == 0) return Skip();
+
+        // Captured BEFORE anything is re-screened, and as immutable snapshots rather than the documents —
+        // see RerunDiff rule 4. This is the "before" half of the §9.5 diff; the "after" half is read back
+        // from the store once the fan-out has landed.
+        var before = RerunDiff.VerdictSnapshot.Of(prior);
 
         trail.Run.Agent = RegulatoryAgent.AgentName;
         await trail.StepAsync(RunStepKind.Started,
@@ -532,6 +706,15 @@ public sealed class PipelineRunner(
         // The human-gate kill switch (dev/demo). When on, adopt the agent's proposals and sign the gate right
         // here, so RunMatrixAsync computes `done` and the pipeline flows to Dosing with no R.E. Off by default.
         if (regulatoryAutoApprove) await AutoApproveRegulatoryAsync(projectId, trail, ct);
+
+        // WHAT THIS RUN CHANGED (spec §9.5), read back from the record — never narrated by the agent that
+        // wrote it. An agent's account of its own edits reports the change it INTENDED, not the one it made,
+        // which is the same class of claim as a fabricated citation. Emitted only on a genuine RE-run: a
+        // project's first screen has nothing to diff against, and the summary step below already says what
+        // it wrote.
+        await ReportDiffAsync(trail, reran
+            ? RerunDiff.OfVerdicts(before, RerunDiff.VerdictSnapshot.Of(await store.GetVerdictsAsync(projectId, ct)))
+            : null, ct);
 
         // The stage is DONE: every substance was screened, which is the whole of this stage's work.
         //
@@ -637,6 +820,14 @@ public sealed class PipelineRunner(
         // re-opens Dosing to `pending`, which is how a run that left substances undosed gets a second pass.
         if (await HasRunAsync(projectId, Stages.Dosing, ct)) return Skip();
 
+        // The "before" half of the §9.5 diff, captured before any agent runs. `Attempts` — not "is a
+        // DosingDoc on file" — is what says this is a RE-run; see ReportDiffAsync. A dosing that failed
+        // before writing anything and then succeeded has no prior doc and still owes the operator a line.
+        var reran = (await store.GetProjectAsync(projectId, ct))
+            ?.Stages.GetValueOrDefault(Stages.Dosing)?.Attempts > 0;
+        var priorDosing = await store.GetDosingAsync(projectId, ct) is { } d0
+            ? RerunDiff.DosingSnapshot.Of(d0) : null;
+
         // NO GATE CHECK. Dosing used to skip behind an unsigned regulatory gate, which made the R.E.'s
         // signature a pipeline precondition. Execution-core §8/D10 removed that: the operator sees a
         // complete proposed answer in one sitting, and the signature governs the two IRREVERSIBLE acts —
@@ -654,14 +845,56 @@ public sealed class PipelineRunner(
         var dosable = ProvisionalSet.Of(verdicts);
         var provisionalReasons = new List<string>(ProvisionalSet.ProvisionalReasons(verdicts));
 
+        // A DOSING RUN THAT CAN DOSE NOTHING STILL HAS TO SAY SO IN THE RECORD.
+        //
+        // Both zero-substance exits below used to `return` without writing anything, which left the
+        // PREVIOUS DosingDoc on file — ppm windows, finalized codes and order amounts computed from inputs
+        // that no longer hold — under a stage now reading `needs-review`. Same family as the Matrix rule
+        // (InvalidateMatrixAsync): a compliance artifact that is wrong and looks current is the single most
+        // dangerous thing this system can produce, and here it is worse than a stale matrix because it
+        // carries ORDER AMOUNTS. A `material` amendment that drops every candidate would have left the
+        // previous run's codes standing as the project's dosing answer.
+        //
+        // So the run REPLACES the document with an empty one that carries its reasons, rather than deleting
+        // it: absence reads as "Dosing has not run" everywhere downstream (RunDecisionAsync skips on a null
+        // DosingDoc, ProjectTable renders no dosing cells), which would hide the fact that it ran and could
+        // dose nothing. An empty document says both halves.
+        //
+        // PROVISIONAL, always — an empty dosing rests on nothing at all, and `Provisional` is the flag
+        // procurement refuses over. The error leads the reasons because it is the headline; the accumulated
+        // per-substance reasons follow, named, never counted.
+        async Task<StageResult> DosedNothingAsync(string error)
+        {
+            var empty = new DosingDoc
+            {
+                Id = RecordIds.Dosing(projectId), ProjectId = projectId,
+                GeneratedAt = DateTimeOffset.UtcNow.ToString("O"),
+                Windows = [], Codes = [],
+                ProvisionalReasons = [error, .. provisionalReasons],
+                Provisional = true,
+            };
+            await store.UpsertDosingAsync(empty, ct);
+
+            // The §9.5 diff still owes the operator its lines — this is the case that needs them MOST. Every
+            // substance the previous run dosed now reports "NO LONGER DOSED", by name, on the trail.
+            await ReportDiffAsync(trail, reran
+                ? RerunDiff.OfDosing(priorDosing, RerunDiff.DosingSnapshot.Of(empty))
+                : null, ct);
+
+            return new StageResult(RunOutcome.NeedsReview, error,
+                "Nothing could be dosed. The dosing on file now records that, and why — it no longer " +
+                "describes the previous run.",
+                RecordIds.Dosing(projectId));
+        }
+
         await trail.StepAsync(RunStepKind.Started,
             $"Dosing {dosable.Count} substances above the detection floor.", ct: ct);
         await SetStageAsync(projectId, Stages.Dosing, s => s.Status = "running", ct);
 
         if (dosable.Count == 0)
-            return new StageResult(RunOutcome.NeedsReview,
+            return await DosedNothingAsync(
                 "nothing may be dosed: no substance carries an operator determination OR an agent proposal " +
-                "of 'recommended'.", null, null);
+                "of 'recommended'.");
 
         // Resolve every input first. A gap is no longer a park — it is a FLAG that blocks the order (§8).
         // What must never happen is the agent improvising the hole: a model that invents a measurement or a
@@ -697,9 +930,9 @@ public sealed class PipelineRunner(
         }
 
         if (dosable.Count == 0)
-            return new StageResult(RunOutcome.NeedsReview,
+            return await DosedNothingAsync(
                 "every dosable substance was dropped for a missing input — " +
-                string.Join(" | ", provisionalReasons), null, null);
+                string.Join(" | ", provisionalReasons));
 
         var result = await agents.RunDosingAsync(constraints, dosable, floors, loadings, null, trail, ct);
         if (!result.Succeeded) return new StageResult(RunOutcome.NeedsReview, result.Error, null, null);
@@ -723,6 +956,14 @@ public sealed class PipelineRunner(
         dosing.ProvisionalReasons = provisionalReasons;
         dosing.Provisional = provisionalReasons.Count > 0;
         await store.UpsertDosingAsync(dosing, ct);
+
+        // WHAT THIS RUN CHANGED, from the record. A `batchMassKg` amendment reruns Dosing and NOTHING else
+        // (RerunScope.DosingLane), and it moves no ppm at all — only the order amount. That is why
+        // DosedSnapshot carries the compound mass alongside the ppm: a diff that watched ppm alone would
+        // answer "nothing changed" to the one amendment guaranteed to land here.
+        await ReportDiffAsync(trail, reran
+            ? RerunDiff.OfDosing(priorDosing, RerunDiff.DosingSnapshot.Of(dosing))
+            : null, ct);
         // A SELECTED marker is the strongest signal there is that we will need its sheet: MSDS-before-order
         // blocks procurement on exactly this, three stages downstream. The FORM comes from the candidate the
         // marker was minted as — a CodeMarker carries CAS + element only, and the master list is keyed by

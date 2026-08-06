@@ -105,7 +105,8 @@ describe('XRF entry', () => {
     // stares at "parked" for a project that just started.
     vi.mocked(api.parseXrf).mockResolvedValue(PARSED);
     vi.mocked(api.confirmXrf).mockResolvedValue({
-      projectId: 'proj-1', pools: 1, backgrounds: 1, device: 'Niton XL5',
+      ok: true,
+      result: { projectId: 'proj-1', pools: 1, backgrounds: 1, device: 'Niton XL5' },
     });
     const onConfirmed = vi.fn();
     show(onConfirmed);
@@ -116,5 +117,41 @@ describe('XRF entry', () => {
 
     await waitFor(() => expect(onConfirmed).toHaveBeenCalled());
     expect(api.getXrfState).toHaveBeenCalledTimes(2);
+  });
+
+  it('turns a signature-void refusal into a second press, not an error', async () => {
+    // Confirming a measurement RE-DOSES the project, and re-dosing voids the VP's signature. The server
+    // refuses with a 409 rather than un-signing quietly. Rendered as an error that would be a dead end --
+    // the physicist's number could never be recorded on a signed project at all. It has to be a question
+    // the operator can answer, naming exactly what goes.
+    vi.mocked(api.parseXrf).mockResolvedValue(PARSED);
+    vi.mocked(api.confirmXrf).mockResolvedValue({
+      ok: false,
+      conflict: {
+        error: 'this measurement re-doses the project and voids a signature already on file.',
+        voids: ['vp'],
+        rerun: ['dosing', 'decision'],
+      },
+    });
+    const onConfirmed = vi.fn();
+    show(onConfirmed);
+
+    await userEvent.upload(await screen.findByLabelText(/upload/i), csv());
+    await waitFor(() => expect(screen.getByTestId('xrf-row-Ba')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: /confirm/i }));
+
+    // Nothing was recorded, and the operator is told what the second press costs.
+    await waitFor(() => expect(screen.getByText(/voids a signature/i)).toBeInTheDocument());
+    expect(screen.getByText(/vp/)).toBeInTheDocument();
+    expect(onConfirmed).not.toHaveBeenCalled();
+
+    vi.mocked(api.confirmXrf).mockResolvedValue({
+      ok: true,
+      result: { projectId: 'proj-1', pools: 1, backgrounds: 1, device: 'Niton XL5' },
+    });
+    await userEvent.click(screen.getByRole('button', { name: /void the signature/i }));
+
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalled());
+    expect(vi.mocked(api.confirmXrf).mock.calls.at(-1)?.[2]).toBe(true);
   });
 });

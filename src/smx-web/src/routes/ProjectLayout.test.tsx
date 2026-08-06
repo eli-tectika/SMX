@@ -1,6 +1,7 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProjectSummary, StageState } from '../api/types';
 import { ProjectLayout } from './ProjectLayout';
 
@@ -9,14 +10,15 @@ const project = (stages: Record<string, StageState>): ProjectSummary => ({
   client: 'MUFE',
   product: 'clear bottle',
   stages,
+  analysisStartedAt: '2026-08-01T09:00:00Z',
 });
 
 const SETTLED: Record<string, StageState> = { discovery: { status: 'done', attempts: 1 } };
 
 /**
- * GET /projects/{id} feeds the layout; everything else a stage screen asks for comes back
- * list/absent-shaped, which keeps the screens quiet and the threads empty. A stream request gets
- * an empty body, so the hook degrades to polling without complaining.
+ * GET /projects/{id} feeds the layout; everything else a screen asks for comes back list/absent-
+ * shaped, which keeps the screens quiet and the threads empty. A stream request gets an empty body,
+ * so the thread hook degrades to polling without complaining.
  */
 function stubApi(stages: Record<string, StageState>) {
   const doc = project(stages);
@@ -33,11 +35,8 @@ function stubApi(stages: Record<string, StageState>) {
   );
 }
 
-/**
- * Mount the shell on one stage. `stages` is the record the layout reads — the default is settled,
- * so nothing is blocked and `NextAction` stays empty; pass a park to make it speak.
- */
-async function atStage(slug: string, stages: Record<string, StageState> = SETTLED) {
+/** Mount the shell on one screen and wait for the project to resolve. */
+async function atScreen(slug: string, stages: Record<string, StageState> = SETTLED) {
   stubApi(stages);
   const view = render(
     <MemoryRouter initialEntries={[`/p/proj-test/${slug}`]}>
@@ -47,115 +46,111 @@ async function atStage(slug: string, stages: Record<string, StageState> = SETTLE
     </MemoryRouter>,
   );
   // The layout renders <Loading> until the project resolves.
-  await waitFor(() => expect(document.querySelector('.screen')).toBeInTheDocument());
+  await waitFor(() => expect(document.querySelector('.work')).toBeInTheDocument());
   return view;
 }
 
+beforeEach(() => localStorage.clear());
 afterEach(() => vi.unstubAllGlobals());
 
-describe('ProjectLayout — the in-project shell', () => {
+describe('ProjectLayout — the work area', () => {
   /**
-   * Two rows, then the work area. Four stacked headers (masthead, context bar, poll ticker, pill
-   * spine) became a one-line project header and a horizontal stepper; this pins that both are
-   * mounted, in that order, above the columns.
+   * A plain flex row, and nothing above it. The project header and the eight-entry stepper are
+   * gone: the top bar names the project and the sidebar carries phase state, so a row repeating
+   * either would spend the screen's most valuable position on news the chrome already broke.
    */
-  it('renders the header, then the stepper, then the work area', async () => {
-    await atStage('discovery');
-    const rows = [
-      document.querySelector('.phead')!,
-      document.querySelector('.stepper')!,
-      document.querySelector('.work')!,
-    ];
-    rows.forEach((el) => expect(el).toBeInTheDocument());
-    // Each row precedes the next.
-    expect(rows[0].compareDocumentPosition(rows[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(rows[1].compareDocumentPosition(rows[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
-  /**
-   * The agent is a primary working surface, so it comes FIRST — in the eye's path and in the DOM,
-   * which is the same order for a keyboard. The old dock put it last, on the right, where it
-   * scrolled away with the content.
-   */
-  it('puts the chat column before the artifact', async () => {
-    await atStage('discovery');
+  it('renders the artifact, then the agent panel, and no header rows', async () => {
+    await atScreen('discovery');
     const columns = [...document.querySelector('.work')!.children].map((el) => el.className);
-    expect(columns).toEqual(['work__chat', 'work__artifact']);
+    expect(columns).toEqual(['work__artifact', 'work__chat']);
     expect(screen.getByLabelText('Discovery agent')).toBeInTheDocument();
+    expect(document.querySelector('.phead')).toBeNull();
+    expect(document.querySelector('.stepper')).toBeNull();
   });
 
   /**
-   * `background` has no agent — the XRF filter is a deterministic pass-through, so a thread on it
-   * would be a conversation with nobody. The column is not empty for it: the operator's own XRF
-   * entry takes the position every other stage gives its agent, because that is where input lives.
-   * There is still no agent panel in it.
+   * Spec §11.2. Open on the phases — the panel is the only surface the operator may instruct, and
+   * one that defaults hidden is one they forget exists. Collapsed on Full matrix, where the table
+   * is 18 columns wide and genuinely width-starved.
    */
-  it('puts the operator’s XRF entry in the background column', async () => {
-    await atStage('background');
-    const column = document.querySelector('.work__chat') as HTMLElement;
-    expect(column).not.toBeNull();
+  it.each(['discovery', 'regulatory', 'dosing'])('opens the agent on %s', async (slug) => {
+    await atScreen(slug);
     expect(document.querySelector('.work')).toHaveAttribute('data-chat', 'open');
-    expect(within(column).getByLabelText(/XRF measurement/i)).toBeInTheDocument();
-    expect(within(column).getByLabelText(/upload/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/agent$/i)).toBeNull();
-    expect(screen.queryByText(/No agent on this stage/i)).not.toBeInTheDocument();
+  });
+
+  it('collapses the agent to a rail on the full matrix', async () => {
+    await atScreen('full-matrix');
+    expect(document.querySelector('.work')).toHaveAttribute('data-chat', 'collapsed');
+    expect(screen.getByRole('button', { name: /show the agent/i })).toBeInTheDocument();
   });
 
   /**
-   * The VP gate is `surface: 'record'` (domain/stages.ts): the last screen of the journey, where a
+   * Overview has no panel: the intake agent's composer lives inside that screen, beside the brief
+   * it amends (spec §11.4). Two copies of one thread, in two columns, would drift.
+   */
+  it('gives Overview the full width and no panel', async () => {
+    await atScreen('overview');
+    expect(document.querySelector('.work')).toHaveAttribute('data-chat', 'none');
+    expect(document.querySelector('.work__chat')).toBeNull();
+    expect(document.querySelector('.work__rail')).toBeNull();
+  });
+
+  /**
+   * The sign-off is `surface: 'record'` (domain/stages.ts): the last screen of the journey, where a
    * human signs. A Decision agent does run and how it picked must be visible — so the column keeps
-   * the trail — but a signature is not a conversation, so there is no composer to make the gate
-   * chattable.
+   * the trail — but a signature is not a conversation, so there is no composer to make it chattable.
    */
   it('gives the signing surface the decision trail and no composer', async () => {
-    await atStage('decision');
+    await atScreen('signoff');
     expect(await screen.findByLabelText(/decision trail/i)).toBeInTheDocument();
     expect(document.querySelector('.work')).toHaveAttribute('data-chat', 'open');
     expect(screen.queryByLabelText(/^Message the/i)).toBeNull();
-    expect(screen.queryByLabelText('VP gate agent')).toBeNull();
+    expect(screen.queryByLabelText('Sign-off agent')).toBeNull();
   });
 
   /**
-   * The one thing that needs a human, above the screen rather than in a status bar beside it.
-   * Position is the claim being pinned: the block is the first thing in the artifact column, ahead
-   * of the record it is about.
+   * The panel over the full table is the REGULATORY agent — there is no spine slug for the matrix
+   * thread alone, and the cells being argued about are regulatory determinations. Titling it "Full
+   * matrix agent" would name an agent that does not exist.
    */
-  it('renders the next action above the screen for a parked project', async () => {
-    await atStage('regulatory', { regulatory: { status: 'awaiting-RE', attempts: 1 } });
-    const artifact = document.querySelector('.work__artifact')!;
-    const next = artifact.querySelector('.next')!;
-    expect(next).toHaveTextContent('Record the R.E. determination');
-    expect(artifact.firstElementChild).toBe(next);
-    expect(
-      next.compareDocumentPosition(artifact.querySelector('.screen')!) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  /** A settled project gets the region — it IS the live region — but nothing inside it. */
-  it('leaves the next-action region empty when nothing is blocked', async () => {
-    await atStage('discovery');
-    const next = document.querySelector('.work__artifact > .next')!;
-    expect(next).toBeInTheDocument();
-    expect(next).toBeEmptyDOMElement();
+  it('names the agent on the full matrix for what it is', async () => {
+    await atScreen('full-matrix');
+    await userEvent.click(await screen.findByRole('button', { name: /show the agent/i }));
+    expect(await screen.findByLabelText('Regulatory agent')).toBeInTheDocument();
   });
 
   /**
-   * Collapsing is opt-in per screen, and only where the artifact is genuinely width-starved.
-   * Everywhere else the control would only offer a way to hide the one surface the operator may
-   * instruct — which, in an app whose central rule is "no direct edits, instruct with a reason",
-   * is the one habit that must not form.
+   * Full matrix borrows the REGULATORY agent (there is no spine slug for the matrix thread alone),
+   * so the collapse preference must be keyed on the SCREEN. Keyed on the agent, opening the panel
+   * on the matrix would also reopen it on the Regulatory phase screen — one screen silently
+   * governing another, which is the failure the per-screen key exists to prevent.
    */
-  it.each(['matrix', 'dosing'])('offers the collapse control on %s', async (slug) => {
-    await atStage(slug);
-    expect(screen.getByRole('button', { name: /collapse the agent/i })).toBeInTheDocument();
+  it('keeps the collapse preference per screen, not per agent', async () => {
+    const onRegulatory = await atScreen('regulatory');
+    await userEvent.click(screen.getByRole('button', { name: /collapse the agent/i }));
+    expect(document.querySelector('.work')).toHaveAttribute('data-chat', 'collapsed');
+    onRegulatory.unmount();
+
+    const onMatrix = await atScreen('full-matrix');
+    await userEvent.click(screen.getByRole('button', { name: /show the agent/i }));
+    expect(document.querySelector('.work')).toHaveAttribute('data-chat', 'open');
+    onMatrix.unmount();
+
+    await atScreen('regulatory');
+    expect(document.querySelector('.work')).toHaveAttribute('data-chat', 'collapsed');
   });
 
-  it.each(['intake', 'discovery', 'regulatory', 'cost'])(
-    'offers no collapse control on %s',
-    async (slug) => {
-      await atStage(slug);
-      expect(screen.queryByRole('button', { name: /collapse the agent/i })).toBeNull();
-    },
-  );
+  /** An unknown screen is a redirect to Overview, never a blank work area. */
+  it('redirects an unknown screen to Overview', async () => {
+    stubApi(SETTLED);
+    render(
+      <MemoryRouter initialEntries={['/p/proj-test/cost']}>
+        <Routes>
+          <Route path="/p/:projectId/:stage" element={<ProjectLayout />} />
+          <Route path="/p/:projectId/overview" element={<p>the overview</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('the overview')).toBeInTheDocument();
+  });
 });

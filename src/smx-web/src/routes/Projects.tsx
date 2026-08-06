@@ -20,7 +20,19 @@ import { useProjectsOverview, type ProjectCard } from '../hooks/useProjectsOverv
 export function Projects() {
   const { cards, loading, error, refresh } = useProjectsOverview();
 
-  const bucketOf = (c: ProjectCard): Bucket => bucket(c.project, c.matrix, c.unopenedFlagged);
+  /**
+   * The fourth argument is not optional in spirit, only in the signature.
+   *
+   * `done` no longer means signed (execution-core §8): the pipeline runs end to end without anybody's
+   * signature, so a project can have every stage `done`, both gates unsigned, the compliance package
+   * refused and every order refused. Reading stage statuses alone would file exactly that project under
+   * `settled` and drop it out of the operator's attention — which is the four park-renders-as-not-started
+   * bugs wearing the other face, and worse, because it over-claims completion on the record that releases
+   * procurement. `bucket` treats a MISSING `gates` as "not settled" for the same reason: silence is not
+   * a signature.
+   */
+  const bucketOf = (c: ProjectCard): Bucket =>
+    bucket(c.project, c.matrix, c.unopenedFlagged, c.project.gates);
 
   const groups: Record<Bucket, ProjectCard[]> = {
     'needs-you': cards.filter((c) => bucketOf(c) === 'needs-you'),
@@ -79,16 +91,26 @@ export function Projects() {
           tone={flaggedVerdicts > 0 ? 'warning' : undefined}
           hint="must be opened before a gate arms"
         />
-        <StatCard label="Settled" value={groups.settled.length} hint="all backed stages done" />
+        <StatCard label="Settled" value={groups.settled.length} hint="every stage done AND both signed" />
         {/*
-          Spec §2 requires a "needs signing" count. No endpoint reports gate state,
-          so no number here could be true. Showing the hole and naming it is the
-          audit-ledger move — and it documents exactly what the backend still owes.
+          This tile was `absent` — a dashed hole naming what the backend owed — because no endpoint
+          reported gate state. `GET /projects` carries `gates` now, so the number is real.
+
+          A card whose `gates` did not arrive is counted as needing a signature rather than not: the
+          same asymmetry `bucket` uses, and the only safe one. Reading silence as "signed" would hide
+          the projects whose signatures are outstanding, which is precisely what this tile is for.
         */}
         <StatCard
           label="Needs signing"
-          absent
-          hint="not reported"
+          value={
+            cards.filter(
+              (c) =>
+                c.project.gates === undefined ||
+                c.project.gates.regulatory !== 'approved' ||
+                c.project.gates.vp !== 'approved',
+            ).length
+          }
+          hint="a gate is unsigned, or the record does not say"
         />
       </div>
 
@@ -110,14 +132,18 @@ export function Projects() {
 
 function ProjectRow({ card }: { card: ProjectCard }) {
   const { project, matrix, unopenedFlagged } = card;
-  const blocking = whatsBlocking(project, matrix, unopenedFlagged);
-  const b = bucket(project, matrix, unopenedFlagged);
+  // Gates, again: without them `whatsBlocking` answers "nothing" for a complete, entirely unsigned
+  // project — a card that reads finished over a refused export and a refused order.
+  const blocking = whatsBlocking(project, matrix, unopenedFlagged, project.gates);
+  const b = bucket(project, matrix, unopenedFlagged, project.gates);
   const tone = bucketTone(b, blocking);
 
   return (
     <Card tone={tone} className="card--link-wrap">
       <Link
-        to={`/p/${project.projectId}/intake`}
+        // Overview, not a phase: it is where the project opens (spec §7), carrying the brief the
+        // intake agent wrote, the amendment surface and what is still outstanding.
+        to={`/p/${project.projectId}/overview`}
         className="card--link"
         style={{
           padding: 0,
@@ -331,11 +357,16 @@ function ProjectsEmpty() {
         {/* Structure, not verdict data — this teaches the journey without fabricating one. */}
         <div style={{ maxWidth: 520, margin: '28px auto 0', textAlign: 'left' }}>
           <div className="sec__eyebrow" style={{ marginBottom: 8 }}>
-            The eight stages
+            Three phases and a sign-off
           </div>
           <MiniSpine showLabels />
+          {/* It said "six stages are backed by the API, the rest render fixture data behind a mock
+              badge". Both halves are false: there are no fixtures anywhere in this app, and there are
+              no longer eight stages. A stale sentence about mock data on the empty state is the first
+              thing a new operator reads. */}
           <p className="tiny muted" style={{ marginTop: 10 }}>
-            Six stages are backed by the API. The rest render fixture data behind a mock badge.
+            Every phase reads the record. The pipeline runs all of them without stopping; the two
+            signatures are what release the compliance package and procurement.
           </p>
         </div>
       </EmptyState>

@@ -1,100 +1,136 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, expect, it, beforeEach } from 'vitest';
-import { WorkArea } from './WorkArea';
+import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { WorkArea, useAgentPanel } from './WorkArea';
 
 beforeEach(() => localStorage.clear());
 
-describe('WorkArea', () => {
-  it('renders the chat column and the artifact', () => {
-    render(<WorkArea chat={<p>agent thread</p>}><p>the artifact</p></WorkArea>);
+function workArea(props: Partial<Parameters<typeof WorkArea>[0]> = {}) {
+  return render(
+    <WorkArea panel={<p>agent thread</p>} collapsed={false} onToggle={() => {}} {...props}>
+      <p>the artifact</p>
+    </WorkArea>,
+  );
+}
+
+describe('WorkArea — the artifact and the agent beside it', () => {
+  /**
+   * Position is the claim. The agent moved from a permanent left column to a collapsible right one
+   * (spec §11.2), so the artifact — the thing being decided — is now first both on screen and in
+   * the DOM, which is the same order for a keyboard.
+   */
+  it('puts the artifact before the agent panel', () => {
+    const { container } = workArea();
+    expect([...container.querySelector('.work')!.children].map((el) => el.className)).toEqual([
+      'work__artifact',
+      'work__chat',
+    ]);
     expect(screen.getByText('agent thread')).toBeInTheDocument();
+  });
+
+  it('collapses to a rail rather than to nothing', () => {
+    const { container } = workArea({ collapsed: true });
+    expect(container.querySelector('.work')).toHaveAttribute('data-chat', 'collapsed');
+    expect(screen.getByRole('button', { name: /show the agent/i })).toBeInTheDocument();
+    expect(screen.queryByText('agent thread')).toBeNull();
+    // The artifact keeps its place; only the panel changed.
     expect(screen.getByText('the artifact')).toBeInTheDocument();
   });
 
   /**
-   * Collapsing is opt-in per screen. On a screen that is not width-starved, a collapse control
-   * only offers the operator a way to hide the one surface they may instruct.
+   * A collapsed rail with no mark makes agent activity that arrived while it was shut invisible —
+   * the operator has no reason to reopen it, so a run's result sits unread behind a closed panel.
+   * The mark is a dot, which says nothing out loud, so the accessible name has to carry it too.
    */
-  it('offers no collapse control unless the screen asks for one', () => {
-    render(<WorkArea chat={<p>agent</p>}><p>art</p></WorkArea>);
-    expect(screen.queryByRole('button', { name: /collapse/i })).toBeNull();
+  it('marks unread activity on the rail, in words as well as in a dot', () => {
+    const { container } = workArea({ collapsed: true, unread: true });
+    expect(container.querySelector('.work__rail-dot')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /new activity/i })).toBeInTheDocument();
   });
 
-  it('collapses to a rail and back when the screen allows it', () => {
-    const { container } = render(
-      <WorkArea chat={<p>agent thread</p>} collapsible><p>art</p></WorkArea>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /collapse/i }));
-    expect(container.querySelector('.work')).toHaveAttribute('data-chat', 'collapsed');
-    expect(screen.queryByText('agent thread')).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: /show the agent/i }));
-    expect(container.querySelector('.work')).toHaveAttribute('data-chat', 'open');
+  it('never shows the unread mark while the panel is open', () => {
+    const { container } = workArea({ unread: true });
+    expect(container.querySelector('.work__rail-dot')).toBeNull();
   });
 
-  /** Background has no agent. An empty column would be a panel apologising for not existing. */
-  it('gives the artifact the full width when there is no chat', () => {
-    const { container } = render(<WorkArea chat={null}><p>art</p></WorkArea>);
+  /** Overview has no panel: its intake composer lives in the screen. An empty column would apologise. */
+  it('gives the artifact the whole width when there is no panel', () => {
+    const { container } = workArea({ panel: null });
     expect(container.querySelector('.work')).toHaveAttribute('data-chat', 'none');
+    expect(container.querySelector('.work__chat')).toBeNull();
+    expect(container.querySelector('.work__rail')).toBeNull();
+  });
+});
+
+describe('useAgentPanel — where the default comes from', () => {
+  /** Spec §11.2: open on the phases, collapsed on Full matrix, where the table is width-starved. */
+  it('takes the screen’s default when the operator has expressed no choice', () => {
+    expect(renderHook(() => useAgentPanel('discovery', false)).result.current.collapsed).toBe(false);
+    expect(renderHook(() => useAgentPanel('full-matrix', true)).result.current.collapsed).toBe(true);
   });
 
-  /**
-   * The collapsed choice survives a reload — an operator who works the matrix full-width should
-   * not have to re-collapse on every visit.
-   */
-  it('remembers the collapsed choice across mounts', () => {
-    const first = render(<WorkArea chat={<p>agent thread</p>} collapsible><p>art</p></WorkArea>);
-    fireEvent.click(screen.getByRole('button', { name: /collapse/i }));
+  it('remembers the operator’s own choice for that screen', () => {
+    const first = renderHook(() => useAgentPanel('discovery', false));
+    act(() => first.result.current.toggle());
+    expect(first.result.current.collapsed).toBe(true);
     first.unmount();
 
-    const { container } = render(<WorkArea chat={<p>agent thread</p>} collapsible><p>art</p></WorkArea>);
-    expect(container.querySelector('.work')).toHaveAttribute('data-chat', 'collapsed');
+    expect(renderHook(() => useAgentPanel('discovery', false)).result.current.collapsed).toBe(true);
   });
 
   /**
-   * A screen that did not ask to be collapsible must not inherit a collapse another screen
-   * persisted: the key is one shared preference, and honouring it where there is no control to
-   * reverse it would hide the agent with no way to bring it back.
+   * THE ONE THAT MATTERS.
+   *
+   * The preference is per screen. Under a single shared key, collapsing on the matrix also
+   * collapsed screens that had never offered the control — hiding the one surface the operator may
+   * instruct, with nothing on screen to bring it back.
    */
-  it('ignores a persisted collapse on a screen that is not collapsible', () => {
-    localStorage.setItem('smx.chatCollapsed', '1');
-    const { container } = render(<WorkArea chat={<p>agent thread</p>}><p>art</p></WorkArea>);
-    expect(container.querySelector('.work')).toHaveAttribute('data-chat', 'open');
-    expect(screen.getByText('agent thread')).toBeInTheDocument();
-  });
+  it('does not let one screen’s choice govern another', () => {
+    const matrix = renderHook(() => useAgentPanel('full-matrix', true));
+    act(() => matrix.result.current.toggle()); // opened, on the matrix only
+    matrix.unmount();
 
-  /** Cmd/Ctrl + \ — the conventional side-panel toggle, and the only way back with no mouse. */
-  it('toggles on Ctrl + \\ where the screen allows it', () => {
-    const { container } = render(
-      <WorkArea chat={<p>agent thread</p>} collapsible><p>art</p></WorkArea>,
-    );
-    fireEvent.keyDown(window, { key: '\\', ctrlKey: true });
-    expect(container.querySelector('.work')).toHaveAttribute('data-chat', 'collapsed');
-    fireEvent.keyDown(window, { key: '\\', metaKey: true });
-    expect(container.querySelector('.work')).toHaveAttribute('data-chat', 'open');
+    expect(renderHook(() => useAgentPanel('regulatory', false)).result.current.collapsed).toBe(false);
   });
 
   /**
-   * No control, no shortcut. A binding that hid the agent with nothing to restore it is a trap —
-   * and this asserts the LISTENER is absent, not merely that the layout survived: `fireEvent`
-   * returns false once something called `preventDefault`, which is the only observable difference
-   * between "not bound" and "bound but its effect is filtered out downstream". The second is a
-   * key this screen has quietly swallowed from whatever else might want it.
+   * The hook lives in `ProjectLayout`, which React keeps mounted across stage navigations. Without
+   * the re-read on slug change, the first screen's state would follow the operator everywhere —
+   * including onto Full matrix, whose different default is the whole reason the prop exists.
    */
-  it('does not bind the shortcut on a screen that is not collapsible', () => {
-    const { container } = render(<WorkArea chat={<p>agent thread</p>}><p>art</p></WorkArea>);
-    expect(fireEvent.keyDown(window, { key: '\\', ctrlKey: true })).toBe(true);
-    expect(container.querySelector('.work')).toHaveAttribute('data-chat', 'open');
+  it('re-reads when the operator moves to another screen', () => {
+    const view = renderHook(({ slug, def }) => useAgentPanel(slug, def), {
+      initialProps: { slug: 'discovery', def: false },
+    });
+    expect(view.result.current.collapsed).toBe(false);
+    view.rerender({ slug: 'full-matrix', def: true });
+    expect(view.result.current.collapsed).toBe(true);
+  });
+
+  it('toggles on Ctrl/Cmd + \\', () => {
+    const view = renderHook(() => useAgentPanel('discovery', false));
+    act(() => {
+      fireEvent.keyDown(window, { key: '\\', ctrlKey: true });
+    });
+    expect(view.result.current.collapsed).toBe(true);
+    act(() => {
+      fireEvent.keyDown(window, { key: '\\', metaKey: true });
+    });
+    expect(view.result.current.collapsed).toBe(false);
   });
 
   /**
-   * Position is the whole point of this component: the agent is a primary working surface, so it
-   * comes FIRST in the eye's path (and in the DOM, which is the same order for a keyboard).
-   * The old dock put it last, on the right.
+   * No panel, no binding. This asserts the LISTENER is absent, not merely that nothing moved:
+   * `fireEvent` returns false once something called `preventDefault`, which is the only observable
+   * difference between "not bound" and "bound but filtered downstream" — the second would be a key
+   * this screen quietly swallows from whatever else wants it.
    */
-  it('puts the chat before the artifact in document order', () => {
-    const { container } = render(<WorkArea chat={<p>agent thread</p>}><p>the artifact</p></WorkArea>);
-    const children = [...container.querySelector('.work')!.children].map((el) => el.className);
-    expect(children).toEqual(['work__chat', 'work__artifact']);
+  it('binds nothing on a screen with no panel', () => {
+    const view = renderHook(() => useAgentPanel(null, false));
+    let propagated = true;
+    act(() => {
+      propagated = fireEvent.keyDown(window, { key: '\\', ctrlKey: true });
+    });
+    expect(propagated).toBe(true);
+    expect(view.result.current.collapsed).toBe(false);
   });
 });

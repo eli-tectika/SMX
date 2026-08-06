@@ -6,7 +6,8 @@ import {
   createProject,
   getCandidates,
   getChatThread,
-  getCost,
+  getTable,
+  postAmendment,
   getDecision,
   getDosing,
   getMatrix,
@@ -26,7 +27,7 @@ import {
   sendChatMessage,
   setAccessTokenProvider,
 } from './client';
-import type { CostDoc, CreateProjectRequest, DecisionDoc } from './types';
+import type { CreateProjectRequest, DecisionDoc } from './types';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -404,27 +405,75 @@ describe('getDosing', () => {
   });
 });
 
-describe('getCost', () => {
-  it('returns the NotFound sentinel before the stage has run', async () => {
-    stubFetch(() => new Response('', { status: 404 }));
-    await expect(getCost('p1')).resolves.toBe(NotFound);
-  });
-
-  it('returns the parsed CostDoc on 200, preserving an absent bestQuote', async () => {
-    const doc = {
-      id: 'p1|cost',
+describe('getTable', () => {
+  it('returns rows even when only Discovery has run — NOT a 404', async () => {
+    // An analysis in progress is a state, not a missing resource. Treating it as absent would blank the
+    // table for exactly the projects an operator watches most closely.
+    const body = {
       projectId: 'p1',
-      type: 'cost',
-      generatedAt: '2026-07-08T00:00:00Z',
-      // bestQuote is OMITTED, not null — the wire contract for "nothing parseable was on file".
-      substances: [
-        { cas: '1314-36-9', element: 'Y', suppliers: ['Strem'], priceNote: 'no price on file — quote required', risks: ['single-source'] },
+      rows: [
+        {
+          componentId: 'bottle', cas: '1306-38-3', element: 'Ce', form: 'oxide',
+          discovery: { tier: 'A', preferred: true, rationale: 'stable in melt', sources: 3 },
+          regulatory: null, dosing: null, outcome: null,
+          stoppedAt: null, stoppedReason: null,
+        },
       ],
     };
-    stubFetch(() => json(doc));
-    const res = await getCost('p1');
-    expect(res).toEqual(doc);
-    expect((res as CostDoc).substances[0].bestQuote).toBeUndefined();
+    stubFetch(() => json(body));
+    await expect(getTable('p1')).resolves.toEqual(body);
+  });
+
+  it('preserves an explicit null phase group rather than dropping the key', async () => {
+    // The backend serializes these even when null so that absence is EXPLICIT on the wire. If the client
+    // let them become `undefined`, "this phase has not run" and "this build has never heard of the field"
+    // would arrive indistinguishable -- the exact ambiguity the backend went out of its way to remove.
+    const body = {
+      projectId: 'p1',
+      rows: [{
+        componentId: 'bottle', cas: 'c', element: 'Ce', form: 'oxide',
+        discovery: null, regulatory: null, dosing: null, outcome: null,
+        stoppedAt: null, stoppedReason: null,
+      }],
+    };
+    stubFetch(() => json(body));
+    const res = await getTable('p1');
+    expect(Object.prototype.hasOwnProperty.call(res.rows[0], 'dosing')).toBe(true);
+    expect(res.rows[0].dosing).toBeNull();
+  });
+});
+
+describe('postAmendment', () => {
+  it('returns the conflict body on 409 instead of throwing', async () => {
+    // A 409 here is not an error -- it is the system asking a question. The amendment would void a
+    // signature already on file, and the caller has to show WHICH signatures and WHAT will re-run before
+    // offering to proceed. Throwing would collapse that into a generic failure toast and the operator
+    // would never learn what they were about to destroy.
+    const conflict = {
+      error: 'this amendment re-runs a stage whose signature is already on file.',
+      voids: ['regulatory'],
+      rerun: ['regulatory', 'matrix', 'decision'],
+    };
+    stubFetch(() => json(conflict, 409));
+
+    const res = await postAmendment('p1', { field: 'markets', value: 'EU, JP', reason: 'customer call' });
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.conflict.voids).toEqual(['regulatory']);
+  });
+
+  it('POSTs the amendment and reports success', async () => {
+    let seen: { url: string; init?: RequestInit } | undefined;
+    stubFetch((url, init) => {
+      seen = { url, init };
+      return json({ projectId: 'p1' }, 202);
+    });
+
+    await expect(
+      postAmendment('p1', { field: 'markets', value: 'EU, JP', reason: 'customer call' }),
+    ).resolves.toEqual({ ok: true });
+    expect(seen?.url).toBe('/api/projects/p1/amendments');
+    expect(seen?.init?.method).toBe('POST');
   });
 });
 
@@ -515,8 +564,8 @@ describe('getDecision', () => {
               element: 'Y',
               determination: 'Pass',
               recommendedPpm: 120,
-              cleared: { regulatory: true, dosing: true, cost: true },
-              traceability: { verdict: 'p1|verdict|bottle|1314-36-9', window: 'p1|dosing', audit: 'p1|cost' },
+              cleared: { regulatory: true, dosing: true, availability: true },
+              traceability: { verdict: 'p1|verdict|bottle|1314-36-9', window: 'p1|dosing' },
             },
           ],
           proposedCode: { ratioSignature: 'Y:120', markerCas: ['1314-36-9'], rationale: 'stoichiometric Y2O3' },

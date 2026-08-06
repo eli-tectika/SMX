@@ -146,7 +146,20 @@ public class DosingCostEndToEndTests : IClassFixture<WebApplicationFactory<Progr
         var stopped = await DosingStageAsync();
         Assert.Equal(StageStatus.NeedsReview, stopped.Status);
         Assert.Contains("metal loading", stopped.Error);
-        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/projects/{P}/dosing")).StatusCode);
+
+        // A run that could dose NOTHING writes an EMPTY, PROVISIONAL dosing carrying its reasons — it does
+        // not leave the record silent. This assertion used to be a 404, which was right only because this is
+        // the FIRST dosing attempt on this project; on a RE-run the same code path left the previous run's
+        // codes and order amounts standing under a `needs-review` stage, describing inputs that no longer
+        // held. The document is what makes "ran and could dose nothing" distinguishable from "has not run".
+        var nothing = await _client.GetAsync($"/projects/{P}/dosing");
+        Assert.Equal(HttpStatusCode.OK, nothing.StatusCode);
+        var empty = await nothing.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Empty(empty.GetProperty("windows").EnumerateArray());
+        Assert.Empty(empty.GetProperty("codes").EnumerateArray());
+        Assert.True(empty.GetProperty("provisional").GetBoolean());
+        Assert.Contains(empty.GetProperty("provisionalReasons").EnumerateArray(),
+            r => r.GetString()!.Contains("metal loading"));
 
         // 5. Script the fake Dosing agent to produce a floor-respecting doc from the REAL floors the dispatcher
         //    computes and hands it — so the window's floor is the true one, and the recommended ppm sits

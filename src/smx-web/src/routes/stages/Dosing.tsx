@@ -1,172 +1,198 @@
 import { useCallback, useEffect, useState } from 'react';
-import { NotFound, getDosing, reviewDosing, ApiError } from '../../api/client';
-import type { Bound, DosingDoc, MarkerCode, PpmWindow } from '../../api/types';
-import { LoadingEntryForm } from '../../components/LoadingEntryForm';
+import { ApiError, NotFound, getDosing, reviewDosing } from '../../api/client';
+import type { DosingCells, DosingDoc, MarkerCode, PpmWindow } from '../../api/types';
 import { Loading } from '../../components/Loading';
+import { LoadingEntryForm } from '../../components/LoadingEntryForm';
 import { PpmChart } from '../../components/PpmChart';
 import { RevisionTrail } from '../../components/RevisionControls';
 import { Data } from '../../components/ui/Data';
-import { Gate, type Requirement } from '../../components/ui/Gate';
 import { EmptyState, SectionHeader } from '../../components/ui/Primitives';
+import { XrfEntry } from '../../components/xrf/XrfEntry';
 import { byComponent, fmtLoading, fmtMass, fmtPpm, readDosing } from '../../domain/dosing';
+import {
+  AbsentCells,
+  AmountValue,
+  AvailabilityValue,
+  BoundValue,
+  DroppedRows,
+  IdentityCell,
+  TableError,
+  byComponentRows,
+  useProjectTable,
+  type ReadRow,
+} from './projectTable';
 import type { ScreenProps } from '../ProjectLayout';
 
+/** ppm window (two bounds in one cell), Recommended, Amount, Availability. */
+const DOSING_SPAN = 4;
+
 /**
- * Dosing & codes — how much of each marker goes in, in what ratio, per component, and what to order.
+ * What a DosingDoc says about its own trustworthiness.
  *
- * Procurement acts on the numbers on this screen, so three things must stay right:
+ * `provisional` and `provisionalReasons` are written by the backend (DosingDoc.cs) and are NOT in the
+ * frontend's `DosingDoc` type yet — that file belongs to another change in flight. They are read
+ * through this local shape rather than waited for, because the fact they carry is the one thing that
+ * must not go unrendered: a window computed over the AGENT'S proposed determinations rather than the
+ * operator's rulings looks identical to a real one, number for number, and it blocks the order. A ppm
+ * with no provenance mark is the dangerous version of this feature (spec §10).
+ */
+interface ProvisionalFacts {
+  provisional: boolean;
+  reasons: string[];
+}
+
+function provisionalFacts(doc: DosingDoc | null): ProvisionalFacts {
+  const d = doc as unknown as Record<string, unknown> | null;
+  const reasons = Array.isArray(d?.provisionalReasons)
+    ? d!.provisionalReasons.filter((r): r is string => typeof r === 'string')
+    : [];
+  // An absent flag is NOT read as "not provisional" when there are reasons on the record: the loud
+  // reading wins, exactly as it does everywhere else a fact about trust is missing.
+  return { provisional: d?.provisional === true || reasons.length > 0, reasons };
+}
+
+/**
+ * Dosing — how much of each marker goes in, in what ratio, per component, and what to order.
  *
- *  1. **The floor and the upper bound are not the same kind of claim.** The floor is MEASURED, from
- *     the physicist's XRF data, confidence 1.0. The upper bound is the agent's own `regulatory` or
- *     `estimate` — it may never be "measured", because an agent that could stamp its own guess as a
- *     measurement would launder it into the one field the operator trusts absolutely. The chart
- *     encodes that difference in FORM (see PpmChart), and the table below repeats the kind in words.
- *  2. **The recommended ppm is one scalar**, strictly inside the window. Not a band — a band would
- *     invent a tolerance nobody computed.
- *  3. **What you buy is the compound mass, not the element mass.** They are different numbers, and
- *     reading the wrong one under-doses an oxide by its non-metal fraction.
+ * Three artifacts of three different grains, which is why this screen is not one table (spec §5.4):
  *
- * The parks — awaiting the physicist's background, awaiting a metal loading — are stated once, at the
- * top of the artifact column, by the next-action block. This screen does not repeat them; it carries
- * the CONTROL that clears the one the operator can clear themselves.
+ *  1. **The dosing column group** of the project table — one row per (component, CAS), carrying the
+ *     ppm window, the recommendation, the order amount and supply.
+ *  2. **The codes table.** A code is a SET of 2–3 markers identified by its ratio signature; its
+ *     identity is the ratio, which no per-substance cell can express. The table may say whether a
+ *     substance is IN a code; membership is not the code.
+ *  3. **The ppm chart**, which encodes each bound's provenance by FORM rather than hue.
+ *
+ * And it carries the XRF entry form, because this is where the measurement it collects is consumed:
+ * `DetectionFloor.Compute` needs the measured background and the device LODs. Background is an input,
+ * not a phase (spec §8) — a stage with no agent and a pass-through filter was never a step the
+ * operator walked, and the form belongs where the number it collects is used.
+ *
+ * Procurement acts on the numbers here, so three things must stay right:
+ *
+ *  - **The floor and the upper bound are not the same kind of claim.** The floor is measured, from the
+ *    physicist's XRF data. The upper bound is the agent's own `regulatory` or `estimate` — it may never
+ *    be "measured", because an agent that could stamp its own guess as a measurement would launder it
+ *    into the one field the operator trusts absolutely.
+ *  - **The recommended ppm is one scalar** strictly inside the window, never a band. A band would
+ *    invent a tolerance nobody computed.
+ *  - **What you buy is the compound mass, not the element mass.** They are different numbers, and
+ *    reading the wrong one under-doses an oxide by its non-metal fraction.
  */
 export function Dosing({ project, refreshProject }: ScreenProps) {
-  const stage = project.stages.dosing;
-  const status = stage?.status;
+  const status = project.stages.dosing?.status;
+  const { state, reload: reloadTable } = useProjectTable(project.projectId, status);
 
   const [doc, setDoc] = useState<DosingDoc | null>(null);
-  const [phase, setPhase] = useState<'loading' | 'ready' | 'absent' | 'error'>('loading');
-  const [errMsg, setErrMsg] = useState<string>();
-  const [signBusy, setSignBusy] = useState(false);
-  const [signError, setSignError] = useState<string | null>(null);
+  const [docState, setDocState] = useState<'loading' | 'ready' | 'absent' | 'error'>('loading');
+  const [docError, setDocError] = useState<string>();
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [note, setNote] = useState('');
 
-  const load = useCallback(
+  const loadDoc = useCallback(
     async (signal?: { cancelled: boolean }) => {
       try {
         const res = await getDosing(project.projectId);
         if (signal?.cancelled) return;
         if (res === NotFound) {
           setDoc(null);
-          setPhase('absent');
+          setDocState('absent');
         } else {
           setDoc(res);
-          setPhase('ready');
+          setDocState('ready');
         }
       } catch (err) {
-        if (!signal?.cancelled) {
-          setErrMsg(err instanceof Error ? err.message : String(err));
-          setPhase('error');
-        }
+        if (signal?.cancelled) return;
+        setDocError(err instanceof Error ? err.message : String(err));
+        setDocState('error');
       }
     },
     [project.projectId],
   );
 
-  // The project poll is this screen's clock: `useProject` re-polls while dosing is pending/running, so a
-  // status change is exactly when the record may have a new doc. Re-read on each one.
+  // The project poll is this screen's clock: `useProject` re-polls while dosing is pending/running,
+  // so a status change is exactly when the record may hold a new doc.
   useEffect(() => {
     const signal = { cancelled: false };
-    void load(signal);
+    void loadDoc(signal);
     return () => {
       signal.cancelled = true;
     };
-  }, [load, status]);
+  }, [loadDoc, status]);
 
-  const sign = useCallback(
-    async (note?: string) => {
-      if (!note) return;
-      setSignBusy(true);
-      setSignError(null);
-      try {
-        const res = await reviewDosing(project.projectId, { note });
-        if (res === NotFound) {
-          setSignError('No dosing record to review.');
-          return;
-        }
-        await load();
-      } catch (err) {
-        setSignError(err instanceof ApiError ? err.message : String(err));
-      } finally {
-        setSignBusy(false);
+  /**
+   * An operator write that re-runs dosing — a confirmed XRF measurement, or a metal loading.
+   *
+   * Both flip the stage back to `pending` server-side, so BOTH reads have to be re-issued: the project
+   * (which is the shell's and this screen's clock) and the table (whose dosing columns were computed
+   * from the number that just changed). Refreshing only the project would leave the old windows on
+   * screen under a stage that says it is running again.
+   */
+  const afterRerunTrigger = useCallback(() => {
+    refreshProject();
+    void reloadTable();
+    void loadDoc();
+  }, [refreshProject, reloadTable, loadDoc]);
+
+  const recordReview = useCallback(async () => {
+    const text = note.trim();
+    if (!text) {
+      setReviewError('The note is required — it is what was reviewed.');
+      return;
+    }
+    setReviewBusy(true);
+    setReviewError(null);
+    try {
+      const res = await reviewDosing(project.projectId, { note: text });
+      if (res === NotFound) {
+        setReviewError('No dosing record to review.');
+        return;
       }
-    },
-    [project.projectId, load],
-  );
+      setNote('');
+      await loadDoc();
+    } catch (err) {
+      setReviewError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setReviewBusy(false);
+    }
+  }, [project.projectId, note, loadDoc]);
 
-  if (phase === 'loading') return <Loading what="the dosing record" />;
+  if (state.kind === 'loading' && docState === 'loading') return <Loading what="the dosing record" />;
+
+  const { windows, codes, droppedWindows, droppedCodes } = readDosing(doc);
+  const facts = provisionalFacts(doc);
 
   return (
     <>
-      {/* The one park the operator can clear here. The next-action block already says the record is
-          waiting; this is the control it sends them to, so it comes first. */}
-      {status === 'awaiting-operator' && (
+      {/*
+        Provisional is a fact about the whole record, so it is stated once, first, and not per cell.
+        Nothing on this screen is wrong when it is set — the numbers are real — but they were computed
+        over determinations the operator has not made, and that is what blocks the order.
+      */}
+      {facts.provisional && (
         <section className="screen">
-          <SectionHeader
-            title="The agent needs a number"
-            headingLevel={3}
-            hint="dosing starts over once it has one"
-          />
-          <LoadingEntryForm projectId={project.projectId} onEntered={refreshProject} />
-        </section>
-      )}
-
-      {phase === 'error' && (
-        <section className="screen">
-          <div className="banner danger" role="alert">
-            <i className="ti ti-alert-triangle" aria-hidden="true" />
-            <div>
-              <b>Could not load the dosing record.</b>
-              <div className="small" style={{ marginTop: 3 }}>
-                {errMsg}
-              </div>
+          <div className="banner warn" role="alert" data-provisional="true">
+            <i className="ti ti-robot" aria-hidden="true" />
+            <div className="prose">
+              <b>These windows are provisional.</b> They were computed over substances the agent
+              PROPOSED for approval rather than ones the Regulatory Expert ruled on, or over an
+              estimated detection floor with no physicist measurement on file. Nothing here is signed,
+              and every order stays refused until it is.
+              {facts.reasons.length > 0 && (
+                <ul style={{ margin: 'var(--s2) 0 0', paddingLeft: 18 }}>
+                  {facts.reasons.map((r) => (
+                    <li key={r} className="small">
+                      {r}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </section>
       )}
 
-      {phase === 'absent' && (
-        <section className="screen">
-          <EmptyState
-            icon="ti-flask"
-            title="No ppm windows yet."
-            body={
-              <>
-                Dosing runs on the substances the signed regulatory gate cleared, and writes a window
-                per marker element per component. Nothing has been written for this project.
-              </>
-            }
-          />
-        </section>
-      )}
-
-      {phase === 'ready' && doc && (
-        <DosingRecord doc={doc} onSign={sign} signBusy={signBusy} signError={signError} />
-      )}
-
-      <RevisionTrail projectId={project.projectId} />
-    </>
-  );
-}
-
-function DosingRecord({
-  doc,
-  onSign,
-  signBusy,
-  signError,
-}: {
-  doc: DosingDoc;
-  onSign: (note?: string) => void;
-  signBusy: boolean;
-  signError: string | null;
-}) {
-  /* Read the payload rather than trusting it. `getDosing` casts with `as` and validates nothing, so
-     an unreadable row reaches the chart as a NaN coordinate — and a mis-scaled dosing window is a
-     mis-dose. Anything dropped is counted and said out loud below. */
-  const { windows, codes, droppedWindows, droppedCodes } = readDosing(doc);
-  const reviewed = Boolean(doc.reviewedAt);
-
-  return (
-    <>
       <section className="screen">
         <SectionHeader
           title="How much goes in"
@@ -174,43 +200,52 @@ function DosingRecord({
           hint="ppm — mg/kg, mass over mass"
         />
 
+        {state.kind === 'error' && <TableError message={state.message} />}
+
+        {state.kind === 'ready' && (
+          <>
+            <DroppedRows n={state.read.dropped} />
+            {state.read.rows.length === 0 ? (
+              <EmptyState
+                icon="ti-flask"
+                title="No rows to dose."
+                body="Discovery has produced no candidates for this project, so there is nothing to compute a window for."
+              />
+            ) : (
+              byComponentRows(state.read.rows).map(([componentId, rows]) => (
+                <DosingComponent
+                  key={componentId}
+                  componentId={componentId}
+                  rows={rows}
+                  windows={windows.filter((w) => w.componentId === componentId)}
+                />
+              ))
+            )}
+          </>
+        )}
+
         {droppedWindows > 0 && <Unreadable n={droppedWindows} what="ppm window" />}
 
-        {windows.length === 0 ? (
-          <p className="prose" style={{ margin: 0 }}>
-            The record holds no readable ppm window.
-          </p>
-        ) : (
-          byComponent(windows).map(([componentId, componentWindows]) => (
-            <div key={componentId} style={{ marginBottom: 'var(--s5)' }}>
-              {/* Per-component tracks are architectural, not cosmetic: there is no product-wide
-                  marker, so there is no product-wide dose either. */}
-              <SectionHeader
-                eyebrow="Component"
-                title={componentId}
-                headingLevel={4}
-                count={componentWindows.length}
-              />
-              {/* The chart is the answer; the table under it is the supporting detail. */}
-              <PpmChart windows={componentWindows} />
-              <BoundsTable windows={componentWindows} />
+        {docState === 'error' && (
+          <div className="banner warn" role="alert">
+            <i className="ti ti-alert-triangle" aria-hidden="true" />
+            <div>
+              <b>The dosing document could not be read.</b> The table above still holds each row's
+              window; what is missing here is the chart and the codes. {docError}
             </div>
-          ))
+          </div>
         )}
       </section>
 
       <section className="screen">
-        <SectionHeader
-          title="What to order"
-          headingLevel={3}
-          hint="a code's identity is its ratio"
-        />
+        <SectionHeader title="What to order" headingLevel={3} hint="a code's identity is its ratio" />
 
         {droppedCodes > 0 && <Unreadable n={droppedCodes} what="code" />}
 
-        {codes.length === 0 ? (
+        {docState === 'absent' || codes.length === 0 ? (
           <p className="prose" style={{ margin: 0 }}>
-            The record holds no readable code.
+            The record holds no readable code. A code is 2–3 markers in one component, and Dosing
+            writes them once it has a window for each.
           </p>
         ) : (
           byComponent(codes).map(([componentId, componentCodes]) => (
@@ -231,6 +266,34 @@ function DosingRecord({
         )}
       </section>
 
+      {/*
+        The physicist's measurement, entered where it is CONSUMED. This is the only door XRF data has
+        into the record, and it is not a gate: a project with no XRF does not wait, it doses on the
+        declared default floor and carries the estimate flag, which blocks the order rather than the
+        pipeline.
+      */}
+      <section className="screen">
+        <SectionHeader
+          title="The physicist's XRF background"
+          headingLevel={3}
+          hint="an input, not a step — without it the floor is an estimate and the order is blocked"
+        />
+        <XrfEntry projectId={project.projectId} onConfirmed={afterRerunTrigger} />
+      </section>
+
+      {/*
+        The metal loading — the one number in no catalog. Entering it re-runs dosing, so it belongs
+        beside the windows it changes.
+      */}
+      <section className="screen">
+        <SectionHeader
+          title="A metal loading the record does not have"
+          headingLevel={3}
+          hint="the mass fraction of the element in the compound — dosing re-runs on it"
+        />
+        <LoadingEntryForm projectId={project.projectId} onEntered={afterRerunTrigger} />
+      </section>
+
       <section className="screen">
         <SectionHeader
           title="Recording the review"
@@ -238,31 +301,152 @@ function DosingRecord({
           hint="a note that the review happened — it unlocks nothing"
         />
 
-        {reviewed ? (
+        {doc?.reviewedAt ? (
           <div className="region">
             <div className="small" style={{ fontWeight: 500 }}>
               <i className="ti ti-check" style={{ color: 'var(--text-success)' }} aria-hidden="true" />{' '}
-              Reviewed {doc.reviewedAt?.slice(0, 10)}
+              Reviewed {doc.reviewedAt.slice(0, 10)}
             </div>
             <p className="prose" style={{ margin: '6px 0 0' }}>
               {doc.reviewNote}
             </p>
             <p className="small secondary" style={{ margin: '6px 0 0' }}>
-              Nothing was unlocked by this. The hard signatures are the regulatory gate and VP R&amp;D's
-              final determination.
+              Nothing was unlocked by this. The two signatures are the regulatory sign-off and VP
+              R&amp;D&rsquo;s determination.
             </p>
           </div>
         ) : (
-          <ReviewGate windows={windows} codes={codes} onSign={onSign} signBusy={signBusy} />
+          <>
+            <p className="prose" style={{ margin: '0 0 var(--s2)' }}>
+              A soft checkpoint. It records that the PL / VP / physics review happened and unlocks
+              nothing — a third hard gate would dilute what a signature means here.
+            </p>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              aria-label="Dosing review note"
+              placeholder="What was reviewed, and by whom. Required — the note is the record."
+              disabled={reviewBusy || docState !== 'ready'}
+              style={{
+                width: '100%',
+                maxWidth: 620,
+                font: 'inherit',
+                fontSize: 'var(--t-small)',
+                padding: '6px 8px',
+                border: '0.5px solid var(--border-strong)',
+                borderRadius: 'var(--r1)',
+                resize: 'vertical',
+              }}
+            />
+            <div style={{ marginTop: 'var(--s2)' }}>
+              <button
+                type="button"
+                className="btn"
+                disabled={reviewBusy || note.trim().length === 0 || docState !== 'ready'}
+                onClick={() => void recordReview()}
+                title={docState === 'ready' ? undefined : 'There is no dosing record to review yet'}
+              >
+                <i className={`ti ${reviewBusy ? 'ti-loader' : 'ti-note'}`} aria-hidden="true" />{' '}
+                {reviewBusy ? 'Recording…' : 'Mark review recorded'}
+              </button>
+            </div>
+          </>
         )}
 
-        {signError && (
+        {reviewError && (
           <div className="banner danger" role="alert" style={{ marginTop: 'var(--s3)' }}>
             <i className="ti ti-alert-triangle" aria-hidden="true" />
-            <div>{signError}</div>
+            <div>{reviewError}</div>
           </div>
         )}
       </section>
+
+      <RevisionTrail projectId={project.projectId} />
+    </>
+  );
+}
+
+/** One component's dosing: the chart (its answer) above the table (what the operator checks). */
+function DosingComponent({
+  componentId,
+  rows,
+  windows,
+}: {
+  componentId: string;
+  rows: ReadRow[];
+  windows: PpmWindow[];
+}) {
+  return (
+    <div style={{ marginBottom: 'var(--s5)' }}>
+      {/* Per-component tracks are architectural, not cosmetic: there is no product-wide marker, so
+          there is no product-wide dose either. */}
+      <SectionHeader
+        eyebrow="Component"
+        title={componentId}
+        headingLevel={4}
+        count={rows.length}
+        hint="each substance's own window"
+      />
+
+      {/*
+        The chart encodes provenance by FORM, never hue — a known end is a solid capped rule, an
+        estimated end has no rule and the band dissolves. That conditional is load-bearing: while the
+        fade was unconditional it drew a legal migration limit as vaguely as a guess.
+      */}
+      {windows.length > 0 && <PpmChart windows={windows} />}
+
+      <table className="mx">
+        <thead>
+          <tr>
+            <th>Substance</th>
+            <th>ppm window</th>
+            <th>Recommended</th>
+            <th>Amount</th>
+            <th>Availability</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={`${row.componentId}|${row.cas}`}>
+              <IdentityCell row={row} />
+              {row.dosing.kind === 'cells' ? (
+                <DosingRow cells={row.dosing.cells} />
+              ) : (
+                <AbsentCells state={row.dosing} span={DOSING_SPAN} phase="Dosing" />
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DosingRow({ cells }: { cells: DosingCells }) {
+  const recommended = cells.recommendedPpm;
+  return (
+    <>
+      {/* Both ends, each with its own provenance word. A window printed as two bare numbers throws
+          away which end somebody measured and which end an agent guessed. */}
+      <td>
+        <BoundValue bound={cells.floor} />
+        <span className="muted"> – </span>
+        <BoundValue bound={cells.upper} />
+      </td>
+      <td style={{ fontWeight: 600 }}>
+        {typeof recommended === 'number' && Number.isFinite(recommended) ? (
+          <Data kind="ppm">{fmtPpm(recommended)}</Data>
+        ) : (
+          <span className="small" style={{ color: 'var(--text-danger)' }}>unreadable</span>
+        )}
+      </td>
+      <td>
+        <AmountValue cells={cells} />
+      </td>
+      <td>
+        <AvailabilityValue cells={cells} />
+      </td>
     </>
   );
 }
@@ -280,154 +464,9 @@ function Unreadable({ n, what }: { n: number; what: string }) {
       <div>
         {n} {what}
         {n === 1 ? '' : 's'} on the record could not be read and {n === 1 ? 'is' : 'are'} not shown
-        here. Nothing was guessed in {n === 1 ? 'its' : 'their'} place — ask the agent to re-run
-        dosing.
+        here. Nothing was guessed in {n === 1 ? 'its' : 'their'} place — ask the agent to re-run dosing.
       </div>
     </div>
-  );
-}
-
-/**
- * The soft checkpoint. It records that the PL/VP/physics review happened and unlocks NOTHING — the
- * hard gates are Regulatory and VP R&D, and a third would dilute what a signature means here.
- */
-function ReviewGate({
-  windows,
-  codes,
-  onSign,
-  signBusy,
-}: {
-  windows: PpmWindow[];
-  codes: MarkerCode[];
-  onSign: (note?: string) => void;
-  signBusy: boolean;
-}) {
-  const requirements: Requirement[] = [
-    {
-      id: 'windows',
-      label: 'A ppm window exists for every marker element',
-      met: windows.length > 0,
-      detail: windows.length > 0 ? [...new Set(windows.map((w) => w.element))].join(', ') : undefined,
-    },
-    {
-      id: 'codes',
-      label: 'At least one code is finalized',
-      met: codes.length > 0,
-      detail: codes.length > 0 ? `${codes.length} code(s)` : 'The agent produced no code.',
-    },
-  ];
-
-  return (
-    <Gate
-      kind="soft"
-      title="Code finalization"
-      records="PL / VP / physics review"
-      requirements={requirements}
-      signLabel="Mark review recorded"
-      onSign={onSign}
-      signBusy={signBusy}
-      signNote={{ placeholder: 'What was reviewed, and by whom. Required — the note is the record.' }}
-    />
-  );
-}
-
-/**
- * The numbers behind the chart. Below it, deliberately: the chart is what the operator reads, this is
- * what they check.
- *
- * `kind` is repeated in words per bound because the chart's encoding is geometric, and the
- * measured/estimated distinction is too load-bearing to exist in only one modality. Basis prose goes
- * one click away — it is a sentence, and a sentence in a table cell is a truncated sentence.
- */
-function BoundsTable({ windows }: { windows: PpmWindow[] }) {
-  return (
-    <>
-      <table className="mx">
-        <thead>
-          <tr>
-            <th>Element</th>
-            <th>Detection floor</th>
-            <th>Upper bound</th>
-            <th>Recommended</th>
-            <th>Quantifiable above</th>
-          </tr>
-        </thead>
-        <tbody>
-          {windows.map((w) => (
-            <tr key={`${w.cas}|${w.element}`}>
-              <td>
-                <Data kind="element">{w.element}</Data>
-                <div className="tiny muted data">{w.cas}</div>
-              </td>
-              <td>
-                <span className="data">{fmtPpm(w.floor.ppm)}</span> <KindChip bound={w.floor} />
-              </td>
-              <td>
-                <span className="data">{fmtPpm(w.upper.ppm)}</span> <KindChip bound={w.upper} />
-              </td>
-              <td className="data" style={{ fontWeight: 600 }}>
-                {fmtPpm(w.recommendedPpm)}
-              </td>
-              <td className="data">{fmtPpm(w.quantificationPpm)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <details style={{ marginTop: 'var(--s2)' }}>
-        <summary className="small secondary" style={{ cursor: 'pointer' }}>
-          Where each bound comes from
-        </summary>
-        <div style={{ marginTop: 'var(--s2)' }}>
-          {windows.map((w) => (
-            <div key={`${w.cas}|${w.element}`} style={{ marginBottom: 'var(--s3)' }}>
-              <div className="small" style={{ fontWeight: 500 }}>
-                <Data kind="element">{w.element}</Data>
-              </div>
-              <BoundBasis label="Detection floor" bound={w.floor} />
-              <BoundBasis label="Upper bound" bound={w.upper} />
-            </div>
-          ))}
-        </div>
-      </details>
-    </>
-  );
-}
-
-function BoundBasis({ label, bound }: { label: string; bound: Bound }) {
-  return (
-    <p className="small secondary" style={{ margin: '2px 0 0' }}>
-      {label} — <span className="data">{fmtPpm(bound.ppm)} ppm</span>, confidence{' '}
-      <span className="data">{bound.confidence.toFixed(2)}</span>.{' '}
-      {bound.basis.trim() ? bound.basis : <span className="muted">No basis was recorded.</span>}
-    </p>
-  );
-}
-
-/**
- * `measured` is the physicist's, never the agent's — DosingAgent rejects an agent-authored bound
- * claiming it. That asymmetry is the whole reason `kind` exists, so this reads the RECORD'S kind and
- * nothing else. It is never inferred from which end of the window the bound sits at, and never from a
- * confidence of 1.00: either inference would let an estimate render as a measurement.
- */
-function KindChip({ bound }: { bound: Bound }) {
-  const measured = bound.kind === 'measured';
-  return (
-    <span
-      className="chip"
-      data-bound-kind={bound.kind}
-      style={{
-        background: measured ? 'var(--bg-teal)' : 'var(--surface-1)',
-        color: measured ? 'var(--text-teal)' : 'var(--text-secondary)',
-      }}
-      title={
-        measured
-          ? "The physicist's measurement. The agent cannot author this kind."
-          : "The agent's own claim — not a measurement."
-      }
-    >
-      {bound.kind}
-    </span>
   );
 }
 
@@ -435,7 +474,7 @@ function CodeCard({ code }: { code: MarkerCode }) {
   return (
     <div className="card">
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-        {/* A code has no name and no kind — its identity IS the ratio. */}
+        {/* A code has no name and no kind — its identity IS the ratio, at the 2dp the domain chose. */}
         <Data kind="code">
           <span style={{ fontSize: 'var(--t-lead)', fontWeight: 600 }}>{code.ratioSignature}</span>
         </Data>
@@ -460,22 +499,27 @@ function CodeCard({ code }: { code: MarkerCode }) {
             <tr key={m.cas}>
               <td>
                 <Data kind="element">{m.element}</Data>
-                <div className="tiny muted data">{m.cas}</div>
+                <div className="tiny muted">
+                  <Data kind="cas">{m.cas}</Data>
+                </div>
               </td>
-              <td className="data">{fmtPpm(m.ppm)}</td>
-              <td className="data">{fmtLoading(m.metalLoading)}</td>
+              <td>
+                <Data kind="ppm">{fmtPpm(m.ppm)}</Data>
+              </td>
+              <td>
+                <Data kind="num">{fmtLoading(m.metalLoading)}</Data>
+              </td>
               {/* What must END UP in the batch. */}
-              <td className="data muted" data-order="element">
-                {fmtMass(m.elementMassMg)} mg
+              <td className="muted" data-order="element">
+                <Data kind="num">{fmtMass(m.elementMassMg)}</Data> mg
               </td>
               {/* What you BUY. Heavier than the element mass by the compound's non-metal fraction —
                   ordering the element mass under-doses by exactly that. */}
               <td
-                className="data"
                 data-order="compound"
                 style={{ fontWeight: 600, background: 'var(--surface-1)' }}
               >
-                {fmtMass(m.compoundMassMg)} mg
+                <Data kind="num">{fmtMass(m.compoundMassMg)}</Data> mg
               </td>
             </tr>
           ))}
@@ -484,7 +528,7 @@ function CodeCard({ code }: { code: MarkerCode }) {
 
       <p className="small secondary" style={{ margin: '8px 0 0' }}>
         Order the compound mass. The element mass is what has to end up in the batch — buying that
-        figure instead under-doses by the compound's non-metal fraction.
+        figure instead under-doses by the compound&rsquo;s non-metal fraction.
       </p>
 
       <p className="prose" style={{ margin: '8px 0 0' }}>
@@ -493,8 +537,7 @@ function CodeCard({ code }: { code: MarkerCode }) {
 
       {/* No direct edits (Law 4). The operator never hand-mutates the agent's record: they tell the
           agent what is wrong and why, and the agent applies the change and records the reason as a
-          Learned Conclusion. That conversation belongs in the agent column, not in a form buried in
-          a card — which is what this used to be. */}
+          Learned Conclusion. That conversation belongs in the agent column, not in a form in a card. */}
       <AskTheAgent about={`the ${code.ratioSignature} code on ${code.componentId}`} />
     </div>
   );
@@ -503,15 +546,13 @@ function CodeCard({ code }: { code: MarkerCode }) {
 /**
  * Hand this card over to the agent column.
  *
- * The composer lives inside `AgentPanel`, which this screen may not modify and which exposes no
+ * The composer lives inside the agent panel, which this screen may not modify and which exposes no
  * handoff API — so the draft is written into it through the DOM, using React's own value setter so a
  * controlled input's state really changes rather than the value being painted on and lost at the next
- * render. It is a bridge, not an architecture: the right fix is a shared handoff channel owned by the
- * panel, and this should be replaced by one the moment it exists.
+ * render. It is a bridge, not an architecture.
  *
- * When the composer is not on the page — the agent column is collapsible on this screen — the draft
- * is shown here instead. A button that silently did nothing would be a lying affordance, which is
- * exactly the failure mode this codebase spends its effort avoiding.
+ * When the composer is not on the page — the agent panel is collapsible — the draft is shown here
+ * instead. A button that silently did nothing would be a lying affordance.
  */
 function AskTheAgent({ about }: { about: string }) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -530,8 +571,7 @@ function AskTheAgent({ about }: { about: string }) {
       </button>
       {draft && (
         <p className="small secondary" style={{ margin: '6px 0 0' }}>
-          The agent column is closed. Open it (Ctrl/Cmd + \) and start with:{' '}
-          <span className="data">{draft}</span>
+          The agent column is closed. Open it and start with: <span className="data">{draft}</span>
         </p>
       )}
     </div>

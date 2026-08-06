@@ -122,16 +122,20 @@ describe('AgentPanel', () => {
    * Two backing stages means two threads server-side. An untabbed composer would silently post to
    * whichever one the code happened to pick — so the choice is on screen, and named.
    */
-  it('offers Intake and Pool tabs on the merged stage, defaulting to Pool', async () => {
+  it('offers a tab per chattable backing stage, and posts to the one selected', async () => {
+    // Discovery is backed by ['pool', 'background', 'discovery'] — three stages, but `background` has NO
+    // AGENT, so it must not get a tab. That filter is why `isChatStage` (over backend keys) and `canChat`
+    // (over phase slugs) are two separate predicates: folding them would either drop the pool thread or
+    // offer a conversation with nobody.
     vi.mocked(useThread).mockReturnValue(ready());
-    render(<AgentPanel projectId="proj-test" stageSlug="intake" stageLabel="Intake & pool" />);
-    expect(screen.getByRole('tab', { name: /pool/i })).toHaveAttribute('aria-selected', 'true');
+    render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
 
-    await userEvent.click(screen.getByRole('tab', { name: /intake/i }));
+    expect(screen.queryByRole('tab', { name: /background/i })).toBeNull();
+    expect(screen.getByRole('tab', { name: /discovery/i })).toHaveAttribute('aria-selected', 'true');
+
+    await userEvent.click(screen.getByRole('tab', { name: /pool/i }));
     await userEvent.type(screen.getByLabelText(/message/i), 'hello');
     await userEvent.click(screen.getByRole('button', { name: /send/i }));
-    await waitFor(() =>
-      expect(api.sendMessage).toHaveBeenCalledWith('proj-test', 'intake', 'hello'),
-    );
+    await waitFor(() => expect(api.sendMessage).toHaveBeenCalledWith('proj-test', 'pool', 'hello'));
   });
 });

@@ -390,4 +390,31 @@ public class ChatStoreTests
         Assert.Equal(ChatStatus.Answered, thread[2].Status);
         Assert.Null(thread[2].Error);
     }
+
+    /// The one DELETE on IRecordStore, and its idempotence — the contract PipelineRunner's orphan prune
+    /// leans on. It runs after a candidate replace and may be re-executed by a retry, so "it was already
+    /// gone" has to be the outcome the caller asked for, not a throw. The Cosmos twin swallows a 404 for
+    /// exactly this reason.
+    [Fact]
+    public async Task DeleteVerdict_RemovesOne_AndIsIdempotent()
+    {
+        var store = new InMemoryRecordStore();
+        await store.UpsertVerdictAsync(new VerdictDoc
+        {
+            Id = RecordIds.Verdict("proj-1", "cas-a", "bottle"), ProjectId = "proj-1",
+            Cas = "cas-a", ComponentId = "bottle", Element = "Zr", Form = "oxide",
+        });
+        await store.UpsertVerdictAsync(new VerdictDoc
+        {
+            Id = RecordIds.Verdict("proj-1", "cas-b", "bottle"), ProjectId = "proj-1",
+            Cas = "cas-b", ComponentId = "bottle", Element = "Y", Form = "oxide",
+        });
+
+        await store.DeleteVerdictAsync("proj-1", "cas-a", "bottle");
+        await store.DeleteVerdictAsync("proj-1", "cas-a", "bottle");   // again: not an error
+        await store.DeleteVerdictAsync("proj-1", "never-existed", "bottle");
+
+        Assert.Equal("cas-b", Assert.Single(await store.GetVerdictsAsync("proj-1")).Cas);
+        Assert.Null(await store.GetVerdictAsync("proj-1", "cas-a", "bottle"));
+    }
 }

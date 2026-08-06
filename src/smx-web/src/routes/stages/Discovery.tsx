@@ -1,349 +1,264 @@
-import { useCallback, useEffect, useState } from 'react';
-import { NotFound, getCandidates } from '../../api/client';
-import type { CandidateSubstance, CandidatesDoc, Citation } from '../../api/types';
+import { useState } from 'react';
+import type { DiscoveryCells } from '../../api/types';
 import { Loading } from '../../components/Loading';
 import { RevisionTrail } from '../../components/RevisionControls';
+import { EmptyState, SectionHeader } from '../../components/ui/Primitives';
 import { ProposedPool } from './ProposedPool';
-import { Data } from '../../components/ui/Data';
-import { CitationChip, EmptyState, SectionHeader } from '../../components/ui/Primitives';
-import { byComponent } from '../../domain/dosing';
+import {
+  AbsentCells,
+  DroppedRows,
+  IdentityCell,
+  TableError,
+  byComponentRows,
+  useProjectTable,
+  type ReadRow,
+} from './projectTable';
 import type { ScreenProps } from '../ProjectLayout';
 
 /** Tier IS a severity ordering — strong / needs-validation / excluded — so the verdict palette fits. */
 const TIER_CLASS: Record<string, string> = { A: 'v', B: 'l', C: 'x' };
-const TIER_BG: Record<string, string> = {
-  A: 'var(--text-success)',
-  B: 'var(--text-pro)',
-  C: 'var(--text-danger)',
-};
 const TIERS = ['A', 'B', 'C'] as const;
-const TIER_SET = new Set<string>(TIERS);
+
+/** How many columns the Discovery group spans, for the absent-cells row. */
+const DISCOVERY_SPAN = 4;
 
 /**
- * The docked chat's composer, on this screen, always names the discovery agent — `discovery` has
- * exactly one backing stage (domain/stages.ts), so AgentPanel never shows a tab strip here and this
- * label never varies.
+ * The docked chat's composer, driven the way a user would.
  *
- * There is no shared store between a stage screen and the permanent chat column (ProjectLayout mounts
- * them side by side, not through each other), and this file may not add one — so this is the simple
- * mechanism asked for: find the composer input that is ALREADY in the page next to this screen and
- * drive it the way a user would. Setting `.value` through the native `HTMLInputElement` setter
- * (bypassing the instance setter React installs to track a controlled input) and then dispatching a
- * real `input` event is what makes React's own `onChange` fire — a plain `input.value = …` would only
- * change the pixel, not the composer's state, and the very next keystroke would wipe it. If the
- * composer is not mounted (a screen rendered outside `ProjectLayout`, as in this file's own tests)
- * this is a silent no-op, not a throw.
+ * There is no shared store between a stage screen and the agent panel (the shell mounts them side by
+ * side, not through each other), so the handoff is: find the composer already in the page and set its
+ * value through the native `HTMLInputElement` setter, then dispatch a real `input` event. That is what
+ * makes React's own `onChange` fire — a plain `input.value = …` changes the pixel and not the state,
+ * and the next keystroke wipes it. With no composer mounted (the panel is collapsible) this is a
+ * silent no-op rather than a throw, and the caller says so instead of pretending.
  */
-const DISCOVERY_COMPOSER_LABEL = 'Message the discovery agent';
-
-function focusChatWithTarget(target: string) {
-  const input = document.querySelector<HTMLInputElement>(`[aria-label="${DISCOVERY_COMPOSER_LABEL}"]`);
-  if (!input) return;
-  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+function focusChatWithTarget(target: string): boolean {
+  const input = document.querySelector<HTMLInputElement>('input[aria-label^="Message the"]');
+  if (!input) return false;
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+  if (!setter) return false;
   const prefill = `Revise ${target}: `;
-  nativeSetter?.call(input, prefill);
+  setter.call(input, prefill);
   input.dispatchEvent(new Event('input', { bubbles: true }));
   input.focus();
   input.setSelectionRange(prefill.length, prefill.length);
-}
-
-function normalizeCitation(raw: unknown): Citation | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const r = raw as Record<string, unknown>;
-  if (typeof r.source !== 'string' || typeof r.reference !== 'string' || typeof r.retrievedAt !== 'string') {
-    return null;
-  }
-  return {
-    source: r.source,
-    reference: r.reference,
-    retrievedAt: r.retrievedAt,
-    snippet: typeof r.snippet === 'string' ? r.snippet : undefined,
-  };
+  return true;
 }
 
 /**
- * Defensive, not decorative: a candidate that arrived without a component, a CAS or a valid tier is
- * not something this screen can show without inventing the missing piece, so it is dropped rather
- * than rendered half-formed or allowed to throw `byComponent` (which assumes `componentId` on every
- * row) or `CandidateCard` (which assumes `citations` is an array).
- */
-function normalizeCandidate(raw: unknown): CandidateSubstance | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const r = raw as Record<string, unknown>;
-  if (typeof r.componentId !== 'string' || typeof r.cas !== 'string') return null;
-  return {
-    componentId: r.componentId,
-    element: typeof r.element === 'string' ? r.element : '?',
-    form: typeof r.form === 'string' ? r.form : '?',
-    cas: r.cas,
-    particleSize: typeof r.particleSize === 'string' ? r.particleSize : undefined,
-    solvent: typeof r.solvent === 'string' ? r.solvent : undefined,
-    preferred: r.preferred === true,
-    tier: TIER_SET.has(r.tier as string) ? (r.tier as CandidateSubstance['tier']) : 'C',
-    rationale: typeof r.rationale === 'string' ? r.rationale : '',
-    citations: Array.isArray(r.citations)
-      ? r.citations.map(normalizeCitation).filter((c): c is Citation => c !== null)
-      : [],
-  };
-}
-
-/**
- * Discovery & AI-screening — the candidate pool, read per component.
+ * Discovery — the candidate pool, as the Discovery column group of the one project table.
  *
- * Three things this screen used to get wrong, and now cannot:
+ * It is the same rows the Regulatory and Dosing screens show, widened to a different group (spec §5):
+ * every record from Discovery onward is keyed on (component, CAS), so the record has always BEEN one
+ * table and was merely rendered as five screens that each fetched a slice of it.
  *
- *  1. **Candidates are per-component tracks.** Grouping is by component first, tier second — never
- *     flattened into one product-wide ranked pool, which would contradict the architecture:
- *     background, form, ppm and codes all run independently per component.
- *  2. **Citations are the agent's, verbatim.** A citation without its retrieval date is a claim, not
- *     a source, so the real `source`/`reference`/`retrievedAt` reach the chip unmodified.
- *  3. **Nothing is shown that the record does not hold.** No search queries, no metal-loading bars —
- *     Discovery never persists either, and drawing them would be inventing evidence for the stage
- *     with the heaviest provenance burden.
+ * Three things this screen must keep getting right:
  *
- * `preferred` and the tier cap are the deterministic rails, surfaced: a web-only candidate is capped
- * at tier B and can never be preferred (DiscoveryAgent.Validate), so a preferred row is a claim about
- * corpus evidence — never something this screen infers from tier or ranking.
+ *  1. **Candidates are per-component tracks.** Grouped by component, never flattened into one
+ *     product-wide ranked pool — background, form, ppm and codes all run independently per component.
+ *  2. **`preferred` is read off the record's own flag**, never inferred from tier or from position. A
+ *     web-only candidate is capped at tier B and can never be preferred (DiscoveryAgent.Validate), so
+ *     a preferred row is a claim about corpus evidence.
+ *  3. **Sources are counted from the record**, and a candidate resting on none says so in the loud
+ *     direction — Discovery is the stage with the heaviest provenance burden.
  *
- * No per-card form any more. The agent now lives in a permanent left column for the whole stage, so
- * "no direct edits — instruct the agent with a reason" is a conversation there, not a form buried at
- * the foot of a card: each card's button only focuses that composer with the candidate named, and the
- * operator finishes the sentence — types why — and sends it like any other message.
+ * No direct edits (Law 4): the operator never re-tiers a candidate by hand. The row's button only
+ * hands the candidate to the agent column with its name filled in; the operator finishes the sentence.
  */
 export function Discovery({ project }: ScreenProps) {
-  const stage = project.stages.discovery;
-  const status = stage?.status;
+  const status = project.stages.discovery?.status;
+  const { state } = useProjectTable(project.projectId, status);
 
-  const [doc, setDoc] = useState<CandidatesDoc | null>(null);
-  const [phase, setPhase] = useState<'loading' | 'ready' | 'absent' | 'error'>('loading');
-  const [errMsg, setErrMsg] = useState<string>();
-
-  const load = useCallback(
-    async (signal?: { cancelled: boolean }) => {
-      try {
-        const res = await getCandidates(project.projectId);
-        if (signal?.cancelled) return;
-        if (res === NotFound) {
-          setDoc(null);
-          setPhase('absent');
-        } else {
-          setDoc(res);
-          setPhase('ready');
-        }
-      } catch (err) {
-        if (!signal?.cancelled) {
-          setErrMsg(err instanceof Error ? err.message : String(err));
-          setPhase('error');
-        }
-      }
-    },
-    [project.projectId],
-  );
-
-  useEffect(() => {
-    const signal = { cancelled: false };
-    void load(signal);
-    return () => {
-      signal.cancelled = true;
-    };
-  }, [load, status]);
-
-  if (phase === 'loading') return <Loading what="the candidate pool" />;
-
-  const rawSubstances = Array.isArray(doc?.substances) ? doc.substances : [];
-  const substances = rawSubstances
-    .map(normalizeCandidate)
-    .filter((c): c is CandidateSubstance => c !== null);
-  const total = substances.length;
+  if (state.kind === 'loading') return <Loading what="the candidate pool" />;
 
   return (
-    <section className="screen">
-      {/* The pool is Discovery's INPUT, and Discovery takes minutes. Without this the operator
-          watches an empty candidate list for the whole run with no way to see what is being
-          screened — the pool is the one real thing there is to show in that window. */}
-      <ProposedPool
-        projectId={project.projectId}
-        hint="what Discovery is corroborating against the catalog"
-      />
-
-      <SectionHeader
-        title="Candidates"
-        headingLevel={3}
-        count={phase === 'ready' ? total : undefined}
-        hint="grouped by component — there is no product-wide pool"
-      />
-
-      {phase === 'error' && (
-        <div className="banner warn" role="alert">
-          <i className="ti ti-alert-triangle" aria-hidden="true" />
-          <div>
-            <b>The candidate pool could not be read.</b>
-            <div className="tiny" style={{ marginTop: 3 }}>{errMsg}</div>
-          </div>
-        </div>
-      )}
-
-      {phase === 'absent' && (
-        <EmptyState
-          icon="ti-flask-off"
-          title="No candidates yet."
-          body={
-            <>
-              Discovery writes its pool once it has screened the element pool against the catalog.
-              Until then there is nothing to rank.
-            </>
-          }
+    <>
+      <section className="screen">
+        {/* The pool is Discovery's INPUT, and Discovery takes minutes. Without it the operator watches
+            an empty table for the whole run with no way to see what is being screened. */}
+        <ProposedPool
+          projectId={project.projectId}
+          hint="what Discovery is corroborating against the catalog"
         />
-      )}
+      </section>
 
-      {phase === 'ready' && total === 0 && (
-        <EmptyState
-          icon="ti-flask-off"
-          title="Discovery found no candidates."
-          body={
-            <>
-              The agent ran and produced an empty pool. That is a finding, not a gap: nothing in the
-              catalog matched this project's element pool.
-            </>
-          }
+      <section className="screen">
+        <SectionHeader
+          title="Candidates"
+          headingLevel={3}
+          count={state.kind === 'ready' ? state.read.rows.length : undefined}
+          hint="grouped by component — there is no product-wide pool"
         />
-      )}
 
-      {phase === 'ready' &&
-        byComponent(substances).map(([component, rows]) => {
-          // Stable sort: within a tier the agent's own order is a ranking it chose, and the UI
-          // must not re-rank it. Only the tier bucket (A before B before C) is imposed here, so the
-          // ribbon above (drawn A/B/C left to right) and the card list below are never out of step.
-          // `.slice()` first — byComponent hands back the arrays it built internally, and sorting
-          // one in place would mutate its return value.
-          const forComponent = rows.slice().sort((a, b) => TIERS.indexOf(a.tier) - TIERS.indexOf(b.tier));
-          return (
-            <div key={component} style={{ marginBottom: 18 }}>
-              <SectionHeader
-                title={component}
-                headingLevel={4}
-                count={forComponent.length}
-                hint="candidates on this component's own track"
+        {state.kind === 'error' && <TableError message={state.message} />}
+
+        {state.kind === 'ready' && (
+          <>
+            <DroppedRows n={state.read.dropped} />
+
+            {state.read.rows.length === 0 ? (
+              <EmptyState
+                icon="ti-flask-off"
+                title="No candidates on the record yet."
+                body={
+                  <>
+                    Discovery writes its pool once it has corroborated the proposed elements against
+                    the catalog. Until then there is nothing to rank — this is a young project, not a
+                    failure.
+                  </>
+                }
               />
+            ) : (
+              byComponentRows(state.read.rows).map(([componentId, rows]) => (
+                <ComponentTable key={componentId} componentId={componentId} rows={rows} />
+              ))
+            )}
+          </>
+        )}
+      </section>
 
-              {/* The tier shape, without having to open anything to learn it. */}
-              <div style={{ marginBottom: 10 }}>
-                <div
-                  className="ribbon"
-                  role="img"
-                  aria-label={TIERS.map(
-                    (t) => `${forComponent.filter((s) => s.tier === t).length} tier ${t}`,
-                  ).join(', ')}
-                >
-                  {TIERS.map((t) => {
-                    const n = forComponent.filter((s) => s.tier === t).length;
-                    return n ? (
-                      <div
-                        key={t}
-                        className="ribbon__seg"
-                        style={{ width: `${(n / forComponent.length) * 100}%`, background: TIER_BG[t] }}
-                        title={`${n} in tier ${t}`}
-                      />
-                    ) : null;
-                  })}
-                </div>
-                <div className="ribbon__key">
-                  {TIERS.map((t) => (
-                    <span key={t}>
-                      <span className="ribbon__dot" style={{ background: TIER_BG[t] }} />
-                      {forComponent.filter((s) => s.tier === t).length} tier {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {forComponent.map((c) => (
-                <CandidateCard key={`${c.componentId}|${c.cas}`} candidate={c} />
-              ))}
-            </div>
-          );
-        })}
-
-      <details style={{ marginTop: 'var(--s4)' }}>
-        <summary className="small secondary" style={{ cursor: 'pointer' }}>
-          Revision trail
-        </summary>
-        <RevisionTrail projectId={project.projectId} />
-      </details>
-    </section>
+      <section className="screen">
+        <details>
+          <summary className="small secondary" style={{ cursor: 'pointer' }}>
+            Revision trail
+          </summary>
+          <RevisionTrail projectId={project.projectId} />
+        </details>
+      </section>
+    </>
   );
 }
 
-function CandidateCard({ candidate: c }: { candidate: CandidateSubstance }) {
+function ComponentTable({ componentId, rows }: { componentId: string; rows: ReadRow[] }) {
+  /*
+   * Within a component, tier order is imposed and nothing else is: A before B before C, and inside a
+   * tier the agent's own order is a ranking it chose, which the UI must not re-do. `.slice()` first —
+   * `byComponentRows` hands back the arrays it built internally, and sorting one in place would
+   * mutate its return value.
+   */
+  const ordered = rows.slice().sort((a, b) => tierRank(a) - tierRank(b));
+
   return (
-    <div className="card" style={{ marginBottom: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-        {/* Tier is the loud element: the verdict palette, at lead size. */}
-        <span
-          className={`chip ${TIER_CLASS[c.tier]}`}
-          style={{ fontSize: 'var(--t-lead)', fontWeight: 'var(--w-semibold)', height: 'auto', padding: '2px 9px' }}
-        >
-          {c.tier}
-        </span>
-        <span style={{ fontSize: 'var(--t-lead)', fontWeight: 'var(--w-semibold)' }}>
-          {c.element} {c.form}
-        </span>
-        <span className="tiny muted">
-          CAS <Data kind="code">{c.cas}</Data>
-        </span>
-        {/* Preferred is the agent's pick, and it is unreachable for a web-only candidate — so it
-            says something about the evidence, not just about the ranking. Read straight off the
-            record's own flag: never inferred here from tier or from list position. */}
-        {c.preferred && (
-          <span className="chip chip--neutral" title="The agent's preferred candidate on this component">
+    <div style={{ marginBottom: 'var(--s5)' }}>
+      <SectionHeader
+        eyebrow="Component"
+        title={componentId}
+        headingLevel={4}
+        count={ordered.length}
+        hint="candidates on this component's own track"
+      />
+      <table className="mx">
+        <thead>
+          <tr>
+            <th>Substance</th>
+            <th>Tier</th>
+            <th>Preferred</th>
+            <th>Rationale</th>
+            <th>Sources</th>
+            <th style={{ width: 40 }} />
+          </tr>
+        </thead>
+        <tbody>
+          {ordered.map((row) => (
+            <tr key={`${row.componentId}|${row.cas}`}>
+              <IdentityCell row={row} />
+              {row.discovery.kind === 'cells' ? (
+                <DiscoveryRow cells={row.discovery.cells} />
+              ) : (
+                <AbsentCells state={row.discovery} span={DISCOVERY_SPAN} phase="Discovery" />
+              )}
+              <td>
+                <ReviseButton target={`${row.element} ${row.form}`} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function tierRank(row: ReadRow): number {
+  const tier = row.discovery.kind === 'cells' ? row.discovery.cells.tier : undefined;
+  const i = TIERS.indexOf(tier as (typeof TIERS)[number]);
+  // An unrecognised or absent tier sorts LAST rather than first. It is not evidence of strength, and
+  // a row whose tier this build cannot read must not be handed the top of the list by default.
+  return i < 0 ? TIERS.length : i;
+}
+
+function DiscoveryRow({ cells }: { cells: DiscoveryCells }) {
+  const tier = typeof cells.tier === 'string' ? cells.tier : '';
+  const sources = typeof cells.sources === 'number' && Number.isFinite(cells.sources) ? cells.sources : 0;
+  const rationale = typeof cells.rationale === 'string' ? cells.rationale : '';
+
+  return (
+    <>
+      <td>
+        {/* An unrecognised tier gets no verdict colour at all: the palette is a severity claim, and
+            claiming a severity we cannot read would be worse than showing the raw token. */}
+        <span className={`chip ${TIER_CLASS[tier] ?? 'chip--neutral'}`}>{tier || 'no tier'}</span>
+      </td>
+      <td>
+        {cells.preferred === true ? (
+          <span
+            className="chip chip--neutral"
+            title="The agent's preferred candidate on this component — unreachable for a web-only candidate"
+          >
             preferred
           </span>
+        ) : (
+          <span className="tiny muted">—</span>
         )}
-      </div>
+      </td>
+      <td className="secondary">{rationale || <span className="muted">No rationale recorded.</span>}</td>
+      {/*
+        A COUNT, not chips. The projection carries how many citations the agent recorded, not the
+        citations themselves — and a chip built from a count would be a citation with no source, no
+        reference and no retrieval date, which is a claim rather than a citation. The real chips live
+        in the evidence panel on Regulatory, where the whole `Citation` is available and can be
+        rendered verbatim. Zero is the loud case: a candidate resting on nothing traces to nothing.
+      */}
+      <td>
+        {sources === 0 ? (
+          <span className="small" style={{ color: 'var(--text-warning)' }}>
+            <i className="ti ti-link-off" aria-hidden="true" /> none
+          </span>
+        ) : (
+          <span className="small">
+            {sources} source{sources === 1 ? '' : 's'}
+          </span>
+        )}
+      </td>
+    </>
+  );
+}
 
-      {(c.particleSize || c.solvent) && (
-        <div className="tiny muted" style={{ marginTop: 4 }}>
-          {c.particleSize && <>particle size {c.particleSize}</>}
-          {c.particleSize && c.solvent && ' · '}
-          {c.solvent && <>solvent {c.solvent}</>}
+/**
+ * Hand this candidate to the agent column.
+ *
+ * The button never changes the record. Re-tiering by hand is exactly what Law 4 forbids: the operator
+ * tells the agent what is wrong and why, the agent applies the change, and the reason is recorded as a
+ * Learned Conclusion. A button that silently did nothing when the panel is collapsed would be a lying
+ * affordance, so the draft is shown here instead.
+ */
+function ReviseButton({ target }: { target: string }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        className="btn"
+        aria-label={`Revise ${target} in chat`}
+        title="Tell the agent what to change, and why"
+        onClick={() => setDraft(focusChatWithTarget(target) ? null : `Revise ${target}: `)}
+      >
+        <i className="ti ti-message-2" aria-hidden="true" />
+      </button>
+      {draft && (
+        <div className="tiny secondary" style={{ marginTop: 4 }}>
+          The agent column is closed. Open it and start with: <span className="data">{draft}</span>
         </div>
       )}
-
-      <p className="prose" style={{ margin: '8px 0 6px' }}>
-        {c.rationale || <span className="muted">No rationale recorded.</span>}
-      </p>
-
-      <div>
-        {c.citations.map((cite) => (
-          <CitationChip
-            key={`${cite.source}|${cite.reference}`}
-            source={cite.source}
-            reference={cite.reference}
-            retrievedAt={cite.retrievedAt}
-            snippet={cite.snippet}
-          />
-        ))}
-        <span className="tiny muted" style={{ marginLeft: 4 }}>
-          {c.citations.length} source{c.citations.length === 1 ? '' : 's'}
-        </span>
-      </div>
-
-      {/*
-        No manual re-tiering (Law 4): the operator never hand-mutates the agent's record. This
-        button does not itself change anything — it only focuses the docked chat with this candidate
-        named, so the real path (name the candidate, state the reason, the agent applies the change
-        and records the reason as a Learned Conclusion) happens as a normal message, not a form.
-      */}
-      <div style={{ marginTop: 10 }}>
-        <button
-          type="button"
-          className="btn"
-          aria-label={`Revise ${c.element} ${c.form} in chat`}
-          onClick={() => focusChatWithTarget(`${c.element} ${c.form}`)}
-        >
-          <i className="ti ti-message-2" aria-hidden="true" /> Revise in chat
-        </button>
-      </div>
-    </div>
+    </>
   );
 }

@@ -1,30 +1,24 @@
 import type { StageState, StageStatus } from '../api/types';
 
 /**
- * The 8-stage journey from project_files/SMX_Marker_System_UX_Spec.md §4.
+ * The operator-facing journey: THREE PHASES AND A SIGN-OFF (redesign spec §4).
  *
- * The backend's ProjectDoc.Stages tracks NINE real stages — intake, pool, background, discovery,
- * regulatory, matrix, dosing, cost, decision (Stages in src/Smx.Domain/Records/RecordIds.cs). EVERY
- * spine entry is now backed by at least one of them, which is why there is no longer an `isMocked`:
- * there is no screen whose pill state is invented.
+ * It was eight entries over nine backend stages. What collapsed, and why:
  *
- * `pool` used to be hidden from this spine entirely, which left the pool agent as the one stage whose
- * work the operator could not see happen. It is now folded into the intake pill: intake transcribes
- * the need and the pool turns it into a hypothesis, and the operator supplies nothing between them,
- * so they are ONE step from their side.
+ *  - `intake` has no phase. It runs during project CREATION — it transcribes the brief the operator just
+ *    dictated in the interview — and what it produced is read on Overview. A step the operator never
+ *    visits is not a step.
+ *  - `pool` and `background` fold into Discovery. The operator supplies nothing between them, so they are
+ *    one move from their side; `background` is a pass-through until XRF is built.
+ *  - `matrix` folds into Regulatory, because the matrix is not a stage's OUTPUT — it is the shape every
+ *    phase's output takes (§5). The regulatory column group IS the matrix on the Regulatory screen.
+ *  - `cost` is deleted outright (§6): there are no prices, and the amounts were always in Dosing.
  *
- * `backedBy` names the ProjectDoc stage keys whose real status drives the pill. `gate` marks a
- * hard gate; regulatory is BOTH a backed stage and a gate.
- *
- * `surface: 'record'` marks a screen that is a SIGNING SURFACE rather than a work surface: no agent
- * dock, a document measure, the gate as its terminus (ProjectLayout). Only `decision` is one — and
- * note that this is now INDEPENDENT of whether the stage has an agent. `decision` is in Stages.All
- * and is perfectly chattable; it keeps no dock anyway, because what is permanent about the VP gate is
- * not that the backend lacks something, it is that a human signature is not a conversation.
- *
- * `background` is the mirror case: a real tracked stage that is DELIBERATELY absent from Stages.All
- * (RecordIds.cs says so — the XRF filter is a pass-through with no agent, so a thread on it could
- * only be a conversation with nobody). So it takes a real pill and an honestly closed dock.
+ * `backedBy` names the ProjectDoc stage keys whose real status drives the phase. `gate` marks a phase
+ * carrying a signature. `surface: 'record'` marks a SIGNING surface rather than a work surface — only
+ * sign-off is one, and note this stays INDEPENDENT of whether the stage has an agent: the Decision agent
+ * is perfectly chattable, and the screen still keeps no conversation column, because what is permanent
+ * about a signature is that it is not a conversation.
  */
 export type BackendStage =
   | 'intake'
@@ -34,31 +28,41 @@ export type BackendStage =
   | 'regulatory'
   | 'matrix'
   | 'dosing'
-  | 'cost'
   | 'decision';
 
 export interface StageDef {
   slug: string;
   label: string;
-  /**
-   * The ProjectDoc stage keys whose real status drives this pill. A LIST because Intake and Pool
-   * are one step from the operator's side: intake transcribes the need, pool turns it into a
-   * hypothesis, and the operator supplies nothing between them.
-   */
   backedBy?: BackendStage[];
+  /**
+   * The stage whose AGENT this phase talks to, and which a revision targets.
+   *
+   * Explicit, and it has to be. The old rule was positional — "the last entry in `backedBy`", the stage
+   * whose output the screen shows — and that was right while Intake&pool ended on `pool`. It BREAKS on
+   * Regulatory: that phase is backed by `['regulatory', 'matrix']` because the matrix is what it renders,
+   * but the matrix is deterministically assembled and holds no tools at all (ToolBox.ReadToolsFor returns
+   * an empty list for it, deliberately). Left positional, the composer would post to a stage with nobody
+   * home and `canRevise` would answer false — silently disabling revise-with-reason on the one phase where
+   * an operator most needs to argue with the analysis.
+   *
+   * Omitted ⇒ the last backing stage, which is correct for every phase except Regulatory.
+   */
+  agentStage?: BackendStage;
   gate?: boolean;
   surface?: 'record';
 }
 
 export const STAGES: readonly StageDef[] = [
-  { slug: 'intake', label: 'Intake & pool', backedBy: ['intake', 'pool'] },
-  { slug: 'background', label: 'Background', backedBy: ['background'] },
-  { slug: 'discovery', label: 'Discovery', backedBy: ['discovery'] },
-  { slug: 'regulatory', label: 'Reg gate', backedBy: ['regulatory'], gate: true },
+  { slug: 'discovery', label: 'Discovery', backedBy: ['pool', 'background', 'discovery'] },
+  {
+    slug: 'regulatory',
+    label: 'Regulatory',
+    backedBy: ['regulatory', 'matrix'],
+    agentStage: 'regulatory',
+    gate: true,
+  },
   { slug: 'dosing', label: 'Dosing', backedBy: ['dosing'] },
-  { slug: 'cost', label: 'Cost', backedBy: ['cost'] },
-  { slug: 'matrix', label: 'Matrix', backedBy: ['matrix'] },
-  { slug: 'decision', label: 'VP gate', backedBy: ['decision'], gate: true, surface: 'record' },
+  { slug: 'signoff', label: 'Sign-off', backedBy: ['decision'], gate: true, surface: 'record' },
 ];
 
 /** Every backend stage a spine slug covers, in pipeline order. Empty for an unbacked screen. */
@@ -67,17 +71,17 @@ export function backendStages(slug: string): BackendStage[] {
 }
 
 /**
- * The stage a composer posts to and a rerun targets — the LAST backing stage, which is the one
- * whose output the screen shows. Intake & pool posts to `pool`; the dock's tab strip lets the
- * operator pick the other.
+ * The stage a composer posts to and a rerun targets — `agentStage` where the phase declares one, else the
+ * last backing stage.
  *
- * Chat (ChatEndpoints.cs) accepts every backend stage. Revise (RevisionEffects.IsRevisable) accepts
- * only the three that produce a revisable agent output: matrix is deterministically assembled, cost is a
- * table lookup with no "why" to record over a price fetch, and intake is excluded despite having an agent
- * because re-running it invalidates the whole project. A slug with no backend stage can do neither, and its
- * controls say so honestly rather than pretend.
+ * Chat (ChatEndpoints.cs) accepts every backend stage. Revise (RevisionEffects.IsRevisable) accepts only
+ * the three that produce a revisable agent output: matrix is deterministically assembled, and intake is
+ * excluded despite having an agent because re-running it invalidates the whole project. A slug with no
+ * backend stage can do neither, and its controls say so honestly rather than pretend.
  */
 export function backendStage(slug: string): BackendStage | undefined {
+  const def = STAGES.find((s) => s.slug === slug);
+  if (def?.agentStage) return def.agentStage;
   const stages = backendStages(slug);
   return stages[stages.length - 1];
 }
@@ -94,7 +98,6 @@ const CHAT_STAGES: readonly BackendStage[] = [
   'regulatory',
   'matrix',
   'dosing',
-  'cost',
   'decision',
 ];
 const REVISE_STAGES: readonly BackendStage[] = ['discovery', 'regulatory', 'dosing'];
@@ -132,30 +135,17 @@ export function canRevise(slug: string): boolean {
 export const anyRunning = (stages: Record<string, StageState>) =>
   Object.values(stages).some((s) => s.status === 'running' || s.status === 'pending');
 
-/**
- * Every park state in `StageStatus` — the record stopped on a named human.
+/*
+ * `PARKED` / `ParkedStatus` / `isParked` used to live here — a Record over the `awaiting-*` union, so that
+ * adding an eleventh park failed to compile until it was given a home. It was the right answer to the
+ * problem it had: this codebase shipped the same bug three times, a park quietly falling through a branch
+ * nobody updated.
  *
- * A RECORD rather than a list, and that is the point: `ParkedStatus` is derived from the union,
- * so adding an eleventh `awaiting-*` to `StageStatus` fails to compile here until it is given a
- * home. This codebase has now shipped the same bug three times (`whatsBlocking` missing
- * `awaiting-VP`, `bucket()` before it, `foldStatus` below) — each one a park quietly falling
- * through a branch nobody updated — so membership is checked by the compiler, not by review.
- *
- * Deliberately WIDER than `AWAITING_STATES` in api/types.ts. That constant means "a park whose
- * dispatcher-written `error` there is something to surface", which is a narrower question and
- * excludes `awaiting-VP` and `awaiting-confirmation` on purpose. Being stopped is not the same
- * question as having an instruction to print.
+ * The park family is DELETED (execution-core §8), so the guard has nothing left to guard. What survives is
+ * the discipline it taught, one layer down: the never-checks in `stageIcon` below still land on the LOUD
+ * reading, because the cost of over-flagging is a glance and the cost of under-flagging is a person waiting
+ * that nobody can see.
  */
-type ParkedStatus = Extract<StageStatus, `awaiting-${string}`>;
-const PARKED: Record<ParkedStatus, true> = {
-  'awaiting-operator': true,
-  'awaiting-physics': true,
-  'awaiting-RE': true,
-  'awaiting-VP': true,
-  'awaiting-confirmation': true,
-};
-const isParked = (s: StageStatus): s is ParkedStatus =>
-  Object.prototype.hasOwnProperty.call(PARKED, s);
 
 /**
  * Exhaustiveness with a soft landing, for the two functions below that turn a status into a
@@ -196,8 +186,6 @@ export function foldStatus(states: (StageState | undefined)[]): StageStatus {
   const statuses = states.map((s) => s?.status ?? 'pending');
   for (const priority of ['failed', 'needs-review'] as const)
     if (statuses.includes(priority)) return priority;
-  const parked = statuses.find(isParked);
-  if (parked) return parked;
   if (statuses.includes('running')) return 'running';
   return statuses.every((s) => s === 'done') ? 'done' : 'pending';
 }
@@ -222,19 +210,6 @@ export function stageIcon(status: StageStatus | undefined, gate?: boolean): stri
       return 'ti-alert-triangle';
     case 'needs-review':
       return 'ti-eye-exclamation';
-    case 'awaiting-operator':
-    case 'awaiting-physics':
-    case 'awaiting-RE':
-    case 'awaiting-VP':
-      return 'ti-player-pause';
-    /*
-     * The one park that is not a pause. Nothing has run and nothing will until the operator
-     * presses Start Processing, so a pause glyph would claim an interrupted journey that never
-     * began. `whatsBlocking` draws this same case with `ti-player-play`; the two agree on
-     * purpose.
-     */
-    case 'awaiting-confirmation':
-      return 'ti-player-play';
     // `pending` is the one status a bare point is the RIGHT answer for: the pipeline has not
     // reached this stage, and there is genuinely nothing to see yet. It gets its own case so that
     // the default below can be a never-check — an unhandled status used to fall through to this

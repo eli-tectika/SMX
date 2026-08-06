@@ -17,14 +17,15 @@ interface State {
  * validates nothing at runtime, so a shape drift between a deployed backend and this frontend —
  * a renamed field, a migrated document, a partial deploy — surfaces as a plain TypeError deep in
  * a screen (e.g. `GET /projects/{id}/pool` coming back as a bare list makes `ProposedPool` call
- * `.map` on `undefined`). Uncaught, that unmounts `ProjectHeader` and `StageStepper` right along
- * with the screen, and the operator loses the one thing that would tell them which project and
- * stage they were even looking at.
+ * `.map` on `undefined`). Uncaught, one such payload took the whole tree down — 3 of 32 routes
+ * rendered — and the operator lost the one thing that would tell them which project and phase they
+ * were even looking at.
  *
- * Wraps only `{screen}` inside `WorkArea`'s artifact column (see ProjectLayout) — never the
- * header, the stepper, or the chat column — so a broken screen still leaves the operator
- * oriented and able to navigate elsewhere. `ProjectLayout` keys this by stage slug, so moving to
- * a different stage mounts a fresh instance instead of replaying the caught error underneath it.
+ * Wraps only `{screen}` inside `WorkArea`'s artifact column (see ProjectLayout) — never the top
+ * bar, the sidebar, or the agent panel, all of which are mounted outside it — so a broken screen
+ * still leaves the operator oriented and able to navigate elsewhere. `ProjectLayout` keys this by
+ * screen slug, so moving to a different one mounts a fresh instance instead of replaying the
+ * caught error underneath it.
  *
  * No retry-in-place: the failure is a code/data bug, not a transient one, so a "try again"
  * button would just throw again in the same render. Changing stage is the real recovery path,

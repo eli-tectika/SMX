@@ -2,7 +2,6 @@ import type {
   CandidatesDoc,
   ChatAccepted,
   ChatTurn,
-  CostDoc,
   CreateProjectRequest,
   CreateProjectResponse,
   DecisionDoc,
@@ -15,6 +14,9 @@ import type {
   DocumentState,
   DocumentSummary,
   DosingDoc,
+  ProjectTable,
+  Amendment,
+  AmendmentConflict,
   DosingReviewRequest,
   IntakeBrief,
   IntakeQuestion,
@@ -172,18 +174,31 @@ export async function parseXrf(projectId: string, file: File): Promise<XrfParseR
   return (await res.json()) as XrfParseResult;
 }
 
-/** The single writer. A 422 carries the operator-readable reason the confirmation was refused. */
+/**
+ * The single writer of the physicist's measured background. A 422 carries the operator-readable reason the
+ * confirmation was refused.
+ *
+ * Returns the 409 CONFLICT body rather than throwing, for the same reason `postAmendment` does: confirming
+ * a measurement RE-DOSES the project, and re-dosing voids the VP's signature. That 409 is not a failure —
+ * it is the system asking whether to discard a signature — and collapsing it into a generic error toast
+ * would leave the operator with a refusal they cannot act on and no idea what they were about to destroy.
+ *
+ * Without this the confirm was worse than refused: the endpoint 409'd and the client threw, so on a signed
+ * project the physicist's number could never be recorded at all.
+ */
 export async function confirmXrf(
   projectId: string,
   proposals: XrfProposal[],
-): Promise<XrfConfirmed> {
+  confirmSignatureVoid = false,
+): Promise<{ ok: true; result: XrfConfirmed } | { ok: false; conflict: AmendmentConflict }> {
   const res = await authorizedFetch(`${BASE}/projects/${encodeURIComponent(projectId)}/xrf/confirm`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ proposals }),
+    body: JSON.stringify({ proposals, confirmSignatureVoid }),
   });
+  if (res.status === 409) return { ok: false, conflict: (await res.json()) as AmendmentConflict };
   if (!res.ok) throw await failure(res);
-  return (await res.json()) as XrfConfirmed;
+  return { ok: true, result: (await res.json()) as XrfConfirmed };
 }
 
 /**
@@ -617,11 +632,45 @@ export async function getDosing(projectId: string): Promise<DosingDoc | NotFound
   return (await res.json()) as DosingDoc;
 }
 
-export async function getCost(projectId: string): Promise<CostDoc | NotFound> {
-  const res = await authorizedFetch(`${p(projectId)}/cost`);
-  if (res.status === 404) return NotFound;
+/**
+ * The unified project table — the ONE projection every phase screen and the XLSX export read.
+ *
+ * Deliberately NOT a NotFound union: a project that has only reached Discovery returns 200 with rows
+ * carrying just that group. An analysis in progress is a state, not a missing resource, and treating it as
+ * absent would blank the table for exactly the projects an operator watches most closely.
+ */
+export async function getTable(projectId: string): Promise<ProjectTable> {
+  const res = await authorizedFetch(`${p(projectId)}/table`);
   if (!res.ok) throw await failure(res);
-  return (await res.json()) as CostDoc;
+  return (await res.json()) as ProjectTable;
+}
+
+export async function getAmendments(projectId: string): Promise<Amendment[]> {
+  const res = await authorizedFetch(`${p(projectId)}/amendments`);
+  if (!res.ok) throw await failure(res);
+  return ((await res.json()) as { amendments: Amendment[] }).amendments;
+}
+
+/**
+ * Amend a requirement. Returns the conflict body on 409 rather than throwing, because a 409 here is not an
+ * error — it is the system asking a question. The amendment would void a signature already on file, and the
+ * caller has to show the operator WHICH signatures and WHAT will re-run before offering to proceed.
+ *
+ * Throwing would collapse that into a generic failure toast, and the operator would never learn what they
+ * were about to destroy.
+ */
+export async function postAmendment(
+  projectId: string,
+  body: { field: string; value: string; reason: string; componentId?: string; confirmSignatureVoid?: boolean },
+): Promise<{ ok: true } | { ok: false; conflict: AmendmentConflict }> {
+  const res = await authorizedFetch(`${p(projectId)}/amendments`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 409) return { ok: false, conflict: (await res.json()) as AmendmentConflict };
+  if (!res.ok) throw await failure(res);
+  return { ok: true };
 }
 
 /**

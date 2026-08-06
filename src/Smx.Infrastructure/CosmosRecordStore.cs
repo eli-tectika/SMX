@@ -144,6 +144,21 @@ public sealed class CosmosRecordStore(Container container) : IRecordStore
     public Task UpsertChatReplyAsync(ChatReplyDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
     public Task UpsertIntakeBriefAsync(IntakeBriefDoc doc, CancellationToken ct = default) => Upsert(doc, doc.ProjectId, ct);
 
+    /// A 404 is SWALLOWED, deliberately: the contract is idempotence (see IRecordStore.DeleteVerdictAsync).
+    /// The prune runs after the candidate replace and may be re-executed by a retry, and "it was already
+    /// gone" is the outcome the caller asked for.
+    public async Task DeleteVerdictAsync(
+        string projectId, string cas, string componentId, CancellationToken ct = default)
+    {
+        try
+        {
+            await container.DeleteItemAsync<VerdictDoc>(
+                RecordIds.Verdict(projectId, cas, componentId), new PartitionKey(projectId),
+                cancellationToken: ct);
+        }
+        catch (CosmosException e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound) { }
+    }
+
     private async Task<T?> ReadAsync<T>(string id, string pk, CancellationToken ct) where T : class
     {
         try { return (await container.ReadItemAsync<T>(id, new PartitionKey(pk), cancellationToken: ct)).Resource; }

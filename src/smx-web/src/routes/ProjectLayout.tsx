@@ -1,117 +1,154 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { AgentPanel } from '../components/AgentPanel';
 import { ErrorScreen, Loading } from '../components/Loading';
-import { NextAction } from '../components/shell/NextAction';
-import { ProjectHeader } from '../components/shell/ProjectHeader';
 import { StageErrorBoundary } from '../components/shell/StageErrorBoundary';
-import { StageStepper } from '../components/shell/StageStepper';
-import { WorkArea } from '../components/shell/WorkArea';
+import { WorkArea, useAgentPanel } from '../components/shell/WorkArea';
+import { navItem, projectHome } from '../components/shell/projectNav';
+import { usePublishScope } from '../components/shell/scope';
 import { Timeline } from '../components/timeline/Timeline';
-import { XrfEntry } from '../components/xrf/XrfEntry';
-import { STAGES } from '../domain/stages';
+import { backendStage, backendStages, isChatStage } from '../domain/stages';
 import { useProject } from '../hooks/useProject';
 import { useThread } from '../hooks/useThread';
-import { Background } from './stages/Background';
-import { Cost } from './stages/Cost';
-import { Decision } from './stages/Decision';
 import { Discovery } from './stages/Discovery';
 import { Dosing } from './stages/Dosing';
-import { Intake } from './stages/Intake';
-import { Matrix } from './stages/Matrix';
+import { FullMatrix } from './stages/FullMatrix';
+import { Overview } from './stages/Overview';
 import { Regulatory } from './stages/Regulatory';
+import { Signoff } from './stages/Signoff';
 import type { ProjectSummary } from '../api/types';
 
 /**
- * Every screen takes the project; a screen that WRITES to the record also takes `refreshProject`, so it
- * can restart the settled poll loop after its own write (Dosing un-parking and intake Start Processing are
- * the cases that need it). Screens that ignore the second prop are still assignable — they simply never
- * call it.
+ * Every screen takes the project; a screen that WRITES to the record also takes `refreshProject`,
+ * so it can restart the settled poll loop after its own write. Screens that ignore the second prop
+ * are still assignable — they simply never call it.
  */
 export interface ScreenProps {
   project: ProjectSummary;
   refreshProject: () => void;
 }
 
+/**
+ * Route segment → screen. The layout does not care what any of them contain; keeping the map here
+ * is what lets it not care.
+ */
 const SCREENS: Record<string, (p: ScreenProps) => JSX.Element> = {
-  intake: Intake,
-  background: Background,
+  overview: Overview,
   discovery: Discovery,
   regulatory: Regulatory,
   dosing: Dosing,
-  cost: Cost,
-  matrix: Matrix,
-  decision: Decision,
+  'full-matrix': FullMatrix,
+  signoff: Signoff,
 };
 
 export function ProjectLayout() {
   const { projectId, stage } = useParams<{ projectId: string; stage?: string }>();
-  /*
-   * `readAt` / `polling` are no longer read here. They fed the ContextBar's "watching the record"
-   * ticker, which is gone with it: what the operator actually needed out of a live poll was for
-   * the block at the top of the artifact to CHANGE, and `NextAction` does that from the project
-   * itself. The hook still polls exactly as before — only the two display-only fields are unread.
-   */
   const { state, refresh } = useProject(projectId);
+  const item = navItem(stage);
 
-  if (!stage) return <Navigate to={`/p/${projectId}/intake`} replace />;
+  /*
+   * Publish the record the chrome renders. This is the only component that reads
+   * `GET /projects/{id}`, and the top bar's name plus the sidebar's phase statuses come from it —
+   * see components/shell/scope.tsx for why it travels up rather than being fetched twice.
+   *
+   * The cleanup clears it, so leaving a project cannot leave its name in the top bar over somebody
+   * else's screen. `AppShell` additionally checks the published id against the route, which covers
+   * the frame between one project unmounting and the next publishing.
+   */
+  const publish = usePublishScope();
+  const loaded = state.kind === 'ready' ? state.project : null;
+  useEffect(() => {
+    publish(loaded);
+    return () => publish(null);
+  }, [publish, loaded]);
+
+  /*
+   * The preference is keyed on the SCREEN, not on the agent it shows. Full matrix borrows the
+   * Regulatory agent, so keying on `agentSlug` would give those two screens one shared preference —
+   * and collapsing on the matrix would then collapse the Regulatory phase screen too, which is the
+   * exact cross-screen leak the per-screen key exists to prevent. `null` when there is no panel.
+   */
+  const panelKey = item?.agentSlug ? item.slug : null;
+  const { collapsed, toggle } = useAgentPanel(panelKey, item?.collapsedByDefault ?? false);
+
+  /*
+   * Unread, for the collapsed rail.
+   *
+   * A run's steps arrive on the thread whether or not anybody is looking, so a rail with no mark
+   * makes the result of a rerun invisible: nothing on screen changes, and the operator has no
+   * reason to reopen the panel. The baseline is taken from the FIRST count reported after the seed
+   * read completes — starting from the mount-time zero would mark every collapsed screen unread the
+   * instant its thread loaded, which is a boy-who-cried-wolf mark and worse than none.
+   */
+  const [unread, setUnread] = useState(false);
+  const seen = useRef<Record<string, number>>({});
+  useEffect(() => {
+    if (collapsed) return;
+    seen.current = {};
+    setUnread(false);
+  }, [collapsed, stage]);
+  const note = useCallback((key: string, count: number) => {
+    const before = seen.current[key];
+    seen.current[key] = count;
+    if (before !== undefined && count > before) setUnread(true);
+  }, []);
+
+  if (!stage || !item) return <Navigate to={projectHome(projectId ?? '')} replace />;
   if (state.kind === 'loading') return <Loading what="project" />;
   if (state.kind === 'missing')
     return <ErrorScreen title="No such project" detail={`No project with id ${projectId}.`} />;
   if (state.kind === 'error')
     return <ErrorScreen title="Could not load the project" detail={state.message} />;
 
-  const def = STAGES.find((s) => s.slug === stage);
-  const Screen = def ? SCREENS[def.slug] : undefined;
-  if (!def || !Screen) return <Navigate to={`/p/${projectId}/intake`} replace />;
+  const Screen = SCREENS[item.slug];
+  if (!Screen) return <Navigate to={projectHome(projectId ?? '')} replace />;
 
   /*
-   * Keyed by stage slug so a caught throw does not survive a navigation: without the key, React
-   * would reuse the same StageErrorBoundary instance (same `caught` state) across a stage change,
-   * leaving the operator stuck on the old error instead of seeing the new stage render.
+   * Keyed by slug so a caught throw does not survive a navigation: without the key, React would
+   * reuse the same StageErrorBoundary instance (same `caught` state) across a screen change,
+   * leaving the operator stuck on the old error instead of seeing the new screen render.
+   *
+   * The boundary stays because `api/client.ts` casts every response with `as` and validates
+   * nothing; one malformed payload once took the whole tree down. Screens still guard their own
+   * payloads — this is the backstop, not the plan.
    */
   const screen = (
-    <StageErrorBoundary key={def.slug} stageLabel={def.label}>
+    <StageErrorBoundary key={item.slug} stageLabel={item.label}>
       <Screen project={state.project} refreshProject={refresh} />
     </StageErrorBoundary>
   );
 
-  /*
-   * `background` gets the operator's own XRF entry form where every other stage gets its agent.
-   * That stage has no agent — the XRF filter is a deterministic pass-through, so a thread on it
-   * would be a conversation with nobody — and the input surface is what belongs in the position
-   * where input lives. The screen beside it reads the same record back as the four-state matrix.
-   */
-  const chat =
-    def.slug === 'background' ? (
-      <div className="work__form">
-        {/* The confirm writes the record and starts Discovery; `refresh` is how the stepper and
-            the next-action block above catch up with the stage it just moved. */}
-        <XrfEntry projectId={state.project.projectId} onConfirmed={refresh} />
-      </div>
-    ) : def.surface === 'record' ? (
+  const panel =
+    item.agentSlug === null ? null : item.signing ? (
       /*
-       * A signing surface takes no composer. The VP gate is not a screen where the operator works
-       * THROUGH an agent — nobody instructs anything here, they sign. But the column is not
+       * A signing surface takes no composer. The VP sign-off is not a screen where the operator
+       * works THROUGH an agent — nobody instructs anything here, they sign. But the column is not
        * wasted: the Decision agent's pick and the deterministic assembly before it are both worth
        * seeing, so the trail goes where the conversation would have been.
        */
-      <ReadOnlyTrail projectId={state.project.projectId} stage="decision" />
+      <ReadOnlyTrail
+        projectId={state.project.projectId}
+        stage={backendStage(item.slug) ?? 'decision'}
+      />
     ) : (
       <AgentPanel
         projectId={state.project.projectId}
-        stageSlug={def.slug}
-        stageLabel={def.label}
+        stageSlug={item.agentSlug}
+        stageLabel={item.agentLabel ?? item.label}
       />
     );
 
+  // Only while collapsed: the panel itself holds the thread open when it is visible, and a second
+  // subscription alongside it would double the stream for no new information.
+  const watched =
+    collapsed && item.agentSlug ? backendStages(item.agentSlug).filter(isChatStage) : [];
+
   return (
     <>
-      <ProjectHeader project={state.project} />
-      <StageStepper project={state.project} />
-      <WorkArea chat={chat} collapsible={def.slug === 'matrix' || def.slug === 'dosing'}>
-        {/* It takes `refresh` because its button is sometimes a write: Start Processing is the
-            block's own control now, and the spine has to catch up with the record it changed. */}
-        <NextAction project={state.project} refreshProject={refresh} />
+      {watched.map((key) => (
+        <ThreadWatch key={key} projectId={state.project.projectId} stage={key} onCount={note} />
+      ))}
+      <WorkArea panel={panel} collapsed={collapsed} onToggle={toggle} unread={unread}>
         {screen}
       </WorkArea>
     </>
@@ -119,9 +156,34 @@ export function ProjectLayout() {
 }
 
 /**
+ * Headless: it keeps one stage's thread live and reports how long it is.
+ *
+ * It renders nothing because it exists only while the agent panel is collapsed — the panel is what
+ * normally holds the subscription, and this stands in for it so activity is still counted.
+ */
+function ThreadWatch({
+  projectId,
+  stage,
+  onCount,
+}: {
+  projectId: string;
+  stage: string;
+  onCount: (stage: string, count: number) => void;
+}) {
+  const { entries, loading } = useThread(projectId, stage);
+  const count = entries.length;
+  useEffect(() => {
+    // Nothing is reported until the seed read lands. Reporting the mount-time zero would make the
+    // seed itself look like new activity on every visit.
+    if (!loading) onCount(stage, count);
+  }, [loading, count, stage, onCount]);
+  return null;
+}
+
+/**
  * The trail without the conversation. The Decision agent's pick and the deterministic assembly
- * before it are both worth seeing; a composer here would make the gate chattable, which is the one
- * thing the signing surface exists to prevent.
+ * before it are both worth seeing; a composer here would make the sign-off chattable, which is the
+ * one thing a signing surface exists to prevent.
  *
  * Runs only — a message bubble here would be half a conversation with no way to reply.
  */

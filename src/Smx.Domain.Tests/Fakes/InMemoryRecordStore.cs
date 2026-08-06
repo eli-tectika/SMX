@@ -104,4 +104,13 @@ public sealed class InMemoryRecordStore : IRecordStore
     public Task UpsertChatMessageAsync(ChatMessageDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertChatReplyAsync(ChatReplyDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
     public Task UpsertIntakeBriefAsync(IntakeBriefDoc doc, CancellationToken ct = default) => Write(doc, doc.Id);
+
+    /// The twin of the Cosmos delete, including its idempotence: removing an id that is not there is not an
+    /// error. TryRemove rather than an existence check for the same reason the real store swallows the 404.
+    public Task DeleteVerdictAsync(
+        string projectId, string cas, string componentId, CancellationToken ct = default)
+    {
+        _docs.TryRemove(RecordIds.Verdict(projectId, cas, componentId), out _);
+        return Task.CompletedTask;
+    }
 }

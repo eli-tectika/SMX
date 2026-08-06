@@ -17,7 +17,12 @@ namespace Smx.Backend.Api;
 /// Two endpoints, one of which writes. `parse` is pure — it reads a file and hands back proposals,
 /// touching nothing. `confirm` is the single writer. Keeping them separate is what makes the
 /// operator's confirmation a real act rather than a consequence of choosing a file.
-public sealed record XrfConfirmRequest(List<XrfProposal> Proposals);
+/// <param name="ConfirmSignatureVoid">the operator's acknowledgement that this measurement re-runs a stage
+/// whose signature is already on file. Mirrors <see cref="AmendmentRequest"/>'s field of the same name, and
+/// for the same reason (spec §9.4): nothing in this system waits, EXCEPT that silently un-signing a human's
+/// approval is not something software should do quietly. Defaults false, so a client that has never heard of
+/// the field gets the ASK rather than the void.</param>
+public sealed record XrfConfirmRequest(List<XrfProposal> Proposals, bool ConfirmSignatureVoid = false);
 
 public static class XrfEndpoints
 {
@@ -85,6 +90,26 @@ public static class XrfEndpoints
                 proposals, [.. constraints.Components.Select(c => c.Id)]);
             if (error is not null) return Results.UnprocessableEntity(new { error });
 
+            // THE SIGNATURE ASK, checked BEFORE anything is written — exactly as POST /amendments does it,
+            // and in the same order, so a refused confirmation leaves the record untouched rather than
+            // holding half of it. Only the VP's signature is ever at risk here: the scope is Dosing +
+            // Decision, so `SignaturesAtRisk` cannot name the R.E.'s. The regulatory gate's real status is
+            // passed anyway rather than a hard-coded false — a caller that lies to that function about the
+            // world is how a warning quietly stops firing when the scope widens.
+            var regGate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
+            var vpGate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
+            var atRisk = RerunScope.SignaturesAtRisk(
+                RerunScope.XrfConfirmation, regGate?.Status == "approved", vpGate?.Status == "approved");
+            if (atRisk.Count > 0 && !req.ConfirmSignatureVoid)
+                return Results.Conflict(new
+                {
+                    error = "this measurement re-doses the project, and a signature is already on file over " +
+                            "the dosing it replaces. Confirm to proceed; the signature will be voided and " +
+                            "must be given again.",
+                    voids = atRisk,
+                    rerun = RerunScope.XrfConfirmation,
+                });
+
             // REPLACE, never append. A re-measure is a correction: appending would leave two
             // measurements of the same element in the record, which DetectionFloor then refuses to
             // compute a floor from — so the operator's fix would break dosing instead of repairing it.
@@ -102,6 +127,42 @@ public static class XrfEndpoints
             // confirmed measurement is the operator's own act and is meaningful on its own, and a test host
             // that registers only an IRecordStore still exercises the door it cares about.
             await store.UpsertConstraintsAsync(constraints, ct);
+
+            // Void the signature the rerun invalidates, as a PAIR — the same shape as the amendment and
+            // revision paths. A locked gate that kept its signer would report `{status:"locked",
+            // approvedBy:"operator"}`, which a screen rendering the signer whenever it is non-null prints as
+            // "signed by the operator" over a gate this confirmation deliberately voided.
+            if (atRisk.Contains(GateTypes.Vp) && vpGate is not null)
+            {
+                vpGate.Status = "locked";
+                vpGate.ApprovedAt = null;
+                vpGate.ApprovedBy = null;
+                await store.UpsertGateAsync(vpGate, ct);
+            }
+
+            // RE-OPEN WHAT THIS MEASUREMENT INVALIDATES (RerunScope.XrfConfirmation). Writing the numbers is
+            // only half of the operator's act; without this the endpoint reported a confirmation that changed
+            // no analysis. `HasRunAsync` counts both `done` and `needs-review` as "has run", so a Dosing stage
+            // that had already produced ppm windows over the ESTIMATED default floor would simply be skipped —
+            // and those windows are knowingly optimistic, which is the whole reason they are stamped
+            // provisional and the whole reason the operator went to the physicist.
+            //
+            // `running` is left alone, exactly as POST /amendments leaves it: a stage mid-flight finishes over
+            // the old floor and the next pass re-runs it, which is safer than yanking the record out from
+            // under a live agent. A missing ProjectDoc is not an error — the constraints are the contract for
+            // this endpoint — there is simply nothing to reset.
+            if (await store.GetProjectAsync(projectId, ct) is { } project)
+            {
+                foreach (var stage in RerunScope.XrfConfirmation)
+                {
+                    if (!project.Stages.TryGetValue(stage, out var state)) continue;
+                    if (state.Status is StageStatus.Running) continue;
+                    state.Status = StageStatus.Pending;
+                    state.Error = null;
+                }
+                await store.UpsertProjectAsync(project, ct);
+            }
+
             supervisor?.TryStart(projectId);
 
             return Results.Accepted($"/projects/{projectId}", new
@@ -110,6 +171,8 @@ public static class XrfEndpoints
                 pools = built.ElementPools.Count,
                 backgrounds = built.MeasuredBackgrounds.Count,
                 device = built.Device?.Model,
+                rerun = RerunScope.XrfConfirmation,
+                voided = atRisk,
             });
         });
 

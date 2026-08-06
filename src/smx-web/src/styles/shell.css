@@ -1,161 +1,226 @@
-/* The in-project shell: header, stepper, work area.
+/* The app chrome: scope in the top bar, one sidebar, and the work area under it.
 
-   Two frames used to fight here — a sticky context bar that measured itself at runtime and a
-   dock pinned beneath it. Both are gone. The shell is an ordinary grid: nothing measures
-   anything, and there is no --ctxbar-h to keep in sync. */
+   Nothing here measures anything. There is no --ctxbar-h and no sticky bar publishing its own
+   height: the top bar is a fixed 64px (--masthead-h), the sidebar and the workspace are two
+   columns beneath it, and `.work` is an ordinary flex row inside a column with a real height
+   budget (`.wrap[data-frame='instrument']`, base.css). Do not reintroduce a height constant for
+   a row whose height depends on content. */
 
-.phead {
+/* ---- scope selector (top bar) ----
+
+   The project's identity used to be a whole row of chrome (`.phead`) that repeated on every
+   screen and could not be acted on. It is now the control that changes it. */
+
+.scope {
+  position: relative;
+  margin-left: var(--s5);
+  min-width: 0;
+}
+/* The app's only <h1>. It wraps a button, so it must not impose the heading's own block metrics
+   on the top bar's flex row. */
+.scope__h1 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1;
+}
+.scope__button {
   display: flex;
   align-items: baseline;
-  gap: var(--s3);
-  padding: var(--s3) var(--s4);
-  border-bottom: var(--hair) solid var(--border);
+  gap: var(--s2);
+  max-width: 46ch;
+  padding: var(--s2) var(--s3);
+  border: var(--hair) solid transparent;
+  border-radius: var(--r2);
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
 }
-.phead__back {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-size: var(--t-small);
-  color: var(--text-secondary);
-  text-decoration: none;
-  /* Fitts: the back link is a 32px target, not a 12px word. */
-  padding: var(--s2) var(--s2) var(--s2) 0;
-}
-.phead__back:hover { color: var(--ink); }
-.phead__product {
-  margin: 0;
+.scope__button:hover { background: var(--surface-2); border-color: var(--border); }
+.scope__name {
   font-size: var(--t-lead);
   font-weight: var(--w-semibold);
   letter-spacing: -0.005em;
-}
-.phead__client { font-size: var(--t-small); color: var(--text-muted); }
-
-/* ---- stepper ---- */
-
-.stepper {
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 0 var(--s4);
-  border-bottom: var(--hair) solid var(--border);
-}
-.stepper__step {
-  flex: 1;
-  min-width: 0;
-  padding: var(--s2) 0 var(--s3);
-  text-decoration: none;
-  color: var(--text-muted);
-  font-size: var(--t-small);
-  border-bottom: 2px solid transparent;
-}
-.stepper__step:hover { color: var(--text-secondary); }
-.stepper__step.on { color: var(--ink); font-weight: var(--w-semibold); border-bottom-color: var(--ink); }
-.stepper__bar {
-  display: block;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--surface-3);
-  margin-bottom: var(--s2);
-}
-.stepper__label {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  white-space: nowrap;
-}
-/* The ellipsis lives on the TEXT box, not on `.stepper__label`: `text-overflow` truncates the
-   inline content of a block box and does nothing on a flex container, so putting it up there
-   would clip "Intake & pool" mid-letter and never draw the ellipsis it promised. */
-.stepper__name {
+  /* One line, ellipsed. A product name long enough to wrap would push the top bar past its fixed
+     height, and everything below it is positioned against that number. */
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.stepper__done {
-  /* Explicitly rigid. It sits in a row of `flex: 1` steps, and it is a count of eight things,
-     not a ninth thing — it takes its text width and the steps divide what is left. */
-  flex: none;
-  align-self: center;
-  padding-left: var(--s3);
+.scope__client { font-size: var(--t-small); color: var(--text-muted); white-space: nowrap; }
+.scope__caret { font-size: 14px; color: var(--text-muted); align-self: center; }
+
+.scope__menu {
+  position: absolute;
+  top: calc(100% + var(--s1));
+  left: 0;
+  z-index: 30; /* over the sidebar (20); under the finder's scrim (100) */
+  min-width: 280px;
+  max-width: 380px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--s2);
+  border: var(--hair) solid var(--border-strong);
+  border-radius: var(--r3);
+  background: var(--surface-0);
+  box-shadow: var(--shadow-3);
+}
+.scope__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r2);
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: var(--t-body);
+}
+.scope__item:hover { background: var(--surface-2); text-decoration: none; }
+.scope__item[aria-current] { background: var(--bg-accent); color: var(--text-accent); }
+.scope__item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scope__item-client { margin-left: auto; font-size: var(--t-small); color: var(--text-muted); }
+.scope__sep { height: var(--hair); background: var(--border); margin: var(--s2) 0; }
+.scope__note {
+  margin: 0;
+  padding: var(--s2) var(--s3);
   font-size: var(--t-small);
+  color: var(--text-secondary);
+}
+/* A failed read is coloured as a failure, never as an empty list. The two facts are different and
+   the operator must be able to tell them apart at a glance. */
+.scope__note--error { color: var(--text-danger); }
+
+/* The operator, at the end of the top bar. Teal MEANS operator throughout this app. */
+.masthead__operator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  font-size: var(--t-small);
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
+  color: var(--text-teal);
+}
+
+/* ---- sidebar ----
+
+   One sidebar, two groups, and only the top one changes with the scope (spec §11.1).
+
+   LIGHT, not the navy the icon rail wore. The rail carried icons and micro-labels only; this one
+   carries a per-phase STATUS drawn from the verdict palette, and those tones (--text-success,
+   --text-warning, --text-danger) are mixed for a light surface. On navy they would either fail
+   contrast or have to be re-mixed into a second, divergent status palette — and two palettes for
+   one meaning is how the meanings drift apart. Brand colour still lives in the logo. */
+
+.sidebar {
+  position: sticky;
+  top: var(--masthead-h);
+  z-index: 20; /* over the matrix thead (2/3); under the scope menu (30) */
+  flex: none;
+  align-self: stretch;
+  width: 232px;
+  height: calc(100vh - var(--masthead-h));
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  overflow-y: auto;
+  padding: var(--s4) var(--s3);
+  background: var(--surface-2);
+  border-right: var(--hair) solid var(--border);
+}
+
+/* The pin. `margin-top: auto` in a flex column pushes this group — and only this group — to the
+   bottom edge, so Reference sits at the same height whether the group above it lists two
+   destinations or six. That stability is the whole argument for a sidebar that changes scope: the
+   four cross-project surfaces never move, so muscle memory survives the switch. */
+.sidebar__group--pinned { margin-top: auto; }
+
+.sidebar__title {
+  margin: 0 0 var(--s2);
+  padding: 0 var(--s2);
+  font-size: var(--t-small);
+  font-weight: var(--w-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
   color: var(--text-muted);
+}
+
+.sidebar__list { list-style: none; margin: 0; padding: 0; }
+
+.sidebar__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  /* Fitts: a navigation target is a 34px row, not a 13px word. */
+  padding: var(--s2) var(--s2);
+  border-radius: var(--r2);
+  color: var(--text-secondary);
+  font-size: var(--t-body);
+  text-decoration: none;
+}
+.sidebar__item i { font-size: 16px; flex: none; }
+.sidebar__item:hover { background: var(--surface-1); color: var(--text-primary); text-decoration: none; }
+/* The active destination gets the accent tint — grammar-correct, because an active nav item IS
+   "active/selected", the one thing accent-blue means in this app. */
+.sidebar__item.on { background: var(--bg-accent); color: var(--text-accent); font-weight: var(--w-medium); }
+
+.sidebar__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Status colours are the verdict palette and nothing else — a stage bar is a state, which is
-   exactly what this palette means. Pending stays achromatic: "not reached yet" is not a claim.
-
-   All five parks are listed, and the list is the whole point: leaving one out is how `awaiting-VP`
-   — the VP determination, the highest-consequence wait in the journey — ends up painted as "not
-   reached yet", which is the bug this codebase has now fixed three times in three other places. */
-.stepper__step[data-status='done'] .stepper__bar { background: var(--text-success); }
-.stepper__step[data-status='running'] .stepper__bar { background: var(--text-accent); }
-.stepper__step[data-status='failed'] .stepper__bar { background: var(--text-danger); }
-.stepper__step[data-status='needs-review'] .stepper__bar,
-.stepper__step[data-status='awaiting-operator'] .stepper__bar,
-.stepper__step[data-status='awaiting-physics'] .stepper__bar,
-.stepper__step[data-status='awaiting-RE'] .stepper__bar,
-.stepper__step[data-status='awaiting-VP'] .stepper__bar,
-.stepper__step[data-status='awaiting-confirmation'] .stepper__bar { background: var(--text-warning); }
+/* The status glyph sits at the far end of the row, so the labels stay flush and the eye can run
+   down one column of states. Pending draws nothing at all: "not reached yet" is not a claim worth
+   a mark, and a row of grey dots would teach the eye to skip the column that carries the alarms. */
+.sidebar__status { margin-left: auto; font-size: 14px; color: var(--text-muted); }
+.sidebar__item[data-status='done'] .sidebar__status { color: var(--text-success); }
+.sidebar__item[data-status='running'] .sidebar__status { color: var(--text-accent); }
+.sidebar__item[data-status='failed'] .sidebar__status { color: var(--text-danger); }
+.sidebar__item[data-status='needs-review'] .sidebar__status { color: var(--text-warning); }
+.sidebar__item[data-status='pending'] .sidebar__status { display: none; }
 
 /* ---- work area ----
 
-   Chat left at a fixed width; the artifact takes everything else.
+   The artifact, and the agent panel to its right.
 
-   `align-items` is left at its `stretch` default ON PURPOSE, and there is no `align-self` on
-   the columns. The chat column and the rail have to reach the full height of the row — the
-   panel inside sets `height: 100%` and needs a definite box to resolve against — and stretch
-   is what gives them one. An earlier draft said `align-items: flex-start` here and then bought
-   the height back with `align-self: stretch` on each child, which is the same layout written
-   as a rule plus two exceptions to it. */
+   `align-items` is left at its `stretch` default ON PURPOSE, and there is no `align-self` on the
+   columns. The panel and the rail have to reach the full height of the row — the panel inside sets
+   `height: 100%` and needs a definite box to resolve against — and stretch is what gives them one.
 
-/* The height budget.
-
-   `.work` needs a DEFINITE height, not merely a `min-height: 0`. Everything inside it that
-   scrolls — the agent panel's thread (`flex: 1; overflow-y: auto`), the decision trail, the
-   artifact column below — resolves against this box; without it those resolve against
-   `auto`, the panel grows to the length of its own thread, and a long conversation pushes the
-   composer off the bottom of the page instead of scrolling inside the column.
-
-   It comes from `.wrap[data-frame='instrument']` (base.css), which is the project workspace and
-   nothing else: that frame is a viewport-tall flex column, and `.work` takes what the header and
-   the stepper leave. Nothing measures anything — the two rows above are ordinary static content,
-   so the browser subtracts them, and a product name that wraps to two lines simply takes a line
-   from `.work` instead of pushing the columns off-screen. This is the part the old `--ctxbar-h`
-   could never get right, and it is now not a number at all. */
+   The height budget: `.work` needs a DEFINITE height, not merely `min-height: 0`. Everything
+   inside it that scrolls — the agent panel's thread (`flex: 1; overflow-y: auto`), the decision
+   trail, the artifact column — resolves against this box; without it those resolve against `auto`,
+   the panel grows to the length of its own thread, and a long conversation pushes the composer off
+   the bottom of the page instead of scrolling inside the column. It comes from
+   `.wrap[data-frame='instrument']` (base.css), a viewport-tall flex column. */
 .work { display: flex; flex: 1; min-height: 0; }
+
+/* The artifact scrolls itself rather than scrolling the page. With `.work` bounded to the
+   viewport, a page-level scroller would take the top bar off the top the moment the operator
+   scrolled a long screen. The matrix is unaffected: it has always had its own `.mxscroll__pane`. */
+.work__artifact { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: var(--s4); }
+.work[data-chat='none'] .work__artifact { padding-inline: var(--s5); }
+
 .work__chat {
-  /* Fixed. A conversation has a comfortable measure and gains nothing past it, while the
+  /* Fixed, and the same measure the left-hand column had: ~62 characters, which is what a cited
+     regulation name needs to fit on one line. A conversation gains nothing past it, while the
      artifact beside it gains everything. */
   width: 390px;
   flex: none;
   position: relative;
   min-width: 0;
-  border-right: var(--hair) solid var(--border);
+  border-left: var(--hair) solid var(--border);
   background: var(--surface-2);
 }
-/* The artifact scrolls itself rather than scrolling the page. With `.work` bounded to the
-   viewport, a page-level scroller would take the header and the stepper off the top the moment
-   the operator scrolled a long screen — and the stepper is the one control that says where in
-   the journey they are. The matrix is unaffected: it has always had its own `.mxscroll__pane`. */
-.work__artifact { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: var(--s4); }
-.work[data-chat='none'] .work__artifact { padding-inline: var(--s5); }
 
-/* The Background column holds a FORM, not a conversation: that stage has no agent, so the
-   operator's own XRF entry takes the position where input lives. It needs the same thing the agent
-   panel gets from its own frame — a definite box that scrolls INSIDE the column — because `.work`
-   has a definite height and a form carrying a parsed grid is taller than it. Padding rather than
-   the panel's border: this is the column's whole content, not a card sitting inside it. */
-.work__form {
-  height: 100%;
-  overflow-y: auto;
-  padding: var(--s3);
-}
-
-/* Collapsed: a rail, not an absence. The agent is the only surface the operator may instruct,
-   and an interface where it can be dismissed entirely invites working around it. */
+/* Collapsed: a rail, not an absence. The agent is the only surface the operator may instruct, and
+   an interface where it can be dismissed entirely invites working around it. */
 .work__rail {
+  position: relative;
   width: 44px;
   flex: none;
   display: flex;
@@ -163,21 +228,31 @@
   align-items: center;
   gap: var(--s3);
   border: 0;
-  border-right: var(--hair) solid var(--border);
+  border-left: var(--hair) solid var(--border);
   background: var(--surface-2);
   color: var(--text-secondary);
   cursor: pointer;
   padding: var(--s3) 0;
 }
 .work__rail:hover { color: var(--text-primary); background: var(--surface-1); }
-/* 12px vertical text sets its line box across the rail's 44px, not along it — the icon above it
-   is ~16px and both sit centred with room to spare. The length of the word runs down the rail,
-   which is stretched to the row, so "Agent" cannot clip. */
+/* 12px vertical text sets its line box across the rail's 44px, not along it — the icon above it is
+   ~16px and both sit centred with room to spare. The length of the word runs down the rail, which
+   is stretched to the row, so "Agent" cannot clip. */
 .work__rail-label { writing-mode: vertical-rl; font-size: var(--t-small); letter-spacing: 0.06em; }
+/* Activity that arrived while the panel was shut. Accent, not warning: new agent output is
+   information, not a problem — and the accessible name says so in words, because a dot is silent. */
+.work__rail-dot {
+  position: absolute;
+  top: var(--s2);
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+  background: var(--text-accent);
+}
 
-/* Top-right of the chat column. The panel that goes there (AgentPanel's `PanelFrame`) puts its
-   sparkle + "<Stage> agent" title at the top LEFT and its scroller below, so this overlays
-   nothing; `z-index` is belt-and-braces for whatever else is ever mounted as the chat. */
+/* Top-right of the panel — the outer edge of the screen, away from `AgentPanel`'s own title, which
+   sits at its top LEFT. `z-index` is belt-and-braces for whatever else is ever mounted here. */
 .work__collapse {
   position: absolute;
   top: var(--s2);
@@ -193,12 +268,15 @@
 }
 .work__collapse:hover { color: var(--text-primary); background: var(--surface-1); }
 
-/* ---- next action ----
+/* ---- a blocking statement, at the head of a screen ----
 
-   Every tone in NextAction's union is styled — all four, for the frame AND for the icon. Amber
-   is the base because it is the common case (every park is a warning), but "the base" is not a
-   silent fallback: `accent` and `muted` are unreachable from nextAction.ts today, and the day
-   one of them starts being returned it must not paint a blue banner with an amber glyph in it. */
+   These classes outlived `NextAction`, the shell block that used to own them: the block is gone
+   (its CTA belongs to the phase screen's own header now), but a screen that has to raise something
+   dangerous at the top still draws it this way — `Matrix.tsx` is the live caller.
+
+   Every tone in the union is styled, for the frame AND for the icon. Amber is the base because it
+   is the common case, but "the base" is not a silent fallback: the day `accent` or `muted` starts
+   being used it must not paint a blue banner with an amber glyph in it. */
 
 .next {
   display: flex;
@@ -221,15 +299,13 @@
 .next__title { margin: 0; font-size: var(--t-lead); font-weight: var(--w-semibold); }
 .next__text { margin: var(--s1) 0 0; font-size: var(--t-body); color: var(--text-secondary); line-height: var(--lh-body); }
 .next__detail { margin: var(--s2) 0 0; font-size: var(--t-small); color: var(--text-secondary); }
-/* Fitts: the primary action of the screen is a 40px target, and it is always here.
+/* Fitts: a primary action is a 40px target.
 
-   `display: inline-flex` is load-bearing, not tidying. `.btn` (base.css) sets no display, which
-   is fine for the <button> it was written for — a UA gives that inline-block — but this CTA is a
+   `display: inline-flex` is load-bearing, not tidying. `.btn` (base.css) sets no display, which is
+   fine for the <button> it was written for — a UA gives that inline-block — but this CTA is often a
    router <Link>, i.e. a plain inline <a>. On an inline box `margin-top` is ignored outright and
-   vertical padding overflows the line box without reserving space, so the button painted ON TOP
-   of the `.next__detail` line above it. That line is the agent's own verbatim instruction, and
-   the park that carries both a detail AND a cta — awaiting-RE, awaiting-operator, any halted
-   stage — is the common case, not the corner. */
+   vertical padding overflows the line box without reserving space, so the button painted ON TOP of
+   the line above it. */
 .next__cta {
   display: inline-flex;
   align-items: center;
@@ -238,62 +314,70 @@
   font-size: var(--t-body);
 }
 
-/* Nothing is blocked.
-
-   The ELEMENT stays — it is a live region, and a live region that is inserted already populated
-   announces nothing on most screen readers (see NextAction.tsx). So this is the empty state of a
-   box that is always mounted, and `display: none` is specifically not it: that would take the
-   region back out of the accessibility tree and undo the reason it is mounted at all.
-
-   Zero everything instead. An "all clear" band on every screen of a running project is furniture,
-   and furniture teaches the eye to skip a region — including on the day it carries the thing that
-   needs a human. Last in the file so it beats the four `[data-tone]` rules above at equal
-   specificity; they cannot match anyway, since an empty region carries no tone. */
-.next[data-empty] {
-  padding: 0;
-  border: 0;
-  margin: 0;
-  background: none;
-}
-
 /* ---- responsive ----
 
-   Two breakpoints, and both are about the ARTIFACT. The chat is a fixed measure by design, so
-   as the viewport narrows it is the matrix — the thing being decided — that pays, which is
-   backwards. (Widths here are viewport widths; the 76px nav rail comes off before any of this.) */
+   Two breakpoints, and both are about the ARTIFACT. The panel is a fixed measure by design, so as
+   the viewport narrows it is the matrix — the thing being decided — that pays, which is backwards.
+   (Widths here are viewport widths; the 232px sidebar comes off before any of this.) */
 
-/* A 1280×800 laptop lands here. 390px against a compatibility matrix is the wrong split once
-   the artifact is under ~800px, so the chat gives some back — down to ~54 characters, which is
-   still a readable measure and still shows a cited regulation name on one line. */
+/* A 1280x800 laptop lands here. 390px against a wide matrix is the wrong split once the artifact
+   is under ~800px, so the panel gives some back — down to ~54 characters, which is still a
+   readable measure and still shows a cited regulation name on one line. */
 @media (max-width: 1400px) {
   .work__chat { width: 340px; }
 }
 
 /* Below this the two columns stop being a working surface and become two cramped ones, so they
-   stack — chat first, keeping the reading order the wide layout has.
+   stack. The artifact keeps the reading order the wide layout has.
 
-   The height budget is handed back to the page here: a viewport-tall shell with two stacked
-   panes inside it has nowhere to put the second one. So `.wrap` goes back to `auto` and the
-   page scrolls, and the chat takes a fixed 420px instead — the panel still needs a definite
-   box to scroll its thread inside, and it must not be allowed to grow to the length of the
-   conversation and bury the artifact underneath it. */
+   The height budget is handed back to the page here: a viewport-tall shell with two stacked panes
+   inside it has nowhere to put the second one. So `.wrap` goes back to `auto` and the page
+   scrolls, and the panel takes a fixed 420px instead — it still needs a definite box to scroll its
+   thread inside, and it must not grow to the length of the conversation and bury the artifact. */
 @media (max-width: 1000px) {
   .wrap[data-frame='instrument'] { height: auto; }
   .work { flex-direction: column; }
   .work__chat {
     width: auto;
     height: 420px;
-    border-right: 0;
-    border-bottom: var(--hair) solid var(--border);
+    border-left: 0;
+    border-top: var(--hair) solid var(--border);
   }
   .work__artifact { overflow-y: visible; }
   .work__rail {
     width: auto;
     flex-direction: row;
     justify-content: center;
-    border-right: 0;
-    border-bottom: var(--hair) solid var(--border);
+    border-left: 0;
+    border-top: var(--hair) solid var(--border);
   }
   /* Along the rail, not across it — the rail is a horizontal strip now. */
   .work__rail-label { writing-mode: horizontal-tb; }
+  .work__rail-dot { position: static; }
+}
+
+/* The sidebar is a scroll of labelled rows, and below this it would take a third of the width.
+   It becomes a strip across the top of the content instead — still labelled, still one list, and
+   Reference still last in it. */
+@media (max-width: 860px) {
+  .shell { flex-direction: column; }
+  .sidebar {
+    position: static;
+    width: auto;
+    height: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--s4);
+    align-items: center;
+    border-right: 0;
+    border-bottom: var(--hair) solid var(--border);
+  }
+  /* Still last, now on the trailing edge — `margin-left: auto` is the row-direction spelling of
+     the same pin. The group headings STAY: hiding them would take two <h2>s out of the
+     accessibility tree at one viewport width and nowhere else, which is a structure that changes
+     shape depending on the window. */
+  .sidebar__group--pinned { margin-top: 0; margin-left: auto; }
+  .sidebar__group { display: flex; align-items: center; gap: var(--s2); }
+  .sidebar__title { margin: 0; }
+  .sidebar__list { display: flex; flex-wrap: wrap; gap: var(--s1); }
 }

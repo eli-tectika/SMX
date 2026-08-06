@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ProjectSummary, StageState, StageStatus } from '../api/types';
+import type { ProjectGates, ProjectSummary, StageState, StageStatus } from '../api/types';
 import type { MatrixSummary } from './matrixSummary';
 import { BUCKET_LABEL, bucket, bucketTone, whatsBlocking } from './blocking';
 
@@ -9,12 +9,11 @@ const st = (status: StageStatus, attempts = 1, error?: string): StageState => ({
   error,
 });
 
-type StageKey = 'intake' | 'discovery' | 'regulatory' | 'matrix' | 'dosing' | 'cost';
+type StageKey = 'intake' | 'discovery' | 'regulatory' | 'matrix' | 'dosing' | 'decision';
 
 /**
- * The four positional stages are the ones most tests care about. Dosing and cost sit at the tail of the
- * pipeline and default to matrix's status, so `project('done','done','done','done')` still means "every
- * stage is done" — the tests that exercise the tail set it explicitly through `overrides`.
+ * `analysisStartedAt` defaults to a real timestamp — i.e. the operator HAS authorised the run — because
+ * that is the state nearly every test is about. The not-started tests pass null explicitly.
  */
 const project = (
   intake: StageStatus,
@@ -22,17 +21,19 @@ const project = (
   regulatory: StageStatus,
   matrix: StageStatus,
   overrides: Partial<Record<StageKey, StageState>> = {},
+  analysisStartedAt: string | null = '2026-08-06T09:00:00Z',
 ): ProjectSummary => ({
   projectId: 'p1',
   client: 'LVMH',
   product: 'Bottle',
+  analysisStartedAt,
   stages: {
     intake: overrides.intake ?? st(intake),
     discovery: overrides.discovery ?? st(discovery),
     regulatory: overrides.regulatory ?? st(regulatory),
     matrix: overrides.matrix ?? st(matrix),
     dosing: overrides.dosing ?? st(matrix),
-    cost: overrides.cost ?? st(matrix),
+    decision: overrides.decision ?? st(matrix),
   },
 });
 
@@ -49,238 +50,196 @@ const summary = (over: Partial<MatrixSummary> = {}): MatrixSummary => ({
   ...over,
 });
 
+const gates = (regulatory: string, vp: string): ProjectGates => ({ regulatory, vp });
+const SIGNED = gates('approved', 'approved');
+const UNSIGNED = gates('locked', 'locked');
+
+const done = () => project('done', 'done', 'done', 'done');
+
 describe('whatsBlocking — priority order', () => {
   it('reports a halted agent first, with its verbatim error', () => {
-    const p = project('done', 'failed', 'pending', 'pending', {
-      discovery: st('failed', 3, 'no candidates cleared the element gate'),
-    });
-    const b = whatsBlocking(p);
+    const b = whatsBlocking(
+      project('done', 'failed', 'pending', 'pending', {
+        discovery: st('failed', 2, 'model returned unparseable candidates'),
+      }),
+    );
     expect(b?.tone).toBe('danger');
     expect(b?.text).toContain('Discovery halted');
-    expect(b?.text).toContain('attempt 3');
-    expect(b?.detail).toBe('no candidates cleared the element gate');
+    expect(b?.detail).toBe('model returned unparseable candidates');
   });
 
-  it('ranks an inconsistent matrix above a park — a wrong record beats a waiting one', () => {
-    const p = project('done', 'done', 'needs-review', 'done');
-    const b = whatsBlocking(p, summary({ inconsistent: 2 }));
+  it('ranks an inconsistent matrix above a stopped stage — a wrong record beats a waiting one', () => {
+    const b = whatsBlocking(
+      project('done', 'done', 'done', 'needs-review'),
+      summary({ inconsistent: 2 }),
+    );
     expect(b?.tone).toBe('danger');
     expect(b?.text).toContain('disagree with their own dimensions');
   });
 
-  it('ranks an uncited verdict above a park', () => {
-    const p = project('done', 'done', 'needs-review', 'done');
-    const b = whatsBlocking(p, summary({ uncited: 1 }));
+  it('ranks an uncited verdict above a stopped stage', () => {
+    const b = whatsBlocking(
+      project('done', 'done', 'done', 'needs-review'),
+      summary({ uncited: 3 }),
+    );
     expect(b?.tone).toBe('danger');
     expect(b?.text).toContain('no citation');
   });
 
-  it('calls needs-review a park — the agent stopped and wants a human', () => {
+  it('calls needs-review what it is — the agent could not finish', () => {
     const b = whatsBlocking(project('done', 'done', 'needs-review', 'pending'));
     expect(b?.tone).toBe('warning');
-    expect(b?.text).toContain('parked');
+    expect(b?.text).toContain('Regulatory stopped');
   });
 
-  it('reports unopened flagged cells — the gate-arming blocker', () => {
-    const b = whatsBlocking(project('done', 'done', 'done', 'done'), summary(), 3);
-    expect(b?.tone).toBe('warning');
-    expect(b?.text).toContain('3 flagged cells not yet opened');
+  it('reports unopened flagged cells', () => {
+    const b = whatsBlocking(done(), summary(), 3, SIGNED);
+    expect(b?.text).toContain('3 flagged cell');
   });
 
   it('says "queued" when the agent could start and simply has not', () => {
-    expect(whatsBlocking(project('done', 'pending', 'pending', 'pending'))?.text).toContain(
-      'queued',
-    );
+    const b = whatsBlocking(project('done', 'pending', 'pending', 'pending'));
+    expect(b?.tone).toBe('muted');
+    expect(b?.text).toContain('Discovery queued');
   });
 
   it('prefers the running upstream over the queued stage behind it', () => {
-    // "Intake running" is the more useful sentence than "discovery is waiting" —
-    // it names the thing that is actually happening.
-    expect(whatsBlocking(project('running', 'pending', 'pending', 'pending'))?.text).toContain(
-      'Intake running',
-    );
-  });
-
-  it('reports an unfinished upstream when no earlier rule claims the line', () => {
-    // Defensive path: a record whose stages arrive out of order. matrix is pending and its
-    // upstream (regulatory) is not done, and nothing running/failed/parked claims the line first.
-    const p: ProjectSummary = {
-      projectId: 'p1',
-      client: 'c',
-      product: 'p',
-      stages: {
-        matrix: st('pending'),
-        regulatory: st('pending'),
-        discovery: st('done'),
-        intake: st('done'),
-      },
-    };
-    expect(whatsBlocking(p)?.text).toContain('Waiting on upstream: Regulatory');
-  });
-
-  /**
-   * The rule that wrote this test is unchanged: name an awaited human only when the record says so.
-   * What changed is that the record CAN now say so — so the test splits in two.
-   *
-   * `pending` still must not be dressed up as a park. It means the agent has not started, not that a
-   * physicist is standing at a machine, and those are different facts.
-   */
-  it('NEVER claims an offline human is awaited when the record only says "pending"', () => {
-    const b = whatsBlocking(project('pending', 'pending', 'pending', 'pending'));
-    expect(b?.text.toLowerCase()).not.toContain('awaiting');
-    expect(b?.text.toLowerCase()).not.toContain('physics');
-  });
-
-  it('DOES name physics when the record actually says awaiting-physics', () => {
-    const p = project('done', 'done', 'done', 'done', {
-      dosing: st('awaiting-physics', 1, 'no measured background for Y in bottle'),
-    });
-    const b = whatsBlocking(p);
-    expect(b?.tone).toBe('warning');
-    expect(b?.text).toContain('Dosing awaiting physics');
-    // The record's own words, verbatim — it is the most useful string a park carries.
-    expect(b?.detail).toBe('no measured background for Y in bottle');
-  });
-
-  it('names the R.E. when regulatory parks awaiting their determination', () => {
-    const p = project('done', 'done', 'awaiting-RE', 'pending');
-    expect(whatsBlocking(p)?.text).toContain("awaiting the Regulatory Expert's determination");
-  });
-
-  /**
-   * The matching text branch for the gap `bucket()` already special-cases (see its test below):
-   * `awaiting-VP` is not in AWAITING_STATES, so it needs its own line or the highest-consequence
-   * wait in the pipeline — the signature that releases procurement and writes the Marker Library —
-   * says nothing on the card at all.
-   */
-  it('names the VP when decision parks awaiting their determination', () => {
-    const p = project('done', 'done', 'done', 'done');
-    p.stages.decision = st('awaiting-VP');
-    const b = whatsBlocking(p);
-    expect(b?.tone).toBe('warning');
-    expect(b?.text).toContain("Decision awaiting the VP's determination");
-  });
-
-  /**
-   * The one park the operator can clear without chasing anybody, so it outranks the others — and it
-   * outranks `needs-review` too, because the record says exactly what it wants.
-   */
-  it('ranks a park the operator can clear above every other park', () => {
-    const p = project('done', 'done', 'needs-review', 'done', {
-      dosing: st('awaiting-operator', 1, 'POST /projects/p1/dosing/loading for CAS 1314-36-9'),
-    });
-    const b = whatsBlocking(p);
-    expect(b?.text).toContain('Dosing awaiting you');
-    expect(b?.detail).toContain('dosing/loading');
-  });
-
-  it('returns null when nothing blocks', () => {
-    expect(whatsBlocking(project('done', 'done', 'done', 'done'), summary(), 0)).toBeNull();
+    const b = whatsBlocking(project('done', 'running', 'pending', 'pending'));
+    expect(b?.tone).toBe('accent');
+    expect(b?.text).toContain('Discovery running');
   });
 });
 
-describe('bucket', () => {
-  it('puts a failed or parked project in needs-you', () => {
-    expect(bucket(project('done', 'failed', 'pending', 'pending'))).toBe('needs-you');
-    expect(bucket(project('done', 'done', 'needs-review', 'pending'))).toBe('needs-you');
+/**
+ * THE BRANCH THIS FILE WAS REWRITTEN FOR.
+ *
+ * `done` used to imply signed — Decision only left `awaiting-VP` when the VP signed. It does not any more:
+ * a stage reaching `done` means its AGENT RAN. A project can sit with every stage done, both gates
+ * unsigned, the compliance package refused and every order refused.
+ *
+ * Rendering that as "nothing blocking" is the same class of bug as a park rendering as not-started, aimed
+ * the other way — and worse, because it over-claims completion on the record that releases procurement.
+ */
+describe('every stage done is not the same as finished', () => {
+  it('names the outstanding signatures rather than returning null', () => {
+    const b = whatsBlocking(done(), summary(), 0, UNSIGNED);
+
+    expect(b).not.toBeNull();
+    expect(b?.tone).toBe('warning');
+    expect(b?.text).toContain('the regulatory sign-off');
+    expect(b?.text).toContain('the VP determination');
   });
 
-  it('puts a project with unopened flagged cells in needs-you even when every stage is done', () => {
-    expect(bucket(project('done', 'done', 'done', 'done'), summary(), 1)).toBe('needs-you');
+  it('names only the signature that is actually missing', () => {
+    const b = whatsBlocking(done(), summary(), 0, gates('approved', 'locked'));
+
+    expect(b?.text).toContain('the VP determination');
+    expect(b?.text).not.toContain('the regulatory sign-off');
   });
 
-  it('puts an inconsistent matrix in needs-you even when every stage is done', () => {
-    expect(bucket(project('done', 'done', 'done', 'done'), summary({ inconsistent: 1 }))).toBe(
-      'needs-you',
-    );
+  it('treats an unrecognised gate status as UNSIGNED, never as a signature', () => {
+    // The safe asymmetry. A status this build has never heard of -- a future value, a deploy skew -- must
+    // not be read as approval. Over-reporting costs a glance; under-reporting releases procurement.
+    const b = whatsBlocking(done(), summary(), 0, gates('some-new-status', 'approved'));
+
+    expect(b?.text).toContain('the regulatory sign-off');
   });
 
-  it('puts in-flight work in running', () => {
-    expect(bucket(project('done', 'running', 'pending', 'pending'))).toBe('running');
-    expect(bucket(project('pending', 'pending', 'pending', 'pending'))).toBe('running');
+  it('returns null ONLY when every stage ran and both signatures are on file', () => {
+    expect(whatsBlocking(done(), summary(), 0, SIGNED)).toBeNull();
   });
 
-  it('settles only when everything is done and nothing is flagged', () => {
-    expect(bucket(project('done', 'done', 'done', 'done'), summary(), 0)).toBe('settled');
-  });
+  it('with no gate information, says so rather than implying either answer', () => {
+    // Silence is not a signature -- but nor is it evidence of a specific missing one. The honest line is
+    // that the analysis is done and the signatures were not checked on this view.
+    const b = whatsBlocking(done(), summary(), 0, undefined);
 
-  /**
-   * A project parked at the VP gate is stopped on a human and is one signature from closing — and
-   * that signature releases procurement and writes the cross-project library. Bucketed `settled` it
-   * would be filed with the finished work and never looked at again, which is the one direction a
-   * mis-bucketing must not go. `awaiting-VP` is not in AWAITING_STATES (it carries no dispatcher
-   * instruction to surface), so `bucket` names it itself — this is the test that keeps it named.
-   */
-  it('treats a project parked at the VP gate as needing you, never as settled', () => {
-    const p = project('done', 'done', 'done', 'done', {});
-    p.stages.decision = st('awaiting-VP', 1);
-    expect(bucket(p, summary(), 0)).toBe('needs-you');
+    expect(b).not.toBeNull();
+    expect(b?.text).toContain('signatures not checked');
   });
 });
 
-describe('a created-but-not-started project', () => {
-  // The interview agent writes the project with intake at `awaiting-confirmation`. No agent has
-  // run and none will until the operator presses Start Processing. If the list files it with the
-  // running projects the operator believes the analysis is under way; if it files it with the
-  // settled ones the project is finished-looking and forgotten. It gets its own pile or it hides.
-  const created = project('awaiting-confirmation', 'pending', 'pending', 'pending');
+describe('a created-but-unauthorised project', () => {
+  const unstarted = () =>
+    project('pending', 'pending', 'pending', 'pending', {}, null);
+
+  it('says nothing has been dispatched, and names the operator action', () => {
+    const b = whatsBlocking(unstarted());
+    expect(b?.text).toContain('Created but not started');
+    expect(b?.text).toContain('Start analysis');
+  });
+
+  it('is read from the project, not from a stage status', () => {
+    // The authorisation moved off the intake stage and onto the project precisely so a stage status could
+    // go back to meaning only "did this stage's agent run". Every stage here is `pending` in BOTH cases;
+    // only `analysisStartedAt` differs.
+    expect(whatsBlocking(unstarted())?.text).toContain('Created but not started');
+    expect(whatsBlocking(project('pending', 'pending', 'pending', 'pending'))?.text).toContain('queued');
+  });
 
   it('is neither running nor settled', () => {
-    const b = bucket(created);
-    expect(b).not.toBe('running');
-    expect(b).not.toBe('settled');
-    expect(b).toBe('not-started');
-  });
-
-  it('stays out of the not-started pile once intake has actually been started', () => {
-    expect(bucket(project('pending', 'pending', 'pending', 'pending'))).toBe('running');
-    expect(bucket(project('running', 'pending', 'pending', 'pending'))).toBe('running');
+    expect(bucket(unstarted())).toBe('not-started');
   });
 
   it('yields to a halted agent — a wrong record still outranks an unstarted one', () => {
-    const p = project('awaiting-confirmation', 'failed', 'pending', 'pending');
-    expect(bucket(p)).toBe('needs-you');
+    const b = whatsBlocking(
+      project('failed', 'pending', 'pending', 'pending', { intake: st('failed', 1, 'boom') }, null),
+    );
+    expect(b?.tone).toBe('danger');
   });
 
   it('carries a label of its own, distinct from running and settled', () => {
-    expect(BUCKET_LABEL['not-started']).toMatch(/not started/i);
     expect(BUCKET_LABEL['not-started']).not.toBe(BUCKET_LABEL.running);
     expect(BUCKET_LABEL['not-started']).not.toBe(BUCKET_LABEL.settled);
   });
 
-  it('says on the card that nothing has been dispatched and names the operator action', () => {
-    const b = whatsBlocking(created);
-    expect(b?.text).toContain('Start Processing');
-    expect(b?.text.toLowerCase()).toContain('not started');
-    expect(b?.icon).not.toBe('ti-loader'); // never the running spinner
+  it('is not muted — muted is the quiet of a finished project', () => {
+    expect(bucketTone('not-started', null)).toBe('warning');
+  });
+});
+
+describe('bucket', () => {
+  it('puts a failed or stopped project in needs-you', () => {
+    expect(bucket(project('done', 'failed', 'pending', 'pending'))).toBe('needs-you');
+    expect(bucket(project('done', 'done', 'needs-review', 'pending'))).toBe('needs-you');
   });
 
-  it('is not muted — muted is the quiet of a finished project', () => {
-    expect(bucketTone('not-started', null)).not.toBe('muted');
+  it('puts unopened flagged cells in needs-you even when every stage is done', () => {
+    expect(bucket(done(), summary(), 2, SIGNED)).toBe('needs-you');
+  });
+
+  it('puts an inconsistent matrix in needs-you even when every stage is done', () => {
+    expect(bucket(done(), summary({ inconsistent: 1 }), 0, SIGNED)).toBe('needs-you');
+  });
+
+  it('puts in-flight work in running', () => {
+    expect(bucket(project('done', 'running', 'pending', 'pending'))).toBe('running');
+  });
+
+  it('settles ONLY when every stage ran and both gates are signed', () => {
+    expect(bucket(done(), summary(), 0, SIGNED)).toBe('settled');
+  });
+
+  it('does NOT settle a fully-computed project whose signatures are outstanding', () => {
+    // The bucket half of the same trap. Filed as settled, the project drops out of the operator's
+    // attention entirely -- while procurement is still refused.
+    expect(bucket(done(), summary(), 0, UNSIGNED)).toBe('needs-you');
+    expect(bucket(done(), summary(), 0, gates('approved', 'locked'))).toBe('needs-you');
+  });
+
+  it('does NOT settle when the gates are unknown', () => {
+    // Silence is not a signature. The safe direction is to keep the project visible.
+    expect(bucket(done(), summary(), 0, undefined)).toBe('needs-you');
   });
 });
 
 describe('bucketTone', () => {
-  it('is grey for settled — settled is not a Pass, it is quiet', () => {
+  it('escalates needs-you to danger only when the blocking line is danger', () => {
+    expect(bucketTone('needs-you', { tone: 'danger', icon: 'x', text: 't' })).toBe('danger');
+    expect(bucketTone('needs-you', { tone: 'warning', icon: 'x', text: 't' })).toBe('warning');
+  });
+
+  it('settles grey, never green — settled is not a Pass', () => {
     expect(bucketTone('settled', null)).toBe('muted');
-  });
-
-  it('escalates needs-you to danger when the blocking reason is danger', () => {
-    expect(bucketTone('needs-you', { tone: 'danger', icon: '', text: '' })).toBe('danger');
-    expect(bucketTone('needs-you', { tone: 'warning', icon: '', text: '' })).toBe('warning');
-  });
-});
-
-describe('whatsBlocking — a created project that was never started', () => {
-  /**
-   * This line is read on the DASHBOARD, where the operator has not opened the project yet — so it
-   * tells them to. It used to have a second phrasing for readers already inside the project, which
-   * `ContextBar` passed; that bar is gone and `NextAction` answers the in-project version of this
-   * question from `domain/nextAction.ts` instead, so the parameter went with it.
-   */
-  it('tells the operator to open it and start it', () => {
-    const p = project('awaiting-confirmation', 'pending', 'pending', 'pending');
-
-    expect(whatsBlocking(p)!.text).toMatch(/open it and press Start Processing/i);
   });
 });

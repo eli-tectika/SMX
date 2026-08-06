@@ -48,4 +48,23 @@ public interface IRecordStore
     Task UpsertChatMessageAsync(ChatMessageDoc doc, CancellationToken ct = default);
     Task UpsertChatReplyAsync(ChatReplyDoc doc, CancellationToken ct = default);
     Task UpsertIntakeBriefAsync(IntakeBriefDoc doc, CancellationToken ct = default);
+
+    /// THE ONLY DELETE ON THIS INTERFACE, and it exists for one caller: a Discovery RE-RUN that replaces the
+    /// CandidatesDoc orphans every verdict keyed to a candidate the new set no longer carries.
+    ///
+    /// Everything else in `record` is upserted by a deterministic id, so a re-run REPLACES its predecessor.
+    /// Verdicts are the exception — one document per (cas, component) — so a smaller candidate set leaves
+    /// documents behind that describe cells nobody is screening. Four readers already filter those out
+    /// against the live cells (MatrixAssembler, RegulatoryGate.Armable, the compliance-package export,
+    /// ProjectTable.Build) and two do NOT: `GET /projects/{id}/verdicts` serves the partition raw, and
+    /// PipelineRunner's Dosing folds `ProvisionalSet.Of(verdicts)` over all of them — so an orphan carrying
+    /// `recommended` is dosed into a code for a substance the current analysis rejected. Filtering is repair
+    /// at the read side, and it is one forgotten call site away from failing; removing the document is not.
+    ///
+    /// IDEMPOTENT: deleting a verdict that is not there is not an error. This runs after a replace, so the
+    /// same prune re-executed on a retry must converge rather than throw.
+    ///
+    /// Nothing is lost that the audit needs: the run trail (a separate container, append-only) still records
+    /// the screen that produced the verdict, and the prune names every document it removes on that trail.
+    Task DeleteVerdictAsync(string projectId, string cas, string componentId, CancellationToken ct = default);
 }
