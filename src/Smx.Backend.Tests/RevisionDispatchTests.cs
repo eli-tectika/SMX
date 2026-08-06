@@ -97,7 +97,7 @@ public class RevisionDispatchTests
         Assert.Equal("locked", gate.Status);
         Assert.Null(gate.ApprovedAt);
         Assert.Null(gate.ApprovedBy);
-        Assert.Equal("awaiting-RE", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
+        Assert.Equal("done", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
     }
 
     [Fact]
@@ -354,7 +354,7 @@ public class RevisionDispatchTests
             Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
             Status = "approved", ApprovedAt = "2026-07-13T09:00:00.0000000+00:00",
         });
-        Assert.Equal("awaiting-RE", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
+        Assert.Equal("done", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
     }
 
     [Fact]
@@ -381,7 +381,7 @@ public class RevisionDispatchTests
         });
         await d.RunAsync(P, default);
 
-        Assert.Equal("awaiting-RE", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
+        Assert.Equal("done", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
     }
 
     [Fact]

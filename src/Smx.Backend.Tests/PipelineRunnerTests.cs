@@ -484,7 +484,7 @@ public class PipelineRunnerTests
         Assert.Single(await store.GetVerdictsAsync("p1"));
         Assert.NotNull(await store.GetMatrixAsync("p1"));
         var proj = await store.GetProjectAsync("p1");
-        Assert.Equal("awaiting-RE", proj!.Stages[Stages.Regulatory].Status);
+        Assert.Equal("done", proj!.Stages[Stages.Regulatory].Status);
         Assert.Equal("done", proj.Stages[Stages.Matrix].Status);
     }
 
@@ -609,7 +609,7 @@ public class PipelineRunnerTests
         Assert.Single(verdicts);
         Assert.Equal(VerdictStatus.NeedsReview, verdicts[0].Overall);
         Assert.NotNull(await store.GetMatrixAsync("p1"));
-        Assert.Equal("awaiting-RE", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
     }
 
     // ---- the regulatory gate --------------------------------------------------------------------------
@@ -620,7 +620,7 @@ public class PipelineRunnerTests
         var (d, store, _, _) = Sut();
         await Seed(store);
         await d.RunAsync("p1", default);
-        Assert.Equal("awaiting-RE", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
 
         await store.UpsertGateAsync(RegulatoryGateDoc("approved"));
         await d.OnGateAsync((await store.GetGateAsync("p1", GateTypes.Regulatory))!, default);
@@ -635,7 +635,7 @@ public class PipelineRunnerTests
         await d.RunAsync("p1", default);
         await store.UpsertGateAsync(RegulatoryGateDoc("locked"));
         await d.OnGateAsync((await store.GetGateAsync("p1", GateTypes.Regulatory))!, default);
-        Assert.Equal("awaiting-RE", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
     }
 
     /// The gate signed BEFORE the verdicts were complete: the assembly is what reads the signature and
@@ -657,13 +657,13 @@ public class PipelineRunnerTests
         var (d, store, _, _) = Sut();
         await Seed(store);
         await d.RunAsync("p1", default);
-        Assert.Equal("awaiting-RE", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
 
         // A VP gate flows through the same OnGateAsync — it must NOT advance Regulatory.
         await store.UpsertGateAsync(new GateDoc { Id = RecordIds.Gate("p1", "vp"), ProjectId = "p1",
             GateType = "vp", Status = "approved", ApprovedAt = "t" });
         await d.OnGateAsync((await store.GetGateAsync("p1", "vp"))!, default);
-        Assert.Equal("awaiting-RE", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
+        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
     }
 
     [Fact]

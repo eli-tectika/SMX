@@ -185,12 +185,12 @@ public class DecisionRevisionTests
     /// A project that has been DECIDED and is parked at the VP's door: every stage `done` except Decision
     /// at `awaiting-VP`, the signed regulatory gate, dosing + cost + the stale DecisionDoc on the bus, and
     /// every dosing input resolvable (so a Dosing revision can actually re-run).
-    private static async Task SeedAwaitingVpAsync(InMemoryRecordStore store, InMemoryKnowledgeStore knowledge)
+    private static async Task SeedProposedDecisionAsync(InMemoryRecordStore store, InMemoryKnowledgeStore knowledge)
     {
         var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
         foreach (var s in new[] { Stages.Intake, Stages.Discovery, Stages.Regulatory, Stages.Matrix, Stages.Dosing, Stages.Cost })
             project.Stages[s].Status = "done";
-        project.Stages[Stages.Decision].Status = "awaiting-VP";
+        project.Stages[Stages.Decision].Status = "done";
         await store.UpsertProjectAsync(project);
 
         await store.UpsertConstraintsAsync(Constraints());
@@ -211,7 +211,7 @@ public class DecisionRevisionTests
     /// the confirmations stamped and procurement Released. History.
     private static async Task SeedClosedAsync(InMemoryRecordStore store, InMemoryKnowledgeStore knowledge)
     {
-        await SeedAwaitingVpAsync(store, knowledge);
+        await SeedProposedDecisionAsync(store, knowledge);
         var project = (await store.GetProjectAsync(P))!;
         project.Stages[Stages.Decision].Status = "done";
         await store.UpsertProjectAsync(project);
@@ -265,7 +265,7 @@ public class DecisionRevisionTests
         // discard the instruction.
         const string reason = "project X already shipped this ratio to the same client — pick a distinct code";
         var (d, store, agents, knowledge, _) = Sut();
-        await SeedAwaitingVpAsync(store, knowledge);
+        await SeedProposedDecisionAsync(store, knowledge);
 
         RevisionDoc? seenByAgent = null;
         agents.Decision = (assembled, dosing, rev) =>
@@ -305,7 +305,7 @@ public class DecisionRevisionTests
         // stage, never the agent's choice) — a future pick can find why this one was overridden.
         const string reason = "the client's sister brand uses a 9:4 Zr:Y ratio — too close to distinguish in the field";
         var (d, store, agents, knowledge, _) = Sut();
-        await SeedAwaitingVpAsync(store, knowledge);
+        await SeedProposedDecisionAsync(store, knowledge);
 
         var revision = DecisionRevision(reason);
         await d.OnRevisionAsync(Delivered(revision), default);
@@ -330,7 +330,7 @@ public class DecisionRevisionTests
         // nothing on this path may move a gate toward `approved` (Law 9), and locked is already the safe
         // state a void would produce.
         var (d, store, agents, knowledge, _) = Sut();
-        await SeedAwaitingVpAsync(store, knowledge);
+        await SeedProposedDecisionAsync(store, knowledge);
         await store.UpsertGateAsync(Vp("locked"));
 
         await d.OnRevisionAsync(Delivered(DecisionRevision("pick a code the VP has not already refused")), default);
@@ -345,7 +345,7 @@ public class DecisionRevisionTests
 
         // ...the stage is re-parked at the VP's door...
         var stage = Stage(store, Stages.Decision);
-        Assert.Equal("awaiting-VP", stage.Status);
+        Assert.Equal("done", stage.Status);
         Assert.Null(stage.Error);
 
         // ...the unsigned vp gate is still locked, and the REGULATORY gate (which a Decision revision is
@@ -398,7 +398,7 @@ public class DecisionRevisionTests
         // TryDecideAsync's guard sees `awaiting-VP` and ABSORBS it — the stale proposal (over the OLD
         // (cas-zr, cas-y) code) keeps sitting at the VP's door over dosing that no longer contains it.
         var (d, store, agents, knowledge, catalog) = Sut();
-        await SeedAwaitingVpAsync(store, knowledge);
+        await SeedProposedDecisionAsync(store, knowledge);
         catalog.Returns("Zr", Card("cas-zr", "Zr", "Acme Chemicals", "cat-zr", "$66.00", "25 g"))
                .Returns("Y", Card("cas-y", "Y", "Beta Reagents", "cat-y", "$50.00", "25 g"))
                .Returns("Fe", Card("cas-fe", "Fe", "Gamma Metals", "cat-fe", "$10.00", "25 g"));
@@ -430,7 +430,7 @@ public class DecisionRevisionTests
         Assert.NotEqual(StaleRatio, proposal.RatioSignature);                     // not the one the VP saw
         Assert.Equal(new[] { "cas-y", "cas-fe" }, proposal.MarkerCas);
         Assert.DoesNotContain("cas-zr", proposal.MarkerCas);                      // the stale one is GONE
-        Assert.Equal("awaiting-VP", Stage(store, Stages.Decision).Status);        // re-parked, fresh
+        Assert.Equal("done", Stage(store, Stages.Decision).Status);        // re-parked, fresh
     }
 
     // ---- (b): a Dosing revision on a CLOSED project is refused outright -----------------------------------
@@ -554,7 +554,7 @@ public class DecisionRevisionTests
     public async Task ARevision_RacedByTheSignature_FailsAndTheStampedDocSurvives()
     {
         var (d, store, agents, knowledge, _) = Sut();
-        await SeedAwaitingVpAsync(store, knowledge);
+        await SeedProposedDecisionAsync(store, knowledge);
 
         // The fake decision agent performs the VP's determination MID-CALL, exactly as the endpoint would:
         // Confirmed* stamped onto the doc ON FILE, the approved gate written. When the fake returns, the
@@ -593,7 +593,7 @@ public class DecisionRevisionTests
         Assert.Equal(StaleRatio, comp.ConfirmedCode);
         Assert.Equal("signed mid-revision", comp.ConfirmedReason);
         Assert.Equal(SeededDecisionGeneratedAt, decision.GeneratedAt);
-        Assert.Equal("awaiting-VP", Stage(store, Stages.Decision).Status);   // untouched by the failed persist
+        Assert.Equal("done", Stage(store, Stages.Decision).Status);   // untouched by the failed persist
 
         // ...so when the already-written approved gate now delivers, the close proceeds over the SIGNED
         // doc — confirmations intact, procurement released over a real conclusion, never over nothing.
@@ -611,7 +611,7 @@ public class DecisionRevisionTests
         // `pending` and upsert the new DosingDoc — the whole cascade re-running underneath a just-signed
         // gate, regenerating the records the signature covers.
         var (d, store, agents, knowledge, catalog) = Sut();
-        await SeedAwaitingVpAsync(store, knowledge);
+        await SeedProposedDecisionAsync(store, knowledge);
         agents.Dosing = async (c, _, _, _, _) =>
         {
             var onFile = (await store.GetDecisionAsync(P))!;
@@ -634,7 +634,7 @@ public class DecisionRevisionTests
         Assert.Equal(DosingBefore().GeneratedAt, (await store.GetDosingAsync(P))!.GeneratedAt);
         Assert.Equal(SeededCostGeneratedAt, (await store.GetCostAsync(P))!.GeneratedAt);
         Assert.Equal("done", Stage(store, Stages.Cost).Status);
-        Assert.Equal("awaiting-VP", Stage(store, Stages.Decision).Status);   // NOT reset to pending
+        Assert.Equal("done", Stage(store, Stages.Decision).Status);   // NOT reset to pending
         Assert.Empty(catalog.Calls);
         Assert.Equal(StaleRatio, Assert.Single((await store.GetDecisionAsync(P))!.Components).ConfirmedCode);
     }
@@ -647,7 +647,7 @@ public class DecisionRevisionTests
         // would re-park `awaiting-VP` with a doc assembled over dosing that is being replaced — a stale
         // proposal advertised as fresh. The revision must fail without writing.
         var (d, store, agents, knowledge, _) = Sut();
-        await SeedAwaitingVpAsync(store, knowledge);
+        await SeedProposedDecisionAsync(store, knowledge);
         agents.Decision = async (assembled, dosing, rev) =>
         {
             var p = (await store.GetProjectAsync(P))!;

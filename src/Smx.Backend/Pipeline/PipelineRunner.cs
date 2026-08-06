@@ -520,12 +520,16 @@ public sealed class PipelineRunner(
         // here, so RunMatrixAsync computes `done` and the pipeline flows to Dosing with no R.E. Off by default.
         if (regulatoryAutoApprove) await AutoApproveRegulatoryAsync(projectId, trail, ct);
 
-        // The RUN is done — every substance was screened. The STAGE is not (unless auto-approve just signed
-        // above): a Regulatory stage that reached `done` off its own agent's output would be the agent signing
-        // a hard gate (Law 9). RunMatrixAsync computes which of the two it is, from the gate record.
+        // The stage is DONE: every substance was screened, which is the whole of this stage's work.
+        //
+        // It used to land `awaiting-RE`, on the reasoning that a Regulatory stage reaching `done` off its own
+        // agent's output would be the agent signing a hard gate. That conflated two things. The stage status
+        // says whether the AGENT RAN; the GateDoc says whether a HUMAN SIGNED. Law 9 is enforced by the second
+        // — CompliantSet reads only the operator's Determination, and the compliance-package export and
+        // POST /orders both refuse over an unsigned gate. Nothing about `done` here lets a proposal through.
         return new StageResult(RunOutcome.Done, null,
             $"Wrote {missing.Count} verdicts — {missing.Count - flagged} screened, {flagged} flagged.",
-            null, StageStatus.AwaitingRe);
+            null);
     }
 
     /// REGULATORY_AUTO_APPROVE — the human gate, removed. It adopts each verdict's PROPOSED determination as
@@ -589,18 +593,15 @@ public sealed class PipelineRunner(
         var verdicts = await store.GetVerdictsAsync(projectId, ct);
         if (!MatrixAssembler.IsComplete(candidates, verdicts)) return Skip();
 
-        // EVERY pass, before the skip — this is TryAssembleAsync's defense in depth and it must not become
-        // a thing that only happens the first time. The gate record carries no binding to the verdicts it
-        // was signed over, so an `approved` status alone is not proof the CURRENT analysis was reviewed: a
-        // fresh unreviewed non-pass verdict can land under an existing signature. A stage that reached
-        // `done` is never lowered again, so there is no second chance to get this right. It writes no step
-        // and opens no run — it is a derived status, not work.
-        var gate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
-        var stillArmable = RegulatoryGate.Armable(candidates, verdicts).Ok;
-        var regStatus = gate?.Status == "approved" && stillArmable ? "done" : StageStatus.AwaitingRe;
-        await SetStageAsync(projectId, Stages.Regulatory,
-            s => { if (s.Status is not ("failed" or "done")) s.Status = regStatus; }, ct);
-
+        // The Regulatory stage's status is no longer DERIVED here. It used to be recomputed on every pass
+        // from the gate record + RegulatoryGate.Armable, because the stage stood in for "has the R.E.
+        // signed". It doesn't any more — the stage says its agent ran, and the GateDoc says a human signed.
+        //
+        // The defense-in-depth this block carried has NOT been dropped, it has MOVED to where it belongs: a
+        // GateDoc carries no binding to the verdicts it was signed over, so `approved` alone is not proof
+        // the CURRENT analysis was reviewed, and RegulatoryGate.Armable is therefore re-checked at the two
+        // irreversible acts — GET /regulatory/compliance-package and POST /orders/{cas}. A late unreviewed
+        // failing verdict now blocks the export and the order rather than lowering a stage status.
         if (await HasRunAsync(projectId, Stages.Matrix, ct)) return Skip();
 
         await trail.StepAsync(RunStepKind.Started,
@@ -774,9 +775,13 @@ public sealed class PipelineRunner(
         decision.Id = RecordIds.Decision(projectId);
         decision.ProjectId = projectId;
         await store.UpsertDecisionAsync(decision, ct);
+        // DONE, not awaiting-VP. The agent's work — assembling and picking — is finished. What is outstanding
+        // is the VP's SIGNATURE, and that lives on the VP GateDoc; ProcurementState.Status is what records
+        // whether it has been acted on. A `done` here releases nothing: POST /orders/{cas} refuses without
+        // an approved VP gate, an MSDS, and a non-provisional dosing.
         return new StageResult(RunOutcome.Done, null,
             $"Proposed a final code for {decision.Components.Count(c => c.ProposedCode is not null)} components.",
-            RecordIds.Decision(projectId), StageStatus.AwaitingVp);
+            RecordIds.Decision(projectId));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -791,16 +796,11 @@ public sealed class PipelineRunner(
     // another writer without those checks.
     public async Task OnGateAsync(GateDoc g, CancellationToken ct)
     {
-        if (g is { GateType: GateTypes.Regulatory, Status: "approved" })
-        {
-            await SetStageAsync(g.ProjectId, Stages.Regulatory,
-                s => { if (s.Status == StageStatus.AwaitingRe) s.Status = "done"; }, ct);
-            // It does NOT re-enter the pipeline. Recording a signature and running agents are separate
-            // acts, and conflating them here would mean an endpoint that stamps a gate also spends
-            // minutes in Foundry on the caller's thread. The signature UNBLOCKS Dosing (which skips
-            // behind an unsigned gate); making that progress happen is the supervisor's job (Task 8).
-        }
-        else if (g is { GateType: GateTypes.Vp, Status: "approved" })
+        // The regulatory branch is deliberately EMPTY now. Signing used to stamp the Regulatory stage out of
+        // `awaiting-RE`; there is no such park, and the stage's status was never about the signature — the
+        // GateDoc is. Nothing here needs to happen: Dosing no longer skips behind an unsigned gate, so there
+        // is nothing to unblock, and the two irreversible acts read the gate directly.
+        if (g is { GateType: GateTypes.Vp, Status: "approved" })
             await CloseProjectAsync(g.ProjectId, ct);
     }
 
@@ -809,11 +809,17 @@ public sealed class PipelineRunner(
     public async Task CloseProjectAsync(string projectId, CancellationToken ct)
     {
         var project = await store.GetProjectAsync(projectId, ct);
-        // The latch: only the awaiting-VP → done transition closes. Once `done`, a re-signature no-ops here
-        // entirely — the knowledge writes are idempotent by deterministic id regardless, but the latch is
-        // what keeps them from re-RUNNING at all (re-stamping CreatedAt, re-embedding and re-pushing the
-        // conclusion).
-        if (project is null || project.Stages[Stages.Decision].Status is not StageStatus.AwaitingVp) return;
+        var decisionDoc = await store.GetDecisionAsync(projectId, ct);
+        // The latch, RE-BASED. It used to be the awaiting-VP → done stage transition; with the park deleted,
+        // Decision lands `done` when its AGENT finishes, which says nothing about whether the VP signed. So
+        // the latch moves onto the thing that actually records that this project has been closed:
+        // procurement moves Unreleased → Released exactly once, inside the body below.
+        //
+        // Same purpose as before. A re-signature no-ops here entirely: the knowledge writes are idempotent by
+        // deterministic id regardless, but this is what keeps them from RUNNING again at all — re-stamping
+        // CreatedAt, re-embedding and re-pushing the conclusion.
+        if (project is null || decisionDoc is null) return;
+        if (decisionDoc.Procurement.Status != ProcurementStatus.Unreleased) return;
 
         // The whole post-latch body in ONE try: this is the single highest-stakes transition, the only
         // multi-step path talking to remote surfaces beyond the record store (marker-library writes, the
@@ -1190,11 +1196,14 @@ public sealed class PipelineRunner(
                 await SetStageAsync(c.ProjectId, Stages.Cost,
                     s => { if (s.Status is "done" or "failed") { s.Status = "pending"; s.Error = null; } }, token);
                 // ...and Decision with it: the DecisionDoc's rows and proposal were assembled over the OLD
-                // dosing/cost, so a project parked `awaiting-VP` would otherwise keep a STALE proposal at the
-                // VP's door. `done` is deliberately EXCLUDED: done means the VP signed and the project closed
-                // — history, which the refusal above keeps this path off anyway (defense in depth).
+                // dosing/cost, so leaving Decision alone would keep a STALE proposal at the VP's door.
+                //
+                // `done` is now INCLUDED, which it could not be while the park existed. Decision reaches
+                // `done` off its own agent, not off a signature, so `done` no longer means "the VP signed and
+                // the project closed". The genuine closed-project refusal is ThrowIfClosedAsync at the top of
+                // OnRevisionAsync, which keeps this path off a released project entirely.
                 await SetStageAsync(c.ProjectId, Stages.Decision,
-                    s => { if (s.Status is StageStatus.AwaitingVp or "needs-review" or "failed")
+                    s => { if (s.Status is "done" or "needs-review" or "failed")
                            { s.Status = "pending"; s.Error = null; } }, token);
                 await store.UpsertDosingAsync(dosing, token);
             });
@@ -1247,13 +1256,13 @@ public sealed class PipelineRunner(
                         "while the revision was re-running — refusing to persist over a record that changed " +
                         "mid-flight; re-issue the revision");
 
-                // Doc FIRST, park SECOND — the park is the "a proposal awaits your signature" signal, and
-                // POST /decision/determination signs whatever DecisionDoc is on file at `awaiting-VP`. The
-                // reverse order opens a window where the stage advertises the park while the STALE proposal
-                // is still the one on file.
+                // Doc FIRST, status SECOND. The ordering mattered while the status was a park advertising
+                // "a proposal awaits your signature", and it still matters for the same reason: the reverse
+                // order opens a window where the stage reads `done` while the STALE proposal is the one on
+                // file, and POST /decision/determination signs whatever DecisionDoc it finds.
                 await store.UpsertDecisionAsync(decision, token);
                 await SetStageAsync(c.ProjectId, Stages.Decision,
-                    s => { s.Status = StageStatus.AwaitingVp; s.Error = null; }, token);
+                    s => { s.Status = StageStatus.Done; s.Error = null; }, token);
             });
     }
 
@@ -1292,8 +1301,11 @@ public sealed class PipelineRunner(
             gate.ApprovedBy = null;
             await store.UpsertGateAsync(gate, ct);
         }
-        await SetStageAsync(r.ProjectId, Stages.Regulatory,
-            s => { if (s.Status == "done") s.Status = StageStatus.AwaitingRe; }, ct);
+        // The stage is deliberately LEFT ALONE. It used to be pushed back from `done` to `awaiting-RE` to
+        // re-advertise that the R.E. must rule again — but the stage never described the signature, and now
+        // that the park is gone there is nothing to push it back to that would not be a lie: the Regulatory
+        // agent DID run, and its verdicts are still on file. Voiding the GATE above is the whole of the
+        // effect, and it is the thing the export and the order read.
     }
 
     private async Task<string> WriteConclusionAsync(

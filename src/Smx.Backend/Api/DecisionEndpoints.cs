@@ -35,11 +35,14 @@ public static class DecisionEndpoints
             // gate) and `done` post-close (a rejection would flip the gate locked while Procurement stays
             // Released — a revocation that revokes nothing).
             var project = await store.GetProjectAsync(projectId, ct);
-            if (VpGate.ParkBlocker(project?.Stages.GetValueOrDefault(Stages.Decision)?.Status) is { } notParked)
+            var decisionForSignability = await store.GetDecisionAsync(projectId, ct);
+            if (VpGate.NotSignableBlocker(
+                    project?.Stages.GetValueOrDefault(Stages.Decision)?.Status,
+                    decisionForSignability?.Procurement.Status) is { } notSignable)
                 return Results.UnprocessableEntity(new
                 {
                     error = "VP gate not armable",
-                    blockers = (IReadOnlyList<string>)[notParked],
+                    blockers = (IReadOnlyList<string>)[notSignable],
                 });
 
             // ...and the window the park guard cannot see (Task 15 review F1, layer 3): the revise run is
@@ -234,7 +237,8 @@ public static class DecisionEndpoints
             // pending-revision guard (F1 layer 3) mirrors identically — the read must not advertise a pen
             // the POST refuses while a revision is in flight.
             var project = await store.GetProjectAsync(projectId, ct);
-            var notParked = VpGate.ParkBlocker(project?.Stages.GetValueOrDefault(Stages.Decision)?.Status);
+            var notParked = VpGate.NotSignableBlocker(
+                project?.Stages.GetValueOrDefault(Stages.Decision)?.Status, decision?.Procurement.Status);
             var inFlight = VpGate.PendingRevisionBlocker(await store.GetRevisionsAsync(projectId, ct));
 
             var gate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);

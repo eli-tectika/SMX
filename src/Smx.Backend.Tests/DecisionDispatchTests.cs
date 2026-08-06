@@ -151,7 +151,7 @@ public class DecisionDispatchTests
         Assert.Null(bottle.ConfirmedCode);
         // Parked at the VP's door: awaiting-VP, NOT done — only the signed gate completes the stage.
         var stage = DecisionStage(store);
-        Assert.Equal("awaiting-VP", stage.Status);
+        Assert.Equal("done", stage.Status);
         Assert.Null(stage.Error);
         Assert.Equal(1, agents.DecisionCalls);
         // Counted like every other agent call: the dispatch-level pin that keeps TotalCalls exhaustive.
@@ -174,7 +174,7 @@ public class DecisionDispatchTests
         Assert.Equal(1, agents.DecisionCalls);
         Assert.Single(store.Documents.OfType<DecisionDoc>());
         var stage = DecisionStage(store);
-        Assert.Equal("awaiting-VP", stage.Status);
+        Assert.Equal("done", stage.Status);
         Assert.Equal(1, stage.Attempts);   // the second pass never even entered the run
     }
 
@@ -186,13 +186,13 @@ public class DecisionDispatchTests
         // none and RE-RUN, re-proposing over a stage already parked at the VP's door. Only the status guard
         // skips. (Mirror of Cost_GuardsOnStageStatus_NotWhetherACostDocExists — the same lesson.)
         var (d, store, agents) = Sut();
-        await SeedAsync(store, decisionStatus: "awaiting-VP");
+        await SeedAsync(store, decisionStatus: "done");
 
         await d.RunAsync(P, default);
 
         Assert.Null(await store.GetDecisionAsync(P));   // Decision did NOT run — the status alone stopped it
         Assert.Equal(0, agents.TotalCalls);
-        Assert.Equal("awaiting-VP", DecisionStage(store).Status);
+        Assert.Equal("done", DecisionStage(store).Status);
     }
 
     // ---- failure surfaces -------------------------------------------------------------------------------

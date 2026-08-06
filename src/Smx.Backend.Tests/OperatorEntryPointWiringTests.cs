@@ -122,7 +122,7 @@ public class OperatorEntryPointWiringTests : IClassFixture<WebApplicationFactory
         await SeedProjectAsync(
             (Stages.Intake, "done"), (Stages.Discovery, "done"), (Stages.Regulatory, "done"),
             (Stages.Matrix, "done"), (Stages.Dosing, "done"), (Stages.Cost, "done"),
-            (Stages.Decision, StageStatus.AwaitingVp));
+            (Stages.Decision, StageStatus.Done));
         await SeedComplianceAsync();
 
         // Two markers, because a code IS the ratio between them — RatioSignature refuses to form one from a
@@ -176,7 +176,7 @@ public class OperatorEntryPointWiringTests : IClassFixture<WebApplicationFactory
         await SeedProjectAsync(
             (Stages.Intake, "done"), (Stages.Discovery, "done"), (Stages.Regulatory, "done"),
             (Stages.Matrix, "done"), (Stages.Dosing, "done"), (Stages.Cost, "done"),
-            (Stages.Decision, StageStatus.AwaitingVp));
+            (Stages.Decision, StageStatus.Done));
         await SeedComplianceAsync();
         var code = new MarkerCode("bottle",
             [new CodeMarker("cas-zr", "Zr", 40.0, 0.74, 1.0, 2.0),

@@ -154,9 +154,11 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
         var p = Project("proj-dash", "Acme", "Bottle", "2026-07-16T09:00:00.0000000+00:00");
         foreach (var s in new[] { Stages.Intake, Stages.Discovery, Stages.Regulatory, Stages.Matrix, Stages.Cost })
             p.Stages[s].Status = "done";
-        p.Stages[Stages.Dosing].Status = "awaiting-physics";
+        // Dosing genuinely FAILED (the only way a stage stops now); Decision finished its proposal and is
+        // waiting on nothing -- its signature is outstanding, which `needsSigning` reports, not `stopped`.
+        p.Stages[Stages.Dosing].Status = StageStatus.NeedsReview;
         p.Stages[Stages.Dosing].Error = "no batch mass for 'bottle'";
-        p.Stages[Stages.Decision].Status = "awaiting-VP";
+        p.Stages[Stages.Decision].Status = StageStatus.Done;
         await _store.UpsertProjectAsync(p);
         await _store.UpsertGateAsync(new GateDoc
         {
@@ -187,15 +189,14 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
         var dash = await _client.GetFromJsonAsync<JsonElement>("/projects/proj-dash/dashboard");
 
         Assert.Equal("proj-dash", dash.GetProperty("projectId").GetString());
-        var blocked = dash.GetProperty("blocked");
-        Assert.Equal(2, blocked.GetArrayLength());
-        var dosing = Find(blocked, "stage", "dosing");
+        // `stopped`, not `blocked`: nobody is waited on any more (execution-core 8). The seeded parks
+        // are gone, so the only entry left is the stage that genuinely FAILED and needs the operator.
+        var stopped = dash.GetProperty("stopped");
+        var dosing = Find(stopped, "stage", "dosing");
         Assert.NotNull(dosing);
-        Assert.Equal("physics", dosing!.Value.GetProperty("on").GetString());
+        Assert.Equal("needs-review", dosing!.Value.GetProperty("status").GetString());
         Assert.Equal("no batch mass for 'bottle'", dosing.Value.GetProperty("detail").GetString());
-        var decision = Find(blocked, "stage", "decision");
-        Assert.NotNull(decision);
-        Assert.Equal("VP R&D", decision!.Value.GetProperty("on").GetString());
+        Assert.Null(Find(stopped, "stage", "decision"));   // a finished proposal is not a stall
 
         // needsSigning: the regulatory gate is APPROVED — signed gates don't need signing — so only the
         // vp entry appears, with armable/blockers from the REAL predicate (VpGate.Armable: approved
@@ -279,7 +280,7 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
         Assert.NotNull(vp);
         Assert.False(vp!.Value.GetProperty("armable").GetBoolean());
         var blockers = vp.Value.GetProperty("blockers").EnumerateArray().Select(b => b.GetString()).ToList();
-        Assert.Contains(blockers, b => b!.Contains("'pending'") && b.Contains("not 'awaiting-VP'"));
+        Assert.Contains(blockers, b => b!.Contains("'pending'") && b.Contains("not 'done'"));
     }
 
     [Fact]
@@ -343,11 +344,10 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
 
         var dash = await _client.GetFromJsonAsync<JsonElement>("/projects/proj-dash-newpark/dashboard");
 
-        var blocked = dash.GetProperty("blocked");
-        var dosing = Find(blocked, "stage", "dosing");
-        Assert.NotNull(dosing);
-        Assert.Equal("operator", dosing!.Value.GetProperty("on").GetString());
-        Assert.Equal("parked on a state this build has never heard of", dosing.Value.GetProperty("detail").GetString());
+        // An unrecognised status is NOT reported as a stall. The old fallback existed because any unknown
+        // awaiting-* was certainly a park; with the park family deleted, `stopped` is an allow-list of the
+        // two genuine failure states, and anything else is simply not stopped.
+        Assert.Null(Find(dash.GetProperty("stopped"), "stage", "dosing"));
     }
 
     [Fact]
@@ -365,13 +365,13 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
 
         var dash = await _client.GetFromJsonAsync<JsonElement>("/projects/proj-dash-err/dashboard");
 
-        var blocked = dash.GetProperty("blocked");
-        Assert.Equal(2, blocked.GetArrayLength());
-        var discovery = Find(blocked, "stage", "discovery");
-        Assert.Equal("operator", discovery!.Value.GetProperty("on").GetString());
+        var stopped = dash.GetProperty("stopped");
+        Assert.Equal(2, stopped.GetArrayLength());
+        var discovery = Find(stopped, "stage", "discovery");
+        Assert.Equal("failed", discovery!.Value.GetProperty("status").GetString());
         Assert.Equal("model returned unparseable candidates", discovery.Value.GetProperty("detail").GetString());
-        var cost = Find(blocked, "stage", "cost");
-        Assert.Equal("operator", cost!.Value.GetProperty("on").GetString());
+        var cost = Find(stopped, "stage", "cost");
+        Assert.Equal("needs-review", cost!.Value.GetProperty("status").GetString());
         Assert.Equal("supplier price unparseable for cas-zr", cost.Value.GetProperty("detail").GetString());
     }
 
@@ -390,7 +390,7 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
         var ready = dash.GetProperty("readyToContinue");
         Assert.Equal(1, ready.GetArrayLength());
         Assert.Equal("dosing", ready[0].GetString());
-        Assert.Equal(0, dash.GetProperty("blocked").GetArrayLength());
+        Assert.Equal(0, dash.GetProperty("stopped").GetArrayLength());
     }
 
     [Fact]

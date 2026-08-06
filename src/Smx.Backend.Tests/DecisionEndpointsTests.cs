@@ -67,13 +67,13 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     /// The full pre-VP record: project parked awaiting-VP, the LIVE analysis (candidates + reviewed
     /// verdicts) the regulatory signature covers, the approved regulatory gate, dosing with one finalized
     /// code per component, and the DecisionDoc carrying the agent's proposals.
-    private async Task SeedAwaitingVpAsync(params string[] componentIds)
+    private async Task SeedProposedDecisionAsync(params string[] componentIds)
     {
         if (componentIds.Length == 0) componentIds = ["bottle"];
 
         var p = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
         foreach (var s in Stages.All) p.Stages[s].Status = "done";
-        p.Stages[Stages.Decision].Status = "awaiting-VP";
+        p.Stages[Stages.Decision].Status = "done";   // its agent finished; the VP gate is still unsigned
         await _store.UpsertProjectAsync(p);
 
         var candidates = new CandidatesDoc { Id = RecordIds.Candidates(P), ProjectId = P };
@@ -115,7 +115,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task PostDetermination_SignsTheGate_AndStampsConfirmations()
     {
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
         var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
             Approve("codes reviewed against the matrix on 16 Jul", ("bottle", Ratio("bottle"))));
 
@@ -138,7 +138,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task PostDetermination_RequiresAReason_422()
     {
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
         var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
             Approve("   ", ("bottle", Ratio("bottle"))));
 
@@ -152,7 +152,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     [InlineData("Approved")]   // case matters — the dispatcher's Vp arm matches the exact literal
     public async Task PostDetermination_ThatIsNeitherApprovedNorRejected_422(string determination)
     {
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
         var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
             new { determination, reason = "a reason", confirmations = Array.Empty<object>() });
 
@@ -165,7 +165,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     {
         // A signature over a nonexistent code IS the false pass: the ratio names a code no DosingDoc holds,
         // so nothing downstream could ever trace it. 422 naming component+code; NO gate write, NO stamp.
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
         var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
             Approve("looks right", ("bottle", "Zr:Y = 1.00:0.99")));
 
@@ -183,7 +183,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         // Gates table: "all components have a selected code". Confirming bottle but not label is a
         // signature over half a product — 422 naming the missing component, and NOTHING stamped, not even
         // the component that was confirmed (a 4xx means nothing happened).
-        await SeedAwaitingVpAsync("bottle", "label");
+        await SeedProposedDecisionAsync("bottle", "label");
         var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
             Approve("bottle looks right", ("bottle", Ratio("bottle"))));
 
@@ -198,7 +198,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     {
         // VpGate.Armable's blocker surfaces verbatim: a VP signature over an unsigned compliance analysis
         // would stack one gate on a void.
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
         var regGate = (await _store.GetGateAsync(P, GateTypes.Regulatory))!;
         regGate.Status = "locked";
         regGate.ApprovedAt = null;
@@ -219,7 +219,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         // rationale, PipelineRunner ~:207-228). A live unreviewed non-pass verdict that appeared AFTER the
         // regulatory approval means the signature no longer covers the analysis the VP would be signing
         // over — the VP gate must block, with the blocker surfaced.
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
         var candidates = (await _store.GetCandidatesAsync(P))!;
         candidates.Substances.Add(new CandidateSubstance("bottle", "Ba", "f", "cas-ba", null, null, false, "A", "s", []));
         await _store.UpsertCandidatesAsync(candidates);
@@ -245,7 +245,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     {
         // The audit trail must show the VP looked and said no: the gate lands `locked` WITH the reason,
         // and the DecisionDoc is untouched — a rejection confirms nothing.
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
         var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
             new { determination = "rejected", reason = "the label code's ratio is too close to project X's" });
 
@@ -270,7 +270,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         // still on file. Without the stage guard the VP could sign that stale proposal — and the in-flight
         // re-pick would then OVERWRITE the stamped doc under an approved gate: close finds zero confirmed
         // codes and procurement releases over an empty conclusion. The park is the precondition.
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
         var project = (await _store.GetProjectAsync(P))!;
         project.Stages[Stages.Decision].Status = "pending";   // mid-re-pick: reset, stale doc on file
         await _store.UpsertProjectAsync(project);
@@ -283,7 +283,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         Assert.Equal(HttpStatusCode.UnprocessableEntity, res.StatusCode);
         var body = await res.Content.ReadAsStringAsync();
         Assert.Contains("pending", body);                     // the blocker names the actual status
-        Assert.Contains("awaiting-VP", body);                 // and the park a signature answers
+        Assert.Contains("not 'done'", body);                 // and the park a signature answers
         Assert.Null(await _store.GetGateAsync(P, GateTypes.Vp));                       // nothing written
         Assert.Null(Assert.Single((await _store.GetDecisionAsync(P))!.Components).ConfirmedCode);
     }
@@ -293,19 +293,21 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     [InlineData("rejected")]
     public async Task PostDetermination_AfterClose_Refuses_ApproveAndRejectAlike(string determination)
     {
-        // Decision `done` means the VP signed and the project CLOSED — Marker Library written, conclusion
-        // filed, procurement Released. A post-close approve would re-stamp history; a post-close REJECT is
-        // the "revocation that revokes nothing": the gate would flip locked while Procurement stays
-        // Released. Both are refused, and the signed gate is untouched either way.
-        await SeedAwaitingVpAsync();
+        // A CLOSED project: Marker Library written, conclusion filed, procurement Released. A post-close
+        // approve would re-stamp history; a post-close REJECT is the "revocation that revokes nothing" —
+        // the gate would flip locked while Procurement stays Released. Both are refused, and the signed
+        // gate is untouched either way.
+        //
+        // What identifies "closed" changed with the parks. It used to be the Decision stage reading `done`,
+        // because only the close dispatch wrote that. Now the stage reads `done` the moment its AGENT
+        // finishes — before any signature — so RELEASED PROCUREMENT is the only honest marker of a close,
+        // and VpGate.NotSignableBlocker reads it there.
+        await SeedProposedDecisionAsync();
         await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
             Approve("codes reviewed", ("bottle", Ratio("bottle"))));         // the real signature
         var signedAt = (await _store.GetGateAsync(P, GateTypes.Vp))!.ApprovedAt;
-        var project = (await _store.GetProjectAsync(P))!;
-        project.Stages[Stages.Decision].Status = "done";                      // what the close dispatch stamps
-        await _store.UpsertProjectAsync(project);
         var decision = (await _store.GetDecisionAsync(P))!;
-        decision.Procurement.Status = ProcurementStatus.Released;             // ...and releases
+        decision.Procurement.Status = ProcurementStatus.Released;             // the close releases
         await _store.UpsertDecisionAsync(decision);
 
         var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
@@ -314,7 +316,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
                 : new { determination = "rejected", reason = "revoke it" });
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, res.StatusCode);
-        Assert.Contains("done", await res.Content.ReadAsStringAsync());
+        Assert.Contains("closed", await res.Content.ReadAsStringAsync());
         // The close is HISTORY: the gate is still approved with the ORIGINAL timestamp — in particular the
         // reject did NOT lock it over Released procurement — and the confirmations still stand.
         var gate = (await _store.GetGateAsync(P, GateTypes.Vp))!;
@@ -331,7 +333,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         // The read must never advertise what the POST refuses (the Task-13 lesson, applied to (d)): with
         // everything else armable but the stage mid-re-pick, `armable: true` here would be the lying
         // affordance that gets a stale proposal signed.
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
         var project = (await _store.GetProjectAsync(P))!;
         project.Stages[Stages.Decision].Status = "pending";
         await _store.UpsertProjectAsync(project);
@@ -340,7 +342,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
 
         Assert.False(g.GetProperty("armable").GetBoolean());
         var blockers = g.GetProperty("blockers").EnumerateArray().Select(b => b.GetString()).ToList();
-        Assert.Contains(blockers, b => b!.Contains("'pending'") && b.Contains("not 'awaiting-VP'"));
+        Assert.Contains(blockers, b => b!.Contains("'pending'") && b.Contains("not 'done'"));
     }
 
     // ---- who signed the LAST hard gate ----------------------------------------------------------------
@@ -348,7 +350,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task PostDetermination_RecordsTheOperatorAsSigner()
     {
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
 
         var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
             Approve("codes reviewed with the VP", ("bottle", Ratio("bottle"))));
@@ -363,7 +365,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task PostDetermination_WhenRejected_LeavesTheGateUnsigned()
     {
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
 
         var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
             new { determination = "rejected", reason = "the ratio is too close to project X's" });
@@ -382,7 +384,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task GetGateVp_ReportsTheSigner_AndSendsAnUnsignedOneAsNull()
     {
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
 
         var before = await _client.GetFromJsonAsync<JsonElement>($"/projects/{P}/gate/vp");
         Assert.Equal(JsonValueKind.Null, before.GetProperty("approvedBy").ValueKind);
@@ -399,7 +401,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task GetGateVp_LeavesAPreExistingSignatureUnattributed()
     {
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
         await _store.UpsertGateAsync(new GateDoc
         {
             Id = RecordIds.Gate(P, GateTypes.Vp), ProjectId = P,
@@ -432,7 +434,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         // durable from POST /revise's 202 until applied/failed, so refusing while one is pending closes
         // the whole window including feed lag. The decision may be about to change; the VP must not sign
         // words that are being rewritten.
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
         var revision = PendingRevision(stage);
         await _store.UpsertRevisionAsync(revision);
 
@@ -466,7 +468,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     {
         // The read mirrors the POST's refusal (the same rule as ParkBlocker): armable must mean the POST
         // would accept, or the affordance invites a signature over a decision that is being rewritten.
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
         await _store.UpsertRevisionAsync(PendingRevision(Stages.Dosing));
 
         var g = await _client.GetFromJsonAsync<JsonElement>($"/projects/{P}/gate/vp");
@@ -479,7 +481,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task PostDetermination_ApproveTwice_PreservesApprovedAt()
     {
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
         var body = Approve("codes reviewed", ("bottle", Ratio("bottle")));
 
         await _client.PostAsJsonAsync($"/projects/{P}/decision/determination", body);
@@ -515,7 +517,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task GetGateVp_ReportsArmable_ThenApproved_AfterTheDetermination()
     {
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
 
         var before = await _client.GetFromJsonAsync<JsonElement>($"/projects/{P}/gate/vp");
         Assert.Equal("locked", before.GetProperty("status").GetString());
@@ -565,7 +567,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         // Law 9 legible to the UI: proposedCode and confirmedCode both serialize camelCase, and an
         // UNCONFIRMED decision shows an EXPLICIT confirmedCode: null — the frontend must be able to tell
         // "proposed" from "signed" by reading the wire, never by guessing at an absent key.
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
 
         var resp = await _client.GetAsync($"/projects/{P}/decision");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
@@ -589,7 +591,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     /// A closed project: VP-confirmed codes and released procurement — what the close dispatch leaves behind.
     private async Task SeedReleasedAsync()
     {
-        await SeedAwaitingVpAsync();
+        await SeedProposedDecisionAsync();
         var decision = (await _store.GetDecisionAsync(P))!;
         decision.Components = [.. decision.Components.Select(c => c with
         {
@@ -610,7 +612,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     {
         // Procurement is a state flag (§4) and only the close dispatch releases it — an order before the
         // VP signature is an order for a product nobody approved.
-        await SeedAwaitingVpAsync();   // decision exists, procurement still unreleased
+        await SeedProposedDecisionAsync();   // decision exists, procurement still unreleased
         GivenSheetInCorpus("cas-zr");
 
         var res = await _client.PostAsync($"/projects/{P}/orders/cas-zr", null);

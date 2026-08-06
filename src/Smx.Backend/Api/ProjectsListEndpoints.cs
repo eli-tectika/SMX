@@ -56,30 +56,20 @@ public static class ProjectsListEndpoints
             var project = await store.GetProjectAsync(projectId, ct);
             if (project is null) return Results.NotFound();
 
-            // Blocked-on-whom. The owner mapping is the point: the operator collects offline judgments
-            // from real people (Law 6), and a dashboard that says "operator" for the physicist's number
-            // sends them chasing themselves. needs-review/failed ARE the operator's ball — with the
-            // stage's Error as the detail, because an error nobody surfaces is a stall nobody notices (§11).
-            var blocked = new List<object>();
+            // STOPPED, not "blocked on whom". The owner mapping this replaces existed because the pipeline
+            // parked on named people — physics, the R.E., the VP, the client — and a dashboard that said
+            // "operator" for the physicist's number would send them chasing themselves. There are no parks
+            // any more (execution-core §8), so nobody is waited on: the only way a stage stops now is a
+            // genuine failure the operator must triage, which is theirs by definition.
+            //
+            // It still surfaces the stage's Error, for the reason it always did — an error nobody surfaces
+            // is a stall nobody notices (§11).
+            var stopped = new List<object>();
             foreach (var stage in Stages.All)
             {
                 if (!project.Stages.TryGetValue(stage, out var state)) continue;
-                var owner = state.Status switch
-                {
-                    "awaiting-physics" => "physics",
-                    "awaiting-RE" => "R.E.",
-                    "awaiting-operator" => "operator",
-                    "awaiting-VP" => "VP R&D",
-                    "awaiting-samples" => "client",
-                    "needs-review" or "failed" => "operator",
-                    // Any awaiting-* this mapping doesn't know yet still SURFACES — a park that silently
-                    // drops off the blocked list is a stall nobody notices (§11). The operator is the
-                    // honest fallback owner: they triage every park anyway.
-                    var s when s.StartsWith("awaiting-") => "operator",
-                    _ => null,
-                };
-                if (owner is not null)
-                    blocked.Add(new { stage, on = owner, detail = state.Error });
+                if (state.Status is StageStatus.NeedsReview or StageStatus.Failed)
+                    stopped.Add(new { stage, status = state.Status, detail = state.Error });
             }
 
             // Ready to continue: a pending stage whose upstream neighbour is done. Stages.SPINE, not
@@ -135,7 +125,8 @@ public static class ProjectsListEndpoints
                     // resets Decision to `pending` with the STALE DecisionDoc still on file — this card
                     // must not invite a signature the POST refuses. Nor while a Dosing/Decision revision
                     // is still PENDING (F1 layer 3): the decision may be about to change.
-                    var notParked = VpGate.ParkBlocker(project.Stages.GetValueOrDefault(Stages.Decision)?.Status);
+                    var notParked = VpGate.NotSignableBlocker(
+                        project.Stages.GetValueOrDefault(Stages.Decision)?.Status, decision?.Procurement.Status);
                     var inFlight = VpGate.PendingRevisionBlocker(await store.GetRevisionsAsync(projectId, ct));
                     needsSigning.Add(new
                     {
@@ -148,7 +139,16 @@ public static class ProjectsListEndpoints
                 }
             }
 
-            return Results.Json(new { projectId, blocked, readyToContinue, needsSigning }, Json.Options);
+            // `orderBlockers`: what stands between this project and procurement, separately from any
+            // signature. A provisional dosing rests on the agent's proposals, an estimated floor, or both
+            // (spec §10.1), and POST /orders refuses over it — so the dashboard must say so rather than let
+            // an operator discover it at the order.
+            var dosingDoc = await store.GetDosingAsync(projectId, ct);
+            IReadOnlyList<string> orderBlockers =
+                dosingDoc is { Provisional: true } ? dosingDoc.ProvisionalReasons : [];
+
+            return Results.Json(
+                new { projectId, stopped, readyToContinue, needsSigning, orderBlockers }, Json.Options);
         });
     }
 

@@ -187,9 +187,14 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
 
         // 1. Pump the CostDoc (the change feed's job): its landing IS the Decision trigger. Assembly is
         //    deterministic; the fake Decision agent's default mirrors the assembly and proposes the first
-        //    finalized code. The stage parks at awaiting-VP — a proposal is not a signature.
+        //    finalized code. The stage lands `done` — its agent finished. A proposal is still not a
+        //    signature: what proves that is the unsigned VP gate and the null confirmedCode below, and the
+        //    fact that procurement is still Unreleased.
         await _dispatcher.RunAsync(P, default);
-        Assert.Equal("awaiting-VP", (await StageAsync(Stages.Decision)).Status);
+        Assert.Equal("done", (await StageAsync(Stages.Decision)).Status);
+        Assert.NotEqual("approved", (await _store.GetGateAsync(P, GateTypes.Vp))?.Status);
+        Assert.Equal(ProcurementStatus.Unreleased,
+            (await _store.GetDecisionAsync(P))!.Procurement.Status);
 
         var dosing = (await _client.GetFromJsonAsync<DosingDoc>($"/projects/{P}/dosing"))!;
         var ratio = Assert.Single(dosing.Codes).RatioSignature; // derived from the markers, never hard-coded
@@ -249,7 +254,7 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
         Assert.Equal("approved", row.GetProperty("gates").GetProperty(GateTypes.Vp).GetString());
 
         var dashboard = await _client.GetFromJsonAsync<JsonElement>($"/projects/{P}/dashboard");
-        Assert.Empty(dashboard.GetProperty("blocked").EnumerateArray());
+        Assert.Empty(dashboard.GetProperty("stopped").EnumerateArray());
         Assert.Empty(dashboard.GetProperty("needsSigning").EnumerateArray());
 
         // The three shipped-bug tripwires:

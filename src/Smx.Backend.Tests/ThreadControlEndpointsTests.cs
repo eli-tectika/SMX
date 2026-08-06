@@ -325,7 +325,7 @@ public class ThreadControlEndpointsTests : IClassFixture<WebApplicationFactory<P
     [Theory]
     [InlineData("running")]
     [InlineData("pending")]
-    [InlineData(StageStatus.AwaitingRe)]
+    [InlineData(StageStatus.Done)]   // a finished stage is not "finished badly" either
     public async Task Rerun_refuses_a_stage_that_is_not_finished_badly(string status)
     {
         var project = await SeedProjectAsync();

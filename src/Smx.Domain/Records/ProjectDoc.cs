@@ -13,16 +13,15 @@ public static class StageStatus
     public const string NeedsReview = "needs-review";
     public const string Done = "done";
 
-    /// The spec's PARK states, written by PipelineRunner: the record is stopped on a named human, which
-    /// is NOT the same as `pending` (the agent has not started). `awaiting-RE` on Regulatory,
-    /// `awaiting-physics` and `awaiting-operator` on Dosing.
-    public const string AwaitingRe = "awaiting-RE";
-    public const string AwaitingPhysics = "awaiting-physics";
-    public const string AwaitingOperator = "awaiting-operator";
-    /// Decision only: the pick is the agent's PROPOSAL and the stage completes only when the VP signs.
-    /// A Decision that went straight to `done` off the agent's own pick would be the agent signing the
-    /// hard gate (Law 9), so this park is the thing standing between the two.
-    public const string AwaitingVp = "awaiting-VP";
+    // THE PARK STATES ARE DELETED (execution-core design §8/D10, implemented 2026-08-06). There was an
+    // `awaiting-RE` on Regulatory, `awaiting-physics` and `awaiting-operator` on Dosing, and `awaiting-VP`
+    // on Decision. The pipeline runs end to end on the best data it has; what is outstanding is a SIGNATURE
+    // (on the GateDoc) or BETTER INPUT (a DosingDoc provisional reason), never a stalled computation.
+    //
+    // Do not reintroduce one without reading §8. A stage status says whether its AGENT RAN. Law 9 is
+    // enforced where it belongs — CompliantSet reads only the operator's Determination, and the two
+    // irreversible acts (the compliance-package export, POST /orders) refuse over an unsigned gate or a
+    // provisional dosing. NoParkStatusesTests fails the build if a park constant reappears here.
 
     /// Intake only. The project EXISTS and its dossier is written, but no agent has run and none will
     /// until POST /projects/{id}/start flips this to Pending. This constant is the line between

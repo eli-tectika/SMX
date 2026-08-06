@@ -86,25 +86,40 @@ public class VpGateTests
     }
 
     [Fact]
-    public void ParkBlocker_IsNullOnlyWhileTheStageAwaitsTheVp()
+    public void NotSignableBlocker_IsNullOnlyOverAFinishedProposal()
     {
-        // "A signature answers a park" (Task 15(d)): the determination endpoint refuses unless the
-        // Decision stage is parked `awaiting-VP`, and the gate read + dashboard must surface the SAME
-        // blocker so no affordance ever advertises a POST that would 422. One helper, three surfaces —
-        // this pin is what keeps them from drifting.
-        Assert.Null(VpGate.ParkBlocker("awaiting-VP"));
+        // Was ParkBlocker_IsNullOnlyWhileTheStageAwaitsTheVp. With the park deleted (execution-core §8) the
+        // signable state is `done` — the Decision agent finished and there is a proposal on file. The gate
+        // read + dashboard surface the SAME blocker, so no affordance advertises a POST that would 422.
+        Assert.Null(VpGate.NotSignableBlocker("done", ProcurementStatus.Unreleased));
 
-        foreach (var status in new[] { "pending", "running", "needs-review", "failed", "done" })
+        foreach (var status in new[] { "pending", "running", "needs-review", "failed" })
         {
-            var blocker = VpGate.ParkBlocker(status);
+            var blocker = VpGate.NotSignableBlocker(status, ProcurementStatus.Unreleased);
             Assert.NotNull(blocker);
-            Assert.Contains($"'{status}'", blocker);            // names the actual status the operator sees
-            Assert.Contains("not 'awaiting-VP'", blocker);      // and the one a signature answers
+            Assert.Contains($"'{status}'", blocker);        // names the actual status the operator sees
+            Assert.Contains("not 'done'", blocker);         // and the one a signature answers
         }
 
-        // No project / no stage record is not a park either — a determination cannot answer nothing.
-        Assert.NotNull(VpGate.ParkBlocker(null));
-        Assert.Contains("not 'awaiting-VP'", VpGate.ParkBlocker(null));
+        // No project / no stage record is not a finished proposal either.
+        Assert.NotNull(VpGate.NotSignableBlocker(null, ProcurementStatus.Unreleased));
+        Assert.Contains("not 'done'", VpGate.NotSignableBlocker(null, ProcurementStatus.Unreleased));
+    }
+
+    [Fact]
+    public void NotSignableBlocker_RefusesAClosedProject_EvenThoughItsStageReadsDone()
+    {
+        // THE HALF THE STAGE STATUS CAN NO LONGER CARRY. `done` used to mean "the VP signed and the project
+        // closed", so refusing history was the same check as refusing a draft. Now `done` only means the
+        // agent finished, and a closed project sits at `done` too — so the post-close refusal is read from
+        // procurement, which moves Unreleased -> Released exactly once.
+        //
+        // Without this, an approve would rewrite a signed history and a REJECT would flip the gate locked
+        // over Released procurement: a revocation that revokes nothing.
+        var blocker = VpGate.NotSignableBlocker("done", ProcurementStatus.Released);
+
+        Assert.NotNull(blocker);
+        Assert.Contains("closed", blocker);
     }
 
     private static RevisionDoc Revision(string stage, string status) => new()

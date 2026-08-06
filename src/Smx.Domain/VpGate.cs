@@ -39,19 +39,33 @@ public static class VpGate
         return (blockers.Count == 0, blockers);
     }
 
-    /// "A signature answers a park" (Task 15(d)): a VP determination is only meaningful while the Decision
-    /// stage is parked `awaiting-VP`. Null means signable; anything else returns the blocker naming the
-    /// actual status. The one helper serves three surfaces — POST …/decision/determination (the 422),
-    /// GET …/gate/vp and the dashboard's vp card — so the reads can never advertise a gate the POST
-    /// refuses. The two states it exists to refuse: `pending` mid-re-pick (a Dosing revision reset the
-    /// stage while the STALE DecisionDoc is still on file — signing it would let the in-flight re-pick
-    /// overwrite a stamped doc under an approved gate) and `done` post-close (approve or REJECT would
-    /// rewrite history — a gate flipped locked over Released procurement revokes nothing).
-    public static string? ParkBlocker(string? decisionStageStatus) =>
-        decisionStageStatus == "awaiting-VP"
+    /// "A signature answers a finished proposal, never a draft, never history."
+    ///
+    /// This used to be ParkBlocker, and it required the Decision stage to sit at `awaiting-VP`. The pipeline
+    /// no longer parks (execution-core §8), so the two false passes it existed to refuse are now read off two
+    /// DIFFERENT facts rather than one overloaded status:
+    ///
+    ///   - `pending` mid-re-pick — a Dosing revision reset the stage while the STALE DecisionDoc is still on
+    ///     file. Signing it would let the in-flight re-pick overwrite a stamped doc under an approved gate.
+    ///     Still caught: the stage must be `done`, which only its own completed agent writes.
+    ///   - post-close — approve or REJECT would rewrite history, and a gate flipped locked over Released
+    ///     procurement revokes nothing. This can NO LONGER be read from `done`, because `done` now means the
+    ///     agent finished rather than the VP signed. It is read from procurement, which moves Unreleased →
+    ///     Released exactly once, in CloseProjectAsync.
+    ///
+    /// Null means signable. The one helper serves three surfaces — POST …/decision/determination (the 422),
+    /// GET …/gate/vp and the dashboard's vp card — so a read can never advertise a gate the POST refuses.
+    public static string? NotSignableBlocker(string? decisionStageStatus, string? procurementStatus)
+    {
+        if (procurementStatus == ProcurementStatus.Released)
+            return "procurement is already released — this project is closed, and a determination now " +
+                   "would rewrite history rather than make it";
+
+        return decisionStageStatus == "done"
             ? null
-            : $"the decision stage is '{decisionStageStatus ?? "absent"}', not 'awaiting-VP' — " +
-              "a signature answers a park, never a draft, never history";
+            : $"the decision stage is '{decisionStageStatus ?? "absent"}', not 'done' — there is no " +
+              "finished proposal to sign; a signature answers a proposal, never a draft";
+    }
 
     /// The revision-in-flight blocker (Task 15 review F1, layer 3). The revise run is minutes wide (two
     /// LLM calls, an embed, a search push) and the stage still advertises `awaiting-VP` throughout, so

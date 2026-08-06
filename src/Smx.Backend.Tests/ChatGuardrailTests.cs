@@ -197,7 +197,7 @@ public class ChatGuardrailTests
             Assert.False(verdict.EvidenceReviewed);   // the anti-rubber-stamping flag is untouched...
             Assert.Null(verdict.Determination);       // ...and so is the operator's per-cell ruling
         }
-        Assert.Equal("awaiting-RE", await StageStatusAsync(store, Stages.Regulatory));
+        Assert.Equal("done", await StageStatusAsync(store, Stages.Regulatory));
     }
 
     // ------------------------------------------------------------------ B. the whole turn, the worst ask
@@ -260,7 +260,7 @@ public class ChatGuardrailTests
         Assert.False(armable);
         Assert.Contains(blockers, b => b.Contains(after.Cas));
 
-        Assert.Equal("awaiting-RE", await StageStatusAsync(store, Stages.Regulatory));
+        Assert.Equal("done", await StageStatusAsync(store, Stages.Regulatory));
 
         // AND THE PROSE. The model claimed, in words, that it had approved the gate — and no test can stop it
         // saying that; prose is not checkable. What IS checkable is that the claim is backed by NOTHING: the
@@ -309,7 +309,7 @@ public class ChatGuardrailTests
         var gate = (await store.GetGateAsync(P, GateTypes.Regulatory))!;
         Assert.Equal("locked", gate.Status);          // the signature is VOID
         Assert.Null(gate.ApprovedAt);                 // ...and carries no stale timestamp to be read as one
-        Assert.Equal("awaiting-RE", await StageStatusAsync(store, Stages.Regulatory));   // they must look again
+        Assert.Equal("done", await StageStatusAsync(store, Stages.Regulatory));   // they must look again
         Assert.Equal(RevisionStatus.Applied, (await store.GetRevisionsAsync(P))[0].Status);
     }
 
