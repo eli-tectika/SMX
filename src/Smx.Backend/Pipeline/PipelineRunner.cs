@@ -92,6 +92,20 @@ public sealed class PipelineRunner(
 
         foreach (var (stage, run) in stages)
         {
+            // THE OPERATOR'S AUTHORISATION, checked between intake and everything after it. Intake is
+            // transcription of what the operator just dictated in the interview, so it runs at creation —
+            // that is what the UI's "Setting up the project…" is. Everything past it is real analysis, and
+            // none of it starts until POST /projects/{id}/start stamps AnalysisStartedAt.
+            //
+            // Re-read each pass rather than captured once: the operator may press Start while intake is
+            // still running, and a stale capture would make them press twice.
+            //
+            // This is where `awaiting-confirmation` used to do its work. Moving it off the stage status and
+            // onto the project means a stage status now answers only "did this stage's agent run", and the
+            // authorisation is not something a stage transition can accidentally clear.
+            if (stage != Stages.Intake &&
+                (await store.GetProjectAsync(projectId, hostToken))?.AnalysisStartedAt is null) return;
+
             var outcome = await ExecuteAsync(projectId, stage, run, hostToken);
             // Anything but `done` stops the pipeline. Carrying on would run the next stage over an input
             // that does not exist, and produce a confident answer built on a hole.
@@ -110,9 +124,10 @@ public sealed class PipelineRunner(
     /// What a stage body returns once it has run. A skipped stage returns Skip() and never gets here.
     ///
     /// <param name="StageStatus">the status to stamp on the STAGE, when it differs from the run's own
-    /// outcome. The two are not the same thing: a Regulatory run that produced every verdict is `done`
-    /// as a RUN and `awaiting-RE` as a STAGE, because the R.E. has not signed yet; a Decision run that
-    /// produced a proposal parks at `awaiting-VP`. Null ⇒ the stage takes the run's outcome.</param>
+    /// outcome. Every caller now passes null — the two park cases that used this (Regulatory landing
+    /// `awaiting-RE`, Decision landing `awaiting-VP`) are gone with the park family, and a stage takes its
+    /// run's outcome. It survives because a stage that legitimately diverges from its run may return, and
+    /// re-deriving the seam later is worse than keeping an unused parameter with a comment.</param>
     public sealed record StageResult(
         string Outcome, string? Error, string? Summary, string? RecordId, string? StageStatus = null);
 
@@ -221,11 +236,10 @@ public sealed class PipelineRunner(
     private async Task<StageResult> RunIntakeAsync(RunTrail trail, CancellationToken ct)
     {
         var projectId = trail.Run.ProjectId;
-        // BOTH guards, as the dispatcher had. The status one is not bookkeeping: an interview-created
-        // project sits at `awaiting-confirmation` until the operator presses Start Processing, and
-        // `awaiting-confirmation` is emphatically "has run" as far as this pass is concerned. The agent
-        // may create a project; only the operator may start one (design §2.3), and running intake off a
-        // doc-existence check alone would be the runner making that call for them.
+        // Both guards, as the dispatcher had — but they are now only about IDEMPOTENCE. The
+        // "only the operator may start one" half moved out to ProjectDoc.AnalysisStartedAt, checked in
+        // RunAsync between this stage and every stage after it: intake is transcription of what the
+        // operator just dictated, so it runs at creation and needs no permission of its own.
         if (await HasRunAsync(projectId, Stages.Intake, ct)) return Skip();
         if (await store.GetConstraintsAsync(projectId, ct) is not null) return Skip();
         var project = await LoadProjectAsync(projectId, ct);

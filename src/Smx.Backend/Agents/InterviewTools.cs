@@ -251,11 +251,15 @@ public sealed class InterviewTools(
             measuredBackground = Array.Empty<object>(),
         }, Json.Options);
 
-        // AwaitingConfirmation, NOT pending: writing this doc must not dispatch intake. The operator
-        // presses Start. This one argument is the whole "the agent may create, only the operator may
-        // start" line (design §2.3).
+        // `pending`, so intake DOES dispatch: it transcribes the brief the operator just dictated, and it
+        // is what the UI's "Setting up the project…" state is waiting on. Nothing past intake runs — the
+        // runner stops there until POST /projects/{id}/start stamps ProjectDoc.AnalysisStartedAt, which is
+        // now where "the agent may create, only the operator may start" lives (design §2.3).
+        //
+        // The improvement over the old `awaiting-confirmation`: the operator's one press used to happen
+        // BEFORE they could see anything an agent produced. Now they read the transcribed brief first.
         var project = ProjectDoc.Create(projectId, session.Client, session.Product, payload,
-            intakeStatus: StageStatus.AwaitingConfirmation);
+            analysisStarted: false);
         project.CreatedAt = now;
         await records.UpsertProjectAsync(project, ct);
 

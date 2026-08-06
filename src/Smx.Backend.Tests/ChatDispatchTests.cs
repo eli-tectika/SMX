@@ -72,19 +72,22 @@ public class ChatDispatchTests
         store.Documents.OfType<ChatReplyDoc>().SingleOrDefault(r => r.MessageId == m.Id);
 
     [Fact]
-    public async Task TheRunner_DoesNotRunIntake_ForAnAwaitingConfirmationProject()
+    public async Task TheRunner_RunsIntakeButNothingAfterIt_ForAnUnstartedProject()
     {
-        // THE safety property of the whole feature: an agent-created project must not start the pipeline.
+        // THE safety property of the whole feature, restated for the new shape. An agent-created project
+        // must not start the ANALYSIS. Intake is not analysis — it transcribes the brief the operator just
+        // dictated, and it runs at creation so they have something to read before authorising anything.
+        // The line moved from the intake stage status onto ProjectDoc.AnalysisStartedAt.
         var (d, store, agents) = Sut();
-        var project = ProjectDoc.Create(P, "Acme", "MUFE",
-            JsonDocument.Parse("{}").RootElement, intakeStatus: StageStatus.AwaitingConfirmation);
+        var project = ProjectDoc.Create(P, "Acme", "MUFE", JsonDocument.Parse("{}").RootElement,
+            analysisStarted: false);
         await store.UpsertProjectAsync(project);
 
         await d.RunAsync(P, default);
 
-        Assert.Equal(0, agents.IntakeCalls);
-        Assert.Equal(StageStatus.AwaitingConfirmation,
-            (await store.GetProjectAsync(P))!.Stages[Stages.Intake].Status);
+        Assert.Equal(1, agents.IntakeCalls);
+        Assert.Equal(0, agents.PoolCalls);       // ...and NOTHING past intake
+        Assert.Null((await store.GetProjectAsync(P))!.AnalysisStartedAt);
     }
 
     [Fact]

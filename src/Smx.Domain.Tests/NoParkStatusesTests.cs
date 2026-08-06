@@ -27,10 +27,12 @@ public class NoParkStatusesTests
         Assert.DoesNotContain(values, v => v.StartsWith("awaiting-samples", StringComparison.OrdinalIgnoreCase));
     }
 
-    /// The four states a stage can actually be in, plus the one remaining `awaiting-confirmation` that
-    /// belongs to project CREATION rather than to the pipeline (it is deleted separately, with the
-    /// intake-at-creation change). Pinned as a set so a fifth arriving quietly is a failure here rather
-    /// than a surprise in a UI fold months later.
+    /// The five states a stage can be in, and there are no others. `awaiting-confirmation` went too: what
+    /// it meant — the operator has not authorised the analysis — is a PROJECT-level fact
+    /// (ProjectDoc.AnalysisStartedAt), not something a stage's status should have been carrying.
+    ///
+    /// Pinned as a set so a sixth arriving quietly is a failure here rather than a surprise in a UI fold
+    /// months later.
     [Fact]
     public void StageStatus_IsTheExpectedSet()
     {
@@ -41,8 +43,6 @@ public class NoParkStatusesTests
             .Order()
             .ToArray();
 
-        Assert.Equal(
-            new[] { "awaiting-confirmation", "done", "failed", "needs-review", "pending", "running" },
-            values);
+        Assert.Equal(new[] { "done", "failed", "needs-review", "pending", "running" }, values);
     }
 }

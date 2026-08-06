@@ -194,20 +194,13 @@ public static class ProjectEndpoints
 
             var intake = project.Stages[Stages.Intake];
             // Idempotent, and not merely tolerant: everything in this system is at-least-once, and a
-            // double-press must never re-dispatch a stage that has already run.
-            //
-            // `pending` is the exception, and it is not a loophole: it means nothing has run YET. It is the
-            // status POST /projects writes (the API create path — the eval harness and the tests), as opposed
-            // to the interview's `awaiting-confirmation`. There is no flip to make and no confirmation to
-            // honour, so start simply starts. Before the change feed was replaced, creating a project WAS the
-            // dispatch; without this arm an API-created project could never be run by any door at all.
-            if (intake.Status == StageStatus.Pending)
+            // double-press must never re-dispatch a stage that has already run. An already-authorised
+            // project simply re-enters the pipeline; the per-stage guards absorb everything that has run.
+            if (project.AnalysisStartedAt is not null)
             {
                 supervisor?.TryStart(projectId);
                 return Results.Accepted($"/projects/{projectId}", new { projectId, status = intake.Status });
             }
-            if (intake.Status != StageStatus.AwaitingConfirmation)
-                return Results.Accepted($"/projects/{projectId}", new { projectId, status = intake.Status });
 
             var payload = JsonSerializer.Deserialize<StartPreconditions>(project.Payload.GetRawText(), Json.Options);
             if (payload?.Components is not { Count: > 0 })
@@ -223,15 +216,19 @@ public static class ProjectEndpoints
                             "EMPTY regulatory screen. Ask the agent to record its markets before starting.",
                 });
 
-            intake.Status = StageStatus.Pending;
+            // THE SIGNATURE. It used to be a flip of the intake stage from `awaiting-confirmation` to
+            // `pending`. Intake has already run by the time an operator gets here — it transcribes the
+            // interview during project creation — so what this endpoint authorises is everything AFTER
+            // intake, and RunAsync refuses to advance past intake while this is null.
+            project.AnalysisStartedAt = DateTimeOffset.UtcNow.ToString("O");
             await store.UpsertProjectAsync(project, ct);
 
-            // AND NOW IT ACTUALLY RUNS. The flip alone used to be the whole endpoint, back when a change
-            // feed was watching the record; nothing watches it any more, so a start that only wrote `pending`
-            // would leave the project sitting there looking started and never move.
+            // AND NOW IT ACTUALLY RUNS. The stamp alone used to be the whole endpoint, back when a change
+            // feed was watching the record; nothing watches it any more, so a start that only wrote the
+            // timestamp would leave the project sitting there looking started and never move.
             if (supervisor?.TryStart(projectId) == false)
                 return Results.Conflict(new { error = "a pipeline is already running for this project" });
-            return Results.Accepted($"/projects/{projectId}", new { projectId, status = StageStatus.Pending });
+            return Results.Accepted($"/projects/{projectId}", new { projectId, status = intake.Status });
         });
 
         // The per-stage reads (§7): thin projections mirroring GET /dosing — the doc verbatim or a 404.

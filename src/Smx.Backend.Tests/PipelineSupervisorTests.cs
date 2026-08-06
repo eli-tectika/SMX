@@ -210,7 +210,7 @@ public class PipelineSupervisorTests
     {
         var sut = Build();
         var project = await SeedAsync(sut.Store);
-        project.Stages[Stages.Intake].Status = StageStatus.AwaitingConfirmation;
+        project.Stages[Stages.Intake].Status = StageStatus.Pending;   // created, never authorised
         await sut.Store.UpsertProjectAsync(project);
 
         await sut.Supervisor.ResumeAllAsync(default);

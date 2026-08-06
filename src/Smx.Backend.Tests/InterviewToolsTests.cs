@@ -226,14 +226,16 @@ public class InterviewToolsTests
         Assert.Contains(projectId, createResult);
         Assert.Equal(IntakeSessionStatus.Created, reloaded.Status);
 
-        // THE safety property: the project exists, but its intake stage is AwaitingConfirmation, NOT
-        // Pending. Writing this doc must not dispatch intake — the operator presses Start.
+        // THE safety property, in its new place. Intake IS dispatched — it transcribes the brief the
+        // operator just dictated, which is what the UI's "Setting up the project…" waits on. What the agent
+        // must not do is authorise the ANALYSIS, and AnalysisStartedAt being null is what stops the runner
+        // advancing past intake. The old `awaiting-confirmation` conflated the two.
         var project = await records.GetProjectAsync(projectId);
         Assert.NotNull(project);
         Assert.Equal("Acme Beverages", project!.Client);
         Assert.Equal("500 mL sports-drink bottle", project.Product);
-        Assert.Equal(StageStatus.AwaitingConfirmation, project.Stages[Stages.Intake].Status);
-        Assert.NotEqual(StageStatus.Pending, project.Stages[Stages.Intake].Status);
+        Assert.Equal(StageStatus.Pending, project.Stages[Stages.Intake].Status);
+        Assert.Null(project.AnalysisStartedAt);
 
         var brief = await records.GetIntakeBriefAsync(projectId);
         Assert.NotNull(brief);

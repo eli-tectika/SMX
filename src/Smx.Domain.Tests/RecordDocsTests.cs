@@ -14,22 +14,29 @@ public class RecordDocsTests
     }
 
     [Fact]
-    public void ProjectDoc_Create_DefaultsIntakeToPending_SoExistingCallersStillStart()
+    public void ProjectDoc_Create_DefaultsToStarted_SoExistingCallersStillRun()
     {
-        // tools/Smx.Eval and every backend test create fully-specified projects through POST /projects
-        // and expect the pipeline to RUN. If creation universally landed in awaiting-confirmation the
-        // eval harness would keep passing while evaluating nothing. Default = today's behaviour.
+        // tools/Smx.Eval and every backend test create fully-specified projects through POST /projects and
+        // expect the pipeline to RUN. If creation universally landed unauthorised the eval harness would
+        // keep passing while evaluating nothing. Default = today's behaviour.
         var doc = ProjectDoc.Create("proj-1", "Acme", "MUFE", JsonDocument.Parse("{}").RootElement);
+
+        Assert.NotNull(doc.AnalysisStartedAt);
         Assert.Equal("pending", doc.Stages[Stages.Intake].Status);
     }
 
     [Fact]
-    public void ProjectDoc_Create_CanStartAwaitingConfirmation_ForTheInterviewAgent()
+    public void ProjectDoc_Create_CanLeaveTheAnalysisUnauthorised_ForTheInterviewAgent()
     {
+        // The interview agent is the ONE caller that passes false — it is the only caller that is a
+        // language model. Every stage still starts `pending`, including intake: a stage status only ever
+        // answers "did this stage's agent run", and intake runs at creation to transcribe the brief. What
+        // holds the ANALYSIS back is AnalysisStartedAt, which RunAsync checks between intake and the rest.
         var doc = ProjectDoc.Create("proj-1", "Acme", "MUFE", JsonDocument.Parse("{}").RootElement,
-            intakeStatus: StageStatus.AwaitingConfirmation);
-        Assert.Equal("awaiting-confirmation", doc.Stages[Stages.Intake].Status);
-        // Only intake is held back — every other stage keeps its normal starting state.
+            analysisStarted: false);
+
+        Assert.Null(doc.AnalysisStartedAt);
+        Assert.Equal("pending", doc.Stages[Stages.Intake].Status);
         Assert.Equal("pending", doc.Stages[Stages.Discovery].Status);
     }
 

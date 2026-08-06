@@ -45,11 +45,11 @@ public class ProjectStartEndpointTests : IClassFixture<WebApplicationFactory<Pro
         }, Json.Options);
 
     [Fact]
-    public async Task Start_FlipsAwaitingConfirmationToPending()
+    public async Task Start_StampsAnalysisStartedAt()
     {
         var store = new InMemoryRecordStore();
         var project = ProjectDoc.Create("proj-1", "Acme", "MUFE", Payload(OneGoodComponent()),
-            intakeStatus: StageStatus.AwaitingConfirmation);
+            analysisStarted: false);
         await store.UpsertProjectAsync(project);
         using var app = NewApp(store);
 
@@ -68,7 +68,7 @@ public class ProjectStartEndpointTests : IClassFixture<WebApplicationFactory<Pro
         // interview-created project unstartable.
         var store = new InMemoryRecordStore();
         await store.UpsertProjectAsync(ProjectDoc.Create("proj-1", "Acme", "MUFE",
-            Payload(OneGoodComponent()), intakeStatus: StageStatus.AwaitingConfirmation));
+            Payload(OneGoodComponent())));
         using var app = NewApp(store);
 
         Assert.Equal(HttpStatusCode.Accepted,
@@ -80,7 +80,7 @@ public class ProjectStartEndpointTests : IClassFixture<WebApplicationFactory<Pro
     {
         var store = new InMemoryRecordStore();
         await store.UpsertProjectAsync(ProjectDoc.Create("proj-1", "Acme", "MUFE",
-            Payload([]), intakeStatus: StageStatus.AwaitingConfirmation));
+            Payload([]), analysisStarted: false));
         using var app = NewApp(store);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity,
@@ -95,7 +95,7 @@ public class ProjectStartEndpointTests : IClassFixture<WebApplicationFactory<Pro
         var store = new InMemoryRecordStore();
         var noMarkets = new List<ComponentSpec> { new("bottle", "PET", "food contact", [], "brand") };
         await store.UpsertProjectAsync(ProjectDoc.Create("proj-1", "Acme", "MUFE",
-            Payload(noMarkets), intakeStatus: StageStatus.AwaitingConfirmation));
+            Payload(noMarkets), analysisStarted: false));
         using var app = NewApp(store);
 
         var res = await app.CreateClient().PostAsync("/projects/proj-1/start", null);
@@ -167,7 +167,7 @@ public class ProjectStartEndpointTests : IClassFixture<WebApplicationFactory<Pro
     {
         var store = new InMemoryRecordStore();
         await store.UpsertProjectAsync(ProjectDoc.Create("proj-1", "Acme", "MUFE",
-            Payload(OneGoodComponent()), intakeStatus: StageStatus.AwaitingConfirmation));
+            Payload(OneGoodComponent())));
         var runs = new InMemoryRunStore();
         var agents = new FakeAgentRuns();
         var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

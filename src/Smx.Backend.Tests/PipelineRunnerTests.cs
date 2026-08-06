@@ -280,22 +280,40 @@ public class PipelineRunnerTests
         Assert.Contains("foundry 500", proj.Stages[Stages.Intake].Error);
     }
 
-    /// The agent may CREATE a project; only the operator may START one (design §2.3). An interview-created
-    /// project sits at `awaiting-confirmation` until Start Processing, and the runner must not make that
-    /// call on the operator's behalf even if it is pointed at the project.
+    /// The agent may CREATE a project; only the operator may START one (design §2.3). That line now sits
+    /// on ProjectDoc.AnalysisStartedAt rather than on the intake stage's status, and it sits AFTER intake
+    /// rather than before it: intake transcribes the interview, so it runs at creation and the operator
+    /// reads the brief before authorising the analysis. The runner must not advance past it unasked.
     [Fact]
-    public async Task An_unconfirmed_project_does_not_run_intake()
+    public async Task An_unstarted_project_runs_intake_and_stops()
     {
         var (d, store, agents, _) = Sut();
         await store.UpsertProjectAsync(ProjectDoc.Create(
-            "p1", "Acme", "P", JsonDocument.Parse("{}").RootElement, StageStatus.AwaitingConfirmation));
+            "p1", "Acme", "P", JsonDocument.Parse("{}").RootElement, analysisStarted: false));
 
         await d.RunAsync("p1", default);
 
-        Assert.Equal(0, agents.IntakeCalls);
-        Assert.Null(await store.GetConstraintsAsync("p1"));
-        Assert.Equal(StageStatus.AwaitingConfirmation,
-            (await store.GetProjectAsync("p1"))!.Stages[Stages.Intake].Status);
+        Assert.Equal(1, agents.IntakeCalls);
+        Assert.NotNull(await store.GetConstraintsAsync("p1"));   // the brief IS transcribed
+        Assert.Equal(0, agents.PoolCalls);                       // and nothing past it runs
+        Assert.Null((await store.GetProjectAsync("p1"))!.AnalysisStartedAt);
+    }
+
+    /// The other half: once the operator authorises, the same runner walks on.
+    [Fact]
+    public async Task A_started_project_advances_past_intake()
+    {
+        var (d, store, agents, _) = Sut();
+        var project = ProjectDoc.Create("p1", "Acme", "P", JsonDocument.Parse("{}").RootElement);
+        await store.UpsertProjectAsync(project);
+
+        await d.RunAsync("p1", default);
+
+        Assert.Equal(1, agents.IntakeCalls);
+        // Discovery, not Pool: the default fake intake writes an ElementPools entry, and RunPoolAsync
+        // legitimately SKIPS when the operator supplied their own pool. Discovery is the first stage past
+        // intake that always runs, so it is the honest proof the pass continued.
+        Assert.Equal(1, agents.DiscoveryCalls);
     }
 
     // ---- discovery ------------------------------------------------------------------------------------

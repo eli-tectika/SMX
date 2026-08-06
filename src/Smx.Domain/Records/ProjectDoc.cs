@@ -1,10 +1,11 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Smx.Domain.Records;
 
 /// The stage statuses, as strings because that is what is on the wire and in Cosmos. Named constants
-/// because `awaiting-confirmation` is compared in three projects and a typo in any of them silently
-/// means "this project never starts" — or, worse, "this project starts without anyone confirming it".
+/// because each is compared across three projects and a typo in any of them is not a compile error —
+/// it is a stage that silently never advances, or one that advances when it should not.
 public static class StageStatus
 {
     public const string Pending = "pending";
@@ -23,16 +24,15 @@ public static class StageStatus
     // irreversible acts (the compliance-package export, POST /orders) refuse over an unsigned gate or a
     // provisional dosing. NoParkStatusesTests fails the build if a park constant reappears here.
 
-    /// Intake only. The project EXISTS and its dossier is written, but no agent has run and none will
-    /// until POST /projects/{id}/start flips this to Pending. This constant is the line between
-    /// "the agent created something" and "the analysis is running" — see design §2.3.
-    public const string AwaitingConfirmation = "awaiting-confirmation";
+    // `awaiting-confirmation` is deleted too. The line between "the agent created something" and "the
+    // analysis is running" is now ProjectDoc.AnalysisStartedAt — a project-level fact, not a stage status,
+    // because a stage status should only ever answer "did this stage's agent run".
 }
 
 public sealed class StageState
 {
-    /// See <see cref="StageStatus"/> for the named constants (pending, running, the three awaiting-*
-    /// park states, failed, needs-review, done, awaiting-confirmation); this stays a plain string
+    /// See <see cref="StageStatus"/> for the named constants (pending, running, failed, needs-review,
+    /// done); this stays a plain string
     /// because that is what is on the wire and in Cosmos.
     public string Status { get; set; } = StageStatus.Pending;
     public int Attempts { get; set; }
@@ -50,15 +50,37 @@ public sealed class ProjectDoc
     public Dictionary<string, StageState> Stages { get; set; } = new();
     public string CreatedAt { get; set; } = "";
 
-    /// `intakeStatus` DEFAULTS to Pending — i.e. writing the doc dispatches intake, exactly as before.
-    /// Only the interview agent passes AwaitingConfirmation, because it is the only caller that is a
-    /// language model. Every existing caller (POST /projects with a full payload, tools/Smx.Eval, the
-    /// backend tests) is unchanged by construction.
+    /// WHEN THE OPERATOR AUTHORISED THE ANALYSIS. Null until POST /projects/{id}/start.
+    ///
+    /// This is the whole of "the agent may create a project, only the operator may start one" (design
+    /// §2.3), and it is a PROJECT-LEVEL FACT rather than a stage status on purpose. It used to be
+    /// `awaiting-confirmation` on the intake stage, which conflated two different things: whether intake
+    /// had run, and whether the operator had authorised anything. Intake is now transcription of what the
+    /// operator just dictated in the interview — it runs at creation, during "Setting up the project…" —
+    /// so the stage status can go back to meaning only "did this stage's agent run".
+    ///
+    /// PipelineRunner reads it to stop a pass after intake: everything downstream of intake is real
+    /// analysis, and none of it starts until this is set. The signature therefore moves from BEFORE the
+    /// operator has seen anything the agent produced to AFTER they have read the brief.
+    ///
+    /// Serialized even when null ([JsonIgnore(Never)]) so the UI reads "not started" off the wire rather
+    /// than inferring it from an absent key.
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? AnalysisStartedAt { get; set; }
+
+    /// `analysisStarted` DEFAULTS to true — i.e. writing the doc makes the project runnable, exactly as
+    /// before. Only the INTERVIEW AGENT passes false, because it is the only caller that is a language
+    /// model; every other caller (POST /projects with a full payload, tools/Smx.Eval, the backend tests)
+    /// is a human or a harness explicitly asking for a run, and is unchanged by construction.
+    ///
+    /// This is the same seam the old `intakeStatus: AwaitingConfirmation` argument was, moved onto the
+    /// project where it belongs. `intakeStatus` survives so a test can still seed a project mid-journey.
     public static ProjectDoc Create(string projectId, string client, string product, JsonElement payload,
-        string intakeStatus = StageStatus.Pending) => new()
+        string intakeStatus = StageStatus.Pending, bool analysisStarted = true) => new()
     {
         Id = projectId, ProjectId = projectId, Client = client, Product = product,
         Payload = payload.Clone(),
+        AnalysisStartedAt = analysisStarted ? DateTimeOffset.UtcNow.ToString("O") : null,
         Stages = new()
         {
             [Records.Stages.Intake] = new StageState { Status = intakeStatus },
