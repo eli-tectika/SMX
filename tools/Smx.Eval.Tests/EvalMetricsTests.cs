@@ -130,8 +130,8 @@ public class EvalMetricsTests
                 Rows:
                 [
                     new DecisionRow("cas-zr", "Zr", Determinations.Recommended, 110.0,
-                        new ClearedCriteria(regulatoryCleared, Dosing: true, Cost: true),
-                        new TraceRefs("p|verdict|cas-zr|bottle", "p|dosing", "p|cost")),
+                        new ClearedCriteria(regulatoryCleared, Dosing: true, Availability: true),
+                        new TraceRefs("p|verdict|cas-zr|bottle", "p|dosing")),
                 ],
                 ProposedCode: new ProposedCode(confirmedCode, ["cas-zr", "cas-y"], "agent pick"),
                 ConfirmedCode: confirmedCode, ConfirmedBy: "VP R&D", ConfirmedReason: "reviewed"),
