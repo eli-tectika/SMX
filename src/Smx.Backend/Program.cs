@@ -113,6 +113,7 @@ app.MapThreadEndpoints();
 app.MapKnowledgeEndpoints();
 app.MapDocumentEndpoints();
 app.MapDosingEndpoints();
+app.MapTableEndpoints();
 app.MapIntakeSessionEndpoints();
 // The interview's streaming turn. Served HERE, in the same process as the agent that answers it — it used
 // to be an SSE relay from this app to a second one, and the relay existed for no other reason.

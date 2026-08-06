@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Smx.Domain.Records;
 
 namespace Smx.Domain;
@@ -30,11 +31,21 @@ public sealed record OutcomeCells(string? InCode, bool Ordered);
 ///
 /// A null group means the phase produced nothing for this row — and <see cref="StoppedAt"/> is what says
 /// WHY. See <see cref="ProjectTable"/> for the distinction that matters.
+///
+/// EVERY NULLABLE MEMBER IS SERIALIZED EVEN WHEN NULL. `Json.Options` omits nulls globally, which would put
+/// the client in the position of inferring "this phase has not run" from a key that simply is not there —
+/// indistinguishable, on the wire, from a field this build has never heard of or a deploy skew. The whole
+/// point of this type is that absence carries meaning, so the absence has to be explicit. Same reasoning as
+/// `DosingDoc.Provisional` and `GateDoc.ApprovedBy`, and the same failure mode if it is dropped: the quiet
+/// reading of a loud fact.
 public sealed record TableRow(
     string ComponentId, string Cas, string Element, string Form,
-    DiscoveryCells? Discovery, RegulatoryCells? Regulatory,
-    DosingCells? Dosing, OutcomeCells? Outcome,
-    string? StoppedAt, string? StoppedReason);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] DiscoveryCells? Discovery,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] RegulatoryCells? Regulatory,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] DosingCells? Dosing,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] OutcomeCells? Outcome,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? StoppedAt,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? StoppedReason);
 
 /// The whole project record as ONE table, keyed on (component, CAS).
 ///
