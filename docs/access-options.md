@@ -5,8 +5,10 @@
 Who this is for: anyone deciding how the 5–10 external experts get to the SMX web app. It assumes no
 networking background and explains the terms as it goes.
 
-Companion doc: [`restrict-webapp-access.md`](restrict-webapp-access.md) — the step-by-step for restricting
-*which* people, once the how-do-they-connect question below is settled.
+Companion docs: [`restrict-webapp-access.md`](restrict-webapp-access.md) — the step-by-step for restricting
+*which* people, once the how-do-they-connect question below is settled; and
+[`app-url-options.md`](app-url-options.md) — how the app gets a name instead of `10.0.0.10`, which resolves
+the "hostname + certificate: unresolved" cell in §5 and is the prerequisite for the app's own sign-in.
 
 ---
 
