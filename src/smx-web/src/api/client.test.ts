@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ApiError,
   NotFound,
-  approveRegulatory,
   createProject,
   getCandidates,
   getChatThread,
@@ -12,7 +11,6 @@ import {
   getDosing,
   getMatrix,
   getProject,
-  getRegulatoryGate,
   getRevisions,
   getVpGate,
   listProjects,
@@ -251,64 +249,16 @@ describe('reviewEvidence', () => {
   });
 });
 
-describe('getRegulatoryGate', () => {
-  it('returns the projected gate state', async () => {
-    const gate = { status: 'locked', armable: false, blockers: ['unreviewed: x|c (Fail)'] };
-    stubFetch(() => json(gate));
-    await expect(getRegulatoryGate('p1')).resolves.toEqual(gate);
-  });
-});
-
-describe('regulatory gate signer', () => {
-  /**
-   * Three states, and the third is the one that matters: an approved gate with no recorded
-   * signer is UNKNOWN provenance. Defaulting it to "operator" would launder every gate that
-   * REGULATORY_AUTO_APPROVE signed before the field existed into a human determination.
-   */
-  it('carries a null signer through as null', async () => {
-    stubFetch(() => json({ status: 'approved', armable: true, blockers: [], approvedBy: null }));
-    const gate = await getRegulatoryGate('p1');
-    expect(gate.approvedBy).toBeNull();
-  });
-
-  it('carries a machine signature through as a machine signature', async () => {
-    stubFetch(() =>
-      json({ status: 'approved', armable: true, blockers: [], approvedBy: 'auto-approve' }),
-    );
-    const gate = await getRegulatoryGate('p1');
-    expect(gate.approvedBy).toBe('auto-approve');
-  });
-
-  /**
-   * The key absent entirely — an older API build, or a deploy where the two apps have skewed.
-   * `getRegulatoryGate` casts the response with no runtime validation, so this state is real and
-   * must survive the fetch wrapper unchanged. It means the same thing as null: not a human.
-   */
-  it('leaves an absent signer absent rather than inventing null', async () => {
-    stubFetch(() => json({ status: 'approved', armable: true, blockers: [] }));
-    const gate = await getRegulatoryGate('p1');
-    expect(gate.approvedBy).toBeUndefined();
-  });
-});
-
-describe('approveRegulatory', () => {
-  it('POSTs to the approve endpoint and returns the approved status', async () => {
-    let seen: { url: string; init?: RequestInit } | undefined;
-    stubFetch((url, init) => {
-      seen = { url, init };
-      return json({ status: 'approved' });
-    });
-    await expect(approveRegulatory('p1')).resolves.toEqual({ status: 'approved' });
-    expect(seen?.url).toBe('/api/projects/p1/regulatory/approve');
-    expect(seen?.init?.method).toBe('POST');
-  });
-
-  it('throws an ApiError carrying the server message when the gate is not armable (422)', async () => {
-    stubFetch(() => json({ error: 'gate not armable — open the flagged items first', blockers: [] }, 422));
-    await expect(approveRegulatory('p1')).rejects.toThrow('gate not armable');
-    await expect(approveRegulatory('p1')).rejects.toBeInstanceOf(ApiError);
-  });
-});
+/*
+ * `getRegulatoryGate` and `approveRegulatory` had three describes here — the projected gate, the
+ * three-state signer fold, and the 422 on an unarmed gate.
+ *
+ * Both endpoints are DELETED (spec §16.4): the regulatory gate is removed, not demoted, so there is
+ * nothing left to fetch or sign. The property those tests protected — that an approved gate with no
+ * recorded signer reads as UNKNOWN provenance and never as a person — is not dropped: it is asserted
+ * on the ONE gate that survives, in Signoff.test.tsx, which is now the only signature in the product
+ * and therefore the only place the fold can go wrong.
+ */
 
 describe('sendChatMessage', () => {
   it('POSTs the text to the stage chat endpoint and returns the 202 body', async () => {

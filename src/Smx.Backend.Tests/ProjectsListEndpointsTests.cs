@@ -43,8 +43,8 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
         await _store.UpsertProjectAsync(Project("proj-newer", "Globex", "Serum label", "2026-07-16T09:00:00.0000000+00:00"));
         await _store.UpsertGateAsync(new GateDoc
         {
-            Id = RecordIds.Gate("proj-older", GateTypes.Regulatory), ProjectId = "proj-older",
-            GateType = GateTypes.Regulatory, Status = "approved",
+            Id = RecordIds.Gate("proj-older", GateTypes.Vp), ProjectId = "proj-older",
+            GateType = GateTypes.Vp, Status = "approved",
             ApprovedAt = "2026-07-15T12:00:00.0000000+00:00",
         });
 
@@ -63,12 +63,14 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
         Assert.Equal("pending", arr[0].GetProperty("stages").GetProperty("intake").GetProperty("status").GetString());
         Assert.Equal("pending", arr[1].GetProperty("stages").GetProperty("decision").GetProperty("status").GetString());
 
-        // The gated project reports its signed gate; everywhere a gate is absent the key is an EXPLICIT
-        // null — "no gate yet" must be a value the frontend can read, not a missing field it has to infer.
-        Assert.Equal("approved", arr[1].GetProperty("gates").GetProperty("regulatory").GetString());
-        Assert.Equal(JsonValueKind.Null, arr[0].GetProperty("gates").GetProperty("regulatory").ValueKind);
+        // The gated project reports its signed gate; where the gate is absent the key is an EXPLICIT null —
+        // "no gate yet" must be a value the frontend can read, not a missing field it has to infer.
+        Assert.Equal("approved", arr[1].GetProperty("gates").GetProperty("vp").GetString());
         Assert.Equal(JsonValueKind.Null, arr[0].GetProperty("gates").GetProperty("vp").ValueKind);
-        Assert.Equal(JsonValueKind.Null, arr[1].GetProperty("gates").GetProperty("vp").ValueKind);
+
+        // ONE entry. The regulatory key went with its gate (§16.4), and a row that still carried it would
+        // hand the frontend a second signature to render that nothing can ever sign.
+        Assert.Equal(1, arr[0].GetProperty("gates").EnumerateObject().Count());
     }
 
     [Fact]
@@ -160,11 +162,6 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
         p.Stages[Stages.Dosing].Error = "no batch mass for 'bottle'";
         p.Stages[Stages.Decision].Status = StageStatus.Done;
         await _store.UpsertProjectAsync(p);
-        await _store.UpsertGateAsync(new GateDoc
-        {
-            Id = RecordIds.Gate("proj-dash", GateTypes.Regulatory), ProjectId = "proj-dash",
-            GateType = GateTypes.Regulatory, Status = "approved", ApprovedAt = "2026-07-16T00:00:00.0000000+00:00",
-        });
         await _store.UpsertDecisionAsync(new DecisionDoc
         {
             Id = RecordIds.Decision("proj-dash"), ProjectId = "proj-dash", GeneratedAt = "t",
@@ -198,9 +195,9 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
         Assert.Equal("no batch mass for 'bottle'", dosing.Value.GetProperty("detail").GetString());
         Assert.Null(Find(stopped, "stage", "decision"));   // a finished proposal is not a stall
 
-        // needsSigning: the regulatory gate is APPROVED — signed gates don't need signing — so only the
-        // vp entry appears, with armable/blockers from the REAL predicate (VpGate.Armable: approved
-        // regulatory gate + a decision proposing a code for every component ⇒ armable, no blockers).
+        // needsSigning: EXACTLY ONE entry, always — the VP's is the only signature there is (§16.4). Its
+        // armable/blockers come from the REAL predicates (VpGate.Armable + EvidenceReview.Outstanding: a
+        // decision proposing a code for every component, no unopened flagged verdict ⇒ armable, no blockers).
         var signing = dash.GetProperty("needsSigning");
         Assert.Equal(1, signing.GetArrayLength());
         Assert.Equal("vp", signing[0].GetProperty("gate").GetString());
@@ -211,18 +208,13 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
     [Fact]
     public async Task Dashboard_VpEntry_IsNotArmable_WhenCandidatesAreAbsent()
     {
-        // The dashboard must never advertise a gate the POST would refuse: with an approved regulatory
-        // gate and a proposing decision but NO candidates on file, POST …/decision/determination 422s
-        // "no candidates on file" — so the vp card must say NOT armable, with that same blocker. This is
-        // the identical asymmetry Task 13 closed on GET /gate/vp; the dashboard mirrors it.
+        // The dashboard must never advertise a gate the POST would refuse: with a proposing decision but
+        // NO candidates on file, POST …/decision/determination 422s "no candidates on file" — so the vp
+        // card must say NOT armable, with that same blocker. This is the identical asymmetry Task 13 closed
+        // on GET /gate/vp; the dashboard mirrors it.
         var p = Project("proj-dash-nocand", "Acme", "Bottle", "2026-07-16T09:00:00.0000000+00:00");
         p.Stages[Stages.Decision].Status = "awaiting-VP";
         await _store.UpsertProjectAsync(p);
-        await _store.UpsertGateAsync(new GateDoc
-        {
-            Id = RecordIds.Gate("proj-dash-nocand", GateTypes.Regulatory), ProjectId = "proj-dash-nocand",
-            GateType = GateTypes.Regulatory, Status = "approved", ApprovedAt = "2026-07-16T00:00:00.0000000+00:00",
-        });
         await _store.UpsertDecisionAsync(new DecisionDoc
         {
             Id = RecordIds.Decision("proj-dash-nocand"), ProjectId = "proj-dash-nocand", GeneratedAt = "t",
@@ -248,11 +240,6 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
         var p = Project("proj-dash-repick", "Acme", "Bottle", "2026-07-16T09:00:00.0000000+00:00");
         p.Stages[Stages.Decision].Status = "pending";   // mid-re-pick
         await _store.UpsertProjectAsync(p);
-        await _store.UpsertGateAsync(new GateDoc
-        {
-            Id = RecordIds.Gate("proj-dash-repick", GateTypes.Regulatory), ProjectId = "proj-dash-repick",
-            GateType = GateTypes.Regulatory, Status = "approved", ApprovedAt = "2026-07-16T00:00:00.0000000+00:00",
-        });
         // Everything ELSE armable — the stale DecisionDoc proposes, the live analysis is covered — so the
         // park blocker is the ONLY thing standing, and a dropped mirror would flip armable to true.
         await _store.UpsertDecisionAsync(new DecisionDoc
@@ -291,11 +278,6 @@ public class ProjectsListEndpointsTests : IClassFixture<WebApplicationFactory<Pr
         var p = Project("proj-dash-pendrev", "Acme", "Bottle", "2026-07-16T09:00:00.0000000+00:00");
         p.Stages[Stages.Decision].Status = "awaiting-VP";
         await _store.UpsertProjectAsync(p);
-        await _store.UpsertGateAsync(new GateDoc
-        {
-            Id = RecordIds.Gate("proj-dash-pendrev", GateTypes.Regulatory), ProjectId = "proj-dash-pendrev",
-            GateType = GateTypes.Regulatory, Status = "approved", ApprovedAt = "2026-07-16T00:00:00.0000000+00:00",
-        });
         // Everything ELSE armable, so the pending revision is the ONLY blocker standing.
         await _store.UpsertDecisionAsync(new DecisionDoc
         {

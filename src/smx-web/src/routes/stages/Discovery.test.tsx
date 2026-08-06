@@ -156,4 +156,35 @@ describe('Discovery — the Discovery column group of the one project table', ()
     fireEvent.click(screen.getAllByRole('button', { name: /Revise Y oxide in chat/ })[0]);
     expect(screen.getByText(/agent column is closed/i)).toBeInTheDocument();
   });
+  /**
+   * THE FOUR-COLUMN SHAPE, and the missing fifth is the point: `DiscoveryCells` carries no
+   * confidence, and the tier IS Discovery's strength ordering. Folding a tier into a percentage
+   * would invent a number the record never computed — the one thing the confidence cell may not do.
+   */
+  it('renders the discovery group as Material / State / Why / Sources, with no Confidence', async () => {
+    view();
+    // Scoped to the first component's table: candidates are per-component tracks, so a project with
+    // two components renders two tables and a document-wide query proves nothing about either.
+    await waitFor(() => expect(document.querySelector('.mx__cols')).toBeInTheDocument());
+    const first = document.querySelectorAll('table.mx')[0];
+    const heads = [...first.querySelectorAll('.mx__cols th')].map(
+      (h) => h.textContent,
+    );
+    expect(heads).toEqual(['Material', 'State in this phase', 'Why', 'Sources', '']);
+    expect(heads).not.toContain('Confidence');
+  });
+
+  /** The band names the phase in TEXT; the tint reinforces it and never carries it alone. */
+  it('bands the column group with the phase name', async () => {
+    view();
+    await waitFor(() => expect(document.querySelector('.mx__groups')).toBeInTheDocument());
+    const band = [...document.querySelectorAll('table.mx')[0].querySelectorAll('.mx__groups th')];
+    expect(band.map((b) => b.getAttribute('data-group'))).toEqual([
+      'identity',
+      'discovery',
+      'actions',
+    ]);
+    expect(band[1].textContent).toBe('Discovery');
+    expect(band[1].getAttribute('colspan')).toBe('3');
+  });
 });

@@ -25,7 +25,7 @@ public class AmendmentEndpointsTests : IClassFixture<WebApplicationFactory<Progr
         _client = factory.WithWebHostBuilder(b => b.ConfigureServices(s =>
             s.AddSingleton<IRecordStore>(_store))).CreateClient();
 
-    private async Task SeedAsync(bool regulatorySigned = false)
+    private async Task SeedAsync(bool vpSigned = false)
     {
         var p = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
         foreach (var s in Stages.All) p.Stages[s].Status = StageStatus.Done;
@@ -35,11 +35,11 @@ public class AmendmentEndpointsTests : IClassFixture<WebApplicationFactory<Progr
             Id = RecordIds.Constraints(P), ProjectId = P,
             Components = [new("bottle", "PET", "food contact", ["EU"], "brand protection", 250.0)],
         });
-        if (regulatorySigned)
+        if (vpSigned)
             await _store.UpsertGateAsync(new GateDoc
             {
-                Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P,
-                GateType = GateTypes.Regulatory, Status = "approved",
+                Id = RecordIds.Gate(P, GateTypes.Vp), ProjectId = P,
+                GateType = GateTypes.Vp, Status = "approved",
                 ApprovedAt = "2026-08-01T00:00:00.0000000+00:00", ApprovedBy = "operator",
             });
     }
@@ -90,48 +90,63 @@ public class AmendmentEndpointsTests : IClassFixture<WebApplicationFactory<Progr
     [Fact]
     public async Task Amend_ABatchMass_TouchesDosingOnly_AndLeavesRegulatoryAlone()
     {
-        await SeedAsync(regulatorySigned: true);
+        // UNSIGNED, and that is now the only way to get here without a confirmation prompt. This test used
+        // to seed a signed REGULATORY gate and prove that a batch-mass amendment did not disturb it — the
+        // narrow scope stopped short of Regulatory. With that gate deleted (§16.4) the only signature left
+        // is the VP's, and EVERY entry in RerunScope.Map ends at Decision, so any amendment on a SIGNED
+        // project now prompts. The scope discrimination is still real and still asserted below (Regulatory
+        // and Discovery are untouched); what it can no longer discriminate is which signature is at risk.
+        await SeedAsync();
 
         var res = await AmendAsync("batchMassKg", "500");
 
-        // NO confirmation needed: the scope does not reach Regulatory, so the R.E.'s signature is not at
-        // risk. A prompt here would be crying wolf, and a prompt that cries wolf gets clicked through.
         Assert.Equal(HttpStatusCode.Accepted, res.StatusCode);
-        Assert.Equal("approved", (await _store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
 
         var stages = (await _store.GetProjectAsync(P))!.Stages;
         Assert.Equal(StageStatus.Pending, stages[Stages.Dosing].Status);
         Assert.Equal(StageStatus.Done, stages[Stages.Regulatory].Status);
+        Assert.Equal(StageStatus.Done, stages[Stages.Discovery].Status);
+    }
+
+    [Fact]
+    public async Task Amend_NeedsNoConfirmation_WhenNothingIsSigned()
+    {
+        // "Nothing waits" is the default (spec §9.4): an unsigned project amends and re-runs with no
+        // interruption at all. The prompt is the exception, and it has to stay rare to keep meaning
+        // anything — a prompt that cries wolf is one the operator learns to click through.
+        await SeedAsync();
+
+        Assert.Equal(HttpStatusCode.Accepted, (await AmendAsync("markets", "EU, JP")).StatusCode);
     }
 
     [Fact]
     public async Task Amend_RefusesWithoutConfirmation_WhenItWouldVoidASignature()
     {
-        await SeedAsync(regulatorySigned: true);
+        await SeedAsync(vpSigned: true);
 
         var res = await AmendAsync("markets", "EU, JP");
 
         Assert.Equal(HttpStatusCode.Conflict, res.StatusCode);
         var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Contains(GateTypes.Regulatory,
+        Assert.Contains(GateTypes.Vp,
             body.GetProperty("voids").EnumerateArray().Select(e => e.GetString()));
 
         // NOTHING was written: the constraints, the gate and the stages all stand.
         Assert.Equal(["EU"], Assert.Single((await _store.GetConstraintsAsync(P))!.Components).Markets);
-        Assert.Equal("approved", (await _store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
+        Assert.Equal("approved", (await _store.GetGateAsync(P, GateTypes.Vp))!.Status);
         Assert.Empty((await _store.GetProjectAsync(P))!.Amendments);
     }
 
     [Fact]
     public async Task Amend_WithConfirmation_VoidsTheSignatureAsAPair_AndRecordsThat()
     {
-        await SeedAsync(regulatorySigned: true);
+        await SeedAsync(vpSigned: true);
 
         var res = await AmendAsync("markets", "EU, JP", confirm: true);
 
         Assert.Equal(HttpStatusCode.Accepted, res.StatusCode);
 
-        var gate = (await _store.GetGateAsync(P, GateTypes.Regulatory))!;
+        var gate = (await _store.GetGateAsync(P, GateTypes.Vp))!;
         Assert.Equal("locked", gate.Status);
         // The PAIR moves together. A locked gate still carrying a signer reports
         // {status:"locked", approvedBy:"operator"} -- which a screen that renders the signer whenever it is
@@ -140,7 +155,7 @@ public class AmendmentEndpointsTests : IClassFixture<WebApplicationFactory<Progr
         Assert.Null(gate.ApprovedBy);
 
         var log = Assert.Single((await _store.GetProjectAsync(P))!.Amendments);
-        Assert.Contains(GateTypes.Regulatory, log.VoidedSignatures);
+        Assert.Contains(GateTypes.Vp, log.VoidedSignatures);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
+using Smx.Domain;
 using Smx.Domain.Records;
 using Smx.Domain.Tests.Fakes;
 using Smx.Backend.Agents;
@@ -41,10 +42,13 @@ public class RevisionDispatchTests
             throw new InvalidOperationException(message);
     }
 
-    /// A project driven all the way through Regulatory and SIGNED: the operator opened the one verdict,
-    /// ruled on it, and approved the regulatory gate — so the gate is `approved` and the Regulatory stage
-    /// has reached `done`. This is precisely the state in which a revision is dangerous, because
-    /// TryAssembleAsync will not lower a stage that already reached `done`.
+    /// A project driven all the way through Regulatory with the operator's ruling on file: they opened the
+    /// one verdict and recommended it, and the Regulatory stage has reached `done`. This is precisely the
+    /// state in which a revision is dangerous, because TryAssembleAsync will not lower a stage that already
+    /// reached `done` — so a revision's fresh, unreviewed output can land under a stage that reads finished.
+    ///
+    /// It used to sign a regulatory gate here too. That gate is gone (§16.4); what carries the danger is the
+    /// VERDICT's own EvidenceReviewed flag, which the Regulatory revision test below pins.
     private static async Task SeedApprovedAsync(PipelineRunner d, InMemoryRecordStore store)
     {
         var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
@@ -55,13 +59,6 @@ public class RevisionDispatchTests
         verdict.EvidenceReviewed = true;
         verdict.Determination = Determinations.Recommended;
         await store.UpsertVerdictAsync(verdict);
-
-        await store.UpsertGateAsync(new GateDoc
-        {
-            Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
-            Status = "approved", ApprovedAt = "2026-07-13T09:00:00.0000000+00:00", ApprovedBy = "operator",
-        });
-        await d.OnGateAsync((await store.GetGateAsync(P, GateTypes.Regulatory))!, default);
 
         Assert.Equal("done", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
     }
@@ -80,25 +77,15 @@ public class RevisionDispatchTests
     private static CandidateSubstance Substance(string tier, string form = "neodecanoate", string cas = "cas-zr") =>
         new("bottle", "Zr", form, cas, null, null, true, tier, "revised", [new Citation("catalog", "ref-catalog/x", "t")]);
 
-    [Fact]
-    public async Task Revise_VoidsAnApprovedRegulatoryGate_AndReopensTheStage()
-    {
-        // THE false-pass regression. A gate is the operator's signature over a SPECIFIC analysis. The
-        // revision re-runs the agent and produces brand-new, UNREVIEWED output — so the signature no longer
-        // covers what it appears to cover. Left standing, an approved gate + a `done` Regulatory stage would
-        // silently absorb verdicts the operator never saw (TryAssembleAsync refuses to lower a `done` stage).
-        // Void the signature and make them sign again. That friction IS the feature.
-        var (d, store, _, _) = Sut();
-        await SeedApprovedAsync(d, store);
-
-        await d.OnRevisionAsync(Revision(Stages.Discovery, "Zr overlaps the Ti K-beta line in this matrix"), default);
-
-        var gate = (await store.GetGateAsync(P, GateTypes.Regulatory))!;
-        Assert.Equal("locked", gate.Status);
-        Assert.Null(gate.ApprovedAt);
-        Assert.Null(gate.ApprovedBy);
-        Assert.Equal("done", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
-    }
+    // Revise_VoidsAnApprovedRegulatoryGate_AndReopensTheStage was here. Its subject — the R.E.'s signature
+    // being voided by a revision — is gone with the gate (§16.4), and there is no signature left for a
+    // revision to void: ThrowIfClosedAsync refuses every revision on a project whose VP gate is approved
+    // (ARevision_AfterClose_IsRefused, DecisionRevisionTests).
+    //
+    // The false pass it guarded — a `done` Regulatory stage silently absorbing verdicts the operator never
+    // saw — is NOT unguarded. It moved onto the verdict itself, and
+    // Revise_Regulatory_ClearsTheOperatorsReviewOnTheReRunVerdict below now asserts the whole chain:
+    // the re-run verdict comes back unreviewed, and EvidenceReview.Outstanding names it.
 
     [Fact]
     public async Task Revise_Discovery_ReRunsTheAgentWithTheRevision_AndReplacesTheCandidates()
@@ -139,8 +126,11 @@ public class RevisionDispatchTests
     public async Task Revise_Regulatory_ClearsTheOperatorsReviewOnTheReRunVerdict()
     {
         // A fresh verdict is fresh EVIDENCE. The operator's prior ruling ("recommended", evidence reviewed)
-        // was made against the verdict this one replaces, so it cannot carry over — RegulatoryGate.Armable
-        // must block the gate until the operator opens this item again.
+        // was made against the verdict this one replaces, so it cannot carry over.
+        //
+        // THIS IS WHAT REPLACED THE DELETED GATE-VOIDING STEP, and the last assertion is the load-bearing
+        // one: clearing the flag would be pointless bookkeeping if nothing read it. EvidenceReview.Outstanding
+        // reads it, and refuses the VP signature and POST /orders until the operator opens this item again.
         var (d, store, agents, knowledge) = Sut();
         await SeedApprovedAsync(d, store);
         var before = (await store.GetVerdictsAsync(P))[0];
@@ -170,6 +160,12 @@ public class RevisionDispatchTests
         Assert.Null(after.Determination);
         Assert.Null(after.DeterminationReason);
         Assert.Equal(VerdictStatus.Conditional, after.Overall);
+
+        // ...and the cleared flag actually BLOCKS something: the re-run verdict is a live non-Pass nobody
+        // has opened, so the irreversible acts refuse over it by name.
+        var unopened = EvidenceReview.Outstanding(
+            (await store.GetCandidatesAsync(P))!, await store.GetVerdictsAsync(P));
+        Assert.Contains("cas-zr", Assert.Single(unopened));
 
         // Kind is CODE-derived from the stage, never the agent's: a regulatory revision is filed as a
         // regulatory judgment, where a regulatory reader will actually look for it.
@@ -272,12 +268,10 @@ public class RevisionDispatchTests
         Assert.Empty(await knowledge.QueryLearnedConclusionsAsync(null));
         Assert.Equal(0, agents.ConclusionCalls);
 
-        // The prior analysis is untouched — and so, therefore, is the signature over it. The gate is voided
-        // only when the output it covers is actually REPLACED.
+        // The prior analysis is untouched.
         var substance = Assert.Single((await store.GetCandidatesAsync(P))!.Substances);
         Assert.Equal("A", substance.Tier);
         Assert.Equal("neodecanoate", substance.Form);
-        Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
         Assert.Equal("done", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
     }
 
@@ -334,68 +328,26 @@ public class RevisionDispatchTests
         var substance = Assert.Single((await store.GetCandidatesAsync(P))!.Substances);
         Assert.Equal("A", substance.Tier);                    // NOT the "C" the re-run produced
         Assert.Equal("neodecanoate", substance.Form);
-        // ...the operator's signature still stands over the analysis it was actually taken over...
-        Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
+        // ...the stage still stands over the analysis it actually describes...
         Assert.Equal("done", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
         // ...and nothing was half-learned. A `failed` revision the operator can simply re-issue.
         Assert.Empty(await knowledge.QueryLearnedConclusionsAsync(null));
     }
 
-    /// A project screened through Regulatory and SIGNED, but whose stage has not yet been promoted to `done`
-    /// — the state POST /regulatory/approve leaves behind between writing the gate and the change feed
-    /// delivering it. This is the window in which a fresh verdict can arrive under an existing signature.
-    private static async Task SeedSignedButNotYetPromotedAsync(PipelineRunner d, InMemoryRecordStore store)
-    {
-        var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
-        await store.UpsertProjectAsync(project);
-        await d.RunAsync(P, default);
-        await store.UpsertGateAsync(new GateDoc
-        {
-            Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
-            Status = "approved", ApprovedAt = "2026-07-13T09:00:00.0000000+00:00",
-        });
-        Assert.Equal("done", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
-    }
-
-    [Fact]
-    public async Task Assemble_RefusesToPromoteRegulatoryToDone_WhenTheApprovedGateNoLongerCoversTheVerdicts()
-    {
-        // THE headline false pass. A GateDoc carries no verdict-set hash and no signed-at watermark, so an
-        // `approved` status is not by itself proof that the CURRENT analysis was reviewed. The only thing
-        // standing between an old signature and a brand-new unreviewed verdict was the ordering inside
-        // ReviseRegulatoryAsync (void the gate, then upsert) — a single guard with nothing behind it, and a
-        // real window: an operator POST /regulatory/approve landing between the two writes sees the OLD
-        // reviewed verdict, arms, signs — and then the new unreviewed verdict arrives and TryAssembleAsync
-        // reads `approved` and marks Regulatory `done`. Over a verdict nobody ever looked at.
-        var (d, store, _, _) = Sut();
-        await SeedSignedButNotYetPromotedAsync(d, store);
-
-        // A fresh, unreviewed, FAILING verdict lands on the live cell under the existing signature.
-        var live = (await store.GetVerdictsAsync(P))[0];
-        await store.UpsertVerdictAsync(new VerdictDoc
-        {
-            Id = live.Id, ProjectId = P, Cas = live.Cas, ComponentId = live.ComponentId,
-            Element = live.Element, Form = live.Form,
-            Dimensions = [new("ElementGate", VerdictStatus.Fail,
-                [new Citation("regulatory", "reach-annex-xvii", "t")], 0.9, "restricted in food contact")],
-        });
-        await d.RunAsync(P, default);
-
-        Assert.Equal("done", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
-    }
-
-    [Fact]
-    public async Task Assemble_PromotesRegulatoryToDone_WhenTheApprovedGateStillCoversTheVerdicts()
-    {
-        // ...and the defense must not cost us the ordinary path: an approved gate over a verdict set that is
-        // still armable promotes the stage exactly as before.
-        var (d, store, _, _) = Sut();
-        await SeedSignedButNotYetPromotedAsync(d, store);   // the seeded verdict is a clean Pass ⇒ armable
-
-        await d.RunAsync(P, default);
-
-        Assert.Equal("done", (await store.GetProjectAsync(P))!.Stages[Stages.Regulatory].Status);
-    }
+    // THREE MEMBERS LIVED HERE and all three are deleted:
+    //   SeedSignedButNotYetPromotedAsync
+    //   Assemble_RefusesToPromoteRegulatoryToDone_WhenTheApprovedGateNoLongerCoversTheVerdicts
+    //   Assemble_PromotesRegulatoryToDone_WhenTheApprovedGateStillCoversTheVerdicts
+    //
+    // They asserted that the matrix pass DERIVED the Regulatory stage's status from the gate record plus its
+    // arming predicate. That derivation was already gone before this change (execution-core §8 made the
+    // stage say only "the agent ran"), and both tests had degenerated to asserting `done` on both sides of
+    // their own premise — they could no longer fail for the reason they were named after. §16.4 removed the
+    // gate they read, so there is nothing left to rewrite them onto.
+    //
+    // The false pass they were written for — a fresh unreviewed FAILING verdict landing under an existing
+    // approval — is asserted where it now bites: OrderPreconditionTests
+    // .ALateUnreviewedFailingVerdict_RefusesTheOrder, and the same check on POST /decision/determination.
 
     [Fact]
     public void Router_RoutesARevisionDoc()

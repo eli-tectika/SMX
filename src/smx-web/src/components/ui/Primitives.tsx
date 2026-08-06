@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { documentName } from '../../domain/documentName';
 import { Data } from './Data';
 
 /** Card. A hairline border and a surface change on hover. Paper, not a game tile — it does
@@ -161,7 +162,27 @@ export function BarRow({
   );
 }
 
-/** A citation. Every verdict must trace to one; a dimension without one is a defect. */
+/**
+ * A citation. Every verdict must trace to one; a dimension without one is a defect.
+ *
+ * TWO KINDS OF THING, not one thing in two moods (spec §16.5):
+ *
+ *   WITH a decodable `documentId` — `search_regulatory` or `search_sds` retrieved the chunk from a
+ *   document we hold, so the chip shows that document's FILE NAME and opens it. Not the id
+ *   (base64url, unreadable, unbounded in a table cell) and not `reference`, which is free text.
+ *
+ *   WITHOUT one — a plain label. `.cite` carries no border, no hover and no cursor change, because
+ *   this state is PERMANENT for most citations rather than a gap someone will close: only those two
+ *   tools can mint an id, so every Discovery and pool citation — reference spreadsheets, learned
+ *   conclusions, Cosmos lookups, the open web — will never have one, and a Regulatory cell holds
+ *   both kinds side by side. A chip that looks pressable and is not teaches the operator to stop
+ *   pressing the ones that work.
+ *
+ * NO ID IS EVER DERIVED FROM `reference`. It would be right often enough to be trusted and wrong
+ * often enough to open the wrong regulation, and nothing on screen would say which they got. An id
+ * this build cannot decode falls to the label branch for the same reason: a link that looks live and
+ * 404s is worse than no link, because the operator only finds out after following it.
+ */
 export function CitationChip({
   source,
   reference,
@@ -174,41 +195,40 @@ export function CitationChip({
   reference: string;
   retrievedAt: string;
   snippet?: string;
-  /**
-   * Present ONLY where the citation is real. The fixture-backed screens pass nothing and the
-   * chip stays inert — linking a fabricated citation into a real document viewer would let
-   * a citation borrow authority it has not earned. `entryId` alone changes nothing: an anchor
-   * with no document to anchor into points at the wrong thing.
-   */
-  documentId?: string;
-  entryId?: string;
+  documentId?: string | null;
+  /** An anchor alone changes nothing: there is nothing to anchor into without a document. */
+  entryId?: string | null;
 }) {
-  const body = (
-    <>
-      {source} · <Data kind="code">{reference}</Data>
-      {/* The corpus sync date is the load-bearing half of a citation: a regulation
-          entry without the date it was retrieved is not a citation, it is a claim. */}
-      <span className="muted">
-        {' '}
-        · <Data kind="date">{retrievedAt.slice(0, 10)}</Data>
-      </span>
-    </>
+  /* The corpus sync date is the load-bearing half of a citation: a regulation entry without the date
+     it was retrieved is not a citation, it is a claim. It survives in both forms. */
+  const when = (
+    <span className="muted">
+      {' '}
+      · <Data kind="date">{retrievedAt.slice(0, 10)}</Data>
+    </span>
   );
 
-  if (!documentId) {
+  const name = documentName(documentId);
+
+  if (!name) {
     return (
-      <span className="src" title={snippet ?? undefined}>
-        {body}
+      <span className="cite" data-cite="label" title={snippet ?? undefined}>
+        {source} · <Data kind="code">{reference}</Data>
+        {when}
       </span>
     );
   }
 
-  const href = `/docs/${encodeURIComponent(documentId)}${
+  const href = `/docs/${encodeURIComponent(documentId!)}${
     entryId ? `?entry=${encodeURIComponent(entryId)}` : ''
   }`;
   return (
-    <Link className="src src-link" to={href} title={snippet ?? undefined}>
-      {body}
+    /* `reference` moves into the title rather than being dropped: it is the agent's own pointer into
+       the document (an article, an annex), and losing it would cost the operator the passage. */
+    <Link className="cite-open" data-cite="open" to={href} title={snippet ?? reference}>
+      <i className="ti ti-file-text" aria-hidden="true" />
+      <Data kind="code">{name}</Data>
+      {when}
     </Link>
   );
 }

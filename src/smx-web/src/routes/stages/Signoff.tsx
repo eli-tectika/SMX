@@ -6,8 +6,8 @@ import {
   getDecision,
   getDosing,
   getMsdsRegistry,
-  getRegulatoryGate,
   getVpGate,
+  matrixXlsxUrl,
   orderSubstance,
   recordVpDetermination,
 } from '../../api/client';
@@ -17,13 +17,15 @@ import type {
   DecisionRow,
   DosingDoc,
   MsdsEntry,
-  RegulatoryGate,
   VpGate as VpGateState,
 } from '../../api/types';
 import { Loading } from '../../components/Loading';
 import { Procurement, type SheetsState } from '../../components/Procurement';
 import { Data } from '../../components/ui/Data';
 import { EmptyState, SectionHeader, StatCard } from '../../components/ui/Primitives';
+import { foldConfidence } from '../../domain/confidence';
+import { LOW_CONFIDENCE } from '../../domain/matrixSummary';
+import { citationsOf, confidencesOf, useProjectTable, type ReadRow } from './projectTable';
 import type { ScreenProps } from '../ProjectLayout';
 
 /**
@@ -68,8 +70,10 @@ const compliancePackageUrl = (projectId: string) =>
  * this build has never heard of — a future `'vp'`, a typo in a seed script — must also fall to unknown
  * rather than through a default that happens to read as a person.
  *
- * `auto-approve` exists on the REGULATORY gate only, and it stays rendered as an alarm: it means no
- * human reviewed anything and the machine wrote the same fields a person's ruling writes.
+ * `auto-approve` was the REGULATORY gate's value and that gate is gone (spec §16.4). It stays in this
+ * union anyway: the fold is an ALLOW-LIST, and its whole point is that a value this build does not
+ * recognise falls to `unknown` rather than through a default that happens to read as a person. Should
+ * an auto-signer ever reach the one remaining gate, it lands loudly rather than silently.
  */
 type Signer = 'operator' | 'auto-approve' | 'unknown';
 
@@ -99,18 +103,20 @@ const traceOf = (r: DecisionRow, k: Criterion): string =>
     '') || '—';
 
 /**
- * Sign-off — BOTH signatures, each labelled with what it releases, and the procurement they gate.
+ * Sign-off — THE ONLY SIGNATURE LEFT, and therefore the only place the evidence gets read.
  *
  * A signature is a single act, not a workspace you return to, which is why this is its own screen and
- * not the tail of a phase (spec §4). Two of them exist and they release different things:
+ * not the tail of a phase (spec §4). There used to be two of them; the regulatory gate is REMOVED
+ * rather than demoted (§16.4), so the VP determination is now the sole human checkpoint before
+ * procurement.
  *
- *   Regulatory  → the compliance-package export
- *   VP R&D      → procurement, and each order is still held behind MSDS-before-order
- *
- * Both are stated here even though only one is SIGNED here: the regulatory pen lives on the Regulatory
- * screen beside the verdicts it rules on, and duplicating it would be two controls over one gate, each
- * with its own idea of what arms it. What belongs here is the status, who signed, and what is still
- * withheld — because "am I finished" is this screen's question and no stage status can answer it.
+ * THAT CHANGES WHAT THIS SCREEN OWES. Removing one gate and leaving the other blind would be worse
+ * than either choice alone, so this screen shows the EVIDENCE a judgement needs rather than a
+ * summary: which live verdicts nobody has opened, which rest on no citation at all, which the agent
+ * itself was unsure of, and which ppm windows sit on a floor nobody measured. The backend enforces
+ * the enforceable half — `EvidenceReview.Outstanding` refuses both `POST /decision/determination` and
+ * `POST /orders/{cas}` while an unopened live non-Pass verdict exists — and the list here is what
+ * turns that refusal from "not armable" into something the operator can act on.
  *
  * THE TRAP: `done` no longer means signed. The pipeline runs end to end with nobody's signature on
  * anything, so every stage can read `done` on a project whose gates are both unsigned, whose export is
@@ -134,8 +140,13 @@ export function Signoff({ project, refreshProject }: ScreenProps) {
 
   const [doc, setDoc] = useState<DecisionDoc | null>(null);
   const [vpGate, setVpGate] = useState<VpGateState | null>(null);
-  const [regGate, setRegGate] = useState<RegulatoryGate | null>(null);
   const [dosing, setDosing] = useState<DosingDoc | null>(null);
+  /*
+   * The project table, read HERE and not only on the phase screens. It is the one projection that
+   * carries every verdict's review flag, its citations, its confidence and its ppm floor — which is
+   * exactly the evidence §16.4 says this screen must show now that it is the only checkpoint.
+   */
+  const { state: table } = useProjectTable(project.projectId, status);
   const [sheets, setSheets] = useState<MsdsEntry[]>([]);
   /**
    * How far the MSDS read has got — NOT a boolean, and not derivable from `sheets` being empty. `[]`
@@ -185,16 +196,14 @@ export function Signoff({ project, refreshProject }: ScreenProps) {
         () => ({ ok: false, entries: [] as MsdsEntry[] }),
       );
       try {
-        const [d, vp, reg, dose] = await Promise.all([
+        const [d, vp, dose] = await Promise.all([
           getDecision(project.projectId),
           getVpGate(project.projectId),
-          getRegulatoryGate(project.projectId),
           getDosing(project.projectId),
         ]);
         if (signal?.cancelled) return;
         setStaleMsg(null);
         setVpGate(vp);
-        setRegGate(reg);
         setDosing(dose === NotFound ? null : dose);
         if (d === NotFound) {
           setDoc(null);
@@ -389,11 +398,22 @@ export function Signoff({ project, refreshProject }: ScreenProps) {
     <>
       <section className="screen">
         <SectionHeader
-          title="The two signatures"
+          title="The evidence under this determination"
           headingLevel={3}
-          hint="each releases one irreversible act — and nothing else does"
+          actions={
+            /* The compliance package is no longer released by a signature — there is no regulatory
+               gate to release it. It is a deliverable, available whenever the record can produce it. */
+            <>
+              <a className="btn" href={compliancePackageUrl(project.projectId)} download>
+                <i className="ti ti-download" aria-hidden="true" /> Compliance package
+              </a>
+              <a className="btn" href={matrixXlsxUrl(project.projectId)} download>
+                <i className="ti ti-download" aria-hidden="true" /> .xlsx
+              </a>
+            </>
+          }
         />
-        <RegulatorySignature projectId={project.projectId} gate={regGate} />
+        <Evidence projectId={project.projectId} table={table} dosingProvisional={dosing} />
       </section>
 
       <section className="screen">
@@ -401,7 +421,6 @@ export function Signoff({ project, refreshProject }: ScreenProps) {
           title="What was decided"
           headingLevel={3}
           count={components.length}
-          hint="one track per component — the evidence the determination is made on"
         />
 
         {malformed && (
@@ -409,8 +428,7 @@ export function Signoff({ project, refreshProject }: ScreenProps) {
             <i className="ti ti-alert-triangle" aria-hidden="true" />
             <div className="prose">
               <b>The decision record came back in a shape this screen cannot read.</b> It carries no
-              component list, so nothing below can be shown and nothing here can be signed. Do not treat
-              the empty screen as an empty decision.
+              component list, so nothing below can be shown and nothing here can be signed.
             </div>
           </div>
         )}
@@ -419,12 +437,6 @@ export function Signoff({ project, refreshProject }: ScreenProps) {
           <EmptyState
             icon="ti-gavel"
             title="No decision assembled yet."
-            body={
-              <>
-                Decision assembles from the compliant set once dosing has produced codes. There is
-                nothing to sign until it has.
-              </>
-            }
           />
         )}
 
@@ -471,7 +483,6 @@ export function Signoff({ project, refreshProject }: ScreenProps) {
         <SectionHeader
           title="VP R&D determination"
           headingLevel={3}
-          hint="releases procurement — each order still held behind its safety sheet"
         />
 
         {staleMsg && (
@@ -503,9 +514,8 @@ export function Signoff({ project, refreshProject }: ScreenProps) {
           <div className="banner info" role="status">
             <i className="ti ti-ban" aria-hidden="true" />
             <div className="prose">
-              <b>The rejection was recorded with your reason; the gate is locked.</b> The endpoint
-              permits a re-determination after a rejection, so the block below is still live —
-              approving now would supersede it.
+              <b>The rejection was recorded with your reason; the gate is locked.</b> The block below
+              is still live — approving now would supersede it.
             </div>
           </div>
         )}
@@ -536,7 +546,6 @@ export function Signoff({ project, refreshProject }: ScreenProps) {
           <SectionHeader
             title="Procurement"
             headingLevel={3}
-            hint="what the VP signature released — each order still behind its safety sheet"
           />
           <Procurement
             components={components}
@@ -554,87 +563,213 @@ export function Signoff({ project, refreshProject }: ScreenProps) {
   );
 }
 
-/**
- * The regulatory signature, STATED here and signed on the Regulatory screen.
- *
- * It is on this screen because "what is still outstanding" is this screen's question, and because a
- * signature described without the act it releases is a chore rather than a decision. It is not SIGNED
- * here because the pen belongs beside the verdicts it rules on — two controls over one gate would each
- * carry their own idea of what arms it, and the export link below is what the signature is FOR.
+/*
+ * `RegulatorySignature` lived here — the second signature, stated on this screen and signed on the
+ * Regulatory one. It is deleted with the gate it reported (spec §16.4). Its export link survives, in
+ * the section header above, because the compliance package is a deliverable rather than a reward: no
+ * signature releases it any more.
  */
-function RegulatorySignature({
+
+/* ---------------------------------------------------------------------------
+   The evidence, which is what this screen owes now that it is the only checkpoint.
+   --------------------------------------------------------------------------- */
+
+/** One row that needs a person, and the reason it does. `where` is where the person goes. */
+interface Finding {
+  key: string;
+  label: string;
+  detail: string;
+  where: 'regulatory' | 'dosing';
+}
+
+const rowName = (r: ReadRow) => `${r.element} ${r.form} · ${r.cas} on ${r.componentId}`;
+
+/**
+ * What the operator has to have looked at, gathered from the one projection that carries all of it.
+ *
+ * FOUR KINDS, and the first is the one the backend actually refuses over — the other three are
+ * §16.4's requirement that this screen show the evidence rather than a summary:
+ *
+ *   unopened     a LIVE non-Pass verdict nobody opened. `EvidenceReview.Outstanding` refuses the
+ *                determination and every order while one exists. Listing them by name is the whole
+ *                difference between an actionable refusal and "the gate is not armable".
+ *   uncited      a verdict resting on no citation at all — the worst artifact this system produces.
+ *   unsure       the agent's own folded confidence below the threshold.
+ *   unmeasured   a ppm window whose FLOOR was never measured. That is what `provisional` means now,
+ *                and it blocks the order.
+ *
+ * A dropped row contributes nothing: `stoppedAt` means the row is out, and a substance nobody will
+ * ever buy is not evidence anybody needs to read.
+ */
+function findingsOf(rows: readonly ReadRow[]): {
+  unopened: Finding[];
+  uncited: Finding[];
+  unsure: Finding[];
+  unmeasured: Finding[];
+} {
+  const unopened: Finding[] = [];
+  const uncited: Finding[] = [];
+  const unsure: Finding[] = [];
+  const unmeasured: Finding[] = [];
+
+  for (const r of rows) {
+    if (r.stoppedAt) continue;
+    const key = `${r.componentId}|${r.cas}`;
+
+    if (r.regulatory.kind === 'cells') {
+      const cells = r.regulatory.cells;
+      if (cells.overall !== 'Pass' && cells.evidenceReviewed !== true) {
+        unopened.push({ key, label: rowName(r), detail: String(cells.overall), where: 'regulatory' });
+      }
+      if (citationsOf(cells).length === 0) {
+        uncited.push({ key, label: rowName(r), detail: 'no citation on any dimension', where: 'regulatory' });
+      }
+      const confidence = foldConfidence(confidencesOf(cells));
+      if (confidence !== null && confidence < LOW_CONFIDENCE) {
+        unsure.push({
+          key,
+          label: rowName(r),
+          detail: `${Math.round(confidence * 100)}% at its weakest dimension`,
+          where: 'regulatory',
+        });
+      }
+    }
+
+    if (r.dosing.kind === 'cells') {
+      const floor: unknown = r.dosing.cells.floor;
+      const kind =
+        typeof floor === 'object' && floor !== null
+          ? (floor as Record<string, unknown>).kind
+          : undefined;
+      // NOT `!== 'measured'` over a value that may be absent entirely: an unreadable floor is also a
+      // floor nobody measured, and it lands here rather than passing silently.
+      if (kind !== 'measured') {
+        unmeasured.push({
+          key,
+          label: rowName(r),
+          detail: typeof kind === 'string' ? `floor is an ${kind}` : 'the floor could not be read',
+          where: 'dosing',
+        });
+      }
+    }
+  }
+
+  return { unopened, uncited, unsure, unmeasured };
+}
+
+function Evidence({
   projectId,
-  gate,
+  table,
+  dosingProvisional,
 }: {
   projectId: string;
-  gate: RegulatoryGate | null;
+  table: ReturnType<typeof useProjectTable>['state'];
+  dosingProvisional: DosingDoc | null;
 }) {
-  if (!gate) {
+  if (table.kind === 'loading') {
     return (
+      <p className="small muted" style={{ margin: 0 }}>
+        <i className="ti ti-loader" data-running="" aria-hidden="true" /> Reading the record…
+      </p>
+    );
+  }
+
+  if (table.kind === 'error') {
+    return (
+      /* A failed read is NOT a clean bill of health. This screen signs procurement; silence about
+         the evidence must never be shown as an absence of findings. */
       <div className="banner danger" role="alert">
         <i className="ti ti-alert-triangle" aria-hidden="true" />
         <div className="prose">
-          <b>The regulatory gate could not be read.</b> This screen cannot say whether the compliance
-          package is released — not that it is not.
+          <b>The record could not be read, so nothing below is a list of what is outstanding.</b>{' '}
+          {table.message}
         </div>
       </div>
     );
   }
 
-  const approved = gate.status === 'approved';
-  const signer = signerOf(gate);
-  const when = signedOn(gate.approvedAt);
+  const f = findingsOf(table.read.rows);
+  const reasons: string[] = Array.isArray(
+    (dosingProvisional as unknown as Record<string, unknown> | null)?.provisionalReasons,
+  )
+    ? ((dosingProvisional as unknown as Record<string, unknown>).provisionalReasons as unknown[]).filter(
+        (r): r is string => typeof r === 'string',
+      )
+    : [];
+
+  const total = f.unopened.length + f.uncited.length + f.unsure.length + f.unmeasured.length;
+  if (total === 0 && reasons.length === 0) {
+    return (
+      <p className="small" style={{ margin: 0 }}>
+        <i className="ti ti-check" style={{ color: 'var(--text-muted)' }} aria-hidden="true" /> Every
+        live verdict is opened, cited and confident, and every floor is measured.
+      </p>
+    );
+  }
 
   return (
-    <div
-      className="banner"
-      data-gate="regulatory"
-      data-signer={approved ? signer : undefined}
-      style={
-        approved && signer === 'operator'
-          ? {
-              background: 'var(--bg-teal)',
-              borderColor: 'var(--border-teal)',
-              color: 'var(--text-teal)',
-            }
-          : undefined
-      }
-    >
-      <i className={`ti ${approved ? 'ti-writing-sign' : 'ti-signature'}`} aria-hidden="true" />
-      <div className="prose">
-        {!approved ? (
-          <>
-            <b>Regulatory sign-off — not signed.</b> The compliance package cannot be exported until the
-            Regulatory Expert&rsquo;s determination is recorded.{' '}
-            <Link to={`/p/${projectId}/regulatory`}>Rule on the verdicts and sign it</Link>.
-          </>
-        ) : signer === 'auto-approve' ? (
-          /* The machine signed. Rendered as an alarm wherever it appears — every determination under
-             it is the machine's, and it wrote the same fields a person's ruling writes. */
-          <span style={{ color: 'var(--text-danger)', fontWeight: 600 }}>
-            Regulatory sign-off was made by the MACHINE{when ? ` on ${when}` : ''}. No human reviewed
-            anything, and every regulatory determination on this project is the agent&rsquo;s own.{' '}
-            <Link to={`/p/${projectId}/regulatory`}>Open the verdicts and sign it for real</Link>.
-          </span>
-        ) : signer === 'unknown' ? (
-          <>
-            <b>Regulatory sign-off — approved{when ? ` on ${when}` : ''}, signer not recorded.</b> The
-            compliance package can be exported on it, but do not read it as a human ruling.
-          </>
-        ) : (
-          <>
-            <b>Regulatory sign-off — signed{when ? ` on ${when}` : ''}.</b> The compliance package is
-            released.
-          </>
-        )}
-        {approved && (
-          <div style={{ marginTop: 'var(--s2)' }}>
-            <a className="btn" href={compliancePackageUrl(projectId)} download>
-              <i className="ti ti-download" aria-hidden="true" /> Compliance package
-            </a>
-          </div>
-        )}
+    <>
+      <FindingList
+        projectId={projectId}
+        title="Not opened"
+        tone="danger"
+        /* The one list the SERVER refuses over. It is stated first and loudest because it is the
+           difference between a determination that can be recorded and one that cannot. */
+        note="the determination and every order are refused while these are unopened"
+        items={f.unopened}
+      />
+      <FindingList projectId={projectId} title="No citation" tone="danger" items={f.uncited} />
+      <FindingList projectId={projectId} title="Low confidence" tone="warning" items={f.unsure} />
+      <FindingList
+        projectId={projectId}
+        title="Floor nobody measured"
+        tone="warning"
+        note="every order is refused over these"
+        items={f.unmeasured}
+      />
+      {reasons.length > 0 && (
+        <ul className="small" style={{ margin: 'var(--s2) 0 0', paddingLeft: 18 }}>
+          {reasons.map((r) => (
+            <li key={r}>{r}</li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
+/** One kind of finding, with a way to reach each row. Absent when there are none — never an empty box. */
+function FindingList({
+  projectId,
+  title,
+  tone,
+  note,
+  items,
+}: {
+  projectId: string;
+  title: string;
+  tone: 'danger' | 'warning';
+  note?: string;
+  items: Finding[];
+}) {
+  if (items.length === 0) return null;
+  const colour = tone === 'danger' ? 'var(--text-danger)' : 'var(--text-warning)';
+  return (
+    <div data-finding={title.toLowerCase().replace(/[^a-z]+/g, '-')} style={{ marginBottom: 'var(--s3)' }}>
+      <div className="small" style={{ color: colour, fontWeight: 600 }}>
+        {title} <span className="data">{items.length}</span>
+        {note && <span style={{ fontWeight: 400 }}> — {note}</span>}
       </div>
+      <ul style={{ listStyle: 'none', margin: 'var(--s1) 0 0', padding: 0 }}>
+        {items.map((i) => (
+          <li key={i.key} className="small" style={{ padding: '2px 0' }}>
+            {/* A way to REACH the row, not just its name. A list the operator cannot act on is the
+                same refusal they already had, spelled out at greater length. */}
+            <Link to={`/p/${projectId}/${i.where}`}>{i.label}</Link>{' '}
+            <span className="muted">— {i.detail}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -660,8 +795,7 @@ function VpSignedPanel({
   const tail = released ? null : (
     <>
       {' '}
-      Procurement is not released yet — the pipeline releases it by reacting to the signed gate, not by
-      the signing call. Reload in a moment for the order controls.
+      Procurement is not released yet — reload in a moment for the order controls.
     </>
   );
 
@@ -679,8 +813,7 @@ function VpSignedPanel({
         <i className="ti ti-writing-sign" aria-hidden="true" />
         <div className="prose">
           <b>You recorded VP R&amp;D&rsquo;s determination{when ? ` on ${when}` : ''}.</b> It wrote the
-          Marker Library entry and the close conclusion, and released procurement. There is no second
-          pen: a determination is made once, and the endpoint refuses another.
+          Marker Library entry and the close conclusion, and released procurement.
           {tail}
         </div>
       </div>
@@ -699,9 +832,8 @@ function VpSignedPanel({
         <i className="ti ti-help-circle" aria-hidden="true" />
         <div className="prose">
           <b>Approved{when ? ` on ${when}` : ''} &mdash; the record does not say who signed it.</b> The
-          Marker Library entry and the close conclusion were written on this approval and procurement was
-          released on it, but no signer is on the record. Do not read it as a person&rsquo;s
-          determination.
+          Marker Library entry, the close conclusion and the procurement release were all written on
+          it. It cannot be read as a person&rsquo;s determination.
           {tail}
         </div>
       </div>
@@ -719,8 +851,8 @@ function VpSignedPanel({
       <i className="ti ti-signature" aria-hidden="true" />
       <div className="prose">
         <b>Every component carries a signed code.</b> The gate record does not report an approval yet,
-        so this screen will not say who signed or when — each component above names its own signer. The
-        pen is withdrawn regardless: the endpoint refuses a second determination.
+        so this screen will not say who signed or when &mdash; each component above names its own
+        signer.
         {tail}
       </div>
     </div>
@@ -765,12 +897,8 @@ function SignBlock({
 }) {
   return (
     <div>
-      <p className="prose" style={{ margin: '0 0 var(--s3)' }}>
-        The last hard gate. Approving records VP R&amp;D&rsquo;s determination, writes the Marker Library
-        entry and the close conclusion, and releases procurement — where each order is still held behind
-        a safety sheet on file. Rejecting records the refusal and its reason, and leaves the project open.
-      </p>
-
+      {/* No paragraph introducing the gate. What each press does is on the press: the buttons are
+          labelled with the act, and the line beside them names what is still withheld. */}
       {/* Named, because it is the one list on this screen a reader needs to be able to find: it is what
           stands between the operator and the last hard gate. */}
       <ul
@@ -861,8 +989,12 @@ function SignBlock({
                   : undefined
           }
         >
+          {/* THE CONSEQUENCE IS IN THE LABEL. It used to be a section subtitle, which is the shape of
+              prose §16.1 deletes — but "a signature described without the act it releases is a chore
+              rather than a decision" (§12) still holds, so it moves onto the press itself, where it
+              is visible whether or not the gate is armed. A button label is not an explanation. */}
           <i className={`ti ${busy === 'sign' ? 'ti-loader' : 'ti-signature'}`} aria-hidden="true" />{' '}
-          {busy === 'sign' ? 'Recording…' : 'Approve & close project'}
+          {busy === 'sign' ? 'Recording…' : 'Approve — closes the project, releases procurement'}
         </button>
         <button
           className="btn"
@@ -887,7 +1019,7 @@ function SignBlock({
               ? 'Locked for approval until every component has a finalized code — a rejection can still be recorded.'
               : !note.trim()
                 ? 'A note is required — it records what was reviewed.'
-                : 'Signing releases procurement and writes the Marker Library.'}
+                : 'Writes the Marker Library entry and the close conclusion.'}
         </span>
       </div>
     </div>
@@ -960,7 +1092,7 @@ function ComponentBand({
 
   return (
     <div style={{ marginBottom: 'var(--s5)' }}>
-      <SectionHeader eyebrow={c.componentId} count={rows.length} hint="substances in this decision" />
+      <SectionHeader eyebrow={c.componentId} count={rows.length} />
 
       {signed ? (
         <div className="card" style={{ marginBottom: 10 }}>
@@ -1102,10 +1234,6 @@ function ComponentBand({
                   <tr>
                     <td colSpan={4 + CRITERIA.length} style={{ padding: 0, background: 'var(--surface-2)' }}>
                       <div style={{ borderLeft: '2px solid var(--text-accent)', padding: 'var(--s3)' }}>
-                        <div className="small muted" style={{ marginBottom: 6 }}>
-                          Each criterion is owned by the phase that produced it. The record id is what
-                          the claim was read from — the record is the truth, not this copy of it.
-                        </div>
                         {CRITERIA.map((k) => (
                           <div className="step" key={k}>
                             <i

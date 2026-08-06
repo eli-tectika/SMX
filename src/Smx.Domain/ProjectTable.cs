@@ -9,9 +9,11 @@ public sealed record DiscoveryCells(string Tier, bool Preferred, string Rational
 /// What Regulatory found, and who said so.
 ///
 /// <paramref name="ProposedDetermination"/> and <paramref name="Determination"/> are SEPARATE fields on the
-/// wire, exactly as they are on the record. Collapsing them into one column would be the agent signing the
-/// regulatory gate — the thing <see cref="CompliantSet"/> exists to prevent — reintroduced at the rendering
-/// layer, where nobody would think to look for it.
+/// wire, exactly as they are on the record — and they matter MORE since §16.4 dropped the regulatory gate,
+/// not less. The proposal is now the default admission to <see cref="CompliantSet"/>; the operator's ruling
+/// is an override. Collapsing them into one column would erase, at the rendering layer, the only difference
+/// between "the machine proposed this" and "a human ruled on it" — which is the difference the matrix now
+/// exists to show, because it is the review surface the gate used to be.
 public sealed record RegulatoryCells(
     VerdictStatus Overall, IReadOnlyList<DimensionVerdict> Dimensions,
     string? ProposedDetermination, string? Determination, bool EvidenceReviewed);

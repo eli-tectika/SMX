@@ -17,7 +17,9 @@ public interface IAgentRuns
 {
     Task<AgentRunResult<ConstraintsDoc>> RunIntakeAsync(ProjectDoc project, IRunTrail trail, CancellationToken ct);
 
-    /// The need-driven pool proposal (PoolAgent), run BEFORE Discovery from the need alone.
+    /// The need-driven pool proposal — the DISCOVERY agent's first pass (DiscoveryAgent.RunPoolAsync), run
+    /// on the `pool` stage from the need alone. Still its own interface member because it is still its own
+    /// stage, its own artifact and its own re-run unit; what it is no longer is its own agent.
     /// <param name="project">carries the sensitive terms the pool's web-search tool must refuse to send —
     /// same contract as RunDiscoveryAsync.</param>
     /// <param name="revision">null for an ordinary run; non-null re-proposes applying the operator's
@@ -37,8 +39,8 @@ public interface IAgentRuns
     /// <param name="revision">null for an ordinary run; non-null re-screens the cell applying the revision.</param>
     Task<AgentRunResult<VerdictDoc>> RunRegulatoryAsync(ConstraintsDoc constraints, CandidateSubstance candidate, RevisionDoc? revision, IRunTrail trail, CancellationToken ct);
 
-    /// <param name="compliant">the operator-recommended verdicts (CompliantSet.Of) — the ONLY substances
-    /// Dosing may dose.</param>
+    /// <param name="compliant">the dosable verdicts (CompliantSet.Of — everything the agent did not reject,
+    /// minus anything the operator vetoed) — the ONLY substances Dosing may dose.</param>
     /// <param name="floors">(component, element) → the MEASURED detection floor, computed by CODE from the
     /// physicist's background. The agent sees it and doses above it; it never computes it.</param>
     /// <param name="loadings">cas → metal loading (operator-entered). Feeds the order amount only.</param>
@@ -88,10 +90,12 @@ public sealed class AgentRuns(IChatClient chatClient, ToolBox toolBox) : IAgentR
             new MafAgent(chatClient, IntakeAgent.AgentName, IntakeAgent.Instructions, toolBox.IntakeTools(), trail),
             project, ct);
 
+    /// Both passes are built with DiscoveryAgent.AgentName — ONE name in the run trail, because there is one
+    /// agent. Only the instructions and the tool surface differ, which is what a pass is.
     public Task<AgentRunResult<PoolDoc>> RunPoolAsync(
         ProjectDoc project, ConstraintsDoc constraints, RevisionDoc? revision, IRunTrail trail, CancellationToken ct) =>
-        PoolAgent.RunAsync(
-            new MafAgent(chatClient, PoolAgent.AgentName, PoolAgent.Instructions,
+        DiscoveryAgent.RunPoolAsync(
+            new MafAgent(chatClient, DiscoveryAgent.AgentName, DiscoveryAgent.PoolInstructions,
                 toolBox.PoolTools(TermsFor(project)), trail),
             constraints, revision, ct);
 

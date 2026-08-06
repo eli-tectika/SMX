@@ -72,10 +72,15 @@ public sealed class ToolBox(
             "Search accumulated Learned Conclusions (prior material/regulatory findings with confidence + provenance) relevant to tiering this element/form. Treat them as prior evidence, not fact; a higher-confidence, more recent conclusion supersedes an older one."),
     ];
 
-    /// The Pool stage's tools (the need-driven pool agent, PoolAgent). Like DiscoveryTools it closes over the
-    /// project's SensitiveTerms so its web egress is guarded — but its read surface deliberately EXCLUDES
-    /// search_catalog: the pool is allowed to reach beyond the catalog (that is the point), and its CAS is
-    /// Discovery's to mint. The web tool is the same anonymizing egress Discovery uses (hosted or proxy).
+    /// The Pool stage's tools — the DISCOVERY agent's first pass (DiscoveryAgent.RunPoolAsync). Like
+    /// DiscoveryTools it closes over the project's SensitiveTerms so its web egress is guarded — but its read
+    /// surface deliberately EXCLUDES search_catalog: the pool is allowed to reach beyond the catalog (that is
+    /// the point), and its CAS is the corroboration pass's to mint. The web tool is the same anonymizing
+    /// egress Discovery uses (hosted or proxy).
+    ///
+    /// One agent, two tool surfaces, and that is the whole of the difference between the passes: an agent is
+    /// what it can DO, so a pass that may reach past the catalog and a pass that may not are not the same
+    /// capability set even when they are the same agent.
     public IList<AITool> PoolTools(SensitiveTerms terms) =>
     [
         .. PoolReadTools(),
@@ -360,7 +365,11 @@ public sealed class ToolBox(
 
         return JsonSerializer.Serialize(new
         {
-            results = result.Hits.Select(h => new AgentVisibleChunk($"web:{h.Host}", h.Url, $"{h.Title} — {h.Snippet}")),
+            // No documentId, structurally: a web hit is not in our document library, and the URL in
+            // Reference is already the way to reach it. A chip that "opened" a third-party page would also
+            // be an egress we do not control — the exact thing the Search Proxy exists to prevent.
+            results = result.Hits.Select(h =>
+                new AgentVisibleChunk($"web:{h.Host}", h.Url, $"{h.Title} — {h.Snippet}", null)),
             note = hitsNote,
         }, Json.Options);
     }
@@ -426,11 +435,17 @@ public sealed class ToolBox(
     /// it cites by Reference, and a Learned Conclusion carries its own calibrated `confidence: 0.70` INSIDE its
     /// content (LearnedConclusionProjection.Content) — which is what the Intake/Discovery instructions tell the
     /// model to weigh. Score stays on RetrievedChunk for logging/eval; it just never reaches the model.
-    private sealed record AgentVisibleChunk(string Source, string Reference, string Content);
+    ///
+    /// DocumentId is the one field here the model is asked to COPY rather than reason about: it is the id
+    /// that makes a citation chip open the actual source document, and only the retrieval tool ever knows
+    /// it (Citation.DocumentId). Json.Options drops nulls, so a chunk with no document simply has no
+    /// `documentId` key — the model then has nothing to copy, which is exactly the intended outcome.
+    private sealed record AgentVisibleChunk(string Source, string Reference, string Content, string? DocumentId);
 
     private static string Render(IReadOnlyList<RetrievedChunk> chunks) =>
         chunks.Count == 0
             ? "{\"results\":[],\"note\":\"no matches — do not invent facts; lower confidence or mark NeedsReview\"}"
             : JsonSerializer.Serialize(
-                new { results = chunks.Select(c => new AgentVisibleChunk(c.Source, c.Reference, c.Content)) }, Json.Options);
+                new { results = chunks.Select(c => new AgentVisibleChunk(c.Source, c.Reference, c.Content, c.DocumentId)) },
+                Json.Options);
 }

@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getTable } from '../../api/client';
 import type {
+  Citation,
+  DimensionVerdict,
   DiscoveryCells,
   DosingCells,
   OutcomeCells,
   RegulatoryCells,
 } from '../../api/types';
+import { VERDICT_DIMENSIONS, VERDICT_SEVERITY } from '../../api/types';
 import { Data } from '../../components/ui/Data';
+import { CitationChip } from '../../components/ui/Primitives';
+import { foldConfidence, isPartialFold } from '../../domain/confidence';
 import { fmtMass, fmtPpm } from '../../domain/dosing';
+import { LOW_CONFIDENCE } from '../../domain/matrixSummary';
 
 /**
  * The unified project table, shared by every phase screen and by the full matrix.
@@ -299,6 +305,44 @@ export function BoundValue({ bound }: { bound: unknown }) {
 }
 
 /**
+ * WHY a window has the ends it has: each bound's own `basis`, named with the end it justifies.
+ *
+ * `basis` is free prose and deliberately not a Citation — Dosing carries no Citation objects at all
+ * (types.ts), which is why the dosing group has no Sources column rather than an always-empty one.
+ * The floor is the physicist's measurement and the upper end is a regulatory cap or the agent's own
+ * estimate, so the two are different KINDS of claim and are never run together into one sentence.
+ */
+export function DosingWhyCell({ cells }: { cells: DosingCells }) {
+  const ends: [string, unknown][] = [
+    ['floor', cells.floor],
+    ['upper', cells.upper],
+  ];
+  const readable = ends.filter(([, b]) => obj(b) && str((b as Record<string, unknown>).basis));
+
+  if (readable.length === 0) {
+    return (
+      <td className="secondary">
+        <span className="muted">no basis recorded</span>
+      </td>
+    );
+  }
+
+  return (
+    <td className="secondary">
+      {readable.map(([end, b]) => (
+        <div key={end}>
+          <span className="tiny muted">{end}</span> {String((b as Record<string, unknown>).basis)}
+        </div>
+      ))}
+    </td>
+  );
+}
+
+/** Both ends' confidences, for the folded cell. Whatever is unreadable is dropped, never defaulted. */
+export const boundConfidences = (cells: DosingCells): unknown[] =>
+  [cells.floor, cells.upper].map((b) => (obj(b) ? (b as Record<string, unknown>).confidence : undefined));
+
+/**
  * The order amount — the COMPOUND mass, which is what you buy, in milligrams.
  *
  * `0` is not an amount. The projection writes `marker?.CompoundMassMg ?? 0` for a substance that is in
@@ -346,6 +390,211 @@ export function AvailabilityValue({ cells }: { cells: DosingCells }) {
     </span>
   );
 }
+
+/* ---------------------------------------------------------------------------
+   The phase group band.
+   --------------------------------------------------------------------------- */
+
+/** One tinted cell of the band. `identity` is achromatic — it is not a phase. */
+export interface PhaseGroup {
+  group: 'identity' | 'discovery' | 'regulatory' | 'dosing' | 'outcome' | 'actions';
+  label: string;
+  span: number;
+}
+
+/**
+ * The row above the column headers, one tinted cell per phase (styles/craft.css `.mx__groups`).
+ *
+ * It replaces a sentence. A phase screen used to carry a subtitle saying which phase's columns these
+ * were and what the element gate meant; the band says the first with a word and a colour, and the
+ * second was never the operator's problem. On the full matrix it is load-bearing rather than
+ * decorative: once a column has scrolled its own heading off the left edge, the band is what says
+ * which phase it belongs to.
+ *
+ * The colour NEVER carries the meaning alone — each cell is labelled with the phase's name.
+ */
+export function GroupBand({ groups }: { groups: readonly PhaseGroup[] }) {
+  return (
+    <tr className="mx__groups">
+      {groups.map((g) => (
+        <th
+          key={g.group}
+          data-group={g.group}
+          colSpan={g.span}
+          scope="colgroup"
+          /* The identity band cell freezes with the identity column it labels; without this the one
+             column that is always on screen is the one with no band over it. */
+          data-rowhead={g.group === 'identity' ? '' : undefined}
+        >
+          {g.label}
+        </th>
+      ))}
+    </tr>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   The four columns every phase group shares: State, Why, Confidence, Sources.
+
+   Four dimension columns used to sit across the Regulatory table, one glyph each, with a per-group
+   hint explaining what the element gate was. That is five cells of chrome around one fact — WHICH
+   check governs this row and how sure the agent is of it — and the reference product (DMPP) carries
+   none of it. What follows renders the fact instead of the apparatus.
+   --------------------------------------------------------------------------- */
+
+const dimensionsOf = (cells: RegulatoryCells): DimensionVerdict[] =>
+  Array.isArray(cells.dimensions) ? cells.dimensions.filter((d): d is DimensionVerdict => obj(d)) : [];
+
+/** The dimensions the record does NOT carry for a cell. An unassessed dimension is not a pass. */
+export const unassessedDimensions = (cells: RegulatoryCells): string[] => {
+  const seen = new Set(dimensionsOf(cells).map((d) => d.dimension));
+  return VERDICT_DIMENSIONS.filter((d) => !seen.has(d));
+};
+
+/**
+ * The dimension that DECIDES the row — the worst one, which is the one the overall verdict came from.
+ *
+ * Collapsing four columns into one is only safe because the fold is worst-wins: the cell's verdict IS
+ * this dimension's verdict, so naming it loses nothing an operator could have read off the four
+ * glyphs. Ties resolve to declaration order rather than to whichever the backend happened to serialize
+ * first, so the same record always names the same dimension.
+ */
+export function governingDimension(cells: RegulatoryCells): DimensionVerdict | undefined {
+  const dims = dimensionsOf(cells);
+  if (dims.length === 0) return undefined;
+  const rank = (d: DimensionVerdict) => {
+    const i = VERDICT_SEVERITY.indexOf(d.status);
+    // A status this build cannot read sorts WORST, not best: it is not evidence of compliance.
+    return i < 0 ? VERDICT_SEVERITY.length : i;
+  };
+  return dims.reduce((worst, d) => (rank(d) > rank(worst) ? d : worst), dims[0]);
+}
+
+/**
+ * WHY the row is in the state it is: the governing dimension, named, with its own words.
+ *
+ * A dimension the record never assessed is stated here too, and loudly — the four glyph columns used
+ * to carry that, and losing it would let a cell folded over two dimensions read exactly like one
+ * folded over four.
+ */
+export function WhyCell({ cells }: { cells: RegulatoryCells }) {
+  const governing = governingDimension(cells);
+  const missing = unassessedDimensions(cells);
+  return (
+    <td className="secondary">
+      {governing ? (
+        <>
+          <span style={{ fontWeight: 500 }}>{governing.dimension}</span>
+          {typeof governing.rationale === 'string' && governing.rationale ? (
+            <> — {governing.rationale}</>
+          ) : (
+            <span className="muted"> — no rationale recorded</span>
+          )}
+        </>
+      ) : (
+        <span style={{ color: 'var(--text-warning)' }}>no dimension was assessed</span>
+      )}
+      {missing.length > 0 && (
+        <div className="small" style={{ color: 'var(--text-warning)' }} data-unassessed={missing.join(',')}>
+          <i className="ti ti-alert-triangle" aria-hidden="true" /> not assessed: {missing.join(', ')}
+        </div>
+      )}
+    </td>
+  );
+}
+
+/**
+ * The folded confidence, as a number and a bar.
+ *
+ * `foldConfidence` is worst-wins (domain/confidence.ts) — the cell is only as trustworthy as its
+ * weakest supporting dimension. `expected` is how many the caller believes should be there, so a fold
+ * over an incomplete set is marked rather than presented whole: a number folded from two dimensions
+ * and one folded from four are different claims, and the difference is invisible in the number.
+ *
+ * `null` is rendered as a WORD, never as an empty bar. A 0% meter says the agent had no confidence,
+ * which is a claim about the record; "not stated" is the truth.
+ */
+export function ConfidenceCell({ values, expected }: { values: unknown[]; expected: number }) {
+  const folded = foldConfidence(values);
+  const partial = isPartialFold(values, expected);
+
+  if (folded === null) {
+    return (
+      <td data-confidence="none">
+        <span className="small" style={{ color: 'var(--text-warning)' }}>
+          not stated
+        </span>
+      </td>
+    );
+  }
+
+  const low = folded < LOW_CONFIDENCE;
+  return (
+    <td data-confidence={low ? 'low' : 'ok'} style={{ whiteSpace: 'nowrap' }}>
+      <span
+        className="small"
+        style={{ fontWeight: 600, color: low ? 'var(--text-warning)' : undefined }}
+      >
+        {Math.round(folded * 100)}%
+      </span>
+      {/* The word "lowest" is the fold made visible: it is not the cell's average confidence and must
+          not be read as one. */}
+      <span className="tiny muted"> lowest</span>
+      {partial && (
+        <div className="tiny" style={{ color: 'var(--text-warning)' }}>
+          over an incomplete set
+        </div>
+      )}
+    </td>
+  );
+}
+
+/**
+ * Every citation on every dimension of a cell, deduped by (document, reference).
+ *
+ * Deduped because four dimensions routinely cite the same regulation and four identical chips in one
+ * cell is noise. NOT truncated: every verdict has to trace to a cited source, and a "+3 more" would
+ * hide exactly the citation an operator went looking for.
+ *
+ * Zero is the loud case. A regulatory cell resting on no citation at all is the worst artifact this
+ * system can produce — a claim that traces to nothing.
+ */
+export function SourcesCell({ citations }: { citations: Citation[] }) {
+  const list = Array.isArray(citations) ? citations.filter((c): c is Citation => obj(c)) : [];
+  const seen = new Set<string>();
+  const unique = list.filter((c) => {
+    const k = `${c.documentId ?? ''}|${c.source}|${c.reference}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  if (unique.length === 0) {
+    return (
+      <td data-sources="none">
+        <span className="small" style={{ color: 'var(--text-danger)' }}>
+          <i className="ti ti-link-off" aria-hidden="true" /> none
+        </span>
+      </td>
+    );
+  }
+
+  return (
+    <td data-sources={String(unique.length)}>
+      {unique.map((c, i) => (
+        <CitationChip key={`${c.source}-${c.reference}-${i}`} {...c} />
+      ))}
+    </td>
+  );
+}
+
+/** Every citation a regulatory cell carries, across all its dimensions. */
+export const citationsOf = (cells: RegulatoryCells): Citation[] =>
+  dimensionsOf(cells).flatMap((d) => (Array.isArray(d.citations) ? d.citations : []));
+
+/** Every confidence a regulatory cell carries, one per dimension present. */
+export const confidencesOf = (cells: RegulatoryCells): unknown[] =>
+  dimensionsOf(cells).map((d) => d.confidence);
 
 /** A row the payload held and the screen refused to draw. Said out loud, never quietly skipped. */
 export function DroppedRows({ n }: { n: number }) {

@@ -133,9 +133,8 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
         Assert.Equal(HttpStatusCode.OK, (await DetermineAsync("cas-y", Determinations.Recommended)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await DetermineAsync("cas-no", Determinations.Rejected)).StatusCode);
 
-        var approve = await _client.PostAsync($"/projects/{P}/regulatory/approve", null);
-        Assert.Equal(HttpStatusCode.OK, approve.StatusCode);
-        await _dispatcher.OnGateAsync(Delivered((await _store.GetGateAsync(P, GateTypes.Regulatory))!), default);
+        // No regulatory signature step: §16.4 deleted that gate. The determinations above are OVERRIDES on
+        // the agent's proposals, and nothing between them and Dosing waits for anyone.
         await _dispatcher.RunAsync(P, default);   // in production the supervisor re-enters the pipeline here
         // Every metal loading is unknown, so every dosable substance is dropped by name and there is nothing
         // left to dose (execution-core §8 replaced the awaiting-operator park with drop-and-name).
@@ -245,12 +244,13 @@ public class DecisionVpCloseEndToEndTests : IClassFixture<WebApplicationFactory<
         Assert.Equal(HttpStatusCode.Accepted, ordered.StatusCode);
         Assert.Equal(["cas-zr"], (await _store.GetDecisionAsync(P))!.Procurement.OrderedCas);
 
-        // 5. The read surfaces agree: the list shows both gates signed; the dashboard shows a project with
-        //    nothing blocked and nothing needing signing — the journey has nowhere left to park.
+        // 5. The read surfaces agree: the list shows THE gate signed — one entry, not two, since §16.4 —
+        //    and the dashboard shows a project with nothing blocked and nothing needing signing.
         var list = await _client.GetFromJsonAsync<JsonElement>("/projects");
         var row = Assert.Single(list.EnumerateArray(), r => r.GetProperty("projectId").GetString() == P);
-        Assert.Equal("approved", row.GetProperty("gates").GetProperty(GateTypes.Regulatory).GetString());
-        Assert.Equal("approved", row.GetProperty("gates").GetProperty(GateTypes.Vp).GetString());
+        var gates = row.GetProperty("gates");
+        Assert.Equal("approved", gates.GetProperty(GateTypes.Vp).GetString());
+        Assert.Equal(1, gates.EnumerateObject().Count());
 
         var dashboard = await _client.GetFromJsonAsync<JsonElement>($"/projects/{P}/dashboard");
         Assert.Empty(dashboard.GetProperty("stopped").EnumerateArray());

@@ -3,7 +3,7 @@ import type { DiscoveryCells, DosingCells, OutcomeCells, RegulatoryCells } from 
 import { VERDICT_DIMENSIONS, VERDICT_SEVERITY } from '../../api/types';
 import { Loading } from '../../components/Loading';
 import { EmptyState, SectionHeader } from '../../components/ui/Primitives';
-import { verdictClass, verdictGlyph } from '../../domain/matrix';
+import { verdictClass } from '../../domain/matrix';
 import { fmtPpm } from '../../domain/dosing';
 import { Data } from '../../components/ui/Data';
 import {
@@ -11,19 +11,43 @@ import {
   AmountValue,
   AvailabilityValue,
   BoundValue,
+  ConfidenceCell,
+  DosingWhyCell,
   DroppedRows,
+  GroupBand,
   IdentityCell,
+  SourcesCell,
   TableError,
+  WhyCell,
+  boundConfidences,
   byComponentRows,
+  citationsOf,
+  confidencesOf,
   useProjectTable,
+  type PhaseGroup,
   type ReadRow,
 } from './projectTable';
 import type { ScreenProps } from '../ProjectLayout';
 import type { VerdictStatus } from '../../api/types';
 
-/** Column counts per group, for the absent-cells span. Keep in step with the headers below. */
-const SPAN = { discovery: 4, regulatory: 7, dosing: 4, outcome: 2 } as const;
+/**
+ * Column counts per group, for the absent-cells span. Keep in step with the headers below.
+ *
+ * Every group is the SAME shape its own phase screen renders — state, why, confidence, sources —
+ * because the phase screen and this sheet read one projection and must not disagree about what the
+ * record says. Discovery has no confidence and Dosing has no citations, so each drops the column its
+ * record cannot fill rather than filling it with dashes.
+ */
+const SPAN = { discovery: 3, regulatory: 6, dosing: 5, outcome: 2 } as const;
 const TOTAL_COLUMNS = 1 + SPAN.discovery + SPAN.regulatory + SPAN.dosing + SPAN.outcome;
+
+const GROUPS: PhaseGroup[] = [
+  { group: 'identity', label: 'Material', span: 1 },
+  { group: 'discovery', label: 'Discovery', span: SPAN.discovery },
+  { group: 'regulatory', label: 'Regulatory', span: SPAN.regulatory },
+  { group: 'dosing', label: 'Dosing', span: SPAN.dosing },
+  { group: 'outcome', label: 'Outcome', span: SPAN.outcome },
+];
 
 const asVerdict = (v: unknown): VerdictStatus =>
   VERDICT_SEVERITY.includes(v as VerdictStatus) ? (v as VerdictStatus) : 'NeedsReview';
@@ -69,7 +93,6 @@ export function FullMatrix({ project }: ScreenProps) {
       <SectionHeader
         title="Full matrix"
         headingLevel={3}
-        hint="every phase's columns, one row per substance and component"
         actions={
           /* The export reads the SAME projection this table does, which is the point of doing the join
              server-side: the sheet a customer is forwarded and the screen an operator signs against
@@ -87,18 +110,13 @@ export function FullMatrix({ project }: ScreenProps) {
           <DroppedRows n={state.read.dropped} />
 
           {state.read.rows.length === 0 ? (
-            <EmptyState
-              icon="ti-table-off"
-              title="The table has no rows."
-              body="Discovery has produced no candidates for this project, so there is nothing keyed on (component, CAS) to show."
-            />
+            <EmptyState icon="ti-table-off" title="The table has no rows." />
           ) : (
             <div className="mxscroll">
               <div className="mxscroll__count small secondary">
                 {state.read.rows.length} row{state.read.rows.length === 1 ? '' : 's'} ·{' '}
                 {byComponentRows(state.read.rows).length} component
-                {byComponentRows(state.read.rows).length === 1 ? '' : 's'} · scrolls sideways inside this
-                pane
+                {byComponentRows(state.read.rows).length === 1 ? '' : 's'}
               </div>
               <div className="mxscroll__pane">
                 <table className="mx mx--sticky">
@@ -107,26 +125,27 @@ export function FullMatrix({ project }: ScreenProps) {
                     spans its remaining columns with the phase it stopped at and why.
                   </caption>
                   <thead>
-                    <tr>
+                    {/* The band is load-bearing here rather than decorative: once a column's own
+                        heading has scrolled off, this is what says which phase it belongs to. */}
+                    <GroupBand groups={GROUPS} />
+                    <tr className="mx__cols">
                       <th scope="col" data-rowhead>
-                        Substance
+                        Material
                       </th>
-                      <th scope="col">Tier</th>
-                      <th scope="col">Preferred</th>
-                      <th scope="col">Rationale</th>
+                      <th scope="col">State</th>
+                      <th scope="col">Why</th>
                       <th scope="col">Sources</th>
-                      <th scope="col">Verdict</th>
-                      {VERDICT_DIMENSIONS.map((d) => (
-                        <th key={d} scope="col" style={{ textAlign: 'center' }}>
-                          {d}
-                        </th>
-                      ))}
+                      <th scope="col">State</th>
+                      <th scope="col">Why</th>
+                      <th scope="col">Confidence</th>
+                      <th scope="col">Sources</th>
                       {/* Never one column. The proposal is the agent's and carries no weight; the
                           determination is the operator's and is the only field CompliantSet reads. */}
                       <th scope="col">Proposed</th>
                       <th scope="col">Determination</th>
-                      <th scope="col">ppm window</th>
-                      <th scope="col">Recommended</th>
+                      <th scope="col">State</th>
+                      <th scope="col">Why</th>
+                      <th scope="col">Confidence</th>
                       <th scope="col">Amount</th>
                       <th scope="col">Availability</th>
                       <th scope="col">In code</th>
@@ -189,48 +208,34 @@ function MatrixRow({ row }: { row: ReadRow }) {
 
 function DiscoveryGroup({ cells }: { cells: DiscoveryCells }) {
   const sources = typeof cells.sources === 'number' && Number.isFinite(cells.sources) ? cells.sources : 0;
+  const tier = typeof cells.tier === 'string' && cells.tier ? cells.tier : null;
   return (
     <>
-      <td>{typeof cells.tier === 'string' && cells.tier ? cells.tier : <span className="muted">—</span>}</td>
-      <td>{cells.preferred === true ? 'preferred' : <span className="muted">—</span>}</td>
+      {/* Tier and `preferred` are one state — see Discovery.tsx. */}
+      <td style={{ whiteSpace: 'nowrap' }}>
+        {tier ?? <span className="muted">no tier</span>}
+        {cells.preferred === true && <span className="tiny muted"> · preferred</span>}
+      </td>
       <td className="secondary" style={{ minWidth: 220 }}>
         {typeof cells.rationale === 'string' ? cells.rationale : ''}
       </td>
+      {/* A COUNT, not chips: the projection carries how many citations Discovery recorded, never the
+          citations themselves, and a chip built from a count would be a citation with no source. */}
       <td style={sources === 0 ? { color: 'var(--text-warning)' } : undefined}>{sources}</td>
     </>
   );
 }
 
 function RegulatoryGroup({ cells }: { cells: RegulatoryCells }) {
-  const dimensions = Array.isArray(cells.dimensions) ? cells.dimensions : [];
   const overall = asVerdict(cells.overall);
   return (
     <>
       <td>
         <span className={`chip ${verdictClass(overall)}`}>{overall}</span>
       </td>
-      {VERDICT_DIMENSIONS.map((d) => {
-        const dim = dimensions.find((x) => x?.dimension === d);
-        const status = dim ? asVerdict(dim.status) : null;
-        return (
-          <td key={d} style={{ textAlign: 'center' }}>
-            {status ? (
-              <span className={`chip ${verdictClass(status)}`} title={`${d} — ${status}`}>
-                {verdictGlyph(status)}
-                <span className="sr-only">
-                  {' '}
-                  {d} {status}
-                </span>
-              </span>
-            ) : (
-              /* An unassessed dimension is NOT a pass, and it does not get an empty cell. */
-              <span style={{ color: 'var(--text-warning)' }} title={`${d} — not assessed`}>
-                ?<span className="sr-only"> {d} not assessed</span>
-              </span>
-            )}
-          </td>
-        );
-      })}
+      <WhyCell cells={cells} />
+      <ConfidenceCell values={confidencesOf(cells)} expected={VERDICT_DIMENSIONS.length} />
+      <SourcesCell citations={citationsOf(cells)} />
       <td style={{ color: 'var(--text-pro)' }}>
         {cells.proposedDetermination ? (
           <Data kind="code">{cells.proposedDetermination}</Data>
@@ -254,17 +259,23 @@ function DosingGroup({ cells }: { cells: DosingCells }) {
   return (
     <>
       <td style={{ whiteSpace: 'nowrap' }}>
-        <BoundValue bound={cells.floor} />
-        <span className="muted"> – </span>
-        <BoundValue bound={cells.upper} />
+        <div style={{ fontWeight: 600 }}>
+          {typeof recommended === 'number' && Number.isFinite(recommended) ? (
+            <>
+              <Data kind="ppm">{fmtPpm(recommended)}</Data> <span className="tiny muted">ppm</span>
+            </>
+          ) : (
+            <span style={{ color: 'var(--text-danger)' }}>unreadable</span>
+          )}
+        </div>
+        <div className="small secondary">
+          <BoundValue bound={cells.floor} />
+          <span className="muted"> – </span>
+          <BoundValue bound={cells.upper} />
+        </div>
       </td>
-      <td style={{ fontWeight: 600 }}>
-        {typeof recommended === 'number' && Number.isFinite(recommended) ? (
-          <Data kind="ppm">{fmtPpm(recommended)}</Data>
-        ) : (
-          <span style={{ color: 'var(--text-danger)' }}>unreadable</span>
-        )}
-      </td>
+      <DosingWhyCell cells={cells} />
+      <ConfidenceCell values={boundConfidences(cells)} expected={2} />
       <td>
         <AmountValue cells={cells} />
       </td>

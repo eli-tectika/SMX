@@ -158,4 +158,62 @@ describe('FullMatrix — every column group, one sheet', () => {
     view();
     await waitFor(() => expect(screen.getByText(/no rows/i)).toBeInTheDocument());
   });
+  /**
+   * EVERY GROUP GETS A BAND, and this is the screen it was brought back for: once a column's own
+   * heading has scrolled off the left edge, the band is the only thing saying which phase it belongs
+   * to. Each cell is labelled with the phase's NAME — the tint reinforces the word, never replaces
+   * it — and the spans have to add up to the header row, or a column sits under the wrong phase.
+   */
+  it('bands every phase group, labelled and spanning its own columns', async () => {
+    view();
+    await waitFor(() => expect(document.querySelector('.mx__groups')).toBeInTheDocument());
+    const band = [...document.querySelectorAll('.mx__groups th')];
+    expect(band.map((b) => [b.getAttribute('data-group'), b.textContent])).toEqual([
+      ['identity', 'Material'],
+      ['discovery', 'Discovery'],
+      ['regulatory', 'Regulatory'],
+      ['dosing', 'Dosing'],
+      ['outcome', 'Outcome'],
+    ]);
+    const spans = band.reduce((n, b) => n + Number(b.getAttribute('colspan') ?? 1), 0);
+    expect(spans).toBe(document.querySelectorAll('.mx__cols th').length);
+  });
+
+  /** The identity band freezes with the column it labels, or the always-visible column loses it. */
+  it('freezes the identity band with the identity column', async () => {
+    view();
+    await waitFor(() => expect(document.querySelector('.mx__groups')).toBeInTheDocument());
+    expect(document.querySelector('.mx__groups th[data-group="identity"]')).toHaveAttribute(
+      'data-rowhead',
+    );
+  });
+
+  /**
+   * The sheet a customer is forwarded and the screen an operator signs against read ONE projection,
+   * so every group here is the same shape its own phase screen renders.
+   */
+  it('renders each group in the same shape its phase screen does', async () => {
+    view();
+    await waitFor(() => expect(document.querySelector('.mx__cols')).toBeInTheDocument());
+    const heads = [...document.querySelectorAll('.mx__cols th')].map((h) => h.textContent);
+    expect(heads).toEqual([
+      'Material',
+      'State',
+      'Why',
+      'Sources',
+      'State',
+      'Why',
+      'Confidence',
+      'Sources',
+      'Proposed',
+      'Determination',
+      'State',
+      'Why',
+      'Confidence',
+      'Amount',
+      'Availability',
+      'In code',
+      'Order',
+    ]);
+  });
 });

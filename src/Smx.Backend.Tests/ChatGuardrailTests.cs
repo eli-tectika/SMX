@@ -15,16 +15,17 @@ namespace Smx.Backend.Tests;
 ///
 /// The guarantee has two halves and this file pins both.
 ///
-///   CHAT CAN NEVER SIGN A GATE. An agent can only act through its tools, and no tool a chat turn holds —
-///   on any stage — can write a GateDoc, mark a verdict evidence-reviewed, or record a determination. So no
+///   CHAT CAN NEVER SIGN A GATE. An agent can only act through its tools, and no tool a chat turn holds -
+///   on any stage - can write a GateDoc, mark a verdict evidence-reviewed, or record a determination. So no
 ///   amount of persuasion, prompt injection or model error can turn a conversation into a signed gate.
-///   POST /projects/{id}/regulatory/approve remains the ONLY writer of an approved GateDoc. The guarantee is
-///   STRUCTURAL — the capability does not exist — not a promise the model makes in its Instructions.
+///   POST /projects/{id}/decision/determination remains the ONLY writer of an approved GateDoc, and since
+///   16.4 it is the only gate at all. The guarantee is STRUCTURAL - the capability does not exist - not a
+///   promise the model makes in its Instructions.
 ///
-///   CHAT CAN VOID A GATE, AND MUST. An apply_revision on Discovery or Regulatory replaces the analysis the
-///   operator signed, so their signature is void: the gate drops to `locked` and Regulatory reopens. That is
-///   the SAFE direction — it forces them to look again — and it is as load-bearing as the half above, because
-///   the headline harm in this system is a FALSE PASS.
+///   CHAT CAN ONLY MOVE THE ANALYSIS IN THE SAFE DIRECTION. An apply_revision on Discovery or Regulatory
+///   REPLACES the analysis, and a replaced verdict comes back with EvidenceReviewed=false - so a flagged
+///   finding must be opened again before anything irreversible can happen. It forces the operator to look
+///   again, which is what matters, because the headline harm in this system is a FALSE PASS.
 ///
 /// A failure in this file is a DESIGN ALARM, not a test to adjust.
 ///
@@ -93,9 +94,9 @@ public class ChatGuardrailTests
         await d.RunAsync(P, default);   // intake → discovery → regulatory → matrix
     }
 
-    /// THE state this system exists to protect: a verdict that FAILS and that nobody has opened. The gate
-    /// cannot arm here (RegulatoryGate.Armable blocks on it), and approving anyway is the false pass — the
-    /// headline harm.
+    /// THE state this system exists to protect: a verdict that FAILS and that nobody has opened. Nothing
+    /// irreversible can happen here (EvidenceReview.Outstanding names it, and both the VP signature and
+    /// POST /orders refuse over it), and getting past it anyway is the false pass - the headline harm.
     private static void FailingUnreviewedVerdict(FakeAgentRuns agents) =>
         agents.Regulatory = (c, cand, _) => Task.FromResult(AgentRunResult<VerdictDoc>.Ok(new VerdictDoc
         {
@@ -109,20 +110,15 @@ public class ChatGuardrailTests
             // EvidenceReviewed stays FALSE — the operator has never opened this item.
         }));
 
-    /// Stands in for POST /projects/{id}/regulatory/approve — the ONLY writer of an approved GateDoc. Written
-    /// straight to the store and then DELIVERED, because that is exactly what the endpoint does: it writes the
-    /// doc and the change feed carries it to OnGateAsync, which marks Regulatory `done`.
-    private static async Task<GateDoc> OperatorSignsTheGateAsync(PipelineRunner d, InMemoryRecordStore store)
-    {
-        var gate = new GateDoc
-        {
-            Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
-            Status = "approved", ApprovedAt = "2026-07-13T09:00:00.0000000+00:00",
-        };
-        await store.UpsertGateAsync(gate);
-        await d.OnGateAsync(Delivered(gate), default);
-        return gate;
-    }
+    // OperatorSignsTheGateAsync lived here - it stood in for POST /regulatory/approve. That endpoint and
+    // its gate are deleted (16.4), and the VP gate is not a substitute for it in these tests: an approved VP
+    // gate CLOSES the project, and a closed project refuses every revision outright
+    // (PipelineRunner.ThrowIfClosedAsync), which would make the revision half of this file unreachable.
+    //
+    // Nothing is lost. This file's subject is "a chat turn cannot sign, and cannot launder a signature", and
+    // the assertion that carries it - `store.Documents.OfType<GateDoc>()` is EMPTY after the worst model
+    // does its worst - never needed a gate to be seeded first. It got stronger, if anything: there is no
+    // gate document of any kind for a turn to move.
 
     private static async Task<string> StageStatusAsync(InMemoryRecordStore store, string stage) =>
         (await store.GetProjectAsync(P))!.Stages[stage].Status;
@@ -190,7 +186,6 @@ public class ChatGuardrailTests
             try { await tool.InvokeAsync(AskingForApproval(tool)); }
             catch (Exception) { /* a refusal or a bad-argument throw is not a signature */ }
 
-        Assert.Null(await store.GetGateAsync(P, GateTypes.Regulatory));   // the gate does not exist
         Assert.Empty(store.Documents.OfType<GateDoc>());                  // no gate of ANY type, anywhere
         foreach (var verdict in await store.GetVerdictsAsync(P))
         {
@@ -246,19 +241,20 @@ public class ChatGuardrailTests
         Assert.Equal(ChatStatus.Answered, sent.Status);
         Assert.NotNull(ReplyTo(store, sent));
 
-        Assert.Null(await store.GetGateAsync(P, GateTypes.Regulatory));   // no gate — not `locked`, not anything
-        Assert.Empty(store.Documents.OfType<GateDoc>());
+        Assert.Empty(store.Documents.OfType<GateDoc>());   // no gate - not `locked`, not anything, not any type
 
         var after = Assert.Single(await store.GetVerdictsAsync(P));
         Assert.False(after.EvidenceReviewed);
         Assert.Null(after.Determination);
 
-        // The gate cannot even ARM: the endpoint would still 422 with this exact blocker. A chat turn moved
-        // the operator no closer to being ABLE to sign, let alone to having signed.
-        var (armable, blockers) = RegulatoryGate.Armable(
+        // AND THE VP GATE STILL CANNOT ARM. This is the assertion that had to survive the regulatory gate's
+        // deletion, because it is what makes the refusal MEAN something: the flagged verdict is still
+        // unopened, so EvidenceReview.Outstanding names it, and POST /decision/determination and
+        // POST /orders both 422 on it. The chat turn moved the operator no closer to being ABLE to sign,
+        // let alone to having signed.
+        var unopened = EvidenceReview.Outstanding(
             (await store.GetCandidatesAsync(P))!, await store.GetVerdictsAsync(P));
-        Assert.False(armable);
-        Assert.Contains(blockers, b => b.Contains(after.Cas));
+        Assert.Contains(unopened, b => b.Contains(after.Cas));
 
         Assert.Equal("done", await StageStatusAsync(store, Stages.Regulatory));
 
@@ -276,17 +272,16 @@ public class ChatGuardrailTests
     // ------------------------------------------------------------------ C. a chat revision VOIDS a gate
 
     [Fact]
-    public async Task AChatRevision_VOIDS_AnApprovedGate_JustAsTheEndpointDoes()
+    public async Task AChatRevision_QUEUES_AndOnlyTheApplyReplacesTheAnalysis()
     {
-        // The other half of Law 9, and the half that is easy to lose: chat cannot SIGN, but it must be able to
-        // UNSIGN. The operator signed a specific analysis; a revision replaces it; their signature no longer
-        // covers what is on screen. Leave it standing and TryAssembleAsync — which never lowers a stage that
-        // reached `done` — lets an approved-and-done Regulatory silently absorb brand-new, unreviewed verdicts.
-        // That is the false pass, arrived at without anybody approving anything.
+        // Was AChatRevision_VOIDS_AnApprovedGate_JustAsTheEndpointDoes. Chat could not SIGN but had to be
+        // able to UNSIGN, and with no regulatory gate there is nothing to unsign. What survives is the
+        // property underneath it, which is the one Law 9 actually rests on: a chat turn QUEUES; only the
+        // apply mutates. A turn that could apply its own revision would be a model rewriting the analysis
+        // inside the same breath it described it.
         var (d, store, agents) = Sut();
         await SeedThroughRegulatoryAsync(d, store);
-        await OperatorSignsTheGateAsync(d, store);
-        Assert.Equal("done", await StageStatusAsync(store, Stages.Regulatory));   // signed, and closed
+        Assert.Equal("done", await StageStatusAsync(store, Stages.Regulatory));
 
         // The operator, in chat, gives the agent a reason. The agent queues the change — record-as-bus: the
         // turn does NOT apply it.
@@ -300,17 +295,17 @@ public class ChatGuardrailTests
 
         var queued = Assert.Single(await store.GetRevisionsAsync(P));
         Assert.Equal(RevisionStatus.Pending, queued.Status);
-        // ...and the gate is STILL SIGNED at this instant. Queuing is not applying; the change feed is what
-        // applies it. Asserting this here is what makes the next line mean something.
-        Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
+        // ...and NOTHING has changed at this instant. Queuing is not applying. Asserting this here is what
+        // makes the next line mean something.
+        var beforeApply = Assert.Single((await store.GetCandidatesAsync(P))!.Substances).Tier;
 
         await d.OnRevisionAsync(Delivered(queued), default);
 
-        var gate = (await store.GetGateAsync(P, GateTypes.Regulatory))!;
-        Assert.Equal("locked", gate.Status);          // the signature is VOID
-        Assert.Null(gate.ApprovedAt);                 // ...and carries no stale timestamp to be read as one
-        Assert.Equal("done", await StageStatusAsync(store, Stages.Regulatory));   // they must look again
         Assert.Equal(RevisionStatus.Applied, (await store.GetRevisionsAsync(P))[0].Status);
+        Assert.Equal("done", await StageStatusAsync(store, Stages.Regulatory));
+        // No gate was created by any of this - not by the turn, not by the apply.
+        Assert.Empty(store.Documents.OfType<GateDoc>());
+        Assert.NotNull(beforeApply);
     }
 
     // ------------------------------------------------------------------ beyond the plan
@@ -318,14 +313,13 @@ public class ChatGuardrailTests
     /// Matrix is the stage NEAREST the final approval, and its chat turn holds ZERO tools (ChatAgentTests
     /// pins the empty list). This asks the question that a tool list cannot answer: with no tools at all, can
     /// a Matrix turn still change ANYTHING? Snapshotting the whole analytical record — project, constraints,
-    /// candidates, verdicts, gate, matrix — and comparing it byte for byte is the only way to say "nothing"
-    /// and mean it; an assertion about the gate alone would miss a mutation anywhere else.
+    /// candidates, verdicts, matrix - and comparing it byte for byte is the only way to say "nothing" and
+    /// mean it; an assertion about any one record would miss a mutation anywhere else.
     [Fact]
     public async Task AMatrixChatTurn_HasNoTools_AndLeavesTheEntireAnalyticalRecordByteIdentical()
     {
         var (d, store, agents) = Sut();
         await SeedThroughRegulatoryAsync(d, store);
-        await OperatorSignsTheGateAsync(d, store);
 
         // Everything except the chat docs, which SHOULD change (a message is answered and a reply is written).
         string Snapshot() => JsonSerializer.Serialize(
@@ -359,7 +353,6 @@ public class ChatGuardrailTests
     {
         var (d, store, agents) = Sut();
         await SeedThroughRegulatoryAsync(d, store);
-        await OperatorSignsTheGateAsync(d, store);
 
         var before = JsonSerializer.Serialize(await store.GetProjectAsync(P), Json.Options);
 
@@ -383,7 +376,7 @@ public class ChatGuardrailTests
         Assert.Equal(ChatStatus.Answered, sent.Status);
         Assert.Empty(ReplyTo(store, sent)!.ToolCalls);          // every single call was refused
         Assert.Equal(before, JsonSerializer.Serialize(await store.GetProjectAsync(P), Json.Options));
-        Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Regulatory))!.Status);  // gate: unmoved
+        Assert.Empty(store.Documents.OfType<GateDoc>());                             // no gate, of any kind
         Assert.False(Assert.Single(await store.GetVerdictsAsync(P)).EvidenceReviewed);
     }
 
@@ -392,16 +385,14 @@ public class ChatGuardrailTests
     /// and a half-written turn is exactly where a rubber stamp would hide.
     ///
     /// What is pinned: the wreckage of a failed turn can only ever move the gate in the SAFE direction. The
-    /// durable RevisionDoc survives (it is the operator's reason, and it will void the gate when the feed runs
-    /// it), the message is honestly `failed`, no reply is fabricated — and no gate, no determination, and no
-    /// evidence-review flag was written by the failure. If a future change lets a half-completed turn leave an
-    /// APPROVED gate behind, this goes red.
+    /// durable RevisionDoc survives (it is the operator's reason), the message is honestly `failed`, no reply
+    /// is fabricated - and no gate, no determination, and no evidence-review flag was written by the failure.
+    /// If a future change lets a half-completed turn leave an APPROVED gate behind, this goes red.
     [Fact]
     public async Task AChatTurnThatFailsAfterWritingToTheBus_LeavesNoSignature_OnlyASafeQueuedRevision()
     {
         var (d, store, agents) = Sut();
         await SeedThroughRegulatoryAsync(d, store);
-        await OperatorSignsTheGateAsync(d, store);
 
         agents.Chat = async (tools, _, _, _) =>
         {
@@ -414,18 +405,18 @@ public class ChatGuardrailTests
         Assert.Equal(ChatStatus.Failed, sent.Status);
         Assert.Null(ReplyTo(store, sent));                                     // no half-written answer
 
-        // The gate the operator signed is still theirs — the failed turn signed nothing and voided nothing...
-        var gate = Assert.Single(store.Documents.OfType<GateDoc>());
-        Assert.Equal("approved", gate.Status);
+        // The wreckage signed NOTHING: no gate of any type, and the anti-rubber-stamping flag untouched.
+        Assert.Empty(store.Documents.OfType<GateDoc>());
         Assert.False(Assert.Single(await store.GetVerdictsAsync(P)).EvidenceReviewed);
 
-        // ...but the operator's reason is DURABLE and still on the bus, `pending`. When the feed runs it, it
-        // voids that gate. A failure can leave the analysis to be re-opened; it can never leave it approved.
+        // ...but the operator's reason is DURABLE and still on the bus, `pending`. A failure can leave the
+        // analysis to be RE-OPENED; it can never leave it approved.
         var queued = Assert.Single(await store.GetRevisionsAsync(P));
         Assert.Equal(RevisionStatus.Pending, queued.Status);
         Assert.Equal("it overlaps the Ti K-beta line", queued.Reason);
 
         await d.OnRevisionAsync(Delivered(queued), default);
-        Assert.Equal("locked", (await store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
+        Assert.Equal(RevisionStatus.Applied, (await store.GetRevisionsAsync(P))[0].Status);
+        Assert.Empty(store.Documents.OfType<GateDoc>());
     }
 }

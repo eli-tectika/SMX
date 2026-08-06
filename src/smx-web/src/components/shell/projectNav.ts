@@ -1,4 +1,4 @@
-import { STAGES, type StageDef } from '../../domain/stages';
+import { backendStages, type BackendStage, STAGES, type StageDef } from '../../domain/stages';
 
 /**
  * The in-project destinations, in sidebar order — Overview, the three phases, Full matrix, Sign-off.
@@ -43,6 +43,15 @@ export interface NavItem {
    */
   agentSlug: string | null;
   /**
+   * The backend threads the panel shows, for an entry whose `agentSlug` is not a `STAGES` slug.
+   *
+   * Overview is the only one, and it needs this because `intake` is deliberately NOT a phase: it runs
+   * during project creation, so it has no entry in `STAGES` and `backendStages('intake')` is empty.
+   * Without an override the panel would fall through to the no-agent copy, which talks about the XRF
+   * pass-through and would be a lie on the one screen where the operator amends a requirement.
+   */
+  agentStages?: BackendStage[];
+  /**
    * What the panel calls itself, when that is not this screen's own label.
    *
    * Only Full matrix needs it, and it needs it for the reason above: the agent in its panel is the
@@ -75,10 +84,17 @@ const OVERVIEW: NavItem = {
   slug: 'overview',
   label: 'Overview',
   icon: 'ti-file-description',
-  // No panel. The intake agent's composer is IN the Overview screen (spec §11.4) — it is the
-  // amendment surface, sitting beside the brief it would amend. A second intake thread in the
-  // right-hand panel would be the same conversation twice, in two places, out of sync.
-  agentSlug: null,
+  /*
+   * THE INTAKE AGENT, in the panel (spec §16.2). This entry carried `agentSlug: null` while the
+   * amendment surface was a form inside the screen — a picker, a value box and a reason box, which is
+   * the direct edit Law 4 forbids with the reason demoted to one more field. The form is deleted and
+   * the conversation is the surface: the operator says what changed and why, and the agent calls the
+   * amendment tool. It is the same thread the interview wrote the brief on, which is the point —
+   * the brief and the amendments to it are one conversation.
+   */
+  agentSlug: 'intake',
+  agentStages: ['intake'],
+  agentLabel: 'Intake',
 };
 
 const FULL_MATRIX: NavItem = {
@@ -112,3 +128,12 @@ export const navItem = (slug: string | undefined): NavItem | undefined =>
 
 /** Where a project opens. Overview is the brief the agent wrote, which is what §7 lands on. */
 export const projectHome = (projectId: string) => `/p/${projectId}/overview`;
+
+/**
+ * The backend threads an entry's panel shows.
+ *
+ * One resolver, used by both the panel and the collapsed-rail unread watcher, so those two can never
+ * end up watching a different set of threads than the one being displayed.
+ */
+export const navAgentStages = (item: NavItem): BackendStage[] =>
+  item.agentStages ?? (item.agentSlug ? backendStages(item.agentSlug) : []);

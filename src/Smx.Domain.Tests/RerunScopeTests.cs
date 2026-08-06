@@ -108,13 +108,18 @@ public class RerunScopeTests
     [Fact]
     public void SignaturesAtRisk_NamesOnlyTheGatesTheScopeActuallyReaches()
     {
-        // A batch-mass amendment must not warn about the R.E.'s signature: it does not reach Regulatory, and
-        // a confirmation prompt that cries wolf is one the operator learns to click through.
+        // With the R.E.'s signature gone (§16.4) only Decision-reaching scopes can put anything at risk —
+        // but both of these DO reach Decision, so this assertion still discriminates on the map rather
+        // than being true by construction.
         Assert.Equal([GateTypes.Vp],
-            RerunScope.SignaturesAtRisk(RerunScope.For("batchMassKg"), regulatorySigned: true, vpSigned: true));
+            RerunScope.SignaturesAtRisk(RerunScope.For("batchMassKg"), vpSigned: true));
 
-        Assert.Equal([GateTypes.Regulatory, GateTypes.Vp],
-            RerunScope.SignaturesAtRisk(RerunScope.For("markets"), regulatorySigned: true, vpSigned: true));
+        Assert.Equal([GateTypes.Vp],
+            RerunScope.SignaturesAtRisk(RerunScope.For("markets"), vpSigned: true));
+
+        // ...and an UNSIGNED VP gate risks nothing, whatever the scope. A confirmation prompt that cries
+        // wolf is one the operator learns to click through.
+        Assert.Empty(RerunScope.SignaturesAtRisk(RerunScope.For("markets"), vpSigned: false));
     }
 
     [Fact]
@@ -134,18 +139,17 @@ public class RerunScopeTests
     public void XrfConfirmation_ReDosesAndNothingUpstream()
     {
         // Spec §9.3: "XRF background + device LODs → Dosing, Sign-off — the detection floor." The
-        // measurement moves no chemistry and no verdict, so re-running Regulatory for it would void the
-        // R.E.'s signature over an analysis that did not change. The row also says Discovery joins this
+        // measurement moves no chemistry and no verdict, so re-running Regulatory for it would re-screen an
+        // analysis that did not change. The row also says Discovery joins this
         // scope WHEN THE DEFERRED XRF FILTER LANDS — an element already loud in the substrate is a poor
         // marker — and this assertion is what will fail when that day comes.
         Assert.Equal([Stages.Dosing, Stages.Decision], RerunScope.XrfConfirmation);
         Assert.DoesNotContain(Stages.Regulatory, RerunScope.XrfConfirmation);
         Assert.DoesNotContain(Stages.Discovery, RerunScope.XrfConfirmation);
 
-        // Only the VP's signature is ever at risk: the R.E.'s covers the regulatory analysis, which this
-        // does not touch. A confirmation prompt that cries wolf is one the operator learns to click through.
+        // The VP's signature is the only one there is, and this scope reaches it.
         Assert.Equal([GateTypes.Vp], RerunScope.SignaturesAtRisk(
-            RerunScope.XrfConfirmation, regulatorySigned: true, vpSigned: true));
+            RerunScope.XrfConfirmation, vpSigned: true));
     }
 
     [Fact]
@@ -153,7 +157,6 @@ public class RerunScopeTests
     {
         // Nothing signed ⇒ nothing to warn about ⇒ the amendment just runs. "Nothing waits" is the default;
         // the confirmation is the exception, and it has to stay rare to keep meaning anything.
-        Assert.Empty(RerunScope.SignaturesAtRisk(
-            RerunScope.For("material"), regulatorySigned: false, vpSigned: false));
+        Assert.Empty(RerunScope.SignaturesAtRisk(RerunScope.For("material"), vpSigned: false));
     }
 }

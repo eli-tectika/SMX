@@ -25,7 +25,7 @@ namespace Smx.Backend.Pipeline;
 /// door: under the change feed a record write triggered these, and when the feed went away three of them
 /// were ported here with no caller at all — a silent, months-deep outage that every existing test missed,
 /// because every existing test calls these methods directly. Today:
-///   OnGateAsync              ← POST /projects/{id}/regulatory/approve, POST /projects/{id}/decision/determination
+///   OnGateAsync              ← POST /projects/{id}/decision/determination (the ONLY gate left, §16.4)
 ///   CloseProjectAsync        ← OnGateAsync, on an approved VP gate
 ///   OnRevisionAsync          ← POST /projects/{id}/stages/{stage}/revise, via PipelineSupervisor.TryRun
 ///   OnChatMessageAsync       ← POST /projects/{id}/stages/{stage}/chat, via PipelineSupervisor.RunDetached
@@ -53,10 +53,7 @@ public sealed class PipelineRunner(
     ILogger<PipelineRunner>? logger = null,
     IKnowledgeStore? knowledge = null,
     ICatalogLookup? catalog = null,
-    ISdsAcquisition? sds = null,
-    // REGULATORY_AUTO_APPROVE (dev/demo only). Off by default — see BackendOptions.RegulatoryAutoApprove
-    // and AutoApproveRegulatoryAsync for exactly what turning it on gives up.
-    bool regulatoryAutoApprove = false)
+    ISdsAcquisition? sds = null)
 {
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _live = new();
 
@@ -342,13 +339,19 @@ public sealed class PipelineRunner(
 
         if (await store.GetConstraintsAsync(projectId, ct) is not { } c) return Skip();
         // The need-only condition, from OnConstraintsAsync: an operator/eval pool or provided candidates
-        // mean the pool agent has nothing to propose.
+        // mean the pool pass has nothing to propose.
         if (c.ProvidedCandidates.Count > 0 || c.ElementPools.Count > 0) return Skip();
 
         // The first write. It opens the run — everything above this line could still skip.
-        trail.Run.Agent = PoolAgent.AgentName;
+        //
+        // DiscoveryAgent, not a PoolAgent: the pool is Discovery's first pass, so the trail names one agent
+        // across both runs. The STAGE stays its own — it is a separately re-runnable unit with its own
+        // artifact and its own skip conditions — but the operator is no longer asked to believe two agents
+        // hold two opinions about one move.
+        trail.Run.Agent = DiscoveryAgent.AgentName;
         await trail.StepAsync(RunStepKind.Started,
-            $"Proposing a marker pool for {c.Components.Count} components: " +
+            $"Proposing a marker pool for {c.Components.Count} components " +
+            $"(targeting about {DiscoveryAgent.TargetElementsPerComponent} elements each): " +
             string.Join(", ", c.Components.Select(k => $"{k.Id} ({k.Material})")) + ".", ct: ct);
         await SetStageAsync(projectId, Stages.Pool, s => s.Status = "running", ct);
 
@@ -358,10 +361,14 @@ public sealed class PipelineRunner(
 
         var pool = result.Output!;
         await store.UpsertPoolAsync(pool, ct);
+        // PER COMPONENT, and named — never a project total. The breadth target is per component precisely
+        // because a project-wide count hides the thin one, and a summary that reports "18 markers" would hide
+        // it in exactly the same way. A component that came back short is legitimate (the substrate may
+        // constrain it), so this is not an error — but the operator has to be able to SEE it to argue with it.
         return new StageResult(RunOutcome.Done, null,
-            $"Proposed {pool.Suggestions.Count} markers across " +
-            $"{pool.Suggestions.Select(s => s.Component).Distinct().Count()} components — " +
-            string.Join(", ", pool.Suggestions.Take(3).Select(s => $"{s.Element}/{s.FormClass}")) + "…",
+            "Proposed " + string.Join("; ", c.Components.Select(k =>
+                $"{k.Id}: {pool.Elements.Count(e => e.Component == k.Id)} elements, " +
+                $"{pool.Suggestions.Count(s => s.Component == k.Id)} forms")) + ".",
             RecordIds.Pool(projectId));
     }
 
@@ -490,13 +497,13 @@ public sealed class PipelineRunner(
     /// describing a cell nobody is screening.
     ///
     /// TWO OPTIONS. (a) delete the orphans. (b) leave them and rely on the live-candidate filtering that
-    /// MatrixAssembler.Cells, RegulatoryGate.Armable, the compliance-package export and ProjectTable.Build
-    /// already do. (b) has real precedent and it is NOT chosen, for two reasons:
+    /// MatrixAssembler.Cells, EvidenceReview.Outstanding, the compliance-package export and
+    /// ProjectTable.Build already do. (b) has real precedent and it is NOT chosen, for two reasons:
     ///
     /// 1. THE FILTERING IS NOT UNIVERSAL, AND THE TWO PLACES IT IS MISSING ARE THE DANGEROUS ONES.
     ///    `GET /projects/{id}/verdicts` serves the partition raw — an orphan renders on the regulatory
     ///    screen looking exactly as current as a live verdict. Worse, RunDosingAsync folds
-    ///    `ProvisionalSet.Of(verdicts)` over ALL verdicts with no live-candidate filter at all, so an orphan
+    ///    `CompliantSet.Of(verdicts)` over ALL verdicts with no live-candidate filter at all, so an orphan
     ///    carrying `recommended` is dosed into a code for a substance the current analysis rejected — and
     ///    from there into a compliance package and an order. Read-side repair is a rule every future reader
     ///    has to remember; four remembered and two did not. A document that is not there cannot be misread.
@@ -703,10 +710,6 @@ public sealed class PipelineRunner(
             finally { gate.Release(); }
         }));
 
-        // The human-gate kill switch (dev/demo). When on, adopt the agent's proposals and sign the gate right
-        // here, so RunMatrixAsync computes `done` and the pipeline flows to Dosing with no R.E. Off by default.
-        if (regulatoryAutoApprove) await AutoApproveRegulatoryAsync(projectId, trail, ct);
-
         // WHAT THIS RUN CHANGED (spec §9.5), read back from the record — never narrated by the agent that
         // wrote it. An agent's account of its own edits reports the change it INTENDED, not the one it made,
         // which is the same class of claim as a fabricated citation. Emitted only on a genuine RE-run: a
@@ -716,64 +719,30 @@ public sealed class PipelineRunner(
             ? RerunDiff.OfVerdicts(before, RerunDiff.VerdictSnapshot.Of(await store.GetVerdictsAsync(projectId, ct)))
             : null, ct);
 
-        // The stage is DONE: every substance was screened, which is the whole of this stage's work.
+        // The stage is DONE: every substance was screened, which is the whole of this stage's work. There is
+        // no signature to wait for — §16.4 dropped the regulatory gate outright, and the matrix (with its
+        // confidence and its citations) is the review surface in its place.
         //
-        // It used to land `awaiting-RE`, on the reasoning that a Regulatory stage reaching `done` off its own
-        // agent's output would be the agent signing a hard gate. That conflated two things. The stage status
-        // says whether the AGENT RAN; the GateDoc says whether a HUMAN SIGNED. Law 9 is enforced by the second
-        // — CompliantSet reads only the operator's Determination, and the compliance-package export and
-        // POST /orders both refuse over an unsigned gate. Nothing about `done` here lets a proposal through.
+        // What still stands between an agent's verdict and a purchase order: the operator's VETO on any
+        // substance (CompliantSet reads `Determination` as an override), EvidenceReview.Outstanding refusing
+        // the VP pen and the order while a flagged finding is unopened, and the VP's own signature.
         return new StageResult(RunOutcome.Done, null,
             $"Wrote {missing.Count} verdicts — {missing.Count - flagged} screened, {flagged} flagged.",
             null);
     }
 
-    /// REGULATORY_AUTO_APPROVE — the human gate, removed. It adopts each verdict's PROPOSED determination as
-    /// the final one, marks every verdict evidence-reviewed, and signs the regulatory gate itself. That is,
-    /// precisely, the three things the R.E. does by hand — and precisely what the design forbids an agent from
-    /// doing (CompliantSet reads only the human `Determination`, and `ProposedDetermination` is a separate
-    /// field EXACTLY so a proposal cannot be read as a signature). Turning this on lets the agent's verdicts
-    /// reach Dosing → Cost → Decision → procurement unreviewed, so it is dev/demo only and defaults off.
-    ///
-    /// The safe asymmetry is kept even here: a null proposal (the failed-verdict fallback) stays null, so an
-    /// un-screenable substance is EXCLUDED from the compliant set rather than auto-recommended.
-    private async Task AutoApproveRegulatoryAsync(string projectId, RunTrail trail, CancellationToken ct)
-    {
-        var verdicts = await store.GetVerdictsAsync(projectId, ct);
-        var adopted = 0;
-        foreach (var v in verdicts)
-        {
-            if (v.ProposedDetermination is Determinations.Recommended or Determinations.Rejected)
-            {
-                v.Determination = v.ProposedDetermination;
-                v.DeterminationReason = "auto-adopted from the agent's proposal (REGULATORY_AUTO_APPROVE)";
-                adopted++;
-            }
-            // Marked reviewed so RegulatoryGate.Armable stops blocking on unreviewed non-pass verdicts. This
-            // is the rubber-stamp the gate is built to prevent — which is the whole meaning of the flag.
-            v.EvidenceReviewed = true;
-            await store.UpsertVerdictAsync(v, ct);
-        }
-        var existing = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
-        // `ApprovedAt` and `ApprovedBy` move as a PAIR or not at all. Re-affirming an already-approved
-        // gate keeps BOTH, which is what stops this path from overwriting a human signature with the
-        // machine's: an operator signs, the pipeline runs again over the same verdicts, and without the
-        // second half of this expression the record would then read "signed by the machine" over the
-        // operator's own timestamp — a signature attributed to nobody who made it. The reverse case is
-        // already safe: POST /regulatory/approve deliberately DOES replace a machine signature with a
-        // human one, and moves the timestamp with it.
-        var reaffirming = existing is { Status: "approved" };
-        await store.UpsertGateAsync(new GateDoc
-        {
-            Id = RecordIds.Gate(projectId, GateTypes.Regulatory), ProjectId = projectId,
-            GateType = GateTypes.Regulatory, Status = "approved",
-            ApprovedAt = reaffirming ? existing!.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
-            ApprovedBy = reaffirming ? existing!.ApprovedBy : GateSigners.AutoApprove,
-        }, ct);
-        await trail.StepAsync(RunStepKind.Output,
-            $"REGULATORY_AUTO_APPROVE: adopted {adopted} agent determination(s) and signed the gate — no human review.",
-            ct: ct);
-    }
+    // AutoApproveRegulatoryAsync LIVED HERE (REGULATORY_AUTO_APPROVE, and it defaulted ON in deployed
+    // environments). It adopted every agent proposal as the operator's determination, marked every verdict
+    // evidence-reviewed, and signed the regulatory gate as `auto-approve`.
+    //
+    // It is DELETED with the gate (§16.4), and the deletion is not merely tidying: two of its three effects
+    // are now either the default or forbidden. Admitting the agent's proposal is what CompliantSet does on
+    // its own, so writing it into `Determination` would destroy the record's ability to say whether a human
+    // ruled — the very distinction the matrix now exists to show. And auto-marking verdicts reviewed would
+    // reduce EvidenceReview.Outstanding to a check that can never fire, which is worse than no check
+    // because it reads as protection. The last human obligation in the system would be optional and silent.
+    //
+    // GateSigners.AutoApprove survives as a constant; see the comment there for why.
 
     /// The compatibility matrix: a DETERMINISTIC fold over (candidates, verdicts). No agent — the null
     /// `trail.Run.Agent` is what tells the operator this stage is arithmetic rather than reasoning.
@@ -790,14 +759,13 @@ public sealed class PipelineRunner(
         if (!MatrixAssembler.IsComplete(candidates, verdicts)) return Skip();
 
         // The Regulatory stage's status is no longer DERIVED here. It used to be recomputed on every pass
-        // from the gate record + RegulatoryGate.Armable, because the stage stood in for "has the R.E.
-        // signed". It doesn't any more — the stage says its agent ran, and the GateDoc says a human signed.
+        // from the gate record + its arming predicate, because the stage stood in for "has the R.E. signed".
+        // There is no R.E. signature at all now (§16.4) — the stage says its agent ran, and nothing else.
         //
-        // The defense-in-depth this block carried has NOT been dropped, it has MOVED to where it belongs: a
-        // GateDoc carries no binding to the verdicts it was signed over, so `approved` alone is not proof
-        // the CURRENT analysis was reviewed, and RegulatoryGate.Armable is therefore re-checked at the two
-        // irreversible acts — GET /regulatory/compliance-package and POST /orders/{cas}. A late unreviewed
-        // failing verdict now blocks the export and the order rather than lowering a stage status.
+        // The defense-in-depth this block carried has NOT been dropped, it has MOVED to where it belongs:
+        // EvidenceReview.Outstanding is re-checked at the irreversible acts — the VP signature and
+        // POST /orders/{cas}. A late unreviewed failing verdict blocks the pen and the order rather than
+        // lowering a stage status.
         if (await HasRunAsync(projectId, Stages.Matrix, ct)) return Skip();
 
         await trail.StepAsync(RunStepKind.Started,
@@ -828,22 +796,32 @@ public sealed class PipelineRunner(
         var priorDosing = await store.GetDosingAsync(projectId, ct) is { } d0
             ? RerunDiff.DosingSnapshot.Of(d0) : null;
 
-        // NO GATE CHECK. Dosing used to skip behind an unsigned regulatory gate, which made the R.E.'s
-        // signature a pipeline precondition. Execution-core §8/D10 removed that: the operator sees a
-        // complete proposed answer in one sitting, and the signature governs the two IRREVERSIBLE acts —
-        // the compliance-package export and placing an order — not whether agents may run.
+        // NO GATE CHECK — and now there is no regulatory gate to check (§16.4). Dosing used to skip behind
+        // an unsigned one, which made the R.E.'s signature a pipeline precondition. Execution-core §8/D10
+        // removed that, and the gate itself followed: the operator sees a complete proposed answer in one
+        // sitting, and what governs the IRREVERSIBLE acts is the VP signature, EvidenceReview.Outstanding,
+        // the provisional flag and the MSDS — never whether agents may run.
         var constraints = await store.GetConstraintsAsync(projectId, ct);
         var candidates = await store.GetCandidatesAsync(projectId, ct);
         if (constraints is null || candidates is null) return Skip();
 
         var verdicts = await store.GetVerdictsAsync(projectId, ct);
-        // ProvisionalSet, NOT CompliantSet — see the 2026-08-06 redesign spec §10.1. With no park, Regulatory
-        // lands with only the agent's PROPOSED determinations on it, and CompliantSet reads only the
-        // operator's. Dosing over CompliantSet here would dose an empty set and produce nothing while looking
-        // finished. So it computes over `Determination ?? ProposedDetermination` and records what that cost;
-        // every irreversible act downstream still reads CompliantSet.
-        var dosable = ProvisionalSet.Of(verdicts);
-        var provisionalReasons = new List<string>(ProvisionalSet.ProvisionalReasons(verdicts));
+        // ONE SET NOW. There used to be two — CompliantSet (operator determinations only) for the
+        // irreversible acts, and ProvisionalSet (`Determination ?? ProposedDetermination`) for Dosing to
+        // compute over, with the gap between them stamping the dosing provisional. §16.4 deleted the
+        // regulatory gate, which was the only writer of operator determinations, so the strict set would
+        // now be empty on every project forever and the gap would be the whole set. CompliantSet was
+        // rewritten to the folded rule and ProvisionalSet deleted: two names answering the same question is
+        // how a reader ends up consulting the wrong one.
+        //
+        // What did NOT collapse is the operator's veto: `rejected` still removes a substance here, and
+        // nothing can put it back.
+        var dosable = CompliantSet.Of(verdicts);
+        // Reasons that make this dosing PROVISIONAL, i.e. that block the order. "Rests on the agent's
+        // proposal" is deliberately NOT among them any more — that is the normal basis now, and flagging it
+        // would refuse every order this system will ever be asked to place. What remains is a genuine data
+        // gap: a floor nobody measured, a loading nobody entered, a substance nothing could dose.
+        var provisionalReasons = new List<string>();
 
         // A DOSING RUN THAT CAN DOSE NOTHING STILL HAS TO SAY SO IN THE RECORD.
         //
@@ -893,8 +871,8 @@ public sealed class PipelineRunner(
 
         if (dosable.Count == 0)
             return await DosedNothingAsync(
-                "nothing may be dosed: no substance carries an operator determination OR an agent proposal " +
-                "of 'recommended'.");
+                "nothing may be dosed: no substance carries an agent proposal of 'recommended', or the " +
+                "operator has vetoed every one that did.");
 
         // Resolve every input first. A gap is no longer a park — it is a FLAG that blocks the order (§8).
         // What must never happen is the agent improvising the hole: a model that invents a measurement or a
@@ -1026,11 +1004,10 @@ public sealed class PipelineRunner(
     // a chat turn each arrive from an endpoint, not from RunAsync.
     // ---------------------------------------------------------------------------------------------
 
-    // Trusts the gate record: does NOT re-check arming/completeness here. The false-pass-safety
-    // invariant is that POST /regulatory/approve (armable + IsComplete) is the ONLY writer of an
-    // approved regulatory GateDoc — and POST /decision/determination (VpGate.Armable + the regulatory
-    // coverage re-check + real-code confirmations) the ONLY writer of an approved VP one. Do not add
-    // another writer without those checks.
+    // Trusts the gate record: does NOT re-check arming here. The false-pass-safety invariant is that POST
+    // /decision/determination — VpGate.Armable + EvidenceReview.Outstanding + real-code confirmations — is
+    // the ONLY writer of an approved VP GateDoc, and the VP gate is the only gate there is (§16.4). Do not
+    // add another writer without those checks.
     public async Task OnGateAsync(GateDoc g, CancellationToken ct)
     {
         // The regulatory branch is deliberately EMPTY now. Signing used to stamp the Regulatory stage out of
@@ -1266,9 +1243,12 @@ public sealed class PipelineRunner(
             // 0. The closed-project refusal, hoisted OVER the switch: ONE guard, all four arms. An approved
             //    VP gate is the close, and everything behind it is history — the signed DecisionDoc's
             //    TraceRefs cite the upstream records BY ID, so ANY arm's re-run would replace a cited record
-            //    in place; a Discovery/Regulatory re-run would additionally clear the R.E. determination and
-            //    void the approved regulatory gate — a CLOSED project reappearing on the dashboard, blocked
-            //    on an R.E. who already ruled.
+            //    in place; a Discovery/Regulatory re-run would additionally clear the operator's rulings and
+            //    their evidence review, leaving a CLOSED project whose signed decision cites verdicts nobody
+            //    has opened.
+            //
+            //    This guard is ALSO why nothing here voids a signature any more: it makes a live signature
+            //    unreachable from every revision path (see the note where VoidRegulatoryGateAsync was).
             await ThrowIfClosedAsync(r.ProjectId, r.Stage == Stages.Decision ? "decision" : "project", ct);
 
             // 1. Re-run the stage's agent. The new output stays in memory — nothing is persisted yet.
@@ -1288,12 +1268,11 @@ public sealed class PipelineRunner(
             //    `failed` — the operator simply re-issues it.
             r.ConclusionId = await WriteConclusionAsync(r, constraints, revised.StageOutputJson, ct);
 
-            // 3 → 4. ORDER MATTERS between these two: void the gate BEFORE the new output lands, so no
-            //    reader can ever see the new analysis under the old signature.
-            await VoidRegulatoryGateAsync(r, ct);
+            // 3. Land the new output. There is no gate to void first: §16.4 deleted the regulatory one, and
+            //    the VP's cannot be live here because ThrowIfClosedAsync refused a closed project above.
             await revised.PersistAsync(ct);
 
-            // 5. Only now is the revision applied.
+            // 4. Only now is the revision applied.
             r.Status = RevisionStatus.Applied;
             r.AppliedAt = DateTimeOffset.UtcNow.ToString("O");
             r.Error = null;
@@ -1301,14 +1280,13 @@ public sealed class PipelineRunner(
         }
         catch (Exception e)
         {
-            // RESIDUAL TRADE-OFF, accepted deliberately. If step 3 or 4 fails AFTER the conclusion was
-            // written, we are left with an orphan conclusion describing a change that did not land (the
-            // revision is `failed` and carries its ConclusionId, so the orphan is at least findable). That is
-            // strictly the better failure: the conclusion records the operator's genuine belief, the audit
-            // trail is honest, the gate can only have moved in the SAFE direction (voided), and the
-            // conclusion id is deterministic in the revision id — so re-issuing the same revision converges
-            // rather than duplicating. The inverse — the one this ordering exists to prevent — is a `failed`
-            // revision whose change is nevertheless live and permanent.
+            // RESIDUAL TRADE-OFF, accepted deliberately. If step 3 fails AFTER the conclusion was written,
+            // we are left with an orphan conclusion describing a change that did not land (the revision is
+            // `failed` and carries its ConclusionId, so the orphan is at least findable). That is strictly
+            // the better failure: the conclusion records the operator's genuine belief, the audit trail is
+            // honest, and the conclusion id is deterministic in the revision id — so re-issuing the same
+            // revision converges rather than duplicating. The inverse — the one this ordering exists to
+            // prevent — is a `failed` revision whose change is nevertheless live and permanent.
             await FailAsync(r, e.Message, ct);
         }
     }
@@ -1361,8 +1339,9 @@ public sealed class PipelineRunner(
             JsonSerializer.Serialize(verdict, Json.Options),
             // The agent's fresh VerdictDoc carries EvidenceReviewed=false and Determination=null by default,
             // so replacing the old one CLEARS the operator's prior ruling — deliberately. That ruling was
-            // made against the verdict this one replaces; RegulatoryGate.Armable will now block the gate
-            // until the operator opens this item again.
+            // made against the verdict this one replaces. EvidenceReview.Outstanding now refuses the VP
+            // signature and the order for any non-Pass result here until the operator opens it again; this
+            // is the whole of what the deleted gate-voiding step used to buy.
             async token =>
             {
                 await store.UpsertVerdictAsync(verdict, token);
@@ -1386,24 +1365,18 @@ public sealed class PipelineRunner(
         // enforced. Validate fires again inside RunDosingAsync, so a directive that would dose below the
         // floor or reach outside the compliant set FAILS here, loudly, with the operator's reason still
         // recorded as a Learned Conclusion. The operator's directive is authoritative over the AGENT; it
-        // does not outrank the regulatory gate.
+        // does not outrank an operator veto recorded on a verdict.
         //
-        // Re-check the signed gate BEFORE re-running, exactly as RunDosingAsync does on the first-run path.
-        // A Regulatory revision can void the gate (VoidRegulatoryGateAsync locks it) or introduce an
-        // unreviewed non-pass verdict since the signature; re-dosing behind a locked-or-uncovered gate would
-        // regenerate dosing (and, per the Cost reset below, re-price) over an analysis the operator never
-        // gated. Throw so the revision fails cleanly with the analysis untouched.
+        // THE TWO REGULATORY-GATE PRECONDITIONS THAT USED TO OPEN THIS METHOD ARE GONE, and removing them
+        // was not optional. They refused a revision unless the regulatory gate read `approved` and still
+        // covered the analysis. §16.4 deleted that gate, so `gate?.Status != "approved"` would have been
+        // TRUE on every project forever: every Dosing revision would throw, permanently, on a system with
+        // no other symptom. A precondition on a record that no longer exists is not a strict check, it is
+        // an outage with a reassuring error message.
+        //
+        // Nothing weaker replaces them here, deliberately. A revision must not be STRICTER than the first
+        // run, and RunDosingAsync screens no gate either; what guards procurement guards it at the order.
         var verdicts = await store.GetVerdictsAsync(c.ProjectId, ct);
-        var gate = await store.GetGateAsync(c.ProjectId, GateTypes.Regulatory, ct);
-        if (gate?.Status != "approved")
-            throw new InvalidOperationException(
-                "cannot revise Dosing while the regulatory gate is not approved — Dosing consumes the signed " +
-                "compliant set; re-dosing an unsigned analysis would produce an artifact the operator never gated");
-        var candidates = await store.GetCandidatesAsync(c.ProjectId, ct);
-        if (candidates is not null && RegulatoryGate.Armable(candidates, verdicts) is { Ok: false } blocked)
-            throw new InvalidOperationException(
-                "the regulatory gate is signed but no longer covers the current analysis: " +
-                string.Join("; ", blocked.Blockers));
         var compliant = CompliantSet.Of(verdicts);
         var (floors, loadings, physicsGaps, loadingGaps) = await ResolveDosingInputsAsync(c, compliant, ct);
         if (physicsGaps.Count > 0 || loadingGaps.Count > 0)
@@ -1509,36 +1482,18 @@ public sealed class PipelineRunner(
                 $"the project is closed — the VP signature is history; revising a closed {what} requires a new project");
     }
 
-    /// A gate is an operator's signature over a SPECIFIC analysis, and the revision just replaced that
-    /// analysis. Leaving the signature standing is the false pass: a stage that already reached `done` is
-    /// never lowered again, so an approved-and-done Regulatory stage would silently absorb verdicts the
-    /// operator never reviewed. Void it and make them sign again.
-    private async Task VoidRegulatoryGateAsync(RevisionDoc r, CancellationToken ct)
-    {
-        // BreaksRegulatoryGate is a partial function — it throws for a non-revisable stage rather than
-        // returning the dangerous `false`. We only reach here for a revisable stage, but ask explicitly.
-        if (!RevisionEffects.IsRevisable(r.Stage) || !RevisionEffects.BreaksRegulatoryGate(r.Stage)) return;
-
-        if (await store.GetGateAsync(r.ProjectId, GateTypes.Regulatory, ct) is { Status: "approved" } gate)
-        {
-            gate.Status = "locked";
-            // The pair moves together: ApprovedBy is non-null iff ApprovedAt is non-null. Both hard
-            // gates now write it that way (DecisionEndpoints gained the signer alongside this one),
-            // and both the auto-approve path above and POST /regulatory/approve preserve the pair
-            // when re-affirming. A locked gate with a signer left standing would report
-            // `{status:"locked", approvedBy:"operator"}` — read by a screen that renders the signer
-            // whenever it is non-null, that prints "signed by the operator" on a gate this revision
-            // deliberately voided.
-            gate.ApprovedAt = null;
-            gate.ApprovedBy = null;
-            await store.UpsertGateAsync(gate, ct);
-        }
-        // The stage is deliberately LEFT ALONE. It used to be pushed back from `done` to `awaiting-RE` to
-        // re-advertise that the R.E. must rule again — but the stage never described the signature, and now
-        // that the park is gone there is nothing to push it back to that would not be a lie: the Regulatory
-        // agent DID run, and its verdicts are still on file. Voiding the GATE above is the whole of the
-        // effect, and it is the thing the export and the order read.
-    }
+    // VoidRegulatoryGateAsync LIVED HERE. A revision to Discovery or Regulatory replaced the analysis the
+    // R.E. had signed, so it locked that gate and cleared ApprovedAt/ApprovedBy as a pair.
+    //
+    // Deleted with the gate (§16.4). Nothing takes its place, and nothing needs to: the only remaining
+    // signature is the VP's, and ThrowIfClosedAsync refuses EVERY revision on a project whose VP gate is
+    // approved — before the agent runs and before anything is written. A revision can therefore never reach
+    // a live signature, so a step that voids one could only ever be dead code pretending to be a guard.
+    //
+    // What it really protected — an operator's review silently absorbing verdicts they never saw — is
+    // intact and moved into the record itself: ReviseRegulatoryAsync's replacement VerdictDoc carries
+    // EvidenceReviewed=false, and EvidenceReview.Outstanding refuses the VP pen and the order until the
+    // operator opens the item again.
 
     private async Task<string> WriteConclusionAsync(
         RevisionDoc r, ConstraintsDoc constraints, string stageOutputJson, CancellationToken ct)

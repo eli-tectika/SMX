@@ -119,23 +119,98 @@ describe('AgentPanel', () => {
   });
 
   /**
-   * Two backing stages means two threads server-side. An untabbed composer would silently post to
-   * whichever one the code happened to pick — so the choice is on screen, and named.
+   * ONE AGENT, ONE CONVERSATION — and the property that survives the tab strip's deletion is the one
+   * that mattered: the operator can always tell who they are talking to, and the message reaches it.
+   *
+   * The strip appeared whenever a phase had more than one backing stage, which made Discovery look
+   * like two agents ("pool" and "discovery" as separate correspondents) when they are two PASSES of
+   * one. The composer names the PHASE now, and posts to the phase's declared agent stage.
    */
-  it('offers a tab per chattable backing stage, and posts to the one selected', async () => {
-    // Discovery is backed by ['pool', 'background', 'discovery'] — three stages, but `background` has NO
-    // AGENT, so it must not get a tab. That filter is why `isChatStage` (over backend keys) and `canChat`
-    // (over phase slugs) are two separate predicates: folding them would either drop the pool thread or
-    // offer a conversation with nobody.
+  it('presents one agent and one composer on a phase with two backing stages', async () => {
     vi.mocked(useThread).mockReturnValue(ready());
     render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
 
-    expect(screen.queryByRole('tab', { name: /background/i })).toBeNull();
-    expect(screen.getByRole('tab', { name: /discovery/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryAllByRole('tab')).toHaveLength(0);
+    expect(screen.queryByRole('tablist')).toBeNull();
 
-    await userEvent.click(screen.getByRole('tab', { name: /pool/i }));
-    await userEvent.type(screen.getByLabelText(/message/i), 'hello');
+    await userEvent.type(screen.getByLabelText('Message the discovery agent'), 'hello');
     await userEvent.click(screen.getByRole('button', { name: /send/i }));
-    await waitFor(() => expect(api.sendMessage).toHaveBeenCalledWith('proj-test', 'pool', 'hello'));
+    await waitFor(() =>
+      expect(api.sendMessage).toHaveBeenCalledWith('proj-test', 'discovery', 'hello'),
+    );
+  });
+
+  /**
+   * The pool thread is still READ. Dropping `pool` from `isChatStage` would have been the easy way to
+   * one tab, and it would have made every run recorded against that stage invisible — the
+   * absence-reads-as-nothing-happened family this codebase keeps having to fix. Both passes' runs
+   * land in one chronological timeline, which is what one agent's work should look like.
+   */
+  it('still shows the runs of every backing stage, merged into one timeline', () => {
+    const run = (runId: string, stage: string, at: string) => ({
+      seq: 1,
+      at,
+      kind: 'run' as const,
+      run: {
+        runId,
+        stage,
+        agent: 'discovery',
+        subject: null,
+        parentRunId: null,
+        trigger: 'pipeline' as const,
+        startedAt: at,
+        endedAt: at,
+        outcome: 'done' as const,
+        error: null,
+        steps: [],
+      },
+    });
+    vi.mocked(useThread).mockImplementation(
+      (_projectId: string, stage: string) =>
+        ready([
+          stage === 'pool' ? run('r-pool', 'pool', '2026-08-01T09:00:00Z') : run('r-disc', 'discovery', '2026-08-01T10:00:00Z'),
+        ]) as ReturnType<typeof useThread>,
+    );
+    render(<AgentPanel projectId="proj-test" stageSlug="discovery" stageLabel="Discovery" />);
+    expect(useThread).toHaveBeenCalledWith('proj-test', 'pool');
+    expect(useThread).toHaveBeenCalledWith('proj-test', 'discovery');
+  });
+
+  /**
+   * Regulatory's pair was worse than Discovery's: a tab for `matrix`, which holds no tools at all
+   * (ToolBox returns an empty list for it), so the composer's default target was an agent that does
+   * not exist and the box literally read "Message the matrix agent". It posts to `regulatory`, which
+   * is what the phase's `agentStage` has declared all along.
+   */
+  it('targets the phase’s declared agent stage, never its last backing stage', async () => {
+    vi.mocked(useThread).mockReturnValue(ready());
+    render(<AgentPanel projectId="proj-test" stageSlug="regulatory" stageLabel="Regulatory" />);
+    expect(screen.queryByLabelText(/matrix agent/i)).toBeNull();
+    await userEvent.type(screen.getByLabelText('Message the regulatory agent'), 'why Fail?');
+    await userEvent.click(screen.getByRole('button', { name: /send/i }));
+    await waitFor(() =>
+      expect(api.sendMessage).toHaveBeenCalledWith('proj-test', 'regulatory', 'why Fail?'),
+    );
+  });
+
+  /**
+   * Overview has no `STAGES` row — `intake` is not a phase — so its threads are handed in. Without
+   * the override the panel would show the no-agent copy on the screen where requirements are amended.
+   */
+  it('accepts an explicit thread list for a screen STAGES does not know', async () => {
+    vi.mocked(useThread).mockReturnValue(ready());
+    render(
+      <AgentPanel
+        projectId="proj-test"
+        stageSlug="overview"
+        stageLabel="Intake"
+        stages={['intake']}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText('Message the intake agent'), 'we now ship to Japan');
+    await userEvent.click(screen.getByRole('button', { name: /send/i }));
+    await waitFor(() =>
+      expect(api.sendMessage).toHaveBeenCalledWith('proj-test', 'intake', 'we now ship to Japan'),
+    );
   });
 });

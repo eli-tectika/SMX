@@ -22,8 +22,17 @@ public static class RecordTypes
 public static class Stages
 {
     public const string Intake = "intake";
-    /// The need-driven pool proposal — an AGENT, and therefore something the operator can argue with: it is
-    /// in `All` below, so its thread is postable (the Intake/Pool composer, execution-core design §3.1).
+    /// The need-driven pool proposal. It is DISCOVERY'S FIRST PASS, not an agent of its own — `PoolAgent`
+    /// merged into `DiscoveryAgent` on 2026-08-06 (redesign spec §16.3), because two agents implied two
+    /// opinions about one operator move.
+    ///
+    /// THE STAGE SURVIVES THE AGENT, deliberately. A stage is a unit of work the record can address —
+    /// re-run, reset, skip, report — and the pool is all four: it skips when the operator supplied an element
+    /// pool or provided candidates, it resets on its own when an amendment changes the material, and it
+    /// produces its own artifact (PoolDoc), which is what the Discovery screen shows as what is being
+    /// corroborated. Folding it into `discovery` would buy one fewer identifier and cost the ability to
+    /// re-corroborate without re-proposing. It stays in `All` below, so its thread is postable and the
+    /// operator can still argue with the proposal.
     public const string Pool = "pool";
     /// The XRF background filter, currently a pass-through (XRF deferred). DELIBERATELY absent from `All`:
     /// there is no agent to talk to, so a thread on it could only be a conversation with nobody.

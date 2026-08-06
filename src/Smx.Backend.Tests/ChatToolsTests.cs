@@ -90,8 +90,9 @@ public class ChatToolsTests
     }
 
     /// Law 9: gates are operator-signed records, never voice-committed. An agent can only act through its
-    /// tools, so chat cannot sign a gate — not because it was instructed not to, but because the capability
-    /// does not exist. POST /projects/{id}/regulatory/approve stays the only writer of an approved GateDoc.
+    /// tools, so chat cannot sign a gate - not because it was instructed not to, but because the capability
+    /// does not exist. POST /projects/{id}/decision/determination stays the only writer of an approved
+    /// GateDoc, and since 16.4 it is the only gate there is.
     [Theory]
     [InlineData(Stages.Intake)]
     [InlineData(Stages.Discovery)]
@@ -466,8 +467,9 @@ public class ChatToolsTests
     /// Fail-closed, house style. Tools() never offers apply_revision on a non-revisable stage, so this is
     /// unreachable BY THE MODEL — the construction gate stops it. This guard stops the next C# caller: a
     /// RevisionDoc on a stage the dispatcher cannot revise is one it can only throw on, and `false` is the
-    /// dangerous answer here (compare RevisionEffects.BreaksRegulatoryGate, which throws rather than
-    /// returning it). Called directly, because there is no tool to invoke — that is the point.
+    /// dangerous answer here (compare RerunScope.For, which throws on an undeclared field rather than
+    /// returning "invalidates nothing"). Called directly, because there is no tool to invoke - that is the
+    /// point.
     [Fact]
     public async Task ApplyRevision_CalledDirectlyOnANonRevisableStage_IsRefused_AndWritesNothing()
     {

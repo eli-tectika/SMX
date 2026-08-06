@@ -203,11 +203,6 @@ public class PipelineRunnerLedgerTests
                 MetalLoading = 0.74, Basis = "supplier assay", EnteredAt = "2026-07-13T09:00:00.0000000+00:00",
             });
         }
-        await store.UpsertGateAsync(new GateDoc
-        {
-            Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
-            Status = "approved", ApprovedAt = "2026-07-13T09:00:00.0000000+00:00",
-        });
     }
 
     /// The code a scripted Dosing run returns: both compliant substances, in a real 3:2 ratio.

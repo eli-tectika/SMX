@@ -121,8 +121,10 @@ strong {
   display: block;
   /* Client brand direction: screen titles carry the SMX navy, not neutral ink. */
   color: var(--brand-navy);
-  /* Georgia is the SMX brand's title face. Titles only — the data below stays Plex. */
-  font-family: var(--font-serif);
+  /* One family throughout (see tokens.css). The serif that used to sit here is gone; the
+     weight below is what separates a title from the sentence under it, and the size did
+     NOT go up to make up for the lost texture. `.cap b` is `display: block` and sits in no
+     fixed box, so the wider Plex advance widths cost nothing here. */
   font-weight: var(--w-semibold);
   font-size: var(--t-title);
   line-height: var(--lh-tight);

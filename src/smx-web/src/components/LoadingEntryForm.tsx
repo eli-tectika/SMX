@@ -76,12 +76,6 @@ export function LoadingEntryForm({
   return (
     <form onSubmit={submit} className="region" style={{ marginBottom: 'var(--s4)' }}>
       <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Enter the metal loading</div>
-      <p className="tiny muted" style={{ margin: '0 0 var(--s3)' }}>
-        The mass fraction of the marker element in the compound — Y<sub>2</sub>O<sub>3</sub> is 0.787.
-        Dosing parked rather than guess it. This is stored against the CAS across every project, so it is
-        asked once.
-      </p>
-
       <div
         style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--s2)' }}
       >

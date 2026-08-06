@@ -35,8 +35,8 @@ public class RecordDocRouterTests
     {
         var json = System.Text.Json.JsonSerializer.SerializeToElement(new GateDoc
         {
-            Id = RecordIds.Gate("p1", GateTypes.Regulatory), ProjectId = "p1",
-            GateType = GateTypes.Regulatory, Status = "approved",
+            Id = RecordIds.Gate("p1", GateTypes.Vp), ProjectId = "p1",
+            GateType = GateTypes.Vp, Status = "approved",
         }, Smx.Domain.Json.Options);
         var routed = RecordDocRouter.Route(json);
         var gate = Assert.IsType<GateDoc>(routed);

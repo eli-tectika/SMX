@@ -92,14 +92,11 @@ public static class XrfEndpoints
 
             // THE SIGNATURE ASK, checked BEFORE anything is written — exactly as POST /amendments does it,
             // and in the same order, so a refused confirmation leaves the record untouched rather than
-            // holding half of it. Only the VP's signature is ever at risk here: the scope is Dosing +
-            // Decision, so `SignaturesAtRisk` cannot name the R.E.'s. The regulatory gate's real status is
-            // passed anyway rather than a hard-coded false — a caller that lies to that function about the
-            // world is how a warning quietly stops firing when the scope widens.
-            var regGate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
+            // holding half of it. The VP's is the only signature there is (§16.4), and the scope here is
+            // Dosing + Decision, so it is also the only one this could put at risk.
             var vpGate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
             var atRisk = RerunScope.SignaturesAtRisk(
-                RerunScope.XrfConfirmation, regGate?.Status == "approved", vpGate?.Status == "approved");
+                RerunScope.XrfConfirmation, vpGate?.Status == "approved");
             if (atRisk.Count > 0 && !req.ConfirmSignatureVoid)
                 return Results.Conflict(new
                 {
@@ -123,7 +120,7 @@ public static class XrfEndpoints
             // it; the re-entry below is what actually un-parks Discovery. Without it, the physicist's
             // measurement landed in the record and the project stayed exactly where it was.
             //
-            // The supervisor is OPTIONAL for the same reason it is on POST /regulatory/approve: the
+            // The supervisor is OPTIONAL for the same reason it is on POST /projects/{id}/start: the
             // confirmed measurement is the operator's own act and is meaningful on its own, and a test host
             // that registers only an IRecordStore still exercises the door it cares about.
             await store.UpsertConstraintsAsync(constraints, ct);

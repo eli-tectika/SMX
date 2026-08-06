@@ -55,10 +55,8 @@ public static class AmendmentEndpoints
             catch (ArgumentOutOfRangeException ex)
             { return Results.UnprocessableEntity(new { error = ex.Message }); }
 
-            var regGate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
             var vpGate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
-            var atRisk = RerunScope.SignaturesAtRisk(
-                scope, regGate?.Status == "approved", vpGate?.Status == "approved");
+            var atRisk = RerunScope.SignaturesAtRisk(scope, vpGate?.Status == "approved");
 
             // THE ONE PLACE AN AMENDMENT STOPS TO ASK (spec §9.4). Nothing waits in this system any more —
             // except that silently un-signing a human's approval is not something software should do
@@ -80,13 +78,17 @@ public static class AmendmentEndpoints
 
             await store.UpsertConstraintsAsync(patched, ct);
 
-            // Void the signatures the rerun invalidates — as a PAIR, exactly as the revision path does. A
-            // locked gate carrying a signer would report `{status:"locked", approvedBy:"operator"}`, which a
-            // screen reading the signer whenever it is non-null renders as "signed by the operator" over a
-            // gate this amendment deliberately voided.
+            // Void the signatures the rerun invalidates — as a PAIR. A locked gate carrying a signer would
+            // report `{status:"locked", approvedBy:"operator"}`, which a screen reading the signer whenever
+            // it is non-null renders as "signed by the operator" over a gate this amendment deliberately
+            // voided.
+            //
+            // `atRisk` names at most the VP gate today, and the loop is kept over the NAMES rather than
+            // collapsed to an `if (vpAtRisk)`: SignaturesAtRisk owns the scope→gate mapping, and reading it
+            // back out here is what stops this endpoint from acquiring a second, drifting copy of it.
             foreach (var gateType in atRisk)
             {
-                var gate = gateType == GateTypes.Regulatory ? regGate : vpGate;
+                var gate = gateType == GateTypes.Vp ? vpGate : null;
                 if (gate is null) continue;
                 gate.Status = "locked";
                 gate.ApprovedAt = null;

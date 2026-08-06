@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileViewer } from './FileViewer';
 
@@ -96,10 +97,19 @@ describe('FileViewer', () => {
     expect(await screen.findByText(/superseded/i)).toBeInTheDocument();
   });
 
-  it('reports a document that is not found', async () => {
+  /**
+   * REACHABLE IN NORMAL OPERATION, which is why this asserts more than a sentence. A citation chip
+   * mints its link from an id recorded at retrieval time, and two ordinary things invalidate one: a
+   * `reg` document deleted from the corpus stays in the cached index for up to ten minutes, and an
+   * SDS whose registry row was removed leaves an id that resolves to nothing. Landing here must name
+   * the identifier (so the operator can say WHICH document is gone) and offer a way onward.
+   */
+  it('reports a document that is not found, naming the id and offering the library', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('', { status: 404 }))));
-    render(<FileViewer documentId="reg_missing" />);
-    await waitFor(() => expect(screen.getByText(/not found/i)).toBeInTheDocument());
+    render(<FileViewer documentId="reg_missing" />, { wrapper: MemoryRouter });
+    await waitFor(() => expect(screen.getByText(/Document not found/i)).toBeInTheDocument());
+    expect(screen.getByText('reg_missing')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /document library/i })).toHaveAttribute('href', '/docs');
   });
 
   /**

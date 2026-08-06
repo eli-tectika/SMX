@@ -19,10 +19,10 @@ public static class StageStatus
     // on Decision. The pipeline runs end to end on the best data it has; what is outstanding is a SIGNATURE
     // (on the GateDoc) or BETTER INPUT (a DosingDoc provisional reason), never a stalled computation.
     //
-    // Do not reintroduce one without reading §8. A stage status says whether its AGENT RAN. Law 9 is
-    // enforced where it belongs — CompliantSet reads only the operator's Determination, and the two
-    // irreversible acts (the compliance-package export, POST /orders) refuse over an unsigned gate or a
-    // provisional dosing. NoParkStatusesTests fails the build if a park constant reappears here.
+    // Do not reintroduce one without reading §8. A stage status says whether its AGENT RAN. What guards
+    // procurement lives on the irreversible act instead: POST /orders refuses over an unsigned VP gate, an
+    // unopened flagged verdict (EvidenceReview.Outstanding), a provisional dosing or a missing MSDS.
+    // NoParkStatusesTests fails the build if a park constant reappears here.
 
     // `awaiting-confirmation` is deleted too. The line between "the agent created something" and "the
     // analysis is running" is now ProjectDoc.AnalysisStartedAt — a project-level fact, not a stage status,

@@ -1,15 +1,14 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Overview } from './Overview';
-import type { ProjectSummary, RegulatoryGate, VpGate } from '../../api/types';
+import { navAgentStages, navItem } from '../../components/shell/projectNav';
+import type { ProjectSummary, VpGate } from '../../api/types';
 
 vi.mock('../../api/client', () => ({
   NotFound: Symbol.for('NotFound'),
   getIntakeBrief: vi.fn(),
   getAmendments: vi.fn(),
-  postAmendment: vi.fn(),
-  getRegulatoryGate: vi.fn(),
   getVpGate: vi.fn(),
 }));
 import * as api from '../../api/client';
@@ -36,15 +35,6 @@ const project = (over: Partial<ProjectSummary> = {}): ProjectSummary => ({
   ...over,
 });
 
-const regGate = (over: Partial<RegulatoryGate> = {}): RegulatoryGate => ({
-  status: 'locked',
-  armable: false,
-  blockers: ['unreviewed: 1|bottle (Pass)'],
-  approvedAt: null,
-  approvedBy: null,
-  ...over,
-});
-
 const vpGate = (over: Partial<VpGate> = {}): VpGate => ({
   status: 'locked',
   armable: false,
@@ -62,21 +52,15 @@ const view = (p: ProjectSummary = project()) =>
   );
 
 beforeEach(() => {
-  // Call counts accumulate across tests otherwise, and the conflict case below asserts on exactly how
-  // many times the amendment was POSTed — the whole point being that a void needs a SECOND press.
   vi.clearAllMocks();
   vi.mocked(api.getIntakeBrief).mockResolvedValue(Symbol.for('NotFound') as never);
   vi.mocked(api.getAmendments).mockResolvedValue([]);
-  vi.mocked(api.getRegulatoryGate).mockResolvedValue(regGate());
   vi.mocked(api.getVpGate).mockResolvedValue(vpGate());
-  vi.mocked(api.postAmendment).mockResolvedValue({ ok: true });
 });
 
 describe('Overview — the brief, what is outstanding, and amendments', () => {
   it('renders the components the record carries', async () => {
     view();
-    // Scoped to the identity cell: `bottle` is also an <option> in the amendment composer's component
-    // picker, so a bare text query matches twice and proves nothing about the table.
     await waitFor(() =>
       expect(document.querySelector('[data-kind="id"]')?.textContent).toBe('bottle'),
     );
@@ -90,24 +74,25 @@ describe('Overview — the brief, what is outstanding, and amendments', () => {
    * that read stage statuses would call this project finished — the four park-renders-as-not-started
    * bugs wearing the other face, over the record that releases procurement.
    */
-  it('reports both signatures as outstanding on a fully done, entirely unsigned project', async () => {
+  it('reports the determination as outstanding on a fully done, entirely unsigned project', async () => {
     view();
     await waitFor(() =>
-      expect(document.querySelectorAll('[data-signature="outstanding"]').length).toBe(2),
+      expect(document.querySelectorAll('[data-signature="outstanding"]').length).toBe(1),
     );
     expect(document.querySelector('[data-signature="signed"]')).toBeNull();
   });
 
   /** A signature described without the act it releases is a chore rather than a decision. */
-  it('names what each signature releases', async () => {
+  it('names what the signature releases', async () => {
     view();
-    await waitFor(() => expect(screen.getByText(/compliance-package export/)).toBeInTheDocument());
-    expect(screen.getByText(/procurement/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/procurement/)).toBeInTheDocument());
+    // And it does NOT go on naming a gate that no longer exists (spec 16.4).
+    expect(screen.queryByText(/compliance-package export/)).toBeNull();
   });
 
   it('reads a signed gate as signed', async () => {
-    vi.mocked(api.getRegulatoryGate).mockResolvedValue(
-      regGate({ status: 'approved', armable: true, blockers: [], approvedBy: 'operator' }),
+    vi.mocked(api.getVpGate).mockResolvedValue(
+      vpGate({ status: 'approved', armable: true, blockers: [], approvedBy: 'operator' }),
     );
     view();
     await waitFor(() => expect(document.querySelector('[data-signature="signed"]')).toBeInTheDocument());
@@ -117,10 +102,12 @@ describe('Overview — the brief, what is outstanding, and amendments', () => {
    * A failed gate read is UNKNOWN, never "nothing outstanding". Both wrong answers cost something and
    * neither is available from a request that did not answer.
    */
-  it('says the gates are unreadable rather than reporting nothing outstanding', async () => {
+  it('says the gate is unreadable rather than reporting nothing outstanding', async () => {
     vi.mocked(api.getVpGate).mockRejectedValue(new Error('boom'));
     view();
-    await waitFor(() => expect(screen.getByText(/gates could not be read/i)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(/determination could not be read/i)).toBeInTheDocument(),
+    );
     expect(document.querySelector('[data-signature]')).toBeNull();
   });
 
@@ -130,81 +117,61 @@ describe('Overview — the brief, what is outstanding, and amendments', () => {
     await waitFor(() => expect(screen.getByText(/has not been started/i)).toBeInTheDocument());
   });
 
-  /* --- amendments ------------------------------------------------------- */
+  /* --- amendments (spec 16.2 — a conversation, not a form) ----------------- */
 
-  /** An amendment is a requirement change with a stated reason — never an edit. Both fields required. */
-  it('withholds the amendment until both the new value and the reason are given', async () => {
+  /**
+   * THE FORM IS DELETED. It was a picker, a value box and a reason box: an operator typing into
+   * fields with the reason demoted to one more field, which is precisely the direct edit Law 4
+   * forbids. The amendment surface is the intake agent's composer in the right-hand panel, and this
+   * screen keeps only the RECORD of what was amended.
+   *
+   * Asserted as an absence rather than by counting controls, because the failure mode is the form
+   * quietly growing back one field at a time.
+   */
+  it('offers no amendment form — no value box, no reason box, no requirement picker', async () => {
     view();
-    await waitFor(() => expect(screen.getByLabelText('New value')).toBeInTheDocument());
-    const button = screen.getByRole('button', { name: /Record the amendment/ });
-    expect(button).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('New value'), { target: { value: 'PP' } });
-    expect(button).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Reason for the amendment'), {
-      target: { value: 'the customer switched resin' },
-    });
-    expect(button).toBeEnabled();
+    await waitFor(() => expect(screen.getByText(/No amendments/)).toBeInTheDocument());
+    expect(screen.queryByLabelText('New value')).toBeNull();
+    expect(screen.queryByLabelText('Reason for the amendment')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Record the amendment/ })).toBeNull();
+    expect(document.querySelector('select')).toBeNull();
+    expect(document.querySelector('textarea')).toBeNull();
   });
 
-  it('posts the field, the value, the reason and the component', async () => {
-    view();
-    await waitFor(() => expect(screen.getByLabelText('New value')).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText('New value'), { target: { value: 'PP' } });
-    fireEvent.change(screen.getByLabelText('Reason for the amendment'), {
-      target: { value: 'the customer switched resin' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Record the amendment/ }));
-    await waitFor(() =>
-      expect(api.postAmendment).toHaveBeenCalledWith('proj-1', {
-        field: 'material',
-        value: 'PP',
-        reason: 'the customer switched resin',
-        componentId: 'bottle',
-        confirmSignatureVoid: false,
-      }),
+  /**
+   * The panel is the surface, so the nav entry has to actually mount it. Overview carried
+   * `agentSlug: null` while the form existed; `intake` is not a phase and has no `STAGES` row, so
+   * without the explicit thread list the panel would fall through to the no-agent copy — which talks
+   * about the XRF pass-through — on the one screen where requirements get amended.
+   */
+  it('gives Overview the intake agent, on the intake thread', () => {
+    const item = navItem('overview')!;
+    expect(item.agentSlug).toBe('intake');
+    expect(navAgentStages(item)).toEqual(['intake']);
+  });
+
+  /**
+   * THE ONE PLACE EXECUTION STOPS TO ASK (§9.4), moved to where the operator sees it BEFORE they
+   * speak. The endpoint still 409s, and the agent still has to be told to proceed — but a refusal
+   * the operator could not have seen coming is the toast this replaces.
+   */
+  it('names the signature an amendment would void, from the gate record', async () => {
+    vi.mocked(api.getVpGate).mockResolvedValue(
+      vpGate({ status: 'approved', armable: true, blockers: [], approvedBy: 'operator' }),
     );
+    view();
+    await waitFor(() => expect(document.querySelector('[data-void-warning]')).toBeInTheDocument());
+    expect(screen.getByText(/VP R&D's determination/)).toBeInTheDocument();
+    // No button here POSTs the amendment: confirming belongs in the conversation, where the reason
+    // travels with it. A confirm control on this screen would be the form back through a side door.
+    expect(screen.getByRole('button', { name: /Tell the agent/ })).toBeInTheDocument();
   });
 
-  /**
-   * THE ONE PLACE EXECUTION STOPS TO ASK. Nothing waits in this system any more — except that silently
-   * un-signing a human's approval is not something software does quietly. The 409 is a question, and
-   * the operator is owed the list of what they are about to destroy before the button that destroys it.
-   */
-  it('shows what an amendment would void, and requires a second press', async () => {
-    vi.mocked(api.postAmendment).mockResolvedValueOnce({
-      ok: false,
-      conflict: { error: 'signature on file', voids: ['regulatory'], rerun: ['regulatory', 'matrix'] },
-    });
+  /** Silent on an unsigned project. A standing warning about an impossible loss teaches ignoring. */
+  it('says nothing about voiding when no signature is on file', async () => {
     view();
-    await waitFor(() => expect(screen.getByLabelText('New value')).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText('New value'), { target: { value: 'JP' } });
-    fireEvent.change(screen.getByLabelText('Reason for the amendment'), {
-      target: { value: 'new export market' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Record the amendment/ }));
-
-    await waitFor(() => expect(screen.getByText(/voids a signature already on file/i)).toBeInTheDocument());
-    expect(screen.getByText(/regulatory/)).toBeInTheDocument();
-    // Nothing has been voided yet: the confirm is a SECOND press, and it names what it destroys.
-    expect(api.postAmendment).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByRole('button', { name: /Amend anyway/ }));
-    await waitFor(() => expect(api.postAmendment).toHaveBeenCalledTimes(2));
-    expect(vi.mocked(api.postAmendment).mock.calls[1][1].confirmSignatureVoid).toBe(true);
-  });
-
-  /**
-   * The physicist's measured data is not amendable — `Amendments.Apply` cannot express a write to it.
-   * Offering it here would be a control the server refuses, over the one input the operator must not
-   * be able to edit.
-   */
-  it('offers no amendment for the physicist’s measured data', async () => {
-    view();
-    await waitFor(() => expect(screen.getByLabelText('New value')).toBeInTheDocument());
-    const options = [...document.querySelectorAll('option')].map((o) => o.value);
-    expect(options).not.toContain('elementPools');
-    expect(options).not.toContain('measuredBackground');
-    expect(options).not.toContain('device');
+    await waitFor(() => expect(screen.getByText(/No amendments/)).toBeInTheDocument());
+    expect(document.querySelector('[data-void-warning]')).toBeNull();
   });
 
   /**

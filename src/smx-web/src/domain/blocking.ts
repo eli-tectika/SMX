@@ -197,20 +197,19 @@ export function whatsBlocking(
     };
   }
 
-  const outstanding = [
-    signed(gates.regulatory) ? null : 'the regulatory sign-off',
-    signed(gates.vp) ? null : 'the VP determination',
-  ].filter((g): g is string => g !== null);
-
-  if (outstanding.length > 0) {
+  // ONE SIGNATURE, and there used to be two. The regulatory gate is removed rather than demoted
+  // (spec §16.4), so the VP determination is the only human checkpoint before procurement — which
+  // makes this branch MORE load-bearing, not less: there is no second signature to catch what it
+  // misses.
+  if (!signed(gates.vp)) {
     return {
       tone: 'warning',
       icon: 'ti-signature',
-      text: `Analysis complete — needs ${outstanding.join(' and ')}`,
+      text: 'Analysis complete — needs the VP determination',
     };
   }
 
-  // Genuinely finished: every stage ran and both signatures are on file.
+  // Genuinely finished: every stage ran and the determination is on file.
   return null;
 }
 
@@ -249,7 +248,7 @@ export function bucket(
   // No gate information ⇒ NOT settled. Silence is not a signature, and the safe direction here is to
   // keep the project visible rather than to file it away on an assumption.
   if (!gates) return 'needs-you';
-  if (gates.regulatory !== 'approved' || gates.vp !== 'approved') return 'needs-you';
+  if (gates.vp !== 'approved') return 'needs-you';
 
   return 'settled';
 }

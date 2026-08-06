@@ -195,8 +195,8 @@ public class RerunResetWiringTests
     {
         // THE DECISION (see PipelineRunner.PruneOrphanedVerdictsAsync). A re-run that drops a candidate
         // leaves a verdict describing a cell nobody screens. Four readers filter those out and two do not:
-        // GET /verdicts serves the partition raw, and RunDosingAsync folds ProvisionalSet over ALL verdicts
-        // — so an orphan carrying `recommended` is dosed into a code for a substance the current analysis
+        // GET /verdicts serves the partition raw, and RunDosingAsync folds CompliantSet over ALL verdicts
+        // - so an orphan carrying `recommended` is dosed into a code for a substance the current analysis
         // rejected. The document is removed rather than filtered.
         var (runner, store, agents, _, _) = Sut();
         await SeedAmendedAsync(store);
@@ -274,8 +274,8 @@ public class RerunResetWiringTests
         ],
     };
 
-    /// Dosing re-opened over a compliant set that has since become empty: the operator's `recommended` is
-    /// gone, so ProvisionalSet folds to nothing and the run cannot dose a single substance.
+    /// Dosing re-opened over a compliant set that has since become empty: neither a ruling nor a proposal of
+    /// `recommended` survives, so CompliantSet folds to nothing and the run cannot dose a single substance.
     private static async Task SeedDosingWithNothingDosableAsync(InMemoryRecordStore store)
     {
         var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);

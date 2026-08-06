@@ -53,7 +53,10 @@ public static class IntakeAgent
           skin-contact liquid in EU, migration/SML if food-contact, FDA regimes for US market).
         Use the search_regulatory tool to confirm each list applies and cite the retrieved reference in that
         entry's citation (source = the tool's source, reference = the returned reference id, retrievedAt = now,
-        ISO 8601 UTC). Every derivedScope entry MUST carry a citation from an actual tool result. If retrieval
+        ISO 8601 UTC). Every derivedScope entry MUST carry a citation from an actual tool result. When that
+        result carried a "documentId", COPY IT VERBATIM into the citation's "documentId" — it is what lets the
+        operator open the source document itself. NEVER invent, edit or reuse one from another result; if the
+        result had no "documentId", omit the field. If retrieval
         gives you nothing for a list you believe applies, do not include it silently — include it only with a
         real citation, otherwise leave it out.
         - Before proposing scope, call search_marker_library to find a prior approved code to reuse — pass the
@@ -65,7 +68,7 @@ public static class IntakeAgent
         Reply with ONLY a JSON object of shape:
         { "components": [...], "elementPools": [...], "providedCandidates": [...], "clientRestrictedList": [...],
           "derivedScope": [{ "listId", "componentId" ("*" for product-wide), "reason",
-                             "citation": { "source", "reference", "retrievedAt" } }] }
+                             "citation": { "source", "reference", "retrievedAt", "documentId" (optional) } }] }
         """;
 
     /// THE LAW OF THIS STAGE: code copies the FACTS out of the payload; the agent supplies only the JUDGMENT.

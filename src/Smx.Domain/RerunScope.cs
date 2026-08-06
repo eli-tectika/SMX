@@ -7,8 +7,8 @@ namespace Smx.Domain;
 /// The rule is DATA DEPENDENCY, NOT PIPELINE POSITION. A batch mass is a multiplier on order amounts and
 /// touches nothing else; a target market is an input to the per-component application check and changes no
 /// chemistry. Re-running everything downstream of a change would burn minutes of Foundry time on stages
-/// whose inputs did not move — and, worse, would void signatures for nothing, since a rerun that reaches
-/// Regulatory voids the R.E.'s approval whether or not the analysis changed.
+/// whose inputs did not move — and, worse, would void the VP's signature for nothing, since a rerun that
+/// reaches Decision resets it whether or not the analysis changed.
 ///
 /// THIS MAP AND <see cref="IntakeAnswers"/>'s ALLOW-LIST ARE TWO VIEWS OF ONE LIST. A field the operator can
 /// change but whose consequences nobody declared would silently amend the record and re-run NOTHING: the
@@ -75,7 +75,7 @@ public static class RerunScope
     /// KNOWN GAP, spec-sanctioned: it does NOT rerun Discovery. Today the measurement's only analytical
     /// consumer is the detection floor. When the deferred XRF FILTER lands — an element already loud in the
     /// substrate is a poor marker — this must grow to include Discovery, and §9.3 says so in the same row.
-    /// Widening it before then would void the R.E.'s signature over an analysis that did not move.
+    /// Widening it before then would re-run a screen over an analysis that did not move.
     public static readonly IReadOnlyList<string> XrfConfirmation = DosingLane;
 
     /// The stages an amendment to <paramref name="field"/> invalidates, in pipeline order.
@@ -105,15 +105,15 @@ public static class RerunScope
     /// Whether any stage in the blast radius carries a signature that resetting it would void.
     ///
     /// The one place an amendment stops to ask (spec §9.4). Everything unsigned just re-runs — nothing waits
-    /// — but silently un-signing a human's approval is not something software should do quietly, and
-    /// PipelineRunner already voids `ApprovedAt`/`ApprovedBy` as a pair when a revision breaks a gate.
+    /// — but silently un-signing a human's approval is not something software should do quietly.
     ///
-    /// Regulatory in the radius threatens the R.E.'s signature; Decision threatens the VP's.
-    public static IReadOnlyList<string> SignaturesAtRisk(
-        IReadOnlyList<string> scope, bool regulatorySigned, bool vpSigned)
+    /// ONE SIGNATURE, ONE ROW. The R.E.'s was the other, and §16.4 deleted it; Decision in the radius
+    /// threatens the VP's. The plural name and the LIST return are kept deliberately rather than collapsed
+    /// to a bool: callers void what this NAMES, and a bool would push that mapping back out into two
+    /// endpoints that would then have to agree about it.
+    public static IReadOnlyList<string> SignaturesAtRisk(IReadOnlyList<string> scope, bool vpSigned)
     {
         var at = new List<string>();
-        if (regulatorySigned && scope.Contains(Stages.Regulatory)) at.Add(GateTypes.Regulatory);
         if (vpSigned && scope.Contains(Stages.Decision)) at.Add(GateTypes.Vp);
         return at;
     }

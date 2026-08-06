@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ThreadError, cancelRun, rerunStage, sendMessage } from '../api/thread';
-import { backendStages, isChatStage, type BackendStage } from '../domain/stages';
+import { backendStage, backendStages, isChatStage, type BackendStage } from '../domain/stages';
 import { useStickToBottom } from '../hooks/useStickToBottom';
 import { useThread } from '../hooks/useThread';
 import { Timeline } from './timeline/Timeline';
@@ -18,15 +18,34 @@ export function AgentPanel({
   projectId,
   stageSlug,
   stageLabel,
+  stages: given,
 }: {
   projectId: string;
   stageSlug: string;
   stageLabel: string;
+  /**
+   * The backing threads, where the caller knows them and `STAGES` does not.
+   *
+   * Overview is the case: `intake` is not a phase, so it has no `STAGES` entry and
+   * `backendStages('intake')` is empty. Without this the panel would fall through to the no-agent
+   * copy — which is about the XRF pass-through — on the screen where requirements get amended.
+   */
+  stages?: BackendStage[];
 }) {
   // `isChatStage`, not `canChat`: these are backend keys, and `pool` has no spine slug of its own,
   // so the slug-shaped predicate would drop the very thread the merged stage exists to show.
-  const stages = backendStages(stageSlug).filter(isChatStage);
+  const stages = (given ?? backendStages(stageSlug)).filter(isChatStage);
   if (stages.length === 0) return <ClosedPanel stageLabel={stageLabel} />;
+  /*
+   * WHERE A MESSAGE GOES. One target, decided here, never picked by the operator off a tab strip.
+   *
+   * `backendStage` is the phase's declared `agentStage` where it has one and its last backing stage
+   * otherwise — `regulatory` for the Regulatory phase (NOT `matrix`, which is deterministically
+   * assembled and holds no tools at all), and `discovery` for the Discovery phase, which is right now
+   * that the pool pass and the corroboration pass are two passes of ONE agent. The `??` covers an
+   * entry with no `STAGES` row at all: Overview, whose threads are given explicitly.
+   */
+  const post = backendStage(stageSlug) ?? stages[stages.length - 1];
   /*
    * Keyed on the stage list. `LiveChat` calls `useThread` once per backing stage, and this panel
    * sits at a stable position in ProjectLayout — so navigating Intake & pool (two stages) → Discovery
@@ -38,6 +57,7 @@ export function AgentPanel({
       key={stages.join('|')}
       projectId={projectId}
       stages={stages}
+      postStage={post}
       stageLabel={stageLabel}
     />
   );
@@ -81,14 +101,16 @@ function ClosedPanel({ stageLabel }: { stageLabel: string }) {
 function LiveChat({
   projectId,
   stages,
+  postStage,
   stageLabel,
 }: {
   projectId: string;
   stages: BackendStage[];
+  postStage: BackendStage;
   stageLabel: string;
 }) {
-  // One thread per backing stage, merged by timestamp for display. They are separate threads
-  // server-side and stay separate on the wire; only the READING is merged.
+  // One thread per backing stage, merged by timestamp into ONE chronological timeline. They are
+  // separate threads server-side and stay separate on the wire; only the READING is merged.
   //
   // Hook-order note: `stages` comes from a static table, and `AgentPanel` both returns early when
   // it is empty and keys this component on it — so the map has a fixed arity for the lifetime of
@@ -100,10 +122,6 @@ function LiveChat({
   const error = threads.find((t) => t.error)?.error ?? null;
   const refreshAll = () => Promise.all(threads.map((t) => t.refresh()));
 
-  // Defaults to the LAST backing stage — the one whose output the screen shows. On Intake & pool
-  // that is `pool`: the brief is a transcription of the operator's own answers, the pool is the
-  // hypothesis they would argue with.
-  const [stage, setStage] = useState(stages[stages.length - 1]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -120,7 +138,7 @@ function LiveChat({
     setBusy(true);
     setSendError(null);
     try {
-      await sendMessage(projectId, stage, message);
+      await sendMessage(projectId, postStage, message);
       setText('');
       // The stream will not deliver this back. A message belongs to no run, so the server has no id
       // for it in the `{runId}` cursor space the stream replays from and deliberately does not
@@ -209,27 +227,18 @@ function LiveChat({
         </div>
       )}
 
-      {/* Only when there is a choice to make. Two backing stages are two threads server-side, and a
-          composer that picked one silently would post the operator's instruction to an agent they
-          did not mean to instruct. */}
-      {stages.length > 1 && (
-        <div role="tablist" aria-label="Which agent to talk to" style={{ display: 'flex', gap: 4 }}>
-          {stages.map((s) => (
-            <button
-              key={s}
-              role="tab"
-              type="button"
-              aria-selected={s === stage}
-              onClick={() => setStage(s)}
-              className="btn tiny"
-              style={{ textTransform: 'capitalize', opacity: s === stage ? 1 : 0.6 }}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
+      {/*
+        NO TAB STRIP. It used to appear whenever a phase had more than one backing stage, and it made
+        the Discovery phase look like two agents — "pool" and "discovery" as separate correspondents —
+        which is exactly the mess the operator complained about. They are two PASSES of one agent, and
+        Regulatory's pair was worse still: a tab for `matrix`, a stage that holds no tools at all.
 
+        The backing stages stay chattable server-side and their runs stay in the timeline above,
+        merged in chronological order — one agent's work reading as one story. Dropping them from
+        `isChatStage` instead would have made those threads unreachable and silently swallowed every
+        run recorded against them, which is the absence-reads-as-nothing-happened family this codebase
+        keeps having to fix.
+      */}
       <form
         onSubmit={send}
         style={{
@@ -247,10 +256,11 @@ function LiveChat({
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          /* The ACTIVE stage, not the screen's label — on the merged stage those differ, and the
-             box must name the agent the message will actually reach. */
-          placeholder={`Message the ${stage} agent…`}
-          aria-label={`Message the ${stage} agent`}
+          /* The PHASE's name, because there is one agent behind the phase now. It used to name the
+             selected backing stage, which is how the Regulatory composer came to read "Message the
+             matrix agent" — an agent that does not exist. */
+          placeholder={`Message the ${stageLabel.toLowerCase()} agent…`}
+          aria-label={`Message the ${stageLabel.toLowerCase()} agent`}
           disabled={busy}
           style={{ border: 0, background: 'transparent', flex: 1, padding: 0 }}
         />

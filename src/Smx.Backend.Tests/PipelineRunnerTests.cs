@@ -16,7 +16,7 @@ namespace Smx.Backend.Tests;
 public class PipelineRunnerTests
 {
     private static (PipelineRunner Runner, InMemoryRecordStore Store, FakeAgentRuns Agents, InMemoryRunStore Runs)
-        Sut(int parallelism = 2, bool autoApprove = false)
+        Sut(int parallelism = 2)
     {
         var store = new InMemoryRecordStore();
         var agents = new FakeAgentRuns();
@@ -24,8 +24,7 @@ public class PipelineRunnerTests
         var conclusions = new LearnedConclusionWriter(
             new InMemoryKnowledgeStore(), new FakeLearnedConclusionsIndex(), new FakeEmbedder(),
             NullLogger<LearnedConclusionWriter>.Instance);
-        return (new PipelineRunner(store, runs, agents, new ThreadEventHub(), conclusions, parallelism,
-                    regulatoryAutoApprove: autoApprove),
+        return (new PipelineRunner(store, runs, agents, new ThreadEventHub(), conclusions, parallelism),
                 store, agents, runs);
     }
 
@@ -36,118 +35,22 @@ public class PipelineRunnerTests
         return doc;
     }
 
-    private static GateDoc RegulatoryGateDoc(string status) => new()
-    {
-        Id = RecordIds.Gate("p1", GateTypes.Regulatory), ProjectId = "p1",
-        GateType = GateTypes.Regulatory, Status = status,
-        ApprovedAt = status == "approved" ? "t" : null,
-    };
-
-    // REGULATORY_AUTO_APPROVE — the human gate off. The pipeline adopts the agent's PROPOSED determination,
-    // marks every verdict reviewed, and signs the gate itself, so Regulatory reaches `done` (not awaiting-RE)
-    // and the compliant set is populated — all with no operator. This is the flag's whole point; the contrast
-    // (flag off ⇒ awaiting-RE, empty compliant set) is the default every other test in this file exercises.
-    [Fact]
-    public async Task RegulatoryAutoApprove_adopts_the_proposal_signs_the_gate_and_skips_the_human_park()
-    {
-        var (d, store, agents, _) = Sut(autoApprove: true);
-        // The agent PROPOSES recommended; without the flag this would only pre-fill ProposedDetermination and
-        // wait for the R.E. to confirm it.
-        agents.Regulatory = (c, cand, _) => Task.FromResult(Smx.Backend.Agents.AgentRunResult<VerdictDoc>.Ok(new VerdictDoc
-        {
-            Id = RecordIds.Verdict(c.ProjectId, cand.Cas, cand.ComponentId), ProjectId = c.ProjectId,
-            Cas = cand.Cas, ComponentId = cand.ComponentId, Element = cand.Element, Form = cand.Form,
-            Dimensions = [new("ElementGate", VerdictStatus.Pass, [new Citation("regulatory", "x", "t")], 0.9, "ok")],
-            ProposedDetermination = Determinations.Recommended,
-        }));
-        await Seed(store);
-        await d.RunAsync("p1", default);
-
-        var verdicts = await store.GetVerdictsAsync("p1");
-        Assert.NotEmpty(verdicts);
-        Assert.All(verdicts, v => Assert.True(v.EvidenceReviewed));                       // auto-reviewed
-        Assert.All(verdicts, v => Assert.Equal(Determinations.Recommended, v.Determination)); // proposal adopted
-        Assert.Equal("approved", (await store.GetGateAsync("p1", GateTypes.Regulatory))?.Status); // gate self-signed
-        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status); // no awaiting-RE
-        Assert.NotEmpty(CompliantSet.Of(verdicts));                                        // dosable set is non-empty
-    }
-
-    // The signature this path writes must SAY it is the machine's. With REGULATORY_AUTO_APPROVE defaulting on,
-    // every deployed project gets a gate signed here — and an approved gate with no recorded signer is
-    // indistinguishable, on every surface that reads the record, from the R.E.'s own determination. That is
-    // exactly what the hard gate exists to prevent, so the signer is not decoration: it is the gate's honesty.
-    [Fact]
-    public async Task RegulatoryAutoApprove_records_the_machine_as_the_signer()
-    {
-        var (d, store, agents, _) = Sut(autoApprove: true);
-        agents.Regulatory = (c, cand, _) => Task.FromResult(Smx.Backend.Agents.AgentRunResult<VerdictDoc>.Ok(new VerdictDoc
-        {
-            Id = RecordIds.Verdict(c.ProjectId, cand.Cas, cand.ComponentId), ProjectId = c.ProjectId,
-            Cas = cand.Cas, ComponentId = cand.ComponentId, Element = cand.Element, Form = cand.Form,
-            Dimensions = [new("ElementGate", VerdictStatus.Pass, [new Citation("regulatory", "x", "t")], 0.9, "ok")],
-            ProposedDetermination = Determinations.Recommended,
-        }));
-        await Seed(store);
-        await d.RunAsync("p1", default);
-
-        var gate = await store.GetGateAsync("p1", GateTypes.Regulatory);
-        Assert.Equal("approved", gate?.Status);
-        Assert.Equal(GateSigners.AutoApprove, gate?.ApprovedBy);
-        Assert.False(string.IsNullOrWhiteSpace(gate?.ApprovedAt));   // the pair moves together
-    }
-
-    // The direction that must never happen: an operator signs, the pipeline runs again over the same verdicts,
-    // and auto-approve overwrites the human signature with the machine's. Re-affirming keeps BOTH fields, so
-    // the record cannot end up saying "signed by the machine" over a timestamp the operator earned. (The
-    // reverse IS allowed and deliberate: POST /regulatory/approve replaces a machine signature with a human
-    // one and moves the timestamp with it.)
-    [Fact]
-    public async Task RegulatoryAutoApprove_never_overwrites_an_operator_signature()
-    {
-        var (d, store, agents, _) = Sut(autoApprove: true);
-        agents.Regulatory = (c, cand, _) => Task.FromResult(Smx.Backend.Agents.AgentRunResult<VerdictDoc>.Ok(new VerdictDoc
-        {
-            Id = RecordIds.Verdict(c.ProjectId, cand.Cas, cand.ComponentId), ProjectId = c.ProjectId,
-            Cas = cand.Cas, ComponentId = cand.ComponentId, Element = cand.Element, Form = cand.Form,
-            Dimensions = [new("ElementGate", VerdictStatus.Pass, [new Citation("regulatory", "x", "t")], 0.9, "ok")],
-            ProposedDetermination = Determinations.Recommended,
-        }));
-        await Seed(store);
-        await store.UpsertGateAsync(new GateDoc
-        {
-            Id = RecordIds.Gate("p1", GateTypes.Regulatory), ProjectId = "p1",
-            GateType = GateTypes.Regulatory, Status = "approved",
-            ApprovedAt = "2026-01-01T00:00:00.0000000+00:00", ApprovedBy = GateSigners.Operator,
-        });
-
-        await d.RunAsync("p1", default);
-
-        var gate = await store.GetGateAsync("p1", GateTypes.Regulatory);
-        Assert.Equal(GateSigners.Operator, gate?.ApprovedBy);
-        Assert.Equal("2026-01-01T00:00:00.0000000+00:00", gate?.ApprovedAt);
-    }
-
-    // A null proposal (the failed-verdict fallback) must NOT be auto-recommended — the safe asymmetry survives
-    // even with the human gate off: an un-screenable substance is excluded, never signed through.
-    [Fact]
-    public async Task RegulatoryAutoApprove_leaves_a_null_proposal_undetermined()
-    {
-        var (d, store, agents, _) = Sut(autoApprove: true);
-        agents.Regulatory = (c, cand, _) => Task.FromResult(Smx.Backend.Agents.AgentRunResult<VerdictDoc>.Ok(new VerdictDoc
-        {
-            Id = RecordIds.Verdict(c.ProjectId, cand.Cas, cand.ComponentId), ProjectId = c.ProjectId,
-            Cas = cand.Cas, ComponentId = cand.ComponentId, Element = cand.Element, Form = cand.Form,
-            Dimensions = [new("ElementGate", VerdictStatus.NeedsReview, [], 0, "no cited verdict")],
-            ProposedDetermination = null,
-        }));
-        await Seed(store);
-        await d.RunAsync("p1", default);
-
-        var verdicts = await store.GetVerdictsAsync("p1");
-        Assert.NotEmpty(verdicts);
-        Assert.All(verdicts, v => Assert.Null(v.Determination));   // not auto-recommended
-        Assert.Empty(CompliantSet.Of(verdicts));                   // nothing dosable
-    }
+    // FOUR REGULATORY_AUTO_APPROVE TESTS LIVED HERE:
+    //   RegulatoryAutoApprove_adopts_the_proposal_signs_the_gate_and_skips_the_human_park
+    //   RegulatoryAutoApprove_records_the_machine_as_the_signer
+    //   RegulatoryAutoApprove_never_overwrites_an_operator_signature
+    //   RegulatoryAutoApprove_leaves_a_null_proposal_undetermined
+    //
+    // The flag and the gate it signed are both deleted (2026-08-06 redesign 16.4), so all four subjects are
+    // gone. What each one asserted has either become unconditional or become impossible:
+    //
+    //   "the proposal reaches the compliant set with no operator"  -> now the DEFAULT, pinned by
+    //     CompliantSetTests.Of_ADMITS_TheAgentsProposal_WhenNobodyHasRuled.
+    //   "a null proposal is NOT auto-recommended"                  -> CompliantSetTests
+    //     .Of_EXCLUDES_ASilentVerdict_NeitherRuledNorProposed, same safe asymmetry, no flag involved.
+    //   "the machine is recorded as the signer" / "it never overwrites a human's"
+    //     -> nothing machine-side signs anything now. GateSigners.AutoApprove survives only so historical
+    //        records still render as the alarm they are.
 
     // ---- the run trail --------------------------------------------------------------------------------
 
@@ -630,83 +533,39 @@ public class PipelineRunnerTests
         Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
     }
 
-    // ---- the regulatory gate --------------------------------------------------------------------------
+    // ---- the gate door ---------------------------------------------------------------------------------
+
+    // SIX TESTS LIVED HERE, all about the regulatory gate advancing the Regulatory stage:
+    //   ApprovedRegulatoryGate_MovesRegulatoryStageToDone / _DoesNotOverwriteFailedStage / _SignedTwice_StaysDone
+    //   LockedRegulatoryGate_DoesNotAdvanceStage
+    //   GateApprovedBeforeVerdictsComplete_StageGoesDoneOnAssembly
+    //   ApprovedNonRegulatoryGate_DoesNotAdvanceRegulatoryStage
+    //
+    // Their subject was already hollow before this change - execution-core 8 emptied OnGateAsync's
+    // regulatory branch, so every one of them asserted `done` on BOTH sides of its own premise and could no
+    // longer fail for the reason it was named after. 16.4 deleted the gate they signed. The one property
+    // worth keeping is rewritten below, against the gate that still exists.
 
     [Fact]
-    public async Task ApprovedRegulatoryGate_MovesRegulatoryStageToDone()
+    public async Task OnGateAsync_RoutesOnlyAnAPPROVEDVpGate_ToTheClose()
     {
+        // OnGateAsync is a DOOR (see the runner's header): it is called by POST /decision/determination and
+        // nothing else, and its whole body is one pattern match. What must not happen is a LOCKED vp gate -
+        // the VP's REJECTION - closing the project: that would release procurement on a refusal.
         var (d, store, _, _) = Sut();
         await Seed(store);
         await d.RunAsync("p1", default);
-        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
 
-        await store.UpsertGateAsync(RegulatoryGateDoc("approved"));
-        await d.OnGateAsync((await store.GetGateAsync("p1", GateTypes.Regulatory))!, default);
-        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
-    }
+        var rejected = new GateDoc
+        {
+            Id = RecordIds.Gate("p1", GateTypes.Vp), ProjectId = "p1", GateType = GateTypes.Vp,
+            Status = "locked", Reason = "the VP said no",
+        };
+        await store.UpsertGateAsync(rejected);
+        await d.OnGateAsync(rejected, default);
 
-    [Fact]
-    public async Task LockedRegulatoryGate_DoesNotAdvanceStage()
-    {
-        var (d, store, _, _) = Sut();
-        await Seed(store);
-        await d.RunAsync("p1", default);
-        await store.UpsertGateAsync(RegulatoryGateDoc("locked"));
-        await d.OnGateAsync((await store.GetGateAsync("p1", GateTypes.Regulatory))!, default);
-        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
-    }
-
-    /// The gate signed BEFORE the verdicts were complete: the assembly is what reads the signature and
-    /// promotes the stage, so a project whose analysis finishes under an already-approved gate lands
-    /// `done` without a second signature.
-    [Fact]
-    public async Task GateApprovedBeforeVerdictsComplete_StageGoesDoneOnAssembly()
-    {
-        var (d, store, _, _) = Sut();
-        await Seed(store);
-        await store.UpsertGateAsync(RegulatoryGateDoc("approved"));
-        await d.RunAsync("p1", default);
-        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
-    }
-
-    [Fact]
-    public async Task ApprovedNonRegulatoryGate_DoesNotAdvanceRegulatoryStage()
-    {
-        var (d, store, _, _) = Sut();
-        await Seed(store);
-        await d.RunAsync("p1", default);
-        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
-
-        // A VP gate flows through the same OnGateAsync — it must NOT advance Regulatory.
-        await store.UpsertGateAsync(new GateDoc { Id = RecordIds.Gate("p1", "vp"), ProjectId = "p1",
-            GateType = "vp", Status = "approved", ApprovedAt = "t" });
-        await d.OnGateAsync((await store.GetGateAsync("p1", "vp"))!, default);
-        Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
-    }
-
-    [Fact]
-    public async Task ApprovedRegulatoryGate_DoesNotOverwriteFailedStage()
-    {
-        var (d, store, _, _) = Sut();
-        var proj = await Seed(store);
-        proj.Stages[Stages.Regulatory].Status = "failed";
-        await store.UpsertProjectAsync(proj);
-
-        await store.UpsertGateAsync(RegulatoryGateDoc("approved"));
-        await d.OnGateAsync((await store.GetGateAsync("p1", GateTypes.Regulatory))!, default);
-        Assert.Equal("failed", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
-    }
-
-    [Fact]
-    public async Task ApprovedRegulatoryGate_SignedTwice_StaysDone()
-    {
-        var (d, store, _, _) = Sut();
-        await Seed(store);
-        await d.RunAsync("p1", default);
-        await store.UpsertGateAsync(RegulatoryGateDoc("approved"));
-        var gate = (await store.GetGateAsync("p1", GateTypes.Regulatory))!;
-        await d.OnGateAsync(gate, default);
-        await d.OnGateAsync(gate, default); // a second signature must be a no-op
+        // Nothing closed: no decision was written, so procurement was never released.
+        Assert.Null(await store.GetDecisionAsync("p1"));
         Assert.Equal("done", (await store.GetProjectAsync("p1"))!.Stages[Stages.Regulatory].Status);
     }
 }

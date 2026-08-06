@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Signoff } from './Signoff';
-import type { DecisionDoc, ProjectSummary, RegulatoryGate, VpGate } from '../../api/types';
+import type { DecisionDoc, ProjectSummary, VpGate } from '../../api/types';
 
 vi.mock('../../api/client', () => ({
   NotFound: Symbol.for('NotFound'),
@@ -11,7 +11,8 @@ vi.mock('../../api/client', () => ({
   getDosing: vi.fn(),
   getMsdsRegistry: vi.fn(),
   getVpGate: vi.fn(),
-  getRegulatoryGate: vi.fn(),
+  getTable: vi.fn(),
+  matrixXlsxUrl: (id: string) => `/api/projects/${id}/matrix.xlsx`,
   orderSubstance: vi.fn(),
   recordVpDetermination: vi.fn(),
 }));
@@ -61,12 +62,42 @@ const vpGate = (over: Partial<VpGate> = {}): VpGate => ({
   ...over,
 });
 
-const regGate = (over: Partial<RegulatoryGate> = {}): RegulatoryGate => ({
-  status: 'locked',
-  armable: false,
-  blockers: [],
-  approvedAt: null,
-  approvedBy: null,
+/**
+ * One clean row on the table this screen now reads. Every evidence assertion below overrides one
+ * field of it, so what each test is about is the difference from "nothing outstanding".
+ */
+const tableRow = (over: Record<string, unknown> = {}) => ({
+  componentId: 'bottle',
+  cas: '1314-36-9',
+  element: 'Y',
+  form: 'oxide',
+  discovery: { tier: 'A', preferred: true, rationale: '', sources: 2 },
+  regulatory: {
+    overall: 'Pass',
+    dimensions: [
+      {
+        dimension: 'Hazard',
+        status: 'Pass',
+        citations: [{ source: 'reg', reference: 'x', retrievedAt: '2026-07-01T00:00:00Z' }],
+        confidence: 0.9,
+        rationale: 'ok',
+      },
+    ],
+    proposedDetermination: 'recommended',
+    determination: 'recommended',
+    evidenceReviewed: true,
+  },
+  dosing: {
+    floor: { ppm: 30, basis: 'measured background', kind: 'measured', confidence: 1 },
+    upper: { ppm: 900, basis: 'estimate', kind: 'estimate', confidence: 0.5 },
+    recommendedPpm: 120,
+    compoundMassMg: 1500,
+    suppliers: ['Sigma'],
+    risks: [],
+  },
+  outcome: null,
+  stoppedAt: null,
+  stoppedReason: null,
   ...over,
 });
 
@@ -81,48 +112,32 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.getDecision).mockResolvedValue(decision());
   vi.mocked(api.getVpGate).mockResolvedValue(vpGate());
-  vi.mocked(api.getRegulatoryGate).mockResolvedValue(regGate());
+  vi.mocked(api.getTable).mockResolvedValue({ projectId: 'proj-1', rows: [tableRow()] } as never);
   vi.mocked(api.getDosing).mockResolvedValue(Symbol.for('NotFound') as never);
   vi.mocked(api.getMsdsRegistry).mockResolvedValue([]);
 });
 
-describe('Sign-off — both signatures, each labelled with what it releases', () => {
-  /** Two signatures, two irreversible acts. A signature named without its consequence is a chore. */
-  it('names both signatures and what each releases', async () => {
+describe('Sign-off — the only signature left, and the evidence under it', () => {
+  /**
+   * ONE SIGNATURE. The regulatory gate is removed rather than demoted (spec §16.4), so this screen
+   * must not go on reporting a second one — and the consequence of the one that remains lives in the
+   * LABEL of the press that records it, where it is visible whether or not the gate is armed.
+   */
+  it('names the one signature and what it releases, and reports no second gate', async () => {
     view();
-    await waitFor(() => expect(screen.getByText(/Regulatory sign-off — not signed/)).toBeInTheDocument());
-    expect(screen.getByText(/compliance package cannot be exported/i)).toBeInTheDocument();
-    // The VP signature's own section heading names its consequence — the section hint, not one of the
-    // several sentences below that also mention procurement.
-    expect(
-      [...document.querySelectorAll('.sec__hint')].map((e) => e.textContent).join(' | '),
-    ).toMatch(/releases procurement/i);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /releases procurement/i })).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/Regulatory sign-off/i)).toBeNull();
+    expect(screen.queryByRole('link', { name: /Rule on the verdicts/ })).toBeNull();
   });
 
   /**
-   * The regulatory pen belongs beside the verdicts it rules on. Two controls over one gate would each
-   * carry their own idea of what arms it — so this screen states the gate and links to the pen.
+   * The compliance package is a DELIVERABLE, not a reward: no signature releases it any more, because
+   * the gate that used to has been deleted. Withholding it behind a signature that does not exist
+   * would have made it permanently unreachable.
    */
-  it('links to where the regulatory gate is signed rather than offering a second pen', async () => {
-    view();
-    await waitFor(() => expect(screen.getByRole('link', { name: /Rule on the verdicts/ })).toBeInTheDocument());
-    expect(screen.getByRole('link', { name: /Rule on the verdicts/ })).toHaveAttribute(
-      'href',
-      '/p/proj-1/regulatory',
-    );
-  });
-
-  /** Signed is what makes the export available, so the export link appears with the signature. */
-  it('offers the compliance package only once the regulatory gate is signed', async () => {
-    view();
-    await waitFor(() => expect(screen.getByText(/Regulatory sign-off/)).toBeInTheDocument());
-    expect(screen.queryByRole('link', { name: /Compliance package/ })).not.toBeInTheDocument();
-  });
-
-  it('offers the compliance package when it is signed', async () => {
-    vi.mocked(api.getRegulatoryGate).mockResolvedValue(
-      regGate({ status: 'approved', armable: true, approvedAt: '2026-08-02T00:00:00Z', approvedBy: 'operator' }),
-    );
+  it('offers the compliance package unconditionally', async () => {
     view();
     await waitFor(() =>
       expect(screen.getByRole('link', { name: /Compliance package/ })).toHaveAttribute(
@@ -132,27 +147,155 @@ describe('Sign-off — both signatures, each labelled with what it releases', ()
     );
   });
 
+  /* --- the evidence (spec §16.4) ------------------------------------------ */
+
   /**
-   * The machine signing the regulatory gate is the failure the whole product is built around, and it
-   * has to read as an alarm wherever it appears — not only on the screen it happened on.
+   * THE LIST THE SERVER ACTUALLY REFUSES OVER. `EvidenceReview.Outstanding` withholds both the
+   * determination and every order while a live non-Pass verdict is unopened — and a bare "not
+   * armable" tells the operator nothing they can act on. The rows are named, and each one links to
+   * where it is opened.
    */
-  it('renders a machine-signed regulatory gate as an alarm here too', async () => {
-    vi.mocked(api.getRegulatoryGate).mockResolvedValue(
-      regGate({ status: 'approved', armable: true, approvedAt: '2026-08-02T00:00:00Z', approvedBy: 'auto-approve' }),
-    );
+  it('names the unopened live verdicts, with a way to reach them', async () => {
+    vi.mocked(api.getTable).mockResolvedValue({
+      projectId: 'proj-1',
+      rows: [
+        tableRow({
+          regulatory: {
+            overall: 'Fail',
+            dimensions: [
+              {
+                dimension: 'ElementGate',
+                status: 'Fail',
+                citations: [{ source: 'reg', reference: 'x', retrievedAt: '2026-07-01T00:00:00Z' }],
+                confidence: 0.9,
+                rationale: 'banned',
+              },
+            ],
+            proposedDetermination: 'rejected',
+            determination: null,
+            evidenceReviewed: false,
+          },
+        }),
+      ],
+    } as never);
     view();
-    await waitFor(() => expect(screen.getByText(/made by the MACHINE/)).toBeInTheDocument());
-    expect(document.querySelector('[data-signer="auto-approve"]')).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('[data-finding="not-opened"]')).toBeInTheDocument());
+    const block = document.querySelector('[data-finding="not-opened"]')!;
+    expect(block.textContent).toContain('1314-36-9');
+    expect(block.querySelector('a')).toHaveAttribute('href', '/p/proj-1/regulatory');
   });
 
-  /** An approved gate whose signer the record does not name is not a person's ruling. */
-  it('refuses to attribute an approved gate with no recorded signer', async () => {
-    vi.mocked(api.getRegulatoryGate).mockResolvedValue(
-      regGate({ status: 'approved', armable: true, approvedAt: '2026-08-02T00:00:00Z', approvedBy: null }),
-    );
+  /** A verdict resting on nothing is the worst artifact this system produces. It is named here too. */
+  it('names a verdict with no citation at all', async () => {
+    vi.mocked(api.getTable).mockResolvedValue({
+      projectId: 'proj-1',
+      rows: [
+        tableRow({
+          regulatory: {
+            overall: 'Pass',
+            dimensions: [
+              { dimension: 'Hazard', status: 'Pass', citations: [], confidence: 0.9, rationale: 'ok' },
+            ],
+            proposedDetermination: 'recommended',
+            determination: 'recommended',
+            evidenceReviewed: true,
+          },
+        }),
+      ],
+    } as never);
     view();
-    await waitFor(() => expect(screen.getByText(/signer not recorded/i)).toBeInTheDocument());
+    await waitFor(() => expect(document.querySelector('[data-finding="no-citation"]')).toBeInTheDocument());
   });
+
+  /** The agent's own folded confidence, below the threshold — its doubt is evidence too. */
+  it('names a verdict the agent was not confident in', async () => {
+    vi.mocked(api.getTable).mockResolvedValue({
+      projectId: 'proj-1',
+      rows: [
+        tableRow({
+          regulatory: {
+            overall: 'Pass',
+            dimensions: [
+              {
+                dimension: 'Hazard',
+                status: 'Pass',
+                citations: [{ source: 'reg', reference: 'x', retrievedAt: '2026-07-01T00:00:00Z' }],
+                confidence: 0.3,
+                rationale: 'thin',
+              },
+            ],
+            proposedDetermination: 'recommended',
+            determination: 'recommended',
+            evidenceReviewed: true,
+          },
+        }),
+      ],
+    } as never);
+    view();
+    await waitFor(() => expect(document.querySelector('[data-finding="low-confidence"]')).toBeInTheDocument());
+    expect(screen.getByText(/30% at its weakest dimension/)).toBeInTheDocument();
+  });
+
+  /**
+   * `provisional` has SHRUNK to exactly this: a number nobody measured is under the ppm. It blocks
+   * the order, so the screen that places the order names the rows it applies to.
+   */
+  it('names a window whose floor nobody measured', async () => {
+    vi.mocked(api.getTable).mockResolvedValue({
+      projectId: 'proj-1',
+      rows: [
+        tableRow({
+          dosing: {
+            floor: { ppm: 60, basis: 'device generic LOD', kind: 'estimate', confidence: 0.4 },
+            upper: { ppm: 900, basis: 'estimate', kind: 'estimate', confidence: 0.5 },
+            recommendedPpm: 120,
+            compoundMassMg: 1500,
+            suppliers: ['Sigma'],
+            risks: [],
+          },
+        }),
+      ],
+    } as never);
+    view();
+    await waitFor(() =>
+      expect(document.querySelector('[data-finding="floor-nobody-measured"]')).toBeInTheDocument(),
+    );
+    expect(document.querySelector('[data-finding="floor-nobody-measured"]')!.querySelector('a')).toHaveAttribute(
+      'href',
+      '/p/proj-1/dosing',
+    );
+  });
+
+  /** A dropped row is not evidence: nobody will ever buy it, so nobody has to read it. */
+  it('says nothing about a row that stopped', async () => {
+    vi.mocked(api.getTable).mockResolvedValue({
+      projectId: 'proj-1',
+      rows: [
+        tableRow({
+          regulatory: null,
+          dosing: null,
+          stoppedAt: 'regulatory',
+          stoppedReason: 'element gate failed product-wide',
+        }),
+      ],
+    } as never);
+    view();
+    await waitFor(() => expect(screen.getByText(/Every live verdict is opened/)).toBeInTheDocument());
+  });
+
+  /**
+   * A FAILED READ IS NOT A CLEAN BILL OF HEALTH. This screen signs procurement; an unreadable record
+   * must never render as an absence of findings.
+   */
+  it('refuses to report "nothing outstanding" when the record could not be read', async () => {
+    vi.mocked(api.getTable).mockRejectedValue(new Error('boom'));
+    view();
+    await waitFor(() =>
+      expect(screen.getByText(/nothing below is a list of what is outstanding/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/Every live verdict is opened/)).toBeNull();
+  });
+
 
   /**
    * `availability` replaced `cost` as the third criterion when the Cost stage was deleted. A criterion
@@ -169,7 +312,7 @@ describe('Sign-off — both signatures, each labelled with what it releases', ()
   /** Armability is the server's word. A tally here could advertise a pen the POST refuses. */
   it('keeps the pen disabled while the server withholds the gate, and shows its blockers verbatim', async () => {
     view();
-    await waitFor(() => expect(screen.getByRole('button', { name: /Approve & close/ })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Approve —/ })).toBeDisabled());
     expect(screen.getByText('dosing has not produced a code for bottle')).toBeInTheDocument();
   });
 
@@ -206,7 +349,7 @@ describe('Sign-off — both signatures, each labelled with what it releases', ()
     );
     view();
     await waitFor(() => expect(screen.getByText(/You recorded VP R&D’s determination/)).toBeInTheDocument());
-    expect(screen.queryByRole('button', { name: /Approve & close/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Approve —/ })).not.toBeInTheDocument();
   });
 
   /**

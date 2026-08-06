@@ -59,9 +59,10 @@ public static class DosingAgent
         Reply with ONLY a JSON object: { "windows": [...], "codes": [...] }
         """;
 
-    /// <param name="compliant">the operator-recommended verdicts — the ONLY substances Dosing may dose
-    /// (CompliantSet.Of). A code CAS outside it is refused: a code goes to procurement, so a rejected
-    /// substance riding into one would bypass the regulatory gate.</param>
+    /// <param name="compliant">the dosable verdicts — the ONLY substances Dosing may dose (CompliantSet.Of:
+    /// everything the agent did not reject, minus anything the operator vetoed). A code CAS outside it is
+    /// refused: a code goes to procurement, so a VETOED substance riding into one would put a chemical the
+    /// operator refused into a customer's product.</param>
     /// <param name="floors">(component, element) → the MEASURED detection floor, computed by code from the
     /// physicist's background. The agent SEES it and doses above it; it never computes it.</param>
     /// <param name="loadings">cas → metal loading (operator-entered, with a basis). Feeds OrderAmount only —
@@ -268,14 +269,15 @@ public static class DosingAgent
             var elements = new List<string>();
             foreach (var cas in c.Cas)
             {
-                // 6 — THE FALSE-PASS GUARD. A code goes to procurement; a substance the operator did not
-                // recommend riding into one would bypass the regulatory gate. Refuse before anything else
-                // about the marker, because this is the mistake that hurts.
+                // 6 — THE FALSE-PASS GUARD. A code goes to procurement; a substance outside the compliant
+                // set — vetoed by the operator, or never proposed at all — riding into one is a chemical
+                // nobody cleared. Refuse before anything else about the marker: this is the mistake that
+                // hurts.
                 var forCas = compliant.Where(v => v.Cas == cas).ToList();
                 if (forCas.Count == 0)
                     return $"code marker '{cas}' in {c.ComponentId} is not in the compliant set — a code goes " +
-                           "to procurement, and a substance the operator did not recommend must not ride into " +
-                           "one past the regulatory gate";
+                           "to procurement, and a substance the operator vetoed (or nobody proposed) must not " +
+                           "ride into one";
 
                 // 7 — codes are PER COMPONENT (interaction law 1: there is no product-wide marker). The CAS is
                 // recommended, but for a DIFFERENT component than this code.

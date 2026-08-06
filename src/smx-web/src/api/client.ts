@@ -29,7 +29,6 @@ import type {
   PoolDoc,
   ProjectListItem,
   ProjectSummary,
-  RegulatoryGate,
   ReviewRequest,
   ReviseAccepted,
   ReviseRequest,
@@ -470,25 +469,15 @@ export async function reviewEvidence(
   return (await res.json()) as { reviewed: true };
 }
 
-/** The gate's live arming state. Never 404s — an un-run project reads locked + not armable. */
-export async function getRegulatoryGate(projectId: string): Promise<RegulatoryGate> {
-  const res = await authorizedFetch(`${p(projectId)}/gate/regulatory`);
-  if (!res.ok) throw await failure(res);
-  return (await res.json()) as RegulatoryGate;
-}
-
-/**
- * Sign the regulatory gate.
+/*
+ * `getRegulatoryGate` and `approveRegulatory` lived here. Both endpoints are DELETED — the regulatory
+ * gate is removed, not demoted (spec §16.4) — so the client cannot offer them: a helper for a route
+ * that 404s is a control somebody will wire to a button.
  *
- * The backend re-checks armability server-side and 422s if the analysis is incomplete or any flagged
- * cell is unreviewed — so this can fail even when the button looked enabled (a concurrent revise).
- * The caller catches the ApiError and re-reads the gate, which carries the fresh blockers.
+ * `reviewEvidence` above and `recordDetermination` are what is left of that screen's write surface,
+ * and the arming rule they used to feed now guards the two irreversible acts instead
+ * (`EvidenceReview.Outstanding` on the VP determination and on every order).
  */
-export async function approveRegulatory(projectId: string): Promise<{ status: 'approved' }> {
-  const res = await authorizedFetch(`${p(projectId)}/regulatory/approve`, { method: 'POST' });
-  if (!res.ok) throw await failure(res);
-  return (await res.json()) as { status: 'approved' };
-}
 
 /**
  * Post a message to a stage's agent (spec §3). 202 record-as-bus: the reply is written later by the
@@ -658,6 +647,13 @@ export async function getAmendments(projectId: string): Promise<Amendment[]> {
  *
  * Throwing would collapse that into a generic failure toast, and the operator would never learn what they
  * were about to destroy.
+ */
+/*
+ * NOTE: no screen calls this any more. Amending is a conversation (spec §16.2) — the operator tells
+ * the intake agent what changed and why, and the agent's tool posts to this endpoint server-side. The
+ * helper stays because the ENDPOINT stays, and because the 409 contract it documents is the one the
+ * agent has to honour. It is not a control anybody may wire to a button: a form here would be the
+ * direct edit Law 4 forbids, with the reason demoted to one more field.
  */
 export async function postAmendment(
   projectId: string,

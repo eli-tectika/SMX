@@ -95,12 +95,6 @@ public class DecisionRevisionTests
         DeterminationReason = "operator recommended",
     };
 
-    private static GateDoc RegGate() => new()
-    {
-        Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
-        Status = "approved", ApprovedAt = "2026-07-13T09:00:00.0000000+00:00",
-    };
-
     private static GateDoc Vp(string status) => new()
     {
         Id = RecordIds.Gate(P, GateTypes.Vp), ProjectId = P, GateType = GateTypes.Vp,
@@ -188,7 +182,6 @@ public class DecisionRevisionTests
         await store.UpsertVerdictAsync(Verdict("cas-zr", "Zr"));
         await store.UpsertVerdictAsync(Verdict("cas-y", "Y"));
         await store.UpsertVerdictAsync(Verdict("cas-fe", "Fe"));
-        await store.UpsertGateAsync(RegGate());
         await store.UpsertDosingAsync(DosingBefore());
         await store.UpsertDecisionAsync(DecisionBefore());
         await knowledge.UpsertSubstancePropertyAsync(Loading("cas-zr", "Zr"));
@@ -337,10 +330,9 @@ public class DecisionRevisionTests
         Assert.Equal("done", stage.Status);
         Assert.Null(stage.Error);
 
-        // ...the unsigned vp gate is still locked, and the REGULATORY gate (which a Decision revision is
-        // strictly downstream of) still stands with its signature.
+        // ...the unsigned vp gate is still locked, and the upstream analysis a Decision revision is
+        // strictly downstream of still stands.
         Assert.Equal("locked", (await store.GetGateAsync(P, GateTypes.Vp))!.Status);
-        Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
         Assert.Equal("done", Stage(store, Stages.Regulatory).Status);
     }
 
@@ -483,8 +475,7 @@ public class DecisionRevisionTests
         var candidates = (await store.GetCandidatesAsync(P))!;
         Assert.Equal(new[] { "cas-zr", "cas-y", "cas-fe" }, candidates.Substances.Select(s => s.Cas));
 
-        // ...the approved regulatory gate was NOT voided and no stage flipped — the project stays closed.
-        Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
+        // ...and no stage flipped — the project stays closed.
         Assert.Equal("done", Stage(store, Stages.Discovery).Status);
         Assert.Equal("done", Stage(store, Stages.Regulatory).Status);
         Assert.Equal("done", Stage(store, Stages.Decision).Status);
@@ -518,8 +509,7 @@ public class DecisionRevisionTests
         Assert.Equal(Determinations.Recommended, verdict.Determination);
         Assert.True(verdict.EvidenceReviewed);
 
-        // ...the approved regulatory gate was NOT voided and no stage flipped — the project stays closed.
-        Assert.Equal("approved", (await store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
+        // ...and no stage flipped — the project stays closed.
         Assert.Equal("done", Stage(store, Stages.Regulatory).Status);
         Assert.Equal("done", Stage(store, Stages.Decision).Status);
         Assert.Equal(SeededDecisionGeneratedAt, (await store.GetDecisionAsync(P))!.GeneratedAt);
@@ -664,9 +654,5 @@ public class DecisionRevisionTests
         // POST /revise and the chat apply_revision tool both route on RevisionEffects.IsRevisable(stage) —
         // the property IS the front door; the executor arm above is what stops it opening onto a throw.
         Assert.True(RevisionEffects.IsRevisable(Stages.Decision));
-
-        // And the gate-void decision this stage routes to is the SAFE one — a Decision revision is strictly
-        // downstream of the regulatory signature and must not void it.
-        Assert.False(RevisionEffects.BreaksRegulatoryGate(Stages.Decision));
     }
 }

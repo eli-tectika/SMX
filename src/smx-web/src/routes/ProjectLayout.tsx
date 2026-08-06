@@ -4,10 +4,10 @@ import { AgentPanel } from '../components/AgentPanel';
 import { ErrorScreen, Loading } from '../components/Loading';
 import { StageErrorBoundary } from '../components/shell/StageErrorBoundary';
 import { WorkArea, useAgentPanel } from '../components/shell/WorkArea';
-import { navItem, projectHome } from '../components/shell/projectNav';
+import { navAgentStages, navItem, projectHome } from '../components/shell/projectNav';
 import { usePublishScope } from '../components/shell/scope';
 import { Timeline } from '../components/timeline/Timeline';
-import { backendStage, backendStages, isChatStage } from '../domain/stages';
+import { backendStage, isChatStage } from '../domain/stages';
 import { useProject } from '../hooks/useProject';
 import { useThread } from '../hooks/useThread';
 import { Discovery } from './stages/Discovery';
@@ -135,13 +135,13 @@ export function ProjectLayout() {
         projectId={state.project.projectId}
         stageSlug={item.agentSlug}
         stageLabel={item.agentLabel ?? item.label}
+        stages={navAgentStages(item)}
       />
     );
 
   // Only while collapsed: the panel itself holds the thread open when it is visible, and a second
   // subscription alongside it would double the stream for no new information.
-  const watched =
-    collapsed && item.agentSlug ? backendStages(item.agentSlug).filter(isChatStage) : [];
+  const watched = collapsed ? navAgentStages(item).filter(isChatStage) : [];
 
   return (
     <>

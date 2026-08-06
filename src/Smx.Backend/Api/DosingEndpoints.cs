@@ -53,7 +53,7 @@ public static class DosingEndpoints
             // flip any more. Before the re-entry below, entering the loading the agent asked for left
             // Dosing sitting at `pending` forever, looking like it was about to run.
             //
-            // Same shape as POST /regulatory/approve: the flip is the operator's input and is meaningful on
+            // Same shape as POST /projects/{id}/start: the flip is the operator's input and is meaningful on
             // its own, so the supervisor is OPTIONAL and a store-only test host still exercises the door.
             project.Stages[Stages.Dosing].Status = "pending";
             await store.UpsertProjectAsync(project, ct);

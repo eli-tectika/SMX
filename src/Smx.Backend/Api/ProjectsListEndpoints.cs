@@ -6,8 +6,11 @@ using Smx.Domain.Records;
 namespace Smx.Backend.Api;
 
 /// GET /projects — the estate list the frontend's landing page reads. Newest-first, each row carrying
-/// the stage spine and both gate statuses: the "Needs signing" card is computed from the gates, and
+/// the stage spine and the VP gate status: the "Needs signing" card is computed from that gate, and
 /// nothing less than the record can be allowed to back it.
+///
+/// ONE gate, since §16.4 dropped the regulatory one. The `gates` map keeps its shape (a dictionary, one
+/// entry) rather than flattening to a scalar: a second gate is a data change, not a wire-format change.
 public static class ProjectsListEndpoints
 {
     public static void MapProjectsListEndpoints(this IEndpointRouteBuilder app)
@@ -26,7 +29,6 @@ public static class ProjectsListEndpoints
             var list = new List<object>(projects.Count);
             foreach (var p in projects)   // newest-first, straight from the store's ORDER BY
             {
-                var regulatory = await store.GetGateAsync(p.ProjectId, GateTypes.Regulatory, ct);
                 var vp = await store.GetGateAsync(p.ProjectId, GateTypes.Vp, ct);
                 list.Add(new ProjectListRow
                 {
@@ -37,11 +39,7 @@ public static class ProjectsListEndpoints
                     // (WhenWritingNull), but an absent gate must serialize as an EXPLICIT null —
                     // "no gate yet" is a value the frontend reads, not a field it has to infer —
                     // and dictionary entries are exempt from the ignore condition.
-                    Gates = new Dictionary<string, string?>
-                    {
-                        [GateTypes.Regulatory] = regulatory?.Status,
-                        [GateTypes.Vp] = vp?.Status,
-                    },
+                    Gates = new Dictionary<string, string?> { [GateTypes.Vp] = vp?.Status },
                 });
             }
             return Results.Json(list, Json.Options);
@@ -85,64 +83,50 @@ public static class ProjectsListEndpoints
                     readyToContinue.Add(Stages.Spine[i]);
             }
 
-            // Needs signing: each UNAPPROVED gate (a signed gate needs nothing), with armability from the
-            // REAL predicates — the same ones the signing endpoints enforce — so this card never advertises
-            // a gate the POST would refuse. Blockers surface verbatim: a blocker the operator cannot
-            // locate is a gate they cannot ever arm.
+            // Needs signing: EXACTLY ONE ENTRY, and only while the VP gate is unapproved (a signed gate
+            // needs nothing). The regulatory row is gone with its gate (§16.4). The list shape survives the
+            // drop to one deliberately — the frontend renders whatever is here rather than knowing how many
+            // signatures the system has, so a card that stops appearing is not a card that has to be found
+            // and deleted.
+            //
+            // Armability comes from the REAL predicates — the same ones the signing endpoint enforces — so
+            // this card never advertises a gate the POST would refuse. Blockers surface verbatim: a blocker
+            // the operator cannot locate is a gate they cannot ever arm.
             var needsSigning = new List<object>();
-            var regGate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
             var vpGate = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
-            if (regGate?.Status != "approved" || vpGate?.Status != "approved")
+            if (vpGate?.Status != "approved")
             {
                 var verdicts = await store.GetVerdictsAsync(projectId, ct);
                 var candidates = await store.GetCandidatesAsync(projectId, ct);
-                if (regGate?.Status != "approved")
+                // Mirrors GET /gate/vp, flagged-findings check included: the POST additionally 422s on
+                // absent candidates and on unopened flagged verdicts, so an armable computed from
+                // VpGate.Armable alone would advertise a gate the POST refuses.
+                var decision = await store.GetDecisionAsync(projectId, ct);
+                var (armed, blockers) = VpGate.Armable(decision);
+                IReadOnlyList<string> uncovered = candidates is null
+                    ? ["no candidates on file — there is no analysis to sign over"]
+                    : EvidenceReview.Outstanding(candidates, verdicts);
+                // ...and the POST's park guard (Task 15(d)), for the same reason: a Dosing revision
+                // resets Decision to `pending` with the STALE DecisionDoc still on file — this card
+                // must not invite a signature the POST refuses. Nor while a Dosing/Decision revision
+                // is still PENDING (F1 layer 3): the decision may be about to change.
+                var notParked = VpGate.NotSignableBlocker(
+                    project.Stages.GetValueOrDefault(Stages.Decision)?.Status, decision?.Procurement.Status);
+                var inFlight = VpGate.PendingRevisionBlocker(await store.GetRevisionsAsync(projectId, ct));
+                needsSigning.Add(new
                 {
-                    // Mirrors GET /gate/regulatory: completeness first (no candidates ⇒ nothing screened
-                    // yet), then RegulatoryGate.Armable over the live cells.
-                    var complete = candidates is not null && MatrixAssembler.IsComplete(candidates, verdicts);
-                    var (armed, blockers) = candidates is null
-                        ? (Ok: false, Blockers: (IReadOnlyList<string>)[])
-                        : RegulatoryGate.Armable(candidates, verdicts);
-                    needsSigning.Add(new
-                    {
-                        gate = GateTypes.Regulatory,
-                        armable = complete && armed,
-                        blockers = complete ? blockers : blockers.Prepend("incomplete: not every candidate has a verdict yet").ToList(),
-                    });
-                }
-                if (vpGate?.Status != "approved")
-                {
-                    // Mirrors GET /gate/vp, coverage re-check included: the POST additionally 422s on
-                    // absent candidates and on regulatory-coverage blockers, so an armable computed from
-                    // VpGate.Armable alone would advertise a gate the POST refuses.
-                    var decision = await store.GetDecisionAsync(projectId, ct);
-                    var (armed, blockers) = VpGate.Armable(regGate, decision);
-                    IReadOnlyList<string> uncovered = candidates is null
-                        ? ["no candidates on file — there is no analysis under the regulatory signature"]
-                        : RegulatoryGate.Armable(candidates, verdicts).Blockers;
-                    // ...and the POST's park guard (Task 15(d)), for the same reason: a Dosing revision
-                    // resets Decision to `pending` with the STALE DecisionDoc still on file — this card
-                    // must not invite a signature the POST refuses. Nor while a Dosing/Decision revision
-                    // is still PENDING (F1 layer 3): the decision may be about to change.
-                    var notParked = VpGate.NotSignableBlocker(
-                        project.Stages.GetValueOrDefault(Stages.Decision)?.Status, decision?.Procurement.Status);
-                    var inFlight = VpGate.PendingRevisionBlocker(await store.GetRevisionsAsync(projectId, ct));
-                    needsSigning.Add(new
-                    {
-                        gate = GateTypes.Vp,
-                        armable = armed && uncovered.Count == 0 && notParked is null && inFlight is null,
-                        blockers = blockers.Concat(uncovered)
-                            .Concat(notParked is null ? [] : new[] { notParked })
-                            .Concat(inFlight is null ? [] : new[] { inFlight }).ToList(),
-                    });
-                }
+                    gate = GateTypes.Vp,
+                    armable = armed && uncovered.Count == 0 && notParked is null && inFlight is null,
+                    blockers = blockers.Concat(uncovered)
+                        .Concat(notParked is null ? [] : new[] { notParked })
+                        .Concat(inFlight is null ? [] : new[] { inFlight }).ToList(),
+                });
             }
 
-            // `orderBlockers`: what stands between this project and procurement, separately from any
-            // signature. A provisional dosing rests on the agent's proposals, an estimated floor, or both
-            // (spec §10.1), and POST /orders refuses over it — so the dashboard must say so rather than let
-            // an operator discover it at the order.
+            // `orderBlockers`: what stands between this project and procurement, separately from the
+            // signature. A provisional dosing rests on a missing INPUT — an estimated floor with no
+            // physicist measurement most of all — and POST /orders refuses over it, so the dashboard must
+            // say so rather than let an operator discover it at the order.
             var dosingDoc = await store.GetDosingAsync(projectId, ct);
             IReadOnlyList<string> orderBlockers =
                 dosingDoc is { Provisional: true } ? dosingDoc.ProvisionalReasons : [];

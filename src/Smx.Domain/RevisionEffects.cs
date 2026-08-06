@@ -26,28 +26,16 @@ public static class RevisionEffects
     public static bool IsRevisable(string stage) =>
         stage is Stages.Discovery or Stages.Regulatory or Stages.Dosing or Stages.Decision;
 
-    /// A gate is an operator's signature over a SPECIFIC analysis. Re-running an agent at or upstream of
-    /// the Regulatory gate replaces that analysis, so the signature is void and has to be re-taken.
-    ///
-    /// This is not bookkeeping — it is the false-pass guard. PipelineRunner's matrix assembly will not
-    /// lower a stage that already reached `done`, so an approved gate left standing would let a `done`
-    /// Regulatory stage silently absorb the brand-new, UNREVIEWED verdicts a revision produces: the
-    /// operator's signature would then cover verdicts they never saw.
-    ///
-    /// It THROWS rather than defaulting for an unknown stage, on purpose. `false` is the dangerous
-    /// answer here, so it must never be the one an unrecognized string falls into. Call IsRevisable
-    /// first — which every caller must do anyway. Dosing is DOWNSTREAM of the gate: it consumes the
-    /// compliant set the operator signed over, it cannot change it, so re-running it must NOT void that
-    /// signature — it answers `false` here. Decision is downstream further still (the pick reads the
-    /// signed analysis) and answers `false` for the same reason. (Matrix is not revisable, so it hits the
-    /// throw above.)
-    public static bool BreaksRegulatoryGate(string stage)
-    {
-        if (!IsRevisable(stage))
-            throw new ArgumentOutOfRangeException(nameof(stage), stage,
-                "not a revisable stage — check IsRevisable before asking what a revision would void");
-        return stage is Stages.Discovery or Stages.Regulatory;
-    }
+    // `BreaksRegulatoryGate` lived here. It answered which revisions void the R.E.'s signature, and the
+    // 2026-08-06 redesign §16.4 deleted that signature — there is no regulatory GateDoc to void. The one
+    // remaining signature (VP) needs no equivalent: an approved VP gate IS the project's close, and
+    // PipelineRunner.ThrowIfClosedAsync refuses EVERY revision on a closed project before an agent runs.
+    // So no revision can reach a live signature, and a predicate saying which ones would could only be a
+    // check that cannot fire.
+    //
+    // What the deleted predicate really protected — an operator's review silently absorbing verdicts they
+    // never saw — is intact: a revised VerdictDoc comes back with `EvidenceReviewed=false`, and
+    // EvidenceReview.Outstanding refuses the order and the VP pen until the operator opens it again.
 
     /// Which kind of Learned Conclusion a revision to this stage yields — also the Cosmos partition key.
     /// Code decides this, never the agent: a tiering change is a material finding; a verdict change is a

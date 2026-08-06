@@ -55,9 +55,9 @@ public interface IRecordStore
     /// Everything else in `record` is upserted by a deterministic id, so a re-run REPLACES its predecessor.
     /// Verdicts are the exception — one document per (cas, component) — so a smaller candidate set leaves
     /// documents behind that describe cells nobody is screening. Four readers already filter those out
-    /// against the live cells (MatrixAssembler, RegulatoryGate.Armable, the compliance-package export,
+    /// against the live cells (MatrixAssembler, EvidenceReview.Outstanding, the compliance-package export,
     /// ProjectTable.Build) and two do NOT: `GET /projects/{id}/verdicts` serves the partition raw, and
-    /// PipelineRunner's Dosing folds `ProvisionalSet.Of(verdicts)` over all of them — so an orphan carrying
+    /// PipelineRunner's Dosing folds `CompliantSet.Of(verdicts)` over all of them — so an orphan carrying
     /// `recommended` is dosed into a code for a substance the current analysis rejected. Filtering is repair
     /// at the read side, and it is one forgotten call site away from failing; removing the document is not.
     ///

@@ -1,4 +1,5 @@
 import { useEffect, useState, type MouseEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { NotFound, getDocument, getDocumentContent, getDocumentText } from '../api/client';
 import type { DocumentBytes, DocumentChunk, DocumentDetail, DocumentSummary } from '../api/types';
 import { DocumentContent } from './DocumentContent';
@@ -127,7 +128,32 @@ export function FileViewer({
   }, [documentId, reloadKey]);
 
   if (missing) {
-    return <EmptyState title="Document not found" body="No document has that identifier." />;
+    /*
+     * REACHABLE IN NORMAL OPERATION, which is why it names the id and offers a way onward rather
+     * than being a bare sentence. A citation chip mints its link from an id the retrieval tool
+     * recorded at the time, and two ordinary things invalidate one: a `reg` document deleted from
+     * the corpus stays in the cached index for up to ten minutes, and an SDS whose registry row was
+     * removed leaves an id that resolves to nothing. Arriving here is not evidence the citation was
+     * wrong — it is evidence the document is gone — and the operator needs the identifier to say
+     * which one.
+     */
+    return (
+      <EmptyState
+        icon="ti-file-off"
+        title="Document not found"
+        body={
+          <>
+            No document has the identifier <span className="data">{documentId}</span>. A citation can
+            outlive the document it points at.
+          </>
+        }
+        actions={
+          <Link className="btn" to="/docs">
+            <i className="ti ti-library" aria-hidden="true" /> The document library
+          </Link>
+        }
+      />
+    );
   }
   if (detailError) {
     return <ErrorScreen title="This document could not be opened" detail={detailError} />;

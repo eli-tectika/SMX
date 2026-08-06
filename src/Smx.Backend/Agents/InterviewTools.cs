@@ -62,7 +62,7 @@ public sealed class InterviewTools(
             "Everything downstream runs PER COMPONENT — there is no product-wide marker. " +
             "Each needs id, material, application, objective (brand or quantification), at least one market, " +
             "and physicalState — the substrate's physical state, e.g. \"liquid\", \"solid\", \"oil-soluble\", " +
-            "\"coating\". physicalState drives which marker FORM-CLASS the pool agent proposes right after " +
+            "\"coating\". physicalState drives which marker FORM-CLASS Discovery's pool pass proposes right after " +
             "creation (oil-soluble → organocomplex; solid polymer → oxide or salt; coating → a dispersible " +
             "compound), so ASK the operator for it rather than guessing; omit it only if they genuinely do " +
             "not know. " +

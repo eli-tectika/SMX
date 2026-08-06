@@ -20,7 +20,7 @@ public sealed record CreateProjectRequest(
         if (string.IsNullOrWhiteSpace(Client) || string.IsNullOrWhiteSpace(Product)) return "client and product are required";
         if (Components is not { Count: > 0 }) return "at least one component is required";
         if (Components.Select(c => c.Id).Distinct().Count() != Components.Count) return "component ids must be unique";
-        // NEED-ONLY is now valid: with neither pools nor candidates, the pool agent proposes the candidate pool
+        // NEED-ONLY is now valid: with neither pools nor candidates, Discovery's pool pass proposes the candidate pool
         // from the need. Element pools stay OPTIONAL input (a physicist-measured pool, or an eval fixture); the
         // per-pool checks below apply only when one is supplied. The pool-or-candidates PRECONDITION is gone,
         // and is deliberately not moved to POST /start either: a project created through the interview reaches

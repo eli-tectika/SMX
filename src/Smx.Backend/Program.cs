@@ -227,6 +227,14 @@ public static class BackendHost
                 cosmos.GetContainer(opts.CosmosDatabase, "reg-state"));
         });
 
+        // What turns a retrieved regulatory chunk into a citation the operator can OPEN. A singleton because
+        // it caches the (sourceId, docId) → document-id map; see RegDocumentIdIndex for why the id is looked
+        // up rather than derived. It takes IRegDocumentSource and NOT RegDocumentProvider on purpose: the
+        // provider needs an IDocumentContentStore it would never touch here, and resolving that eagerly would
+        // let a deployment with no bronze account break regulatory RETRIEVAL, not just the viewer.
+        services.AddSingleton<IRegDocumentIdIndex>(sp =>
+            new RegDocumentIdIndex(sp.GetRequiredService<IRegDocumentSource>()));
+
         services.AddSingleton<IDocumentCatalog>(sp => new DocumentCatalog(
             new SdsDocumentProvider(sp.GetRequiredService<ISdsDocumentSource>()),
             new RegDocumentProvider(sp.GetRequiredService<IRegDocumentSource>(),
@@ -281,8 +289,11 @@ public static class BackendHost
             opts.LearnedConclusionsIndex));                                          // write side (index name)
         services.AddSingleton<ILearnedConclusionWriter, LearnedConclusionWriter>();  // Cosmos + index, same IEmbedder
 
-        services.AddSingleton<IRegulatorySearch>(new RegulatorySearchTool(
-            new SearchClient(new Uri(opts.SearchEndpoint), opts.RegulatoryIndex, credential)));
+        // A FACTORY, not an eagerly-constructed instance: it now depends on IRegDocumentIdIndex, and eager
+        // construction would resolve that (and its Cosmos containers) at startup instead of at first search.
+        services.AddSingleton<IRegulatorySearch>(sp => new RegulatorySearchTool(
+            new SearchClient(new Uri(opts.SearchEndpoint), opts.RegulatoryIndex, credential),
+            sp.GetRequiredService<IRegDocumentIdIndex>()));
         services.AddSingleton<ISdsSearch>(new SdsSearchTool(
             new SearchClient(new Uri(opts.SearchEndpoint), opts.SdsIndex, credential)));
         services.AddSingleton<IReferenceSearch>(new ReferenceSearchTool(
@@ -371,11 +382,11 @@ public static class BackendHost
         // the service merge.
         services.AddSingleton<ThreadEventHub>();
 
-        // The two OPTIONAL trailing params are wired here deliberately — this is the "deferred production
+        // The OPTIONAL trailing params are wired here deliberately — this is the "deferred production
         // wiring" the PipelineRunner XML docs point at. Without the IKnowledgeStore every metal loading
-        // reads as unknown and Dosing parks in `awaiting-operator` forever; without the ICatalogLookup the
-        // Cost stage never prices (it skips, degrading safely). Both are the singletons registered above;
-        // the E2E (DosingCostEndToEndTests) proves the logic, this line turns it on.
+        // reads as unknown and every substance is dropped from the dose and named; without the
+        // ICatalogLookup the supply audit stays empty rather than being fabricated. Both are the singletons
+        // registered above; the E2E (DosingCostEndToEndTests) proves the logic, this line turns it on.
         services.AddSingleton(sp => new PipelineRunner(
             sp.GetRequiredService<IRecordStore>(), sp.GetRequiredService<IRunStore>(),
             sp.GetRequiredService<IAgentRuns>(), sp.GetRequiredService<ThreadEventHub>(),
@@ -384,8 +395,7 @@ public static class BackendHost
             sp.GetRequiredService<IKnowledgeStore>(), sp.GetRequiredService<ICatalogLookup>(),
             // Same reasoning: unpassed, the SDS ledger never learns about a substance a project put into
             // play, which is the gap that made MSDS coverage look arbitrary in the first place.
-            sp.GetRequiredService<ISdsAcquisition>(),
-            opts.RegulatoryAutoApprove));
+            sp.GetRequiredService<ISdsAcquisition>()));
 
         // ONE supervisor, resolved twice. The hosted-service registration MUST go through the container
         // rather than construct its own — `AddHostedService<PipelineSupervisor>()` would build a SECOND

@@ -85,14 +85,16 @@ describe('ProjectLayout — the work area', () => {
   });
 
   /**
-   * Overview has no panel: the intake agent's composer lives inside that screen, beside the brief
-   * it amends (spec §11.4). Two copies of one thread, in two columns, would drift.
+   * OVERVIEW NOW HAS THE PANEL, and that is the whole of spec §16.2. It had none while the amendment
+   * surface was a form inside the screen — a picker, a value box and a reason box, which is the
+   * direct edit Law 4 forbids. The form is deleted; the conversation is the surface, on the same
+   * intake thread the interview wrote the brief on.
    */
-  it('gives Overview the full width and no panel', async () => {
+  it('gives Overview the intake agent panel, where the form used to be', async () => {
     await atScreen('overview');
-    expect(document.querySelector('.work')).toHaveAttribute('data-chat', 'none');
-    expect(document.querySelector('.work__chat')).toBeNull();
-    expect(document.querySelector('.work__rail')).toBeNull();
+    expect(document.querySelector('.work')).not.toHaveAttribute('data-chat', 'none');
+    expect(await screen.findByLabelText('Intake agent')).toBeInTheDocument();
+    expect(screen.getByLabelText('Message the intake agent')).toBeInTheDocument();
   });
 
   /**

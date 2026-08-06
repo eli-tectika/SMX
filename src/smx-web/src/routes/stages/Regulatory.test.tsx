@@ -2,15 +2,13 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Regulatory } from './Regulatory';
-import type { ProjectSummary, RegulatoryGate } from '../../api/types';
+import type { ProjectSummary } from '../../api/types';
 
 vi.mock('../../api/client', () => ({
   NotFound: Symbol.for('NotFound'),
   ApiError: class ApiError extends Error {},
   getTable: vi.fn(),
-  getRegulatoryGate: vi.fn(),
   getMatrix: vi.fn(),
-  approveRegulatory: vi.fn(),
   getRevisions: vi.fn().mockResolvedValue([]),
   reviseStage: vi.fn(),
   recordDetermination: vi.fn(),
@@ -53,15 +51,6 @@ const row = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const gate = (over: Partial<RegulatoryGate> = {}): RegulatoryGate => ({
-  status: 'locked',
-  armable: false,
-  blockers: ['unreviewed: 1314-36-9|bottle (Pass)'],
-  approvedAt: null,
-  approvedBy: null,
-  ...over,
-});
-
 const view = () =>
   render(
     <MemoryRouter>
@@ -71,7 +60,6 @@ const view = () =>
 
 beforeEach(() => {
   vi.mocked(api.getTable).mockResolvedValue({ projectId: 'proj-1', rows: [row()] } as never);
-  vi.mocked(api.getRegulatoryGate).mockResolvedValue(gate());
   vi.mocked(api.getMatrix).mockResolvedValue({
     id: 'm',
     projectId: 'proj-1',
@@ -93,7 +81,7 @@ beforeEach(() => {
   } as never);
 });
 
-describe('Regulatory — the matrix, ruled on, and the signature over it', () => {
+describe('Regulatory — the matrix, and the two acts on a verdict', () => {
   /**
    * THE LAW-9 LINE AT THE RENDERING LAYER. The proposal is the agent's and carries no weight; the
    * determination is the operator's and is the only field `CompliantSet` reads. One column for both —
@@ -107,7 +95,9 @@ describe('Regulatory — the matrix, ruled on, and the signature over it', () =>
 
     const cells = [...(screen.getByText('1314-36-9').closest('tr')?.querySelectorAll('td') ?? [])];
     const proposalCell = cells.find((c) => c.textContent === 'recommended');
-    const unsignedCell = cells.find((c) => c.textContent === 'unsigned');
+    // 'no ruling', not 'unsigned' — there is no signature on this screen any more (spec 16.4); the
+    // operator's act is a RULING on a verdict, and an absent one has to read as absent.
+    const unsignedCell = cells.find((c) => c.textContent === 'no ruling');
     expect(proposalCell).toBeDefined();
     // The proposal is present AND the determination reads unsigned, in a different cell. A merged
     // column could not produce both.
@@ -115,10 +105,10 @@ describe('Regulatory — the matrix, ruled on, and the signature over it', () =>
     expect(proposalCell).not.toBe(unsignedCell);
   });
 
-  /** An unsigned cell reads unsigned even when the agent has proposed something confident and green. */
-  it('never lets a proposal stand in for a signature', async () => {
+  /** An unruled cell reads unruled even when the agent has proposed something confident and green. */
+  it('never lets a proposal stand in for a ruling', async () => {
     view();
-    await waitFor(() => expect(screen.getByText('unsigned')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('no ruling')).toBeInTheDocument());
   });
 
   /**
@@ -135,14 +125,162 @@ describe('Regulatory — the matrix, ruled on, and the signature over it', () =>
     expect(screen.queryByText('Splendid')).not.toBeInTheDocument();
   });
 
-  /** An unassessed dimension is not a pass, and it does not get an empty cell either. */
-  it('marks a missing dimension rather than leaving its cell blank', async () => {
+  /**
+   * An unassessed dimension is not a pass, and it does not vanish when four glyph columns become one
+   * Why cell. That collapse is only safe while the cell still NAMES what was never screened —
+   * otherwise a verdict folded over two dimensions reads exactly like one folded over four.
+   */
+  it('names the dimensions nobody assessed, in the Why cell that replaced their columns', async () => {
     vi.mocked(api.getTable).mockResolvedValue({
       projectId: 'proj-1',
       rows: [row({ regulatory: { overall: 'Pass', dimensions: dimensions.slice(0, 2), proposedDetermination: null, determination: null, evidenceReviewed: false } })],
     } as never);
     view();
-    await waitFor(() => expect(screen.getByText(/ApplicationCheck not assessed/)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(document.querySelector('[data-unassessed]')?.getAttribute('data-unassessed')).toBe(
+        'ApplicationCheck,Hazard',
+      ),
+    );
+    expect(screen.getByText(/not assessed: ApplicationCheck, Hazard/)).toBeInTheDocument();
+  });
+
+  /**
+   * THE FIVE-COLUMN SHAPE. Four one-glyph dimension columns and their explanatory subtitle are gone;
+   * what replaced them has to carry the same facts — which check governs, how sure, and on what
+   * source — and the two ruling columns have to survive the simplification untouched (§12).
+   */
+  it('renders the phase group as Material / State / Why / Confidence / Sources', async () => {
+    view();
+    await waitFor(() => expect(screen.getByText('State in this phase')).toBeInTheDocument());
+    const heads = [...document.querySelectorAll('.mx__cols th')].map((h) => h.textContent);
+    expect(heads).toEqual([
+      'Material',
+      'State in this phase',
+      'Why',
+      'Confidence',
+      'Sources',
+      'Agent proposal',
+      'Your determination',
+      '',
+    ]);
+  });
+
+  /** The band names the phase in TEXT — the tint reinforces it and never carries it alone. */
+  it('bands the column group with the phase name', async () => {
+    view();
+    await waitFor(() => expect(document.querySelector('.mx__groups')).toBeInTheDocument());
+    const band = [...document.querySelectorAll('.mx__groups th')];
+    expect(band.map((b) => b.getAttribute('data-group'))).toEqual([
+      'identity',
+      'regulatory',
+      'actions',
+    ]);
+    expect(band[1].textContent).toBe('Regulatory');
+    expect(band[1].getAttribute('colspan')).toBe('6');
+  });
+
+  /**
+   * WORST-WINS, and it says so. Averaging 0.9/0.9/0.9/0.3 would render 75% and hide the dimension
+   * the agent barely believed — which is the one the operator has to open.
+   */
+  it('folds the four dimension confidences to the weakest, and marks it low', async () => {
+    vi.mocked(api.getTable).mockResolvedValue({
+      projectId: 'proj-1',
+      rows: [
+        row({
+          regulatory: {
+            overall: 'Pass',
+            dimensions: dimensions.map((d, i) => ({ ...d, confidence: i === 2 ? 0.3 : 0.9 })),
+            proposedDetermination: null,
+            determination: null,
+            evidenceReviewed: false,
+          },
+        }),
+      ],
+    } as never);
+    view();
+    await waitFor(() => expect(screen.getByText('30%')).toBeInTheDocument());
+    expect(document.querySelector('[data-confidence="low"]')).toBeInTheDocument();
+  });
+
+  /** A record that states no confidence gets a WORD, never a 0% bar claiming the agent had none. */
+  it('says "not stated" rather than drawing a confidence the record does not carry', async () => {
+    vi.mocked(api.getTable).mockResolvedValue({
+      projectId: 'proj-1',
+      rows: [
+        row({
+          regulatory: {
+            overall: 'Pass',
+            dimensions: dimensions.map((d) => ({ ...d, confidence: undefined })),
+            proposedDetermination: null,
+            determination: null,
+            evidenceReviewed: false,
+          },
+        }),
+      ],
+    } as never);
+    view();
+    await waitFor(() =>
+      expect(document.querySelector('[data-confidence="none"]')?.textContent).toMatch(/not stated/),
+    );
+  });
+
+  /**
+   * The Sources cell links only what the record can link. A regulatory citation carrying a real
+   * `documentId` opens its document; one without stays a label — permanently, because most retrieval
+   * tools cannot mint an id at all. Both live in the same cell.
+   */
+  it('links a cited source that carries a documentId and leaves one without it inert', async () => {
+    const withId = {
+      source: 'regulatory',
+      reference: 'Annex XVII entry 27',
+      retrievedAt: '2026-07-01T00:00:00Z',
+      documentId: 'reg_ZXVyLWxleC9yZWFjaC1hbm5leC14dmlp',
+    };
+    const withoutId = {
+      source: 'reference-data',
+      reference: 'compatibility sheet RD7',
+      retrievedAt: '2026-07-01T00:00:00Z',
+      documentId: null,
+    };
+    vi.mocked(api.getTable).mockResolvedValue({
+      projectId: 'proj-1',
+      rows: [
+        row({
+          regulatory: {
+            overall: 'Pass',
+            dimensions: [
+              { ...dimensions[0], citations: [withId] },
+              { ...dimensions[1], citations: [withoutId] },
+              dimensions[2],
+              dimensions[3],
+            ],
+            proposedDetermination: null,
+            determination: null,
+            evidenceReviewed: false,
+          },
+        }),
+      ],
+    } as never);
+    view();
+    await waitFor(() => expect(document.querySelector('[data-sources]')).toBeInTheDocument());
+    const cell = document.querySelector('[data-sources]')!;
+    // The linked one is labelled with the FILE NAME, not the reference and not the raw id.
+    const link = cell.querySelector('[data-cite="open"]')!;
+    expect(link.getAttribute('href')).toBe('/docs/reg_ZXVyLWxleC9yZWFjaC1hbm5leC14dmlp');
+    expect(link.textContent).toContain('reach-annex-xvii');
+    // The unlinkable one is a different KIND of thing, not the same chip without a colour.
+    const label = cell.querySelector('[data-cite="label"]')!;
+    expect(label.tagName).toBe('SPAN');
+    expect(label.textContent).toContain('compatibility sheet RD7');
+  });
+
+  /** A regulatory cell resting on no citation is the worst artifact this system can produce. */
+  it('says a cell has no sources at all rather than leaving the cell empty', async () => {
+    view();
+    await waitFor(() =>
+      expect(document.querySelector('[data-sources="none"]')?.textContent).toMatch(/none/),
+    );
   });
 
   /** A row the record stopped must say so, in the columns it will never fill. */
@@ -160,69 +298,87 @@ describe('Regulatory — the matrix, ruled on, and the signature over it', () =>
   });
 
   /**
-   * The gate arms on SERVER truth. The button reads `gate.armable` and never a browser-side tally: a
-   * tally can disagree with the endpoint that is about to refuse it, and the direction it disagrees in
-   * is a live-looking button over an unarmed gate.
+   * THERE IS NO SIGN-OFF ON THIS SCREEN. The regulatory gate is removed, not demoted (spec §16.4):
+   * no GateDoc, no approve endpoint, no signature, and therefore no pen, no arming checklist and no
+   * copy about releasing the compliance package.
+   *
+   * Asserted as an absence, and deliberately over several shapes at once, because the failure mode
+   * is the sign-off card growing back one element at a time — a checklist here, a button there.
    */
-  it('keeps the pen disabled while the server says the gate is not armable', async () => {
+  it('offers no signature, no arming checklist and no export copy', async () => {
     view();
-    await waitFor(() => expect(screen.getByRole('button', { name: /Sign the R.E./ })).toBeDisabled());
-  });
-
-  it('enables the pen when the server says armable', async () => {
-    vi.mocked(api.getRegulatoryGate).mockResolvedValue(gate({ armable: true, blockers: [] }));
-    view();
-    await waitFor(() => expect(screen.getByRole('button', { name: /Sign the R.E./ })).toBeEnabled());
-  });
-
-  /** What the signature releases changed with the pipeline: it is the export, not dosing. */
-  it('names the compliance-package export as what the signature releases', async () => {
-    vi.mocked(api.getRegulatoryGate).mockResolvedValue(gate({ armable: true, blockers: [] }));
-    view();
-    await waitFor(() => expect(screen.getByText(/compliance package/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Verdicts')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /Sign/ })).toBeNull();
+    expect(screen.queryByText(/regulatory sign-off/i)).toBeNull();
+    expect(screen.queryByText(/compliance package/i)).toBeNull();
+    expect(screen.queryByText(/Every candidate has a verdict/)).toBeNull();
+    expect(document.querySelector('[data-signer]')).toBeNull();
   });
 
   /**
-   * Auto-approve is the failure this gate exists to prevent, having happened. It gets the loudest
-   * treatment on the screen, and every determination below it is marked as the machine's — because it
-   * wrote the same cell fields an operator's ruling writes and the cell record cannot tell them apart.
+   * WHAT IS LEFT IS THE TWO PER-VERDICT ACTS, and they became load-bearing when the gate they used to
+   * feed disappeared. Opening a flagged finding is one of them, and the button that does it is the
+   * only control on a row.
    */
-  it('renders an auto-approved gate as an alarm and marks the determinations as the machine’s', async () => {
-    vi.mocked(api.getRegulatoryGate).mockResolvedValue(
-      gate({ status: 'approved', armable: true, blockers: [], approvedAt: '2026-08-01T00:00:00Z', approvedBy: 'auto-approve' }),
-    );
+  it('keeps the two per-verdict acts: opening a finding and ruling on it', async () => {
+    view();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Rule' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Rule' }));
+    expect(await screen.findByRole('button', { name: 'Hide' })).toBeInTheDocument();
+  });
+
+  /**
+   * An UNOPENED live non-Pass verdict is what `EvidenceReview.Outstanding` refuses the VP
+   * determination and every order over. It is hatched here rather than left to look like any other
+   * row — this is the row standing between the project and procurement.
+   */
+  it('marks an unopened non-Pass verdict as the thing holding up procurement', async () => {
     vi.mocked(api.getTable).mockResolvedValue({
       projectId: 'proj-1',
-      rows: [row({ regulatory: { overall: 'Pass', dimensions, proposedDetermination: 'recommended', determination: 'recommended', evidenceReviewed: true } })],
+      rows: [
+        row({
+          regulatory: {
+            overall: 'Fail',
+            dimensions,
+            proposedDetermination: 'rejected',
+            determination: null,
+            evidenceReviewed: false,
+          },
+        }),
+      ],
     } as never);
     view();
-    await waitFor(() =>
-      expect(document.querySelector('[data-signer="auto-approve"]')).toBeInTheDocument(),
-    );
-    expect(screen.getByText(/adopted by the machine/i)).toBeInTheDocument();
-    // The remedy stays one press away from the alarm: a real signature replaces the machine's.
-    expect(screen.getByRole('button', { name: /Sign the R.E./ })).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('tr.hatch-danger')).toBeInTheDocument());
+  });
+
+  /** A Pass nobody opened is not outstanding: the server only refuses over non-Pass verdicts. */
+  it('does not mark an unopened Pass', async () => {
+    view();
+    await waitFor(() => expect(screen.getByText('Pass')).toBeInTheDocument());
+    expect(document.querySelector('tr.hatch-danger')).toBeNull();
   });
 
   /**
-   * An approved gate with no recorded signer is not a human signature. Folded through an allow-list,
-   * never `?? 'unknown'` — and never upgraded to a person because it usually was one.
+   * A `rejected` recorded after dosing ran REFUSES THE ORDER server-side. That consequence arrives
+   * with no other visible sign, so the row carries it.
    */
-  it('refuses to attribute an approved gate whose signer the record does not name', async () => {
-    vi.mocked(api.getRegulatoryGate).mockResolvedValue(
-      gate({ status: 'approved', armable: true, blockers: [], approvedAt: '2026-08-01T00:00:00Z', approvedBy: null }),
-    );
+  it('says a rejected ruling refuses the order', async () => {
+    vi.mocked(api.getTable).mockResolvedValue({
+      projectId: 'proj-1',
+      rows: [
+        row({
+          regulatory: {
+            overall: 'Pass',
+            dimensions,
+            proposedDetermination: 'recommended',
+            determination: 'rejected',
+            evidenceReviewed: true,
+          },
+        }),
+      ],
+    } as never);
     view();
-    await waitFor(() => expect(document.querySelector('[data-signer="unknown"]')).toBeInTheDocument());
-    expect(screen.getByText(/does not say by whom/i)).toBeInTheDocument();
-  });
-
-  /** A gate that did not answer cannot be drawn as locked — that would assert a state we do not know. */
-  it('says the gate is unreadable rather than rendering it as locked', async () => {
-    vi.mocked(api.getRegulatoryGate).mockRejectedValue(new Error('nope'));
-    view();
-    await waitFor(() => expect(screen.getByText(/gate could not be read/i)).toBeInTheDocument());
-    expect(screen.queryByRole('button', { name: /Sign the R.E./ })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/ordering refused/i)).toBeInTheDocument());
   });
 
   /** The evidence, and the two reasons that live only on the matrix document. */

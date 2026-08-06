@@ -88,10 +88,6 @@ function CellReview({
             <p className="small secondary" style={{ margin: '6px 0 0' }}>
               {proposal.reason}
             </p>
-            <div className="tiny muted" style={{ marginTop: 4 }}>
-              A proposal, not a determination. Nothing downstream reads it — only your determination
-              below can let this substance be dosed.
-            </div>
           </>
         ) : (
           <div className="tiny muted" style={{ marginTop: 4 }}>
@@ -149,8 +145,7 @@ function CellReview({
           </>
         ) : (
           <div className="tiny muted" style={{ marginTop: 4 }}>
-            Not signed. No determination is recorded for this cell, so it is in no compliant set —
-            whatever the agent proposed above.
+            Not signed.
           </div>
         )}
 
@@ -164,9 +159,7 @@ function CellReview({
           className={`ti ${cell.evidenceReviewed ? 'ti-eye-check' : 'ti-eye-exclamation'}`}
           aria-hidden="true"
         />{' '}
-        Server record: evidence{' '}
-        <b>{cell.evidenceReviewed ? 'reviewed' : 'not yet reviewed'}</b>. This is the one the gate reads;
-        the review ledger beside the matrix is local to this browser.
+        Evidence <b>{cell.evidenceReviewed ? 'reviewed' : 'not yet reviewed'}</b>.
       </div>
     </div>
   );
@@ -221,11 +214,6 @@ export function EvidencePanel({
         {cell.componentId}
       </div>
 
-      <p className="tiny muted" style={{ margin: '0 0 12px' }}>
-        The overall verdict is the worst of the dimensions below — a cell can never read greener than
-        its weakest dimension.
-      </p>
-
       {isInconsistent(cell) && (
         <div className="banner danger">
           <i className="ti ti-alert-triangle" aria-hidden="true" />
@@ -268,8 +256,7 @@ export function EvidencePanel({
             </div>
             {d.confidence < LOW_CONFIDENCE && (
               <div className="tiny" style={{ color: 'var(--text-warning)', marginBottom: 6 }}>
-                <i className="ti ti-eye-exclamation" aria-hidden="true" /> Low confidence — this must
-                be opened before the gate can arm.
+                <i className="ti ti-eye-exclamation" aria-hidden="true" /> Low confidence.
               </div>
             )}
 

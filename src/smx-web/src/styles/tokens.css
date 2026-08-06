@@ -96,15 +96,23 @@
      pixel and whole-pixel rules arbitrarily, which is why the grid never looked crisp. */
   --hair: 1px;
 
-  /* type.
+  /* type. TWO FACES, and it used to be three.
 
      IBM Plex, self-hosted from node_modules via @fontsource — no CDN, because the
      system is private-by-default and a font request is an egress.
 
-     The pairing is not incidental. Plex was drawn as a technical-documentation face,
-     and Sans and Mono are siblings, not strangers — which matters because this app
-     sets data in mono INLINE, mid-sentence, inside sans table cells ("CAS 7440-22-4",
-     "12 ppm"). A mismatched pair produces a texture break on every row.
+     The pairing is not incidental, and it is why this app does NOT adopt the reference
+     product's single Roboto: SMX sets machine-readable values in mono INLINE,
+     mid-sentence, inside sans table cells ("CAS 7440-22-4", "12 ppm",
+     "Ce:Y = 1.00:0.50"). Plex Sans and Plex Mono are siblings from one superfamily, so
+     that mono run does not produce a texture break on every row. Roboto has no matched
+     mono, and a product that never sets inline data never has to solve this.
+
+     THE SERIF IS GONE. `--font-serif` (Georgia) dressed screen and section titles, and
+     it was deleted rather than re-scoped: a serif title face gives an instrument an
+     editorial register, which is the same voice the explanatory copy was written in.
+     Hierarchy is now carried by WEIGHT and SIZE inside one family — the titles did not
+     get bigger to compensate, because the point is less texture, not more emphasis.
 
      The rule the whole look hangs on: every machine-readable value is monospaced,
      every prose word is not. See `.data` in primitives.css. */
@@ -139,6 +147,13 @@
   --lh-prose: 1.6; /* banners, gate rationale, evidence — see `.prose` */
   --track-eyebrow: 0.07em;
 
+  /* The phase-group band's height (`.mx__groups` in craft.css). A real number rather than a guess,
+     because the sticky full matrix pins the column headers directly beneath it and needs it as an
+     offset. 16px of line for --t-tiny plus 3px of padding either side. Change the band's type and
+     this changes with it — a fixed box that no longer holds its contents is the exact bug the type
+     floor pass found twice with no test to notice. */
+  --mx-group-h: 22px;
+
   /* motion */
   --dur-1: 90ms; /* hover tint, focus ring, crosshair */
   --dur-2: 150ms; /* card lift, button, tab underline */
@@ -171,12 +186,6 @@
   --prism-yellow: #f0ea40;
   --prism-green: #5ba545;
   --prism-gray: #b1b2b2;
-
-  /* Georgia is the brand's title face (presentation deck). It is a system font — no
-     @fontsource, no CDN, no egress — so it stays inside the private-by-default rule.
-     It dresses TITLES only; every data value stays IBM Plex Mono, every prose word
-     stays IBM Plex Sans. */
-  --font-serif: Georgia, 'Times New Roman', serif;
 
   --rail-w: 76px; /* vertical nav rail — icon over a micro-label, matching the operator chip */
   --masthead-h: 64px; /* full-width top bar; the rail and context bar pin beneath it */

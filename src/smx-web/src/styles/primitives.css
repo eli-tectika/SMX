@@ -385,6 +385,11 @@
   align-items: baseline;
   gap: var(--s2);
   margin: var(--s5) 0 var(--s3);
+  /* Plex Sans is wider than the Georgia it replaced at the same size, and this row holds a
+     title, a count and (on Full matrix) an export button in a column whose width the agent
+     panel decides. Without a wrap the widest of those was pushed off the edge instead of onto
+     the next line — the class of bug the type-floor pass found twice with no test to notice. */
+  flex-wrap: wrap;
 }
 
 /* Only zero the top margin when the header truly opens the page. A header that is
@@ -404,9 +409,11 @@
 }
 
 .sec__title {
-  font-family: var(--font-serif); /* SMX brand title face */
+  /* One family (tokens.css). 500 -> 600 is the whole compensation for the retired serif:
+     the size is unchanged, because the ask was less texture rather than more emphasis, and
+     600 is a loaded weight — never `bold`, which the browser would synthesize. */
   font-size: var(--t-lead);
-  font-weight: 500;
+  font-weight: var(--w-semibold);
   color: var(--brand-navy); /* client brand direction: titles carry navy */
   /* The title is a <span> by default and an <h2>/<h3> where the section is real page structure
      (SectionHeader's `headingLevel`). A heading element brings UA margins with it, which would
@@ -937,16 +944,55 @@
   min-width: 12ch;
 }
 
-/* A citation that opens the document behind it. Only a chip carrying a real documentId gets
-   this class — the inert ones keep the plain .src look exactly, so nothing about the
-   fixture-backed screens changes. */
-.src-link {
-  color: var(--text-accent);
-  border-color: var(--border-accent);
+/* ---- citations, in two permanently distinct forms ----------------------------
+
+   A citation either opens a document or it does not, and WHICH ONE IS STRUCTURAL rather than a gap
+   somebody will close: only `search_regulatory` and `search_sds` can mint a `documentId`, because
+   they are the only retrieval tools whose results correspond to a document in the library. Every
+   Discovery and pool citation comes from the reference spreadsheets, the learned-conclusion store, a
+   Cosmos lookup or the open web — none of which is a document we hold — so the Discovery matrix's
+   Sources column is permanently unclickable, and a Regulatory cell routinely holds both kinds at
+   once.
+
+   So the two are drawn as DIFFERENT KINDS OF THING, not as one thing in two moods:
+
+     .cite       plain muted text. No box, no border, no hover, no cursor change, not focusable.
+                 It reads as a footnote, because that is what it is.
+     .cite-open  a bordered accent pill with a document glyph. It reads as something to press.
+
+   A permanently inert chip wearing a pill, a border and a hover tint — which is what it wore before,
+   `.src` being the same box the linked one used — teaches the operator that the whole column is
+   dead, and they stop pressing the half that works. No sentence explains the difference; the form
+   is the explanation. */
+
+.cite {
+  display: inline;
+  font-size: var(--t-small);
+  color: var(--text-muted);
+  margin-right: var(--s3);
+  white-space: nowrap;
+  /* Explicit, not inherited: `title` alone is enough to make some browsers show a help cursor, and
+     any cursor other than the text one is an affordance this element must not offer. */
+  cursor: default;
 }
-.src-link:hover {
-  background: var(--bg-accent);
+
+.cite-open {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: var(--t-small);
+  color: var(--text-accent);
+  background: var(--surface-0);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--r1);
+  padding: 1px 6px;
+  margin: 3px 4px 0 0;
   text-decoration: none;
+  white-space: nowrap;
+}
+.cite-open:hover {
+  background: var(--bg-accent);
+  text-decoration: underline;
 }
 
 /* The library. A row is a line in a register, not a card — the list is meant to be scanned

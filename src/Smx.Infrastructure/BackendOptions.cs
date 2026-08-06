@@ -27,15 +27,11 @@ public sealed record BackendOptions(
     string? FoundryApiKey,           // local-dev only; production resolves Entra first, then Key Vault
     string? KeyVaultUri,
     int RegulatoryParallelism,
-    // REGULATORY_AUTO_APPROVE — the human-gate kill switch. When true, the pipeline adopts the Regulatory
-    // agent's PROPOSED determinations as final, signs the gate itself, and flows straight to Dosing with NO
-    // human R.E. review. This deliberately does what the hard regulatory gate exists to prevent (the agent
-    // signing its own verdicts through to procurement).
-    //
-    // TEMPORARILY DEFAULTS ON, EVERYWHERE — including the deployment — by request (see From). The gate
-    // MECHANISM is untouched; only this default is flipped, so restoring the human gate is a single config
-    // flip: REGULATORY_AUTO_APPROVE=false. Revisit before any real production use.
-    bool RegulatoryAutoApprove,
+    // REGULATORY_AUTO_APPROVE was here, defaulting ON, and it is GONE with the gate it bypassed
+    // (2026-08-06 redesign §16.4). Everything it did is now either the default or forbidden: admitting the
+    // agent's proposal is what CompliantSet does unprompted, and auto-marking verdicts evidence-reviewed
+    // would leave EvidenceReview.Outstanding unable to fire. The environment variable is simply ignored
+    // now; leaving it set anywhere does nothing.
     // Chat provider selection. "anthropic" (default) → Claude on Foundry (the SOW target);
     // "openai" → Azure OpenAI on the same Foundry account, used as a stand-in when Claude quota
     // is unavailable. MAF agents are model-agnostic, so only the IChatClient construction differs.
@@ -114,10 +110,6 @@ public sealed record BackendOptions(
         FoundryApiKey: c["FOUNDRY_API_KEY"],
         KeyVaultUri: c["KEYVAULT_URI"],
         RegulatoryParallelism: int.TryParse(c["REGULATORY_PARALLELISM"], out var p) ? p : 4,
-        // TEMPORARILY DEFAULTS ON (mirrors WebSearchEnabled above): the human R.E. gate is bypassed
-        // everywhere — dev AND the deployment — until this is flipped back. Only the literal "false"
-        // restores the gate; a missing/garbled value keeps auto-approve ON.
-        RegulatoryAutoApprove: !bool.TryParse(c["REGULATORY_AUTO_APPROVE"], out var raa) || raa,
         ModelProvider: c["MODEL_PROVIDER"] ?? "anthropic",
         OpenAiDeployment: c["OPENAI_DEPLOYMENT"] ?? "gpt-5-mini",
         OpenAiEndpoint: c["OPENAI_ENDPOINT"] ?? "",

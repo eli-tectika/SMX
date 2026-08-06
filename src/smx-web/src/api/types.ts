@@ -194,6 +194,19 @@ export interface Citation {
   reference: string;
   retrievedAt: string;
   snippet?: string;
+  /**
+   * The document this chunk was retrieved FROM, written by the retrieval tool — the only place the
+   * real id is known (redesign spec §16.5).
+   *
+   * `string | null` and never optional-only: the backend serializes it even when null, so a chip can
+   * tell "this citation predates the field" from "this build and that build have skewed". Both read
+   * the same way — INERT — because the alternative is deriving an id by parsing `reference`, which is
+   * free text the agent wrote, and a chip that opens the WRONG regulation is worse than one that
+   * opens nothing. Most citations on the record carry no id and never will.
+   */
+  documentId?: string | null;
+  /** The chunk anchor inside that document, where the retrieval tool knew one. */
+  entryId?: string | null;
 }
 
 /** DimensionVerdict — src/Smx.Domain/Records/VerdictDoc.cs */
@@ -397,9 +410,15 @@ export interface ProjectListItem {
   gates?: ProjectGates;
 }
 
-/** GateDoc.Status per gate: "locked" until signed, "approved" after. */
+/**
+ * GateDoc.Status per gate: "locked" until signed, "approved" after.
+ *
+ * ONE GATE, and it used to be two. The regulatory gate is not demoted but REMOVED (spec §16.4): the
+ * matrix carries confidence and sources, and that is the review surface. The VP determination is now
+ * the only human checkpoint before procurement — which is why the sign-off screen has to show the
+ * evidence a judgement needs rather than a summary.
+ */
 export interface ProjectGates {
-  regulatory: string;
   vp: string;
 }
 
@@ -459,30 +478,22 @@ export interface ReviewRequest {
   componentId: string;
 }
 
-/**
- * GET /projects/{id}/gate/regulatory — ProjectEndpoints.cs projects this, it is not a raw GateDoc.
+/*
+ * `RegulatoryGate` lived here — status, armable, blockers, approvedAt, approvedBy — over
+ * `GET /projects/{id}/gate/regulatory` and `POST /projects/{id}/regulatory/approve`.
  *
- * `armable` is computed server-side (RegulatoryGate.Armable): true only when every LIVE non-Pass cell
- * has had its evidence reviewed. The sign button reads THIS, never a browser-side tally. Each blocker is
- * the string "unreviewed: {cas}|{componentId} ({Overall})" — parse it, never display it raw.
- * `approvedAt` and `approvedBy` are sent as explicit JSON null (not omitted) until the gate is signed,
- * so the client can tell "unknown provenance" from "old API that doesn't send this field at all".
+ * BOTH ENDPOINTS ARE GONE (spec §16.4). The gate was removed rather than demoted, so there is no
+ * record to project and nothing to sign. What survives is the pair of per-verdict acts the operator
+ * still performs on that screen, and they became load-bearing rather than incidental:
+ *
+ *   POST …/regulatory/review          — a flagged finding was OPENED
+ *   POST …/regulatory/determination   — the operator's ruling on one verdict, reason mandatory
+ *
+ * The arming check survives too, under a new name and a new owner: `EvidenceReview.Outstanding` now
+ * refuses `POST /decision/determination` and `POST /orders/{cas}` while any live non-Pass verdict is
+ * unopened. So the anti-rubber-stamping rule did not disappear with the gate — it moved to the two
+ * irreversible acts, which is where §10 always said the preconditions belonged.
  */
-export interface RegulatoryGate {
-  status: 'locked' | 'approved';
-  armable: boolean;
-  blockers: string[];
-  approvedAt?: string | null;
-  /**
-   * WHAT signed the gate. `null` on an approved gate means the record does not say — a gate
-   * written before the backend recorded this. It must render as unknown provenance, NEVER as a
-   * human determination; `'auto-approve'` means REGULATORY_AUTO_APPROVE signed it and no human
-   * reviewed anything. An absent key (`undefined`) means the same as `null` — an older API build,
-   * or a deploy where the frontend and backend have skewed — and must be treated identically:
-   * never a human signature.
-   */
-  approvedBy?: 'operator' | 'auto-approve' | null;
-}
 
 /** ChatToolCall — ChatDocs.cs. `recordId` is set when the call WROTE something: the audit link. */
 export interface ChatToolCall {

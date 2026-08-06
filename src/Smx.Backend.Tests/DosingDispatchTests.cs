@@ -10,13 +10,17 @@ using Smx.Backend.Tests.Fakes;
 
 namespace Smx.Backend.Tests;
 
-/// The Dosing stage, driven through the pipeline runner. The false pass this file exists to prevent is the
-/// hard regulatory gate being bypassed by the stage right after it: Dosing runs only behind the OPERATOR'S
-/// SIGNATURE, and emphatically not off the MatrixDoc — the matrix assembles on verdict COMPLETENESS, before
-/// any signature, so a project can be fully assembled and fully doseable and still unsigned. The runner
-/// reaching Dosing is not permission; the gate record is. Everything else here is "park, do not guess":
-/// a missing measurement or a missing metal loading stops the stage rather than letting the agent improvise a
-/// marker nobody can detect or a batch nobody dosed right.
+/// The Dosing stage, driven through the pipeline runner.
+///
+/// This file used to be about a signature: Dosing ran only behind the R.E.'s approved gate, and the false
+/// pass it guarded was the stage right after the gate bypassing it. Two specs later that is all gone —
+/// execution-core §8 stopped the gate being a pipeline precondition, and §16.4 deleted the gate itself.
+///
+/// What it is about NOW is the SET and the FLAG. Dosing doses exactly CompliantSet.Of (everything the agent
+/// did not reject, minus anything the operator vetoed) — a vetoed substance reaching the ppm stage is the
+/// remaining false pass — and a run that had to fall back to a number nobody measured stamps the DosingDoc
+/// provisional, which is what refuses the order. "Flag, do not guess": a missing measurement or metal
+/// loading names itself rather than letting the agent improvise a marker nobody can detect.
 public class DosingDispatchTests
 {
     private const string P = "p1";
@@ -69,12 +73,6 @@ public class DosingDispatchTests
         DeterminationReason = determination is null ? null : "operator ruled",
     };
 
-    private static GateDoc Gate(string status) => new()
-    {
-        Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
-        Status = status, ApprovedAt = status == "approved" ? "2026-07-13T09:00:00.0000000+00:00" : null,
-    };
-
     private static SubstancePropertyDoc Loading(string cas, string element) => new()
     {
         Id = KnowledgeIds.SubstanceProperty(cas), Cas = cas, Element = element, Form = "form",
@@ -82,13 +80,13 @@ public class DosingDispatchTests
     };
 
     /// A project screened through Regulatory with a compliant set of exactly one (cas-ok recommended; cas-no
-    /// rejected), the floor's inputs on file, and the loading known — i.e. FULLY doseable. Only the gate
-    /// status and the two "gap" toggles vary between tests. The project's Dosing stage is left `pending`,
-    /// which is the condition RunDosingAsync acts on (a re-opened park re-enters through exactly the same
+    /// operator-REJECTED), the floor's inputs on file, and the loading known — i.e. FULLY doseable. Only the
+    /// two "gap" toggles and the verdicts vary between tests. The project's Dosing stage is left `pending`,
+    /// which is the condition RunDosingAsync acts on (a re-opened stage re-enters through exactly the same
     /// door — see the re-entry test).
     private static async Task SeedAsync(
         InMemoryRecordStore store, InMemoryKnowledgeStore knowledge,
-        string gateStatus = "approved", bool withBackground = true, bool withLoading = true,
+        bool withBackground = true, bool withLoading = true,
         VerdictDoc? casNo = null, VerdictDoc? casOk = null)
     {
         var project = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
@@ -103,7 +101,6 @@ public class DosingDispatchTests
         await store.UpsertCandidatesAsync(Candidates());
         await store.UpsertVerdictAsync(casOk ?? Verdict("cas-ok", "Zr", VerdictStatus.Pass, reviewed: true, Determinations.Recommended));
         await store.UpsertVerdictAsync(casNo ?? Verdict("cas-no", "Ba", VerdictStatus.Pass, reviewed: true, Determinations.Rejected));
-        await store.UpsertGateAsync(Gate(gateStatus));
         if (withLoading) await knowledge.UpsertSubstancePropertyAsync(Loading("cas-ok", "Zr"));
     }
 
@@ -123,12 +120,11 @@ public class DosingDispatchTests
     // ---- the trigger -----------------------------------------------------------------------------------
 
     [Fact]
-    public async Task BehindTheApprovedGate_DosingRuns_OverTheCompliantSetOnly()
+    public async Task DosingRuns_OverTheCompliantSetOnly()
     {
-        // Behind a signed gate the runner reaches Dosing — and Dosing is handed ONLY the
-        // operator-recommended substance (cas-ok), never the rejected one (cas-no). A
-        // rejected substance reaching the ppm/code stage would be a chemical the operator refused, dosed into
-        // a customer's product past the very gate that refused it.
+        // Dosing is handed ONLY cas-ok, never the operator-REJECTED cas-no. A vetoed substance reaching the
+        // ppm/code stage would be a chemical the operator explicitly refused, dosed into a customer's
+        // product — and with the regulatory gate gone this filter is the whole of what stops it.
         var (d, store, agents, knowledge) = Sut();
         await SeedAsync(store, knowledge);
 
@@ -153,15 +149,15 @@ public class DosingDispatchTests
     }
 
     [Fact]
-    public async Task AnAssembledButUNSIGNEDProject_DosesPROVISIONALLY()
+    public async Task AProjectWithEveryInputOnFile_DosesAndIsNotProvisional()
     {
-        // Was AnAssembledButUNSIGNEDProject_DoesNotDose. Execution-core §8/D10 removed the gate as a pipeline
-        // precondition: the operator sees a complete proposed answer in one sitting. What replaces the old
-        // guard is NOT weaker, it just sits somewhere else — the dosing is stamped PROVISIONAL, and
-        // procurement refuses over that flag (UnattendedRunTests). The gate still governs the two
-        // irreversible acts; it no longer governs whether agents may run.
+        // Was AnAssembledButUNSIGNEDProject_DosesPROVISIONALLY, which seeded a LOCKED regulatory gate to
+        // prove the pipeline no longer waited for one. There is no gate to lock now (§16.4), so what is
+        // left to assert is the flag's meaning: with the measurement and the loading both on file, nothing
+        // here rests on a number nobody measured, and the dosing is NOT provisional. It is the control the
+        // two gap tests below are measured against.
         var (d, store, agents, knowledge) = Sut();
-        await SeedAsync(store, knowledge, gateStatus: "locked");   // determined, NOT signed
+        await SeedAsync(store, knowledge);
 
         await d.RunAsync(P, default);
 
@@ -169,29 +165,61 @@ public class DosingDispatchTests
         var dosing = await store.GetDosingAsync(P);
         Assert.NotNull(dosing);
         Assert.Equal("done", DosingStage(store).Status);
-
-        // The seeded verdict carries an OPERATOR determination, so nothing here rests on a proposal and the
-        // dosing is NOT provisional on that account. This is the case that proves the flag tracks evidence
-        // quality rather than merely "is the gate signed".
         Assert.False(dosing!.Provisional);
+        Assert.Empty(dosing.ProvisionalReasons);
     }
 
     [Fact]
-    public async Task Dosing_IsProvisional_WhenASubstanceRestsOnTheAgentsProposalAlone()
+    public async Task Dosing_OverTheAgentsProposalAlone_IsNOTProvisional_BecauseThatIsNowTheNormalBasis()
     {
-        // Spec §10.1, the whole reason ProvisionalSet exists. Nobody has ruled; the agent proposed. Dosing
-        // runs (otherwise the operator would get an empty answer that looked finished) and says so.
+        // THE BUG THIS TEST EXISTS TO PREVENT, and it is the reason the regulatory gate could not simply be
+        // deleted (spec §16.4). Nobody has ruled; the agent proposed. That is the state EVERY project is in
+        // after an unattended run now that no gate writes determinations.
+        //
+        // If "rests on the agent's proposal" stayed a provisional reason, every dosing this system ever
+        // produces would be flagged, POST /orders would refuse forever, and the app would look perfectly
+        // healthy while quietly never letting anyone buy anything. The flag has to shrink to the GENUINE
+        // data gap — an estimated floor with no physicist measurement — which the two tests below still pin.
         var (d, store, agents, knowledge) = Sut();
-        await SeedAsync(store, knowledge, gateStatus: "locked",
-            casOk: Proposed("cas-ok", "Zr", VerdictStatus.Pass));
+        await SeedAsync(store, knowledge, casOk: Proposed("cas-ok", "Zr", VerdictStatus.Pass));
 
         await d.RunAsync(P, default);
 
         var dosing = await store.GetDosingAsync(P);
         Assert.NotNull(dosing);
-        Assert.True(dosing!.Provisional);
-        Assert.Contains(dosing.ProvisionalReasons, r => r.Contains("proposal alone"));
-        Assert.Contains(dosing.ProvisionalReasons, r => r.Contains("cas-ok"));
+        Assert.False(dosing!.Provisional);
+        Assert.Empty(dosing.ProvisionalReasons);
+        Assert.Equal(1, agents.DosingCalls);   // it dosed, over a NON-empty set
+    }
+
+    [Fact]
+    public async Task Dosing_OverAProposal_StillHandsTheAgentTheSubstance_AndStillExcludesAnOperatorVeto()
+    {
+        // The other half of the new CompliantSet rule: the agent's proposal is the default admission, and an
+        // operator `rejected` is an OVERRIDE that always wins. cas-no is proposed IN by the agent and vetoed
+        // by the operator — a substance reaching the ppm stage past a human's refusal is the false pass this
+        // whole lane exists to refuse, and it must not come back through the proposal door.
+        var (d, store, agents, knowledge) = Sut();
+        var vetoed = Proposed("cas-no", "Ba", VerdictStatus.Pass);
+        vetoed.Determination = Determinations.Rejected;
+        vetoed.DeterminationReason = "the operator refused it";
+        await SeedAsync(store, knowledge,
+            casOk: Proposed("cas-ok", "Zr", VerdictStatus.Pass), casNo: vetoed);
+
+        IReadOnlyList<VerdictDoc>? handed = null;
+        agents.Dosing = (c, dosable, _, _, _) =>
+        {
+            handed = dosable;
+            return Task.FromResult(AgentRunResult<DosingDoc>.Ok(new DosingDoc
+            {
+                Id = RecordIds.Dosing(c.ProjectId), ProjectId = c.ProjectId, GeneratedAt = "2026-07-15T00:00:00Z",
+            }));
+        };
+
+        await d.RunAsync(P, default);
+
+        Assert.NotNull(handed);
+        Assert.Equal("cas-ok", Assert.Single(handed!).Cas);
     }
 
     // ---- flag, do not guess ----------------------------------------------------------------------------

@@ -33,7 +33,10 @@ public static class RegulatoryAgent
           hazards that merit "not recommended" = Conditional. A Conditional here is NOT a permitting cap
           like the one above: it is a hazard you are saying should not be recommended.
         Statuses: Pass | Conditional | NeedsReview | Fail. EVERY dimension MUST carry at least one citation
-        built from an actual tool result (source, reference, retrievedAt = now, ISO 8601 UTC). If your tools
+        built from an actual tool result (source, reference, retrievedAt = now, ISO 8601 UTC). When the tool
+        result you are citing carried a "documentId", COPY IT VERBATIM into that citation's "documentId" —
+        it is what lets the operator open the source document itself. NEVER invent, edit or reuse one from
+        another result; if a result had no "documentId", omit the field. If your tools
         return nothing decisive for a dimension, the status is NeedsReview — never guess, never assume clean.
         Confidence is your calibrated 0..1 estimate. Rationale is one or two sentences.
 
@@ -53,7 +56,7 @@ public static class RegulatoryAgent
         on evidence you do not have, or over a hazard you yourself flagged, is guessing.
 
         Reply with ONLY a JSON object: { "dimensions": [{ "dimension", "status", "citations":
-        [{ "source", "reference", "retrievedAt" }], "confidence", "rationale" }],
+        [{ "source", "reference", "retrievedAt", "documentId" (optional) }], "confidence", "rationale" }],
         "proposedDetermination", "proposedReason" }
         """;
 
@@ -84,9 +87,10 @@ public static class RegulatoryAgent
             Element = candidate.Element, Form = candidate.Form,
             Dimensions = result.Output!.Dimensions,
             // ONLY the proposal crosses over. Determination / DeterminationReason / EvidenceReviewed stay
-            // untouched — they are the operator's signature, and the determination endpoint is their only
-            // writer. Mapping a proposal onto Determination here would let the agent sign the regulatory
-            // gate through the back door (Law 9); CompliantSetTests pins the other end of that line.
+            // untouched — they are the OPERATOR's fields, and POST /regulatory/determination is their only
+            // writer. This matters MORE now that CompliantSet admits a proposal by default (§16.4), not
+            // less: writing one onto Determination here would destroy the record's ability to say whether a
+            // human ruled at all, which is the distinction every review surface renders.
             ProposedDetermination = result.Output.ProposedDetermination,
             ProposedReason = result.Output.ProposedReason,
         });

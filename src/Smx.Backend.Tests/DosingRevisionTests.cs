@@ -71,12 +71,6 @@ public class DosingRevisionTests
         DeterminationReason = determination is null ? null : "operator ruled",
     };
 
-    private static GateDoc Gate(string status) => new()
-    {
-        Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
-        Status = status, ApprovedAt = status == "approved" ? "2026-07-13T09:00:00.0000000+00:00" : null,
-    };
-
     private static SubstancePropertyDoc Loading(string cas, string element) => new()
     {
         Id = KnowledgeIds.SubstanceProperty(cas), Cas = cas, Element = element, Form = "form",
@@ -112,7 +106,6 @@ public class DosingRevisionTests
         await store.UpsertCandidatesAsync(Candidates());
         await store.UpsertVerdictAsync(Verdict("cas-ok", "Zr", VerdictStatus.Pass, reviewed: true, Determinations.Recommended));
         await store.UpsertVerdictAsync(Verdict("cas-no", "Ba", VerdictStatus.Pass, reviewed: true, Determinations.Rejected));
-        await store.UpsertGateAsync(Gate("approved"));
         await store.UpsertDosingAsync(ExistingDosing());
         await knowledge.UpsertSubstancePropertyAsync(Loading("cas-ok", "Zr"));
     }
@@ -182,30 +175,44 @@ public class DosingRevisionTests
     }
 
     [Fact]
-    public async Task ReviseDosing_DoesNOTVoidTheRegulatoryGate()
+    public async Task ReviseDosing_RunsOnAProjectNobodySigned()
     {
-        // Dosing is DOWNSTREAM of the regulatory gate: it consumes the compliant set the operator signed over,
-        // it cannot change it. So re-running it must NOT void that signature — RevisionEffects
-        // .BreaksRegulatoryGate(Dosing) is false, and VoidRegulatoryGateAsync early-returns for it. Making the
-        // operator re-sign a gate a Dosing revision did not touch would train exactly the rubber-stamping the
-        // hard gates exist to prevent.
-        var (d, store, _, knowledge) = Sut();
+        // Was ReviseDosing_DoesNOTVoidTheRegulatoryGate — a test about a gate that no longer exists. What
+        // replaces it is the failure mode DELETING that gate could have introduced here, and it is the
+        // sharper of the two.
+        //
+        // ReviseDosingAsync used to OPEN with `if (gate?.Status != "approved") throw`. With no regulatory
+        // GateDoc ever written, that condition is true forever: every Dosing revision would have thrown, on
+        // every project, permanently — a dead feature whose only symptom is a `failed` RevisionDoc carrying
+        // a reassuring sentence about a signature. This seed writes NO gate at all, which is now the normal
+        // state of every project, and the revision must simply apply.
+        var (d, store, agents, knowledge) = Sut();
         await SeedDosedAsync(store, knowledge);
+        agents.Dosing = (c, _, _, _, _) => Task.FromResult(AgentRunResult<DosingDoc>.Ok(new DosingDoc
+        {
+            Id = RecordIds.Dosing(c.ProjectId), ProjectId = c.ProjectId,
+            Windows = [new PpmWindow("bottle", "cas-ok", "Zr",
+                Floor: new Bound(11.0, "measured", BoundKinds.Measured, 1.0),
+                Upper: new Bound(900.0, "solubility", BoundKinds.Estimate, 0.4),
+                RecommendedPpm: 450.0, QuantificationPpm: 35.0)],
+            GeneratedAt = "2026-07-15T11:00:00Z",
+        }));
 
         await d.OnRevisionAsync(Delivered(DosingRevision("the line reader struggles below 35 ppm")), default);
 
-        var gate = (await store.GetGateAsync(P, GateTypes.Regulatory))!;
-        Assert.Equal("approved", gate.Status);                 // NOT locked
-        Assert.NotNull(gate.ApprovedAt);                       // the signature timestamp still stands
-        Assert.Equal("done", Stage(store, Stages.Regulatory).Status);   // the stage was not re-opened
-        Assert.Equal(RevisionStatus.Applied, Assert.Single(await store.GetRevisionsAsync(P)).Status);
+        var applied = Assert.Single(await store.GetRevisionsAsync(P));
+        Assert.Equal(RevisionStatus.Applied, applied.Status);
+        Assert.Null(applied.Error);
+        Assert.Equal(35.0, Assert.Single((await store.GetDosingAsync(P))!.Windows).QuantificationPpm);
+        Assert.Equal("done", Stage(store, Stages.Regulatory).Status);   // upstream was not re-opened
     }
 
     [Fact]
     public async Task ReviseDosing_StillCannotDoseANonCompliantSubstance()
     {
-        // The operator's directive is authoritative over the AGENT; it does not outrank the regulatory gate.
-        // Validate fires again inside RunDosingAsync on the revise path, so a directive that would reach
+        // The operator's directive is authoritative over the AGENT; it does not outrank a veto they
+        // recorded on a verdict. Validate fires again inside RunDosingAsync on the revise path, so a
+        // directive that would reach
         // outside the compliant set FAILS — loudly, with the analysis UNTOUCHED (every fallible step runs
         // before anything is mutated) and the revision honestly `failed`.
         var (d, store, agents, knowledge) = Sut();
@@ -240,8 +247,5 @@ public class DosingRevisionTests
         // property IS the front door Task 8 opened; the executor arm above is what stops the door from opening
         // onto a throw. Pin the property directly — the endpoint routes on nothing else.
         Assert.True(RevisionEffects.IsRevisable(Stages.Dosing));
-
-        // And the gate-void decision this stage routes to is the SAFE one — Dosing does not break the gate.
-        Assert.False(RevisionEffects.BreaksRegulatoryGate(Stages.Dosing));
     }
 }

@@ -9,12 +9,117 @@ public sealed class DiscoveryOutput
     public List<CandidateSubstance> Substances { get; set; } = [];
 }
 
+/// The pool pass's output. TWO lists, in this order, because that is the order the work must happen in: the
+/// model emits every element choice BEFORE it emits a single form, so the forms are generated conditioned on
+/// the element list rather than the element list being written afterwards to justify the forms.
+public sealed class PoolOutput
+{
+    public List<PoolElementChoice> Elements { get; set; } = [];
+    public List<PoolSuggestion> Suggestions { get; set; } = [];
+}
+
+/// ONE agent for one operator move. Discovery runs in TWO PASSES over the same question — propose a pool of
+/// marker chemistries, then corroborate each one into a fully-specified substance — and until 2026-08-06 the
+/// first pass was a separate `PoolAgent` with its own name, prompt and identity. That split was a seam the
+/// operator had to understand for no benefit: two agents implied two opinions, and the pool is not a second
+/// opinion about discovery, it is the first half of it.
+///
+/// What the merge does NOT do is collapse the two PASSES into one model call. They ask different questions of
+/// different tools (the pool pass may reach past the catalog and treats the web as a first-class source; the
+/// corroboration pass must mint a CAS and is hard-railed to the catalog), and each has validation of its own.
+/// One agent, one name in the run trail, two passes.
+///
+/// The `pool` STAGE also survives, deliberately. It is what makes the pool a re-runnable, individually
+/// resettable unit of work with its own artifact (PoolDoc — the thing the Discovery screen shows as "what is
+/// being corroborated") and its own skip conditions (an operator-supplied element pool, provided candidates).
+/// Deleting the agent and deleting the stage are different decisions; only the first was the seam.
 public static class DiscoveryAgent
 {
     public const string AgentName = "discovery";
 
+    /// The three canonical form-classes (the operator's taxonomy). A specific compound (oxide, carbonate, …)
+    /// is a "compound" here; the specific choice lives in the rationale. A closed set keeps ValidatePool honest.
+    public static readonly string[] FormClasses = ["metal", "compound", "organocomplex"];
+
+    /// The pool's target breadth, PER COMPONENT. It exists because the prompt named no number at all, and real
+    /// runs came back with three candidates for one component and two for another — a pool that thin decides
+    /// the project before any evidence is gathered, since nothing downstream can recover an element that was
+    /// never proposed. It is a TARGET and not a cap, and deliberately NOT enforced in ValidatePool: a hard
+    /// minimum would be answered by padding the list, and an invented element is worse than a short one. The
+    /// only count rail in code is coverage — every component gets something (see ValidatePool).
+    ///
+    /// One number, one place: it is interpolated into both the instructions and the per-run task, which is why
+    /// PoolInstructions is `static readonly` rather than `const` like the other agents'.
+    public const int TargetElementsPerComponent = 10;
+
+    /// PASS 1 — the need-driven pool. May draw on model knowledge and the open web, and its citations are
+    /// OPTIONAL: the pool is a HYPOTHESIS and everything downstream (pass 2's catalog corroboration and tier
+    /// rails, the regulatory screen) is a sieve over it. It names ELEMENTS and FORM-CLASSES, never a CAS —
+    /// keeping the highest-stakes error (a wrong CAS) structurally out of a pass that is allowed to speculate.
+    public static readonly string PoolInstructions = $$"""
+        You are the SMX Discovery agent, running your FIRST PASS: proposing the candidate marker POOL. You
+        receive a project's components — each with material, application, target markets, objective, and the
+        substrate's physical state. This is a STARTING HYPOTHESIS: your own second pass corroborates every
+        suggestion against the catalog and the regulatory screen sieves what survives, so BREADTH IS WELCOME —
+        but every suggestion must be chemically sensible.
+
+        WORK IN TWO STEPS, FOR EVERY COMPONENT, IN THIS ORDER. They are different questions asked against
+        different evidence — what can be READ here, versus what FORM survives this material — and answering
+        them together loses the second.
+
+        STEP 1 — ELEMENTS. For each component, choose the elements worth marking with at all. An element
+        qualifies when it is:
+          - detectable by XRF on this substrate,
+          - clean against the background this material and its process are expected to carry,
+          - plausible for this application and its target markets.
+        Aim for about {{TargetElementsPerComponent}} elements FOR EACH COMPONENT. That is a TARGET, not a cap:
+        propose more where the chemistry supports it, and fewer ONLY where the substrate genuinely constrains
+        the choice — and when you do come in under the target, name the constraint in that component's element
+        rationales. Count PER COMPONENT, never across the project: a component given two elements has had its
+        analysis decided before any evidence was gathered, however many the other components got.
+        Do NOT consider molecular form yet.
+
+        STEP 2 — MOLECULES. Only now, and for EACH element you chose, break it into candidate molecular forms
+        and keep those that suit that component's physical state:
+          - oil / fuel-oil-soluble  -> an organocomplex carrying the metal
+          - solid polymer           -> an oxide or a salt
+          - coating                 -> a dispersible compound
+        The marker will always be a metal element, a metal compound (oxide, carbonate, sulfate, chloride, …),
+        or an organocomplex. One element may yield several forms; each form is its own suggestion.
+
+        SEARCHING — do this in BOTH steps, and do not skip it even when you feel confident. The value of this
+        pass is your own knowledge COMBINED WITH retrieved evidence, never one alone. Always call, at minimum:
+          - search_reference — the SMX corpus (solubility, XRF cleanliness, form/physical-state fit), and
+          - the web search tool — for broader or more recent candidate chemistries and additives.
+        Also call search_learned_conclusions and search_marker_library when the material/application hints at
+        prior evidence or a reusable approved code. Web queries must contain ONLY chemistry — never a client,
+        product or project name. MERGE the two sources: keep what your knowledge proposed AND what the searches
+        surfaced; drop nothing solely because one source omitted it. Deduplicate by element + form-class.
+
+        Reply with ONLY a JSON object, "elements" first:
+        { "elements": [{ "component", "element", "rationale",
+                         "citations": [{ "source", "reference", "retrievedAt" }] }],
+          "suggestions": [{ "component", "element",
+                            "formClass" ("metal"|"compound"|"organocomplex"),
+                            "rationale", "citations": [{ "source", "reference", "retrievedAt" }] }] }
+        Every element's rationale says why it is detectable and clean HERE; every suggestion's rationale says
+        why that form suits the substrate's physical state. Both name their basis — general chemistry
+        knowledge, a reference hit, and/or a web source.
+        Every suggestion's element MUST appear in "elements" for that same component, and every element you
+        list MUST yield at least one suggestion.
+        Propose markers only for the components you are given, and give EVERY one of them a pool.
+        Do NOT state a CAS number — the exact form and its CAS are yours to mint in the second pass, from the
+        catalog.
+        CITE every element and every suggestion a retrieved result supports (source, reference,
+        retrievedAt = now, ISO 8601 UTC). One resting only on your own knowledge may omit citations, but its
+        rationale must say so.
+        """;
+
+    /// PASS 2 — corroboration. Unchanged by the merge: it answers only from tools, mints the CAS, and carries
+    /// the deterministic rails (see Validate).
     public const string Instructions = """
-        You are the SMX Discovery agent. For each component you receive its usable/conditional element POOL
+        You are the SMX Discovery agent, running your SECOND PASS: corroborating the pool you proposed into
+        fully-specified substances. For each component you receive its usable/conditional element POOL
         (V = clean, L = conditional) plus material, application and objective. Turn each pooled element into
         one or more FULLY-SPECIFIED candidate substances: element + molecular form + CAS + (particle size,
         solvent when known). You may only use facts from your tools:
@@ -46,6 +151,129 @@ public static class DiscoveryAgent
         { "substances": [{ "componentId", "element", "form", "cas", "particleSize", "solvent", "preferred",
           "tier" ("A"|"B"|"C"), "rationale", "citations": [{ "source", "reference", "retrievedAt" }] }] }
         """;
+
+    /// PASS 1 — propose the pool. Runs on the `pool` stage, with the pool tool surface (ToolBox.PoolTools):
+    /// no search_catalog, because reaching past the catalog is the point, and a web tool the pass may use
+    /// freely because nothing it writes is an endorsement.
+    ///
+    /// The SIMPLE ValidatedAgentRunner overload, deliberately — NOT the web-aware one the corroboration pass
+    /// uses. Citation stamping exists to power that pass's "web-only ⇒ Tier B, never preferred" rail; the pool
+    /// carries no tier and no such rail, so there is nothing here for stamped provenance to gate. A pool
+    /// suggestion is a hypothesis the second pass re-derives and cites from scratch.
+    ///
+    /// <param name="revision">null for an ordinary run; non-null re-proposes applying the operator's
+    /// revise-with-reason (Law 4). Explicit, not an overload, so a caller who forgets it gets a compile
+    /// error.</param>
+    public static async Task<AgentRunResult<PoolDoc>> RunPoolAsync(
+        ISmxAgent agent, ConstraintsDoc constraints, RevisionDoc? revision, CancellationToken ct)
+    {
+        var prompt = JsonSerializer.Serialize(new { components = constraints.Components }, Json.Options);
+        // The target is restated in the TASK, not left to the instructions alone, and it names the component
+        // COUNT: "about ten elements" read against a list of four components is the sentence that produced a
+        // ten-element project instead of a ten-element component.
+        var task = revision is null
+            ? $"Propose a candidate marker pool for these {constraints.Components.Count} components. " +
+              $"Target about {TargetElementsPerComponent} elements for EACH component separately — " +
+              $"per component, not across the project:\n{prompt}"
+            : PoolRevisionTask(revision, prompt);
+
+        var result = await ValidatedAgentRunner.RunAsync<PoolOutput>(
+            agent, task, o => ValidatePool(o, constraints), ct);
+        if (!result.Succeeded) return AgentRunResult<PoolDoc>.NeedsReview(result.Error!);
+        return AgentRunResult<PoolDoc>.Ok(new PoolDoc
+        {
+            Id = RecordIds.Pool(constraints.ProjectId), ProjectId = constraints.ProjectId,
+            Elements = result.Output!.Elements, Suggestions = result.Output!.Suggestions, Source = "agent",
+        });
+    }
+
+    private static string PoolRevisionTask(RevisionDoc revision, string prompt) => $"""
+        Re-propose the candidate marker pool for these components, APPLYING the operator's revision below.
+        The operator's instruction is authoritative: apply it. Where it cannot be supported by chemistry,
+        apply it anyway and say exactly that in the affected suggestion's rationale.
+        Work the same two steps — elements for every component first, then the forms for each element.
+
+        REVISION — target: {revision.Target}
+        REVISION — reason: {revision.Reason}
+
+        {prompt}
+        """;
+
+    /// The pool pass's rails. All of them are SHAPE, not judgement: nothing here can tell a good element from
+    /// a bad one, and pretending otherwise would only teach the model to satisfy the check.
+    internal static string? ValidatePool(PoolOutput o, ConstraintsDoc constraints)
+    {
+        if (o.Elements.Count == 0)
+            return "the \"elements\" step is missing — choose the elements for each component FIRST, then " +
+                   "break each chosen element into forms";
+        if (o.Suggestions.Count == 0) return "at least one marker suggestion is required";
+
+        var componentIds = constraints.Components.Select(c => c.Id).ToHashSet();
+        var chosen = new HashSet<(string Component, string Element)>();
+        foreach (var e in o.Elements)
+        {
+            if (!componentIds.Contains(e.Component))
+                return $"element choice references unknown component '{e.Component}'";
+            if (string.IsNullOrWhiteSpace(e.Element))
+                return "every element choice must name an element";
+            if (string.IsNullOrWhiteSpace(e.Rationale))
+                return $"element '{e.Element}' for component '{e.Component}' is missing its rationale — " +
+                       "every chosen element must say why it is detectable and clean on this substrate";
+            chosen.Add((e.Component, e.Element));
+        }
+
+        // RAIL — THE TWO STEPS MUST BOTH HAVE HAPPENED. A form whose element was never chosen means step 2
+        // ran without step 1 for that element; an element that yielded no form means step 1's answer was
+        // dropped on the way to step 2. Either way the collapse this pass exists to prevent has happened, and
+        // it is invisible in the output unless it is checked here.
+        var formsFor = new HashSet<(string Component, string Element)>();
+        var seen = new HashSet<(string, string, string)>();
+        foreach (var s in o.Suggestions)
+        {
+            if (!componentIds.Contains(s.Component))
+                return $"suggestion references unknown component '{s.Component}'";
+            if (string.IsNullOrWhiteSpace(s.Element))
+                return "every suggestion must name an element";
+            if (!chosen.Contains((s.Component, s.Element)))
+                return $"suggestion '{s.Element}' for component '{s.Component}' names an element that is not " +
+                       "in your \"elements\" list for that component — choose the element first, with its own " +
+                       "rationale, then break it into forms";
+            if (!FormClasses.Contains(s.FormClass))
+                return $"suggestion '{s.Element}' has formClass '{s.FormClass}'; it must be one of " +
+                       $"{string.Join(" | ", FormClasses)}";
+            if (string.IsNullOrWhiteSpace(s.Rationale))
+                return $"suggestion '{s.Element}/{s.FormClass}' is missing its rationale — every suggestion " +
+                       "must name why it suits the substrate and what its basis is";
+            // Deduplicate, in code as well as in the prompt: a repeated (component, element, form-class) is
+            // breadth on paper only, and the one number this pass is asked to hit is a count.
+            if (!seen.Add((s.Component, s.Element, s.FormClass)))
+                return $"suggestion '{s.Element}/{s.FormClass}' is listed twice for component " +
+                       $"'{s.Component}' — deduplicate by element + form-class";
+            formsFor.Add((s.Component, s.Element));
+        }
+
+        var unbroken = chosen.Where(c => !formsFor.Contains(c)).ToList();
+        if (unbroken.Count > 0)
+            return $"{string.Join(", ", unbroken.Select(c => $"'{c.Element}' in '{c.Component}'"))} " +
+                   "— chosen as an element but broken into no form. Give each chosen element at least one " +
+                   "form that suits the substrate, or drop the element and say nothing about it";
+
+        // RAIL — EVERY COMPONENT GETS A POOL. Per-component tracks are the product's core rule: background,
+        // form, ppm and codes all run independently per component, so a component with no proposed markers is
+        // a component that quietly leaves the analysis. Nothing downstream can recover it — Discovery only
+        // corroborates what the pool proposed — and the record would report a finished project with a silent
+        // hole in it. Coverage is the ONLY count checked; the ~10 target is judgement and stays in the prompt.
+        var uncovered = constraints.Components
+            .Select(c => c.Id)
+            .Where(id => !o.Suggestions.Any(s => s.Component == id))
+            .ToList();
+        if (uncovered.Count > 0)
+            return $"component(s) {string.Join(", ", uncovered.Select(id => $"'{id}'"))} have no proposed " +
+                   "markers. Every declared component needs its own pool — they are marked independently, " +
+                   "and a component nothing is proposed for is dropped from the analysis entirely";
+
+        return null;
+    }
 
     /// <param name="revision">null for an ordinary run; non-null re-runs the stage APPLYING the operator's
     /// revise-with-reason (Law 4). It is an explicit parameter rather than an overload on purpose: a caller

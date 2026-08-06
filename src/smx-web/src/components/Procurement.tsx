@@ -72,13 +72,13 @@ export function Procurement({
 
   return (
     <>
-      {/* No SectionHeader: the Decision screen owns this section's heading now. What belongs here is
-          the PRECONDITION, in words, at the place the order is actually placed. */}
+      {/* The PRECONDITION, stated once at the place the order is placed — and it is a fact about
+          THIS list: these substances, from the codes the VP signed, and no others. The sentence
+          explaining that the button stays dead is gone; the button being dead says that. */}
       <p className="prose" style={{ margin: '0 0 var(--s3)' }}>
-        <b>MSDS before order.</b> A substance cannot be ordered until a safety sheet for it is on file
-        — the button below stays dead until one is, and the row says why. These {markers.length}{' '}
-        substance{markers.length === 1 ? '' : 's'} {markers.length === 1 ? 'is' : 'are'} the markers
-        of the codes the VP signed; nothing else on this project is orderable.
+        <b>MSDS before order.</b> The {markers.length} substance
+        {markers.length === 1 ? '' : 's'} below {markers.length === 1 ? 'is' : 'are'} the markers of
+        the codes the VP signed; nothing else on this project is orderable.
       </p>
 
       {error && (

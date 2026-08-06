@@ -1,7 +1,15 @@
 namespace Smx.Domain.Tools;
 
 /// A retrieved chunk with everything needed to build a Citation.
-public sealed record RetrievedChunk(string Source, string Reference, string Content, double Score);
+///
+/// <param name="DocumentId">The openable id of the document this chunk came from — `GET /documents/{id}` —
+/// or null when this corpus has no document behind it. It travels here because the retrieval tool is the
+/// only place the id is KNOWN: by the time the agent writes a Citation, all it has is prose. Null is a
+/// first-class answer, not a gap to fill in later (the reference corpus and Learned Conclusions are seeded
+/// from spreadsheets and have no file in the library at all) — and a null that reaches a citation renders
+/// as an inert chip, which is the correct outcome. Never guess one downstream.</param>
+public sealed record RetrievedChunk(
+    string Source, string Reference, string Content, double Score, string? DocumentId = null);
 
 /// Exact tabulated verdict from ref-compatibility; null when the pair is not tabulated.
 public sealed record CompatibilityCard(string Element, string Substrate, string Verdict, string? Notes, string RefId);

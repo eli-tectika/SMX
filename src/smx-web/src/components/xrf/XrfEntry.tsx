@@ -289,10 +289,6 @@ export function XrfEntry({
           )}
           {busy && <span className="tiny muted">Working…</span>}
         </div>
-        <div className="tiny muted">
-          Nothing is written until you confirm. Reading a file only proposes rows — you check them
-          first.
-        </div>
       </div>
 
       {/* The parser's findings about the FILE, as opposed to a row. Not an alert: the rows below
@@ -319,7 +315,6 @@ export function XrfEntry({
         <div data-testid="xrf-manual-grid">
           <SectionHeader
             eyebrow="By hand"
-            hint="for a result that will not parse — the same checks apply"
           />
           {table}
           <div style={{ marginTop: 10 }}>

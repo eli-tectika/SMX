@@ -176,6 +176,85 @@
   background: var(--surface-2);
 }
 
+/* ---- phase group band ---------------------------------------------------------
+
+   A row ABOVE the column headers, one tinted cell spanning each phase's columns. It is the thing
+   that makes a wide table readable: on the full matrix it is what tells you which phase a column
+   belongs to once you have scrolled its heading off the left edge, and on a single phase screen it
+   says which phase's view you are reading without a sentence doing it. That substitution — colour
+   and structure carrying what prose was carrying — is what the prose purge is FOR.
+
+   THE COLOURS ARE THE PRODUCT'S OWN TOKENS, not new hues: accent for Discovery, `pro` (the agent's
+   purple) for Regulatory, teal (the operator's) for Dosing, warning for Outcome. Identity is
+   achromatic because it is not a phase.
+
+   AND IT IS NOT COLOUR-ONLY. The band carries the phase NAME in text, so the group is identified by
+   a word and the tint merely reinforces it. This does not weaken the rule the rest of the table
+   lives under: a verdict's status and a ppm bound's provenance are still carried by form and word,
+   never by hue — `#5c6b7d` against `#0f6b62` separates by ΔE 4.3 under protanopia, which is not
+   enough to carry the difference between a measurement and a guess. Identifying a GROUP is a
+   different job from encoding a CLAIM, and only the second one is forbidden to lean on colour.
+
+   `--mx-group-h` is a real height budget rather than a guess: on the sticky table the band pins at
+   `top: 0` and the column headers pin BELOW it, which needs the band's height as a number. Changing
+   the band's font size therefore changes this value — the same audit-your-fixed-boxes rule the type
+   floor pass was written for. */
+
+.mx__groups th {
+  /* `.mx th` already sets --t-tiny (11px), the one selector allowed below the 12px floor. Uppercase,
+     letter-spaced and bold is what makes a band read as a band rather than as a heading. */
+  height: var(--mx-group-h);
+  padding: 3px 9px;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
+  /* 600, never 700: only 400/500/600 are loaded and the browser would synthesize the rest,
+     which smears at 11px more than anywhere else in the app. */
+  font-weight: var(--w-semibold);
+  background: var(--bg-group, var(--surface-1));
+  color: var(--fg-group, var(--text-secondary));
+}
+
+.mx__groups th[data-group='identity'] {
+  /* Achromatic on purpose — identity is not a phase. No token carries this exact wash; it sits
+     between --surface-1 and --surface-2, both of which are already spoken for by the table's own
+     header and hover states and would make the band disappear into them. */
+  --bg-group: #f2f3f5;
+  --fg-group: var(--text-secondary);
+}
+.mx__groups th[data-group='discovery'] {
+  --bg-group: var(--bg-accent);
+  --fg-group: var(--text-accent);
+}
+.mx__groups th[data-group='regulatory'] {
+  --bg-group: var(--bg-pro);
+  --fg-group: var(--text-pro);
+}
+.mx__groups th[data-group='dosing'] {
+  --bg-group: var(--bg-teal);
+  --fg-group: var(--text-teal);
+}
+.mx__groups th[data-group='outcome'] {
+  --bg-group: var(--bg-warning);
+  --fg-group: var(--text-warning);
+}
+
+/* Two sticky header rows, and they may not pin to the same edge or they stack on top of each
+   other. The band takes the top; the column headers take the band's height. */
+.mx--sticky .mx__groups th {
+  top: 0;
+  z-index: 4;
+}
+.mx--sticky .mx__cols th {
+  top: var(--mx-group-h);
+}
+/* The band's own tint must win over `.mx--sticky thead th`'s flat surface, and the frozen identity
+   cell must keep its tint too — otherwise the one column that is always on screen loses its band. */
+.mx--sticky .mx__groups th,
+.mx--sticky .mx__groups th[data-rowhead] {
+  background: var(--bg-group, var(--surface-1));
+}
+
 /* ---- density -----------------------------------------------------------------
    Comfortable is the default; compact is for the operator who knows the grid and wants
    to see forty substances without scrolling. Density is an expert affordance, so it is

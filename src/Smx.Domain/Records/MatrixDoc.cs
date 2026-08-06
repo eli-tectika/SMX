@@ -4,14 +4,15 @@ namespace Smx.Domain.Records;
 ///
 /// It carries FOUR review fields, and the split between them is the design, not bookkeeping:
 ///
-///   Proposed*      — the AGENT's proposal. It exists so the operator CONFIRMS rather than authors.
-///   Determination* — the OPERATOR's signature. This is the only one CompliantSet reads, and the only one
-///                    that lets a chemical into a customer's product.
+///   Proposed*      — the AGENT's proposal, and since §16.4 the DEFAULT admission to CompliantSet.
+///   Determination* — the OPERATOR's override. `rejected` here takes a substance out no matter what the
+///                    agent proposed; `recommended` overrules an agent's refusal.
 ///
-/// The proposal is on the cell because a proposal the operator cannot SEE is a proposal they cannot confirm —
-/// the feature would be inert, and they would go on authoring every determination by hand. It is rendered
-/// beside the operator's field and must never be rendered AS it: a UI that collapses the two into one column
-/// is the agent signing the regulatory gate, which is the single thing Law 9 exists to prevent.
+/// The proposal is on the cell because this matrix IS the review surface now — the regulatory gate that
+/// used to be it was deleted, and an operator who cannot see what the machine proposed has nothing to
+/// override. It is rendered beside the operator's field and must never be rendered AS it: a UI that
+/// collapses the two into one column makes "nobody has ruled on this" look exactly like "a human ruled on
+/// this", on the screen that exists to tell them apart.
 public sealed record MatrixCell(
     string Cas, string ComponentId, VerdictStatus Overall, List<DimensionVerdict> Dimensions,
     string? ProposedDetermination = null, string? ProposedReason = null,

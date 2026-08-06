@@ -97,18 +97,23 @@ public sealed class DosingDoc
     public List<SupplierAudit> Supply { get; set; } = [];
 
     /// The SOFT code-finalization checkpoint (UX §4.5). A REVIEW NOTE, not a gate: it records that the
-    /// PL/VP/physics review happened. It does not block, and it must never be made to block — the hard gates
-    /// are Regulatory and VP, and adding a third would dilute what a signature means.
+    /// PL/VP/physics review happened. It does not block, and it must never be made to block — VP is the
+    /// only hard gate left, and adding a second would dilute what a signature means.
     public string? ReviewNote { get; set; }
     public string? ReviewedAt { get; set; }
 
-    /// TRUE when this dosing rests on something weaker than a signature or a measurement: a substance present
-    /// on the AGENT'S PROPOSAL alone (<see cref="ProvisionalSet"/>), or a window computed over a
-    /// <see cref="DefaultDetectionFloor"/> rather than the physicist's number.
+    /// TRUE when this dosing rests on a MISSING INPUT: a window computed over a
+    /// <see cref="DefaultDetectionFloor"/> rather than the physicist's number, a substance dropped for an
+    /// unknown metal loading or with no floor at all, or a run that could dose nothing.
     ///
-    /// It is the ORDER-BLOCKING flag. The pipeline no longer parks (execution-core §8), so this is what
-    /// carries the cost of that: procurement refuses over a provisional dosing, and the compliance-package
-    /// export still consults <see cref="CompliantSet"/>. Nothing irreversible happens over a proposal.
+    /// IT USED TO ALSO MEAN "a substance is here on the agent's proposal alone", and the 2026-08-06
+    /// redesign §16.4 removed that reason — deliberately, and it is the load-bearing half of dropping the
+    /// regulatory gate. With no gate there is no writer of operator determinations, so EVERY dosing would
+    /// carry that reason, and since this flag blocks the order, POST /orders would refuse forever on a
+    /// system that looked entirely healthy. A flag that is always on is not an alarm.
+    ///
+    /// What it means now is precise and rare: a NUMBER NOBODY MEASURED is under this ppm. It remains the
+    /// ORDER-BLOCKING flag — procurement refuses over it — and it blocks the ORDER, never the pipeline.
     ///
     /// Serialized even when FALSE, like <c>GateDoc.ApprovedBy</c> and for the same reason: the UI must read
     /// "not provisional" off the wire rather than infer it from an absent key. A frontend/backend build skew

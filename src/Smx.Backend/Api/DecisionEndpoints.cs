@@ -6,11 +6,14 @@ using Smx.Domain.Records;
 
 namespace Smx.Backend.Api;
 
-/// The VP hard gate (spec §4): the VP's determination is an OPERATOR-SIGNED RECORD, and this endpoint is
-/// the ONLY writer of an approved VP GateDoc — PipelineRunner.CloseProjectAsync trusts that and re-checks
-/// nothing, the same contract as the regulatory gate (see the note on PipelineRunner.OnGateAsync). Mirrors
-/// POST /regulatory/approve's discipline: arm on the LIVE records, 422 with named blockers, idempotent
-/// approved-timestamp — and, like it, records the signature and then makes it mean something.
+/// THE ONLY SIGNATURE LEFT IN THE SYSTEM (spec §4; §16.4 dropped the regulatory gate entirely). The VP's
+/// determination is an OPERATOR-SIGNED RECORD, and this endpoint is the ONLY writer of an approved VP
+/// GateDoc — PipelineRunner.CloseProjectAsync trusts that and re-checks nothing.
+///
+/// Being the last checkpoint before procurement raises what it owes the signer rather than lowering it: it
+/// arms on the LIVE records, 422s with named blockers, keeps an idempotent approved-timestamp, and refuses
+/// while any live flagged verdict is still unopened (EvidenceReview.Outstanding). Removing one gate and
+/// leaving the other blind would be worse than either choice alone.
 public static class DecisionEndpoints
 {
     public static void MapDecisionEndpoints(this IEndpointRouteBuilder app)
@@ -56,28 +59,28 @@ public static class DecisionEndpoints
                     blockers = (IReadOnlyList<string>)[inFlight],
                 });
 
-            var regGate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
             var decision = await store.GetDecisionAsync(projectId, ct);
-            if (VpGate.Armable(regGate, decision) is { Ok: false } blocked)
+            if (VpGate.Armable(decision) is { Ok: false } blocked)
                 return Results.UnprocessableEntity(new { error = "VP gate not armable", blockers = blocked.Blockers });
 
-            // The regulatory signature is not self-proving: the gate record carries no binding to the
-            // verdicts it was signed over (the rationale on PipelineRunner.RunDosingAsync). A live
-            // unreviewed non-pass verdict that appeared after the approval — a revise's leftovers, a race —
-            // means the signature no longer covers the analysis this determination would sign over.
+            // THE ANTI-RUBBER-STAMPING CHECK, which outlived the gate it was written for. Nobody signs a
+            // regulatory analysis any more, but a live non-Pass verdict nobody has OPENED is still exactly
+            // what must not travel silently into a signature that releases procurement. §16.4 is explicit
+            // that this gate must show the evidence judgement needs rather than a summary — refusing while
+            // flagged items are unopened is the enforceable half of that.
             var candidates = await store.GetCandidatesAsync(projectId, ct);
             var verdicts = await store.GetVerdictsAsync(projectId, ct);
             if (candidates is null)
                 return Results.UnprocessableEntity(new
                 {
                     error = "VP gate not armable",
-                    blockers = (IReadOnlyList<string>)["no candidates on file — there is no analysis under the regulatory signature"],
+                    blockers = (IReadOnlyList<string>)["no candidates on file — there is no analysis to sign over"],
                 });
-            if (RegulatoryGate.Armable(candidates, verdicts) is { Ok: false } uncovered)
+            if (EvidenceReview.Outstanding(candidates, verdicts) is { Count: > 0 } unopened)
                 return Results.UnprocessableEntity(new
                 {
-                    error = "the regulatory gate is signed but no longer covers the current analysis",
-                    blockers = uncovered.Blockers,
+                    error = "flagged regulatory findings on this analysis have not been opened",
+                    blockers = unopened,
                 });
 
             if (req.Determination is "rejected")
@@ -117,10 +120,10 @@ public static class DecisionEndpoints
             await store.UpsertDecisionAsync(decision, ct);
 
             var existing = await store.GetGateAsync(projectId, GateTypes.Vp, ct);
-            // ApprovedAt and ApprovedBy move together, for the reason the regulatory gate documents:
-            // updating them under different policies lets the pair describe an event that never
-            // happened. This is the LAST hard gate — it releases procurement and writes the Marker
-            // Library — so it must be able to say who signed at least as clearly as the gate before it.
+            // ApprovedAt and ApprovedBy move together: updating them under different policies lets the
+            // pair describe an event that never happened — a human signature stamped with a machine's
+            // timestamp, or the reverse. This is the ONLY hard gate now — it releases procurement and
+            // writes the Marker Library — so it must be able to say exactly who signed.
             var reaffirming = existing is { Status: "approved", ApprovedBy: GateSigners.Operator };
             var gate = new GateDoc
             {
@@ -133,9 +136,9 @@ public static class DecisionEndpoints
             };
             await store.UpsertGateAsync(gate, ct);
 
-            // AND NOW THE PROJECT ACTUALLY CLOSES. The same two-act shape as POST /regulatory/approve —
-            // record the signature, then make it mean something — except that here the second act is NOT a
-            // pipeline pass: Decision is the last stage and the journey ends at this signature. OnGateAsync
+            // AND NOW THE PROJECT ACTUALLY CLOSES. Two acts, deliberately separate — record the signature,
+            // then make it mean something. The second act is NOT a pipeline pass: Decision is the last stage
+            // and the journey ends at this signature. OnGateAsync
             // routes an approved VP gate to CloseProjectAsync, which releases procurement, writes the Marker
             // Library entry and files the close conclusion. Until this line the signature wrote a gate
             // document and nothing else: procurement stayed `pending`, the library never learned the code,
@@ -174,48 +177,50 @@ public static class DecisionEndpoints
             if (decision is null || decision.Procurement.Status != ProcurementStatus.Released)
                 return Results.UnprocessableEntity(new { error = "procurement is not released — only the VP gate's signature releases it" });
 
-            // THE SIGNATURE IS NOT SELF-PROVING, re-checked here. A GateDoc carries no binding to the
-            // verdicts it was signed over, so `approved` alone is not proof the CURRENT analysis was
-            // reviewed: a fresh unreviewed non-pass verdict can land under an existing signature (a
-            // revise's leftovers, a race with a late Regulatory child).
+            // THE FLAGGED-FINDINGS CHECK, re-run at the irreversible act rather than trusted from earlier.
+            // A VP GateDoc carries no binding to the verdicts it was signed over, so `approved` alone is not
+            // proof the CURRENT analysis has been looked at: a fresh unreviewed non-pass verdict can land
+            // under an existing signature (a revise's leftovers, a race with a late Regulatory child).
             //
-            // This check used to live in RunDosingAsync, where it stopped the PIPELINE. The pipeline no
-            // longer stops for anything (execution-core §8), so it moved to the irreversible act — which is
-            // where it always belonged. Ordering a chemical is the thing that must not happen over an
-            // analysis the signature no longer covers.
+            // It used to live in RunDosingAsync, where it stopped the PIPELINE. The pipeline no longer stops
+            // for anything (execution-core §8), so it moved to the irreversible act — which is where it
+            // always belonged. Ordering a chemical is the thing that must not happen while a flagged
+            // regulatory finding on this very analysis is still unopened.
             var candidates = await store.GetCandidatesAsync(projectId, ct);
             var verdicts = await store.GetVerdictsAsync(projectId, ct);
             // Null AND empty, both. An empty CandidatesDoc is not "nothing failed" — it is every verdict
             // orphaned, i.e. no analysis at all, which is what the compliance-package export already refuses
             // for the same reason. Read as a clean bill of health it would be the most permissive state in
-            // the system: RegulatoryGate.Armable over zero candidates has nothing to object to.
+            // the system: EvidenceReview over zero candidates has nothing to object to.
             if (candidates is null || candidates.Substances.Count == 0)
                 return Results.UnprocessableEntity(new
                 {
-                    error = "no candidates on file — there is no analysis under the regulatory signature",
+                    error = "no candidates on file — there is no analysis behind this order",
                 });
-            if (RegulatoryGate.Armable(candidates, verdicts) is { Ok: false } uncovered)
+            if (EvidenceReview.Outstanding(candidates, verdicts) is { Count: > 0 } unopened)
                 return Results.UnprocessableEntity(new
                 {
-                    error = "the regulatory signature no longer covers the current analysis",
-                    blockers = uncovered.Blockers,
+                    error = "flagged regulatory findings on this analysis have not been opened",
+                    blockers = unopened,
                 });
 
             var dosing = await store.GetDosingAsync(projectId, ct);
 
-            // A PROVISIONAL dosing rests on the agent's own proposals, an estimated detection floor, or
-            // both (spec §10.1). The VP's signature does not retroactively re-run Dosing, so a project can
-            // legitimately reach `Released` with ppms derived from a set the operator never ruled on —
-            // and ordering against those would put a chemical in a customer's product at a dose nobody
-            // approved, above a floor nobody measured.
+            // A PROVISIONAL dosing rests on a MISSING INPUT — an estimated detection floor with no
+            // physicist measurement, a substance dropped for an unknown metal loading, a run that could
+            // dose nothing. The VP's signature does not retroactively re-run Dosing, so a project can
+            // legitimately reach `Released` with ppms sitting above a floor nobody measured, and ordering
+            // against those would buy a marker that may be undetectable in the field.
             //
-            // This is the flag's entire purpose: it blocks the ORDER, never the pipeline. Rerun Dosing once
-            // the determinations and the measurement are on file.
+            // It NO LONGER covers "a substance is here on the agent's proposal alone" (§16.4): with no
+            // regulatory gate there is no writer of operator determinations, so that reason would be on
+            // every dosing forever and this refusal would never lift. A refusal that cannot be cleared is
+            // not a safety property, it is an outage.
             if (dosing is { Provisional: true })
                 return Results.UnprocessableEntity(new
                 {
                     error = "this dosing is provisional and cannot be ordered against — rerun Dosing once " +
-                            "the missing determinations and measurements are on file",
+                            "the missing measurements and inputs are on file",
                     blockers = dosing.ProvisionalReasons,
                 });
 
@@ -228,6 +233,25 @@ public static class DecisionEndpoints
                 .SelectMany(k => k.Markers).Select(m => m.Cas).ToHashSet();
             if (!signed.Contains(cas))
                 return Results.UnprocessableEntity(new { error = $"'{cas}' is not a marker in any VP-confirmed code — you cannot order what the VP did not sign" });
+
+            // THE OPERATOR'S VETO, re-read at the act. Dosing composed its codes from CompliantSet, so a
+            // vetoed substance could not enter one — but a veto recorded AFTER Dosing ran does not re-run
+            // it, and the confirmed code goes on naming the CAS. Nothing else here would catch that: the
+            // verdict is `Pass`, so it is not a flagged finding, and recording a determination sets
+            // EvidenceReviewed, so it is not an unopened one either.
+            //
+            // ANY component's rejection refuses the whole order, not just that component's. Procurement is
+            // per-CAS (Procurement.OrderedCas), so there is no such thing as buying a drum for one
+            // component and not another — and CompliantSet's rule is that an operator veto always wins.
+            var vetoed = verdicts
+                .Where(v => v.Cas == cas && v.Determination == Determinations.Rejected)
+                .Select(v => v.ComponentId).ToList();
+            if (vetoed.Count > 0)
+                return Results.UnprocessableEntity(new
+                {
+                    error = $"the operator rejected '{cas}' for {string.Join(", ", vetoed)} — a veto is not " +
+                            "overruled by a confirmed code that predates it. Rerun Dosing and re-sign.",
+                });
 
             // GetLatestForCasAsync reads the CURRENT sheets only — indexed and not superseded — which is
             // exactly "validated". An un-indexed blob in Bronze is not a sheet anyone can read, and a
@@ -263,18 +287,17 @@ public static class DecisionEndpoints
         app.MapGet("/projects/{projectId}/gate/vp",
             async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
         {
-            var regGate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
             var decision = await store.GetDecisionAsync(projectId, ct);
-            var (armed, blockers) = VpGate.Armable(regGate, decision);
+            var (armed, blockers) = VpGate.Armable(decision);
 
-            // The same coverage re-check the POST enforces, so this read never reports `armable` for a
+            // The same flagged-findings check the POST enforces, so this read never reports `armable` for a
             // gate the POST would refuse — a lying affordance is how a gate gets rubber-stamped. Absent
-            // candidates are the POST's blocker verbatim: there is no analysis under the signature.
+            // candidates are the POST's blocker verbatim: there is no analysis to sign over.
             var candidates = await store.GetCandidatesAsync(projectId, ct);
             var verdicts = await store.GetVerdictsAsync(projectId, ct);
             IReadOnlyList<string> uncovered = candidates is null
-                ? ["no candidates on file — there is no analysis under the regulatory signature"]
-                : RegulatoryGate.Armable(candidates, verdicts).Blockers;
+                ? ["no candidates on file — there is no analysis to sign over"]
+                : EvidenceReview.Outstanding(candidates, verdicts);
 
             // ...and the POST's park guard, mirrored for the same reason (Task 15(d)): a stage mid-re-pick
             // or post-close reads not-armable HERE, with the blocker the POST would answer with. The
@@ -304,7 +327,7 @@ public static class DecisionEndpoints
 /// `DefaultIgnoreCondition = WhenWritingNull`, which would DROP `approvedAt`/`approvedBy` from the
 /// wire whenever they are null — and null is the meaningful case. A client cannot tell "the record
 /// does not say who signed" from "an older API that never sent this field" if the key simply
-/// vanishes. Same shape, and the same reasoning, as RegulatoryGateResponse in ProjectEndpoints.cs.
+/// vanishes. (RegulatoryGateResponse carried the same shape for the same reason, and went with the gate.)
 internal sealed record VpGateResponse(
     string Status,
     bool Armable,

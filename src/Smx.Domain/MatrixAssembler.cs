@@ -35,8 +35,8 @@ public static class MatrixAssembler
                 // NAMED, and it must stay named. The cell carries two adjacent (string?, string?) pairs —
                 // the agent's proposal and the operator's signature — so a positional swap of those four
                 // arguments COMPILES CLEAN and silently republishes the agent's proposal as the operator's
-                // determination: the agent signing the regulatory gate, which is the one thing Law 9 exists
-                // to prevent. Named arguments make that transposition a compile error instead.
+                // determination — erasing, on the screen that exists to show it, whether a human ruled at
+                // all. Named arguments make that transposition a compile error instead.
                 return new MatrixCell(
                     Cas: v.Cas, ComponentId: v.ComponentId, Overall: v.Overall, Dimensions: v.Dimensions,
                     ProposedDetermination: v.ProposedDetermination, ProposedReason: v.ProposedReason,

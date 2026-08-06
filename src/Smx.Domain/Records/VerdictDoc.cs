@@ -25,17 +25,23 @@ public sealed class VerdictDoc
     public required string Element { get; set; }
     public required string Form { get; set; }
     public List<DimensionVerdict> Dimensions { get; set; } = [];
-    // Operator inputs (Regulatory gate, Plan 2) — distinct from the agent's Dimensions above.
-    // Determination is the signature CompliantSet reads: only `recommended` here lets this substance be
-    // dosed. The determination endpoint is its only writer, and it 422s anything that is not exactly one of
-    // the two constants, reason included (both rulings carry one — an override of a Fail most of all).
+    // Operator inputs — distinct from the agent's Dimensions above, and now an OVERRIDE rather than the
+    // sole admission. The regulatory gate that used to be their only writer is gone (2026-08-06 §16.4), so
+    // CompliantSet admits the agent's proposal by default and reads this field to VETO: `rejected` here
+    // takes a substance out no matter what the agent proposed, and it is unrescuable. POST
+    // /regulatory/determination is still the only writer, and it still 422s anything that is not exactly
+    // one of the two constants, reason included (both rulings carry one — an override of a Fail most of all).
+    //
+    // EvidenceReviewed is the OTHER operator input, and it is read by EvidenceReview.Outstanding: a live
+    // non-Pass verdict nobody has opened blocks the VP signature and the order. Nothing machine-side sets
+    // it any more — REGULATORY_AUTO_APPROVE was deleted with the gate.
     public bool EvidenceReviewed { get; set; }
     public string? Determination { get; set; }        // null | Determinations.Recommended | Determinations.Rejected
     public string? DeterminationReason { get; set; }  // required for EITHER determination
-    // The AGENT's proposal (Plan 4). It exists so the operator CONFIRMS rather than authors — nothing more.
-    // It is deliberately a SEPARATE field from Determination: if a proposal could be read as a
-    // determination, the agent would be signing the regulatory gate through the back door. CompliantSet
-    // ignores these two fields entirely, and a test pins that.
+    // The AGENT's proposal. Still a SEPARATE field from Determination, and the separation carries MORE
+    // weight now that it is the default admission: every surface that shows a determination must be able
+    // to say whether a human or the machine put it there. Collapsing them would make an unruled project
+    // indistinguishable from a ruled one on every screen. MatrixCell and RegulatoryCells pin the split.
     public string? ProposedDetermination { get; set; }   // null | Determinations.*
     public string? ProposedReason { get; set; }
     public VerdictStatus Overall => Fold(Dimensions);

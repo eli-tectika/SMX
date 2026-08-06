@@ -3,14 +3,17 @@ import type { DiscoveryCells } from '../../api/types';
 import { Loading } from '../../components/Loading';
 import { RevisionTrail } from '../../components/RevisionControls';
 import { EmptyState, SectionHeader } from '../../components/ui/Primitives';
+import { handOffToChat } from '../../domain/chatHandoff';
 import { ProposedPool } from './ProposedPool';
 import {
   AbsentCells,
   DroppedRows,
+  GroupBand,
   IdentityCell,
   TableError,
   byComponentRows,
   useProjectTable,
+  type PhaseGroup,
   type ReadRow,
 } from './projectTable';
 import type { ScreenProps } from '../ProjectLayout';
@@ -19,31 +22,20 @@ import type { ScreenProps } from '../ProjectLayout';
 const TIER_CLASS: Record<string, string> = { A: 'v', B: 'l', C: 'x' };
 const TIERS = ['A', 'B', 'C'] as const;
 
-/** How many columns the Discovery group spans, for the absent-cells row. */
-const DISCOVERY_SPAN = 4;
-
 /**
- * The docked chat's composer, driven the way a user would.
+ * State, Why, Sources — three, and there is deliberately no Confidence column.
  *
- * There is no shared store between a stage screen and the agent panel (the shell mounts them side by
- * side, not through each other), so the handoff is: find the composer already in the page and set its
- * value through the native `HTMLInputElement` setter, then dispatch a real `input` event. That is what
- * makes React's own `onChange` fire — a plain `input.value = …` changes the pixel and not the state,
- * and the next keystroke wipes it. With no composer mounted (the panel is collapsible) this is a
- * silent no-op rather than a throw, and the caller says so instead of pretending.
+ * `DiscoveryCells` carries none. The tier IS Discovery's strength ordering and it is already the
+ * State column; folding it into a percentage would be inventing a number the record never computed,
+ * which is the one thing the confidence cell is forbidden to do.
  */
-function focusChatWithTarget(target: string): boolean {
-  const input = document.querySelector<HTMLInputElement>('input[aria-label^="Message the"]');
-  if (!input) return false;
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-  if (!setter) return false;
-  const prefill = `Revise ${target}: `;
-  setter.call(input, prefill);
-  input.dispatchEvent(new Event('input', { bubbles: true }));
-  input.focus();
-  input.setSelectionRange(prefill.length, prefill.length);
-  return true;
-}
+const DISCOVERY_SPAN = 3;
+
+const GROUPS: PhaseGroup[] = [
+  { group: 'identity', label: 'Material', span: 1 },
+  { group: 'discovery', label: 'Discovery', span: DISCOVERY_SPAN },
+  { group: 'actions', label: '', span: 1 },
+];
 
 /**
  * Discovery — the candidate pool, as the Discovery column group of the one project table.
@@ -76,10 +68,7 @@ export function Discovery({ project }: ScreenProps) {
       <section className="screen">
         {/* The pool is Discovery's INPUT, and Discovery takes minutes. Without it the operator watches
             an empty table for the whole run with no way to see what is being screened. */}
-        <ProposedPool
-          projectId={project.projectId}
-          hint="what Discovery is corroborating against the catalog"
-        />
+        <ProposedPool projectId={project.projectId} />
       </section>
 
       <section className="screen">
@@ -87,7 +76,6 @@ export function Discovery({ project }: ScreenProps) {
           title="Candidates"
           headingLevel={3}
           count={state.kind === 'ready' ? state.read.rows.length : undefined}
-          hint="grouped by component — there is no product-wide pool"
         />
 
         {state.kind === 'error' && <TableError message={state.message} />}
@@ -97,17 +85,7 @@ export function Discovery({ project }: ScreenProps) {
             <DroppedRows n={state.read.dropped} />
 
             {state.read.rows.length === 0 ? (
-              <EmptyState
-                icon="ti-flask-off"
-                title="No candidates on the record yet."
-                body={
-                  <>
-                    Discovery writes its pool once it has corroborated the proposed elements against
-                    the catalog. Until then there is nothing to rank — this is a young project, not a
-                    failure.
-                  </>
-                }
-              />
+              <EmptyState icon="ti-flask-off" title="No candidates on the record." />
             ) : (
               byComponentRows(state.read.rows).map(([componentId, rows]) => (
                 <ComponentTable key={componentId} componentId={componentId} rows={rows} />
@@ -145,15 +123,14 @@ function ComponentTable({ componentId, rows }: { componentId: string; rows: Read
         title={componentId}
         headingLevel={4}
         count={ordered.length}
-        hint="candidates on this component's own track"
       />
       <table className="mx">
         <thead>
-          <tr>
-            <th>Substance</th>
-            <th>Tier</th>
-            <th>Preferred</th>
-            <th>Rationale</th>
+          <GroupBand groups={GROUPS} />
+          <tr className="mx__cols">
+            <th data-rowhead>Material</th>
+            <th>State in this phase</th>
+            <th>Why</th>
             <th>Sources</th>
             <th style={{ width: 40 }} />
           </tr>
@@ -193,21 +170,20 @@ function DiscoveryRow({ cells }: { cells: DiscoveryCells }) {
 
   return (
     <>
-      <td>
+      {/* Tier and `preferred` are ONE state: both say where this candidate stands after Discovery,
+          and `preferred` is only ever read next to the tier it qualifies. */}
+      <td style={{ whiteSpace: 'nowrap' }}>
         {/* An unrecognised tier gets no verdict colour at all: the palette is a severity claim, and
             claiming a severity we cannot read would be worse than showing the raw token. */}
         <span className={`chip ${TIER_CLASS[tier] ?? 'chip--neutral'}`}>{tier || 'no tier'}</span>
-      </td>
-      <td>
-        {cells.preferred === true ? (
+        {cells.preferred === true && (
           <span
             className="chip chip--neutral"
+            style={{ marginLeft: 4 }}
             title="The agent's preferred candidate on this component — unreachable for a web-only candidate"
           >
             preferred
           </span>
-        ) : (
-          <span className="tiny muted">—</span>
         )}
       </td>
       <td className="secondary">{rationale || <span className="muted">No rationale recorded.</span>}</td>
@@ -250,7 +226,7 @@ function ReviseButton({ target }: { target: string }) {
         className="btn"
         aria-label={`Revise ${target} in chat`}
         title="Tell the agent what to change, and why"
-        onClick={() => setDraft(focusChatWithTarget(target) ? null : `Revise ${target}: `)}
+        onClick={() => setDraft(handOffToChat(`Revise ${target}: `) ? null : `Revise ${target}: `)}
       >
         <i className="ti ti-message-2" aria-hidden="true" />
       </button>

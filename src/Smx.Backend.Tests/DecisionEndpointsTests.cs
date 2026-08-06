@@ -9,10 +9,13 @@ using Smx.Domain.Tests.Fakes;
 
 namespace Smx.Backend.Tests;
 
-/// The VP hard gate over HTTP. The endpoint under test is the ONLY writer of an approved VP GateDoc
-/// (the dispatcher's close handler trusts that — the same contract as the regulatory gate), so every 422
-/// here is a false pass that never happened: a signature over a nonexistent code, over a partial
-/// confirmation, over an unsigned or no-longer-covering regulatory analysis.
+/// THE hard gate over HTTP - the only one left (16.4). The endpoint under test is the ONLY writer of an
+/// approved VP GateDoc (CloseProjectAsync trusts that and re-checks nothing), so every 422 here is a false
+/// pass that never happened: a signature over a nonexistent code, over a partial confirmation, or over an
+/// analysis carrying a flagged finding nobody has opened.
+///
+/// Being the LAST human checkpoint before procurement raises the stakes on this file rather than lowering
+/// them. Removing one gate and leaving the other blind would be worse than either choice alone.
 public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly InMemoryRecordStore _store = new();
@@ -64,9 +67,9 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         EvidenceReviewed = true, Determination = Determinations.Recommended, DeterminationReason = "ruled",
     };
 
-    /// The full pre-VP record: project parked awaiting-VP, the LIVE analysis (candidates + reviewed
-    /// verdicts) the regulatory signature covers, the approved regulatory gate, dosing with one finalized
-    /// code per component, and the DecisionDoc carrying the agent's proposals.
+    /// The full pre-VP record: Decision `done`, the LIVE analysis (candidates + reviewed verdicts), dosing
+    /// with one finalized code per component, and the DecisionDoc carrying the agent's proposals. No
+    /// regulatory gate is seeded - there is no such document any more (16.4).
     private async Task SeedProposedDecisionAsync(params string[] componentIds)
     {
         if (componentIds.Length == 0) componentIds = ["bottle"];
@@ -86,11 +89,6 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         }
         await _store.UpsertCandidatesAsync(candidates);
 
-        await _store.UpsertGateAsync(new GateDoc
-        {
-            Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
-            Status = "approved", ApprovedAt = "2026-07-16T00:00:00.0000000+00:00",
-        });
         await _store.UpsertDosingAsync(new DosingDoc
         {
             Id = RecordIds.Dosing(P), ProjectId = P, GeneratedAt = "t",
@@ -193,32 +191,24 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         Assert.All((await _store.GetDecisionAsync(P))!.Components, c => Assert.Null(c.ConfirmedCode));
     }
 
-    [Fact]
-    public async Task PostDetermination_RefusesWhileRegulatoryUnsigned_422()
-    {
-        // VpGate.Armable's blocker surfaces verbatim: a VP signature over an unsigned compliance analysis
-        // would stack one gate on a void.
-        await SeedProposedDecisionAsync();
-        var regGate = (await _store.GetGateAsync(P, GateTypes.Regulatory))!;
-        regGate.Status = "locked";
-        regGate.ApprovedAt = null;
-        await _store.UpsertGateAsync(regGate);
-
-        var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
-            Approve("sign it anyway", ("bottle", Ratio("bottle"))));
-
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, res.StatusCode);
-        Assert.Contains("regulatory gate is not approved", await res.Content.ReadAsStringAsync());
-        Assert.Null(await _store.GetGateAsync(P, GateTypes.Vp));
-    }
+    // PostDetermination_RefusesWhileRegulatoryUnsigned_422 was here. Its subject - "the R.E. must sign
+    // before the VP may" - is gone with the regulatory gate (16.4). There is no assertion to rewrite: the
+    // precondition no longer exists, deliberately.
+    //
+    // What the R.E.'s signature actually stood for at THIS door - has a human looked at the flagged
+    // findings - is now EvidenceReview.Outstanding, and the very next test is the one that enforces it.
 
     [Fact]
-    public async Task PostDetermination_RefusesWhenTheRegulatorySignatureNoLongerCoversTheAnalysis_422()
+    public async Task PostDetermination_RefusesWhileAFlaggedFindingIsUnopened_422()
     {
-        // The gate record carries no binding to the verdicts it was signed over (the TryDoseAsync
-        // rationale, PipelineRunner ~:207-228). A live unreviewed non-pass verdict that appeared AFTER the
-        // regulatory approval means the signature no longer covers the analysis the VP would be signing
-        // over — the VP gate must block, with the blocker surfaced.
+        // Was PostDetermination_RefusesWhenTheRegulatorySignatureNoLongerCoversTheAnalysis_422. The
+        // signature it referred to is gone (16.4) - the CHECK is not, and this is the test that proves it
+        // did not go with it.
+        //
+        // A live, FAILING verdict that nobody has opened sits in the analysis. With the regulatory gate
+        // deleted, this endpoint is the LAST human checkpoint before procurement, so it is the last place
+        // that flagged finding can be caught. It must block, and the blocker must NAME the substance -
+        // a blocker the operator cannot locate is a gate they can never arm.
         await SeedProposedDecisionAsync();
         var candidates = (await _store.GetCandidatesAsync(P))!;
         candidates.Substances.Add(new CandidateSubstance("bottle", "Ba", "f", "cas-ba", null, null, false, "A", "s", []));
@@ -228,7 +218,7 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
             Id = RecordIds.Verdict(P, "cas-ba", "bottle"), ProjectId = P, Cas = "cas-ba", ComponentId = "bottle",
             Element = "Ba", Form = "f",
             Dimensions = [new("ElementGate", VerdictStatus.Fail, [new Citation("regulatory", "x", "t")], 0.9, "fails")],
-            // EvidenceReviewed = false — flagged, live, and nobody has looked at it since the signature.
+            // EvidenceReviewed = false - flagged, live, and nobody has ever opened it.
         });
 
         var res = await _client.PostAsJsonAsync($"/projects/{P}/decision/determination",
@@ -360,8 +350,8 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         Assert.Equal("operator", gate!.ApprovedBy);
     }
 
-    /// A refusal is not a signature. The invariant this file now shares with the regulatory gate is
-    /// that a signer is non-null iff a timestamp is — a locked gate carries neither.
+    /// A refusal is not a signature. The invariant: a signer is non-null iff a timestamp is, so a locked
+    /// gate carries neither.
     [Fact]
     public async Task PostDetermination_WhenRejected_LeavesTheGateUnsigned()
     {
@@ -377,9 +367,9 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
         Assert.Null(gate.ApprovedAt);
     }
 
-    /// The VP gate releases procurement and writes the Marker Library — it must be able to say who
-    /// signed at least as clearly as the regulatory gate before it. `Json.Options` ignores nulls, so
-    /// an anonymous response object would drop the key entirely and a client could not tell "the
+    /// The VP gate releases procurement and writes the Marker Library, and it is now the ONLY record of a
+    /// human decision on the whole journey - so it must be able to say who signed. `Json.Options` ignores
+    /// nulls, so an anonymous response object would drop the key entirely and a client could not tell "the
     /// record does not say" from "an older API that never sent this".
     [Fact]
     public async Task GetGateVp_ReportsTheSigner_AndSendsAnUnsignedOneAsNull()
@@ -497,15 +487,10 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task GetGateVp_ReportsStatusArmableBlockers()
     {
-        // Mirror of GET /gate/regulatory: before the decision exists the gate is locked, not armable, and
-        // the blocker says exactly what is missing.
+        // Before the decision exists the gate is locked, not armable, and the blocker says exactly what is
+        // missing. It is the only gate read left - GET /gate/regulatory went with its gate (16.4).
         var p = ProjectDoc.Create(P, "Acme", "Bottle", JsonDocument.Parse("{}").RootElement);
         await _store.UpsertProjectAsync(p);
-        await _store.UpsertGateAsync(new GateDoc
-        {
-            Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
-            Status = "approved", ApprovedAt = "2026-07-16T00:00:00.0000000+00:00",
-        });
 
         var g = await _client.GetFromJsonAsync<JsonElement>($"/projects/{P}/gate/vp");
 
@@ -534,14 +519,9 @@ public class DecisionEndpointsTests : IClassFixture<WebApplicationFactory<Progra
     [Fact]
     public async Task GetGateVp_WithNoCandidatesOnFile_IsNotArmable_AndNamesTheBlocker()
     {
-        // The read must report the same blocker the POST enforces: with an approved regulatory gate and a
-        // proposing decision but NO candidates, the POST 422s "no candidates on file" — a read that says
-        // `armable: true` over that state is the lying affordance that gets a gate rubber-stamped.
-        await _store.UpsertGateAsync(new GateDoc
-        {
-            Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
-            Status = "approved", ApprovedAt = "2026-07-16T00:00:00.0000000+00:00",
-        });
+        // The read must report the same blocker the POST enforces: with a proposing decision but NO
+        // candidates, the POST 422s "no candidates on file" - a read that says `armable: true` over that
+        // state is the lying affordance that gets a gate rubber-stamped.
         await _store.UpsertDecisionAsync(new DecisionDoc
         {
             Id = RecordIds.Decision(P), ProjectId = P, GeneratedAt = "t", Components = [Component("bottle")],

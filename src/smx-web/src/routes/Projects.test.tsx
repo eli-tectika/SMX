@@ -24,7 +24,7 @@ const project = (over: Partial<ProjectListItem> = {}): ProjectListItem => ({
 });
 
 /** Every stage ran. Nothing is signed. Those are two different facts and this record has both. */
-const complete = (gates?: { regulatory: string; vp: string }): ProjectListItem =>
+const complete = (gates?: { vp: string }): ProjectListItem =>
   project({
     stages: {
       discovery: { status: 'done', attempts: 1 },
@@ -119,7 +119,7 @@ describe('Projects — the dashboard reads the record, not the browser', () => {
    */
   it('does not file a complete but unsigned project as settled', async () => {
     vi.spyOn(client, 'listProjects').mockResolvedValue([
-      complete({ regulatory: 'locked', vp: 'locked' }),
+      complete({ vp: 'locked' }),
     ]);
     dashboard();
 
@@ -129,7 +129,9 @@ describe('Projects — the dashboard reads the record, not the browser', () => {
         'Needs you',
       ),
     );
-    expect(screen.getByText(/needs the regulatory sign-off and the VP determination/i)).toBeInTheDocument();
+    // ONE signature, and it used to be two: the regulatory gate is removed rather than demoted
+    // (spec 16.4), so the VP determination is the only thing a complete project can be waiting on.
+    expect(screen.getByText(/needs the VP determination/i)).toBeInTheDocument();
   });
 
   /** Silence is not a signature: a card with no gate information stays visible rather than filed away. */
@@ -148,7 +150,7 @@ describe('Projects — the dashboard reads the record, not the browser', () => {
   /** Both signed and every stage done: the only record that is genuinely finished. */
   it('settles a project only when both signatures are on file', async () => {
     vi.spyOn(client, 'listProjects').mockResolvedValue([
-      complete({ regulatory: 'approved', vp: 'approved' }),
+      complete({ vp: 'approved' }),
     ]);
     dashboard();
 
@@ -167,7 +169,7 @@ describe('Projects — the dashboard reads the record, not the browser', () => {
    */
   it('counts a project with no gate information as needing a signature', async () => {
     vi.spyOn(client, 'listProjects').mockResolvedValue([
-      complete({ regulatory: 'approved', vp: 'approved' }),
+      complete({ vp: 'approved' }),
       { ...complete(undefined), projectId: 'proj-bbbbbbbbbbbb' },
     ]);
     dashboard();

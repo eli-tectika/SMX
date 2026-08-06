@@ -104,13 +104,10 @@ export function Projects() {
           label="Needs signing"
           value={
             cards.filter(
-              (c) =>
-                c.project.gates === undefined ||
-                c.project.gates.regulatory !== 'approved' ||
-                c.project.gates.vp !== 'approved',
+              (c) => c.project.gates === undefined || c.project.gates.vp !== 'approved',
             ).length
           }
-          hint="a gate is unsigned, or the record does not say"
+          hint="the VP determination is unsigned, or the record does not say"
         />
       </div>
 

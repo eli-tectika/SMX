@@ -310,7 +310,7 @@ public static class RerunDiff
 
     /// A null determination is "not ruled", spelled out. Rendering it as an empty string would produce
     /// "determination  -> rejected", which reads as a formatting bug rather than as the fact that nobody had
-    /// ruled — and the absence of a ruling is the thing the regulatory gate turns on.
+    /// ruled — and whether anyone ruled is exactly what the matrix exists to show.
     private static string Ruling(string? determination) => determination switch
     {
         null => "not ruled",

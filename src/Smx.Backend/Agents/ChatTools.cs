@@ -17,9 +17,10 @@ namespace Smx.Backend.Agents;
 ///
 /// NOTE WHAT IS ABSENT: there is no gate tool, no approve tool, no determination tool. An agent can only
 /// act through its tools, so chat CANNOT sign a gate — not because it was told not to, but because the
-/// capability does not exist (Law 9, the anti-rubber-stamping line). POST /regulatory/approve remains the
-/// only writer of an approved GateDoc. Chat can only move a gate toward `locked` (an apply_revision voids
-/// it), which is the safe direction: it forces the operator to re-review and re-sign.
+/// capability does not exist (Law 9, the anti-rubber-stamping line). POST /decision/determination remains
+/// the only writer of an approved GateDoc, and it is the only gate there is (§16.4). Chat cannot reach it
+/// at all: a revision on a project whose VP gate is approved is refused outright by
+/// PipelineRunner.ThrowIfClosedAsync.
 ///
 /// `chatKey` is the KEY of the chat message being answered (the suffix RecordIds.ChatMessage was minted
 /// with), not the whole document id. It must be an id-safe token — see IdSafe: it is concatenated into a
@@ -91,9 +92,9 @@ public sealed class ChatTools(IRecordStore store, string projectId, string stage
         //
         // IsRevisable is checked HERE too, even though Tools() only offers this tool on a revisable stage.
         // The construction gate is what stops the MODEL; this stops the next caller. Fail-closed is the
-        // house style for exactly this — RevisionEffects.BreaksRegulatoryGate THROWS rather than returning
-        // the dangerous `false` — and a RevisionDoc on a non-revisable stage is one the dispatcher can only
-        // throw on.
+        // house style for exactly this — RerunScope.For THROWS on an undeclared field rather than returning
+        // the dangerous "invalidates nothing" — and a RevisionDoc on a non-revisable stage is one the
+        // dispatcher can only throw on.
         if (!RevisionEffects.IsRevisable(stage))
             return Error($"stage '{stage}' cannot be revised — only discovery, regulatory, dosing and decision produce a revisable agent output");
         if (string.IsNullOrWhiteSpace(target))

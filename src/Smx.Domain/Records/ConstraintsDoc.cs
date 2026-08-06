@@ -1,12 +1,29 @@
+using System.Text.Json.Serialization;
+
 namespace Smx.Domain.Records;
 
-public sealed record Citation(string Source, string Reference, string RetrievedAt, string? Snippet = null);
+/// One cited source behind an analytical claim.
+///
+/// `Reference` is FREE TEXT the agent wrote — a label, not an identifier. `DocumentId` is the opposite:
+/// the id `GET /documents/{id}` resolves, MINTED BY THE RETRIEVAL TOOL that returned the chunk (see
+/// SearchTools / RegDocumentIdIndex), which is the only place the real id is known. It is never derived
+/// from `Reference`: parsing that string would produce links that are usually right, and a chip that
+/// opens the WRONG regulation is worse than one that opens nothing.
+///
+/// NULLABLE, and serialized EVEN WHEN NULL — Json.Options sets DefaultIgnoreCondition = WhenWritingNull,
+/// so without [JsonIgnore(Never)] the key would simply vanish. The chip has to tell "this citation has no
+/// document" from "this build/response never carried the field at all", and every citation written before
+/// 2026-08-06 is the first kind — there are many, and they must keep rendering as deliberately inert
+/// rather than as a link that might work. Absent id ⇒ inert chip ⇒ NO GUESS.
+public sealed record Citation(
+    string Source, string Reference, string RetrievedAt, string? Snippet = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? DocumentId = null);
 
 /// A component's production facts. BatchMassKg is MASS, deliberately — see OrderAmount. ppm is mg/kg, so a
 /// batch VOLUME cannot yield an order amount without a density, and assuming water (1 L = 1 kg) mis-doses a
 /// polymer by ~10% and gold by 19×. If the operator has a volume, they multiply by density and enter mass.
 /// <param name="PhysicalState">The substrate's physical state — "liquid" | "solid" | "oil-soluble" |
-/// "coating" (free text). It drives the pool agent's form-class choice (oil-soluble → organocomplex; solid
+/// "coating" (free text). It drives the pool pass's form-class choice (oil-soluble → organocomplex; solid
 /// polymer → oxide/salt; coating → dispersible compound). Optional so existing records/eval fixtures keep
 /// deserializing; the intake form now collects it.</param>
 public sealed record ComponentSpec(

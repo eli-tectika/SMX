@@ -222,10 +222,10 @@ public class RecordDocsTests
     [Fact]
     public void GateDoc_HasDeterministicId_TypeAndDefaults()
     {
-        var g = new GateDoc { Id = RecordIds.Gate("p1", GateTypes.Regulatory), ProjectId = "p1", GateType = GateTypes.Regulatory };
-        Assert.Equal("p1|gate|regulatory", g.Id);
+        var g = new GateDoc { Id = RecordIds.Gate("p1", GateTypes.Vp), ProjectId = "p1", GateType = GateTypes.Vp };
+        Assert.Equal("p1|gate|vp", g.Id);
         Assert.Equal(RecordTypes.Gate, g.Type);
-        Assert.Equal("regulatory", g.GateType);
+        Assert.Equal("vp", g.GateType);
         Assert.Equal("locked", g.Status);
     }
 

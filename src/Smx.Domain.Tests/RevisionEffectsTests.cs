@@ -15,20 +15,11 @@ public class RevisionEffectsTests
     public void IsRevisable_DiscoveryRegulatoryDosingAndDecisionOnly(string stage, bool expected) =>
         Assert.Equal(expected, RevisionEffects.IsRevisable(stage));
 
-    [Theory]
-    [InlineData(Stages.Discovery, true)]
-    [InlineData(Stages.Regulatory, true)]
-    [InlineData(Stages.Dosing, false)]      // downstream of the gate — consumes the compliant set, cannot void it
-    [InlineData(Stages.Decision, false)]    // further downstream still — the pick reads the signed analysis
-    public void BreaksRegulatoryGate_ForStagesAtOrUpstreamOfTheGate(string stage, bool expected) =>
-        Assert.Equal(expected, RevisionEffects.BreaksRegulatoryGate(stage));
-
-    [Theory]
-    [InlineData(Stages.Matrix)]
-    public void BreaksRegulatoryGate_ThrowsForANonRevisableStage(string stage) =>
-        // `false` is the DANGEROUS answer (it leaves an approved gate standing over a changed analysis),
-        // so an unrecognized/non-revisable stage must never be able to fall into it.
-        Assert.Throws<ArgumentOutOfRangeException>(() => RevisionEffects.BreaksRegulatoryGate(stage));
+    // The two BreaksRegulatoryGate tests were here. Their subject is gone: §16.4 deleted the regulatory
+    // gate, so there is no signature for a revision to void and the predicate went with it. There was no
+    // assertion to rewrite — a revision can no longer reach ANY live signature, because
+    // PipelineRunner.ThrowIfClosedAsync refuses every revision on a project whose VP gate is approved
+    // (RevisionDispatchTests pins that refusal).
 
     [Fact]
     public void ConclusionKind_IsDerivedFromTheStage_NotChosenByTheAgent()
@@ -60,6 +51,5 @@ public class RevisionEffectsTests
         // here, at compile-and-test time, not in production after the damage is done.
         if (!RevisionEffects.IsRevisable(stage)) return;
         Assert.NotNull(RevisionEffects.ConclusionKind(stage));   // must not throw
-        RevisionEffects.BreaksRegulatoryGate(stage);             // must not throw
     }
 }

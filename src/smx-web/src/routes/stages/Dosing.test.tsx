@@ -212,4 +212,64 @@ describe('Dosing — the window, the codes, and the measurement they rest on', (
     await waitFor(() => expect(screen.getByText(/dosing document could not be read/i)).toBeInTheDocument());
     expect(screen.getByText('1314-36-9')).toBeInTheDocument();
   });
+  /**
+   * THE FIVE-COLUMN SHAPE, and what it deliberately does NOT have.
+   *
+   * There is no Sources column: Dosing carries no `Citation` objects at all — each bound's
+   * provenance is free prose in `basis`, which is the Why cell — and a column of dashes on every
+   * project is the chrome the prose purge is removing. Amount and Availability stay because they are
+   * what survived Cost's deletion (spec 6): with no prices to be had, supply is the only procurement
+   * signal in the product.
+   */
+  it('renders the dosing group as Material / State / Why / Confidence / Amount / Availability', async () => {
+    view();
+    await waitFor(() => expect(document.querySelector('.mx__cols')).toBeInTheDocument());
+    const first = document.querySelectorAll('table.mx')[0];
+    const heads = [...first.querySelectorAll('.mx__cols th')].map(
+      (h) => h.textContent,
+    );
+    expect(heads).toEqual([
+      'Material',
+      'State in this phase',
+      'Why',
+      'Confidence',
+      'Amount',
+      'Availability',
+    ]);
+    expect(heads).not.toContain('Sources');
+  });
+
+  /** The band names the phase in TEXT; the tint reinforces it and never carries it alone. */
+  it('bands the column group with the phase name', async () => {
+    view();
+    await waitFor(() => expect(document.querySelector('.mx__groups')).toBeInTheDocument());
+    const band = [...document.querySelectorAll('table.mx')[0].querySelectorAll('.mx__groups th')];
+    expect(band.map((b) => b.getAttribute('data-group'))).toEqual(['identity', 'dosing']);
+    expect(band[1].textContent).toBe('Dosing');
+    expect(band[1].getAttribute('colspan')).toBe('5');
+  });
+
+  /**
+   * WORST-WINS across the two bounds. A measured floor (1.0) under an estimated cap (0.5) is a
+   * window that is only as good as the estimate, and averaging the two to 75% would say otherwise.
+   */
+  it('folds the two bound confidences to the weaker end', async () => {
+    view();
+    await waitFor(() => expect(screen.getByText('50%')).toBeInTheDocument());
+    expect(document.querySelector('[data-confidence="low"]')).toBeInTheDocument();
+  });
+
+  /** Each bound's own basis, named with the end it justifies — never run into one sentence. */
+  it('gives each end of the window its own stated basis', async () => {
+    view();
+    await waitFor(() => expect(document.querySelector('.mx__cols')).toBeInTheDocument());
+    // Both ends, each labelled with the end it justifies. `getAllBy` because a project can dose more
+    // than one substance off the same device LOD — the assertion is that BOTH bases are drawn, not
+    // that either is unique.
+    expect(screen.getAllByText(/device LOD \+ background/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/extrapolated from a neighbouring salt/).length).toBeGreaterThan(0);
+    const why = document.querySelector('tbody tr td:nth-child(3)')!;
+    expect(why.textContent).toContain('floor');
+    expect(why.textContent).toContain('upper');
+  });
 });

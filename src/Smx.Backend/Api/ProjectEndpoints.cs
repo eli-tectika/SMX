@@ -39,7 +39,7 @@ public static class ProjectEndpoints
             return Results.Accepted($"/projects/{projectId}", new { projectId });
         });
 
-        // GET /projects lives in ProjectsListEndpoints, not here: it carries the gate statuses the
+        // GET /projects lives in ProjectsListEndpoints, not here: it carries the VP gate status the
         // "Needs signing" card is computed from, so it reads gates as well as projects.
 
         // The payload is returned, not just the stage spine. It is the operator's OWN submitted input —
@@ -89,6 +89,10 @@ public static class ProjectEndpoints
             return Results.Ok(new { reviewed = true });
         });
 
+        // The operator's OVERRIDE of the agent's proposal — and, since §16.4 dropped the regulatory gate,
+        // the only thing an operator writes about a verdict besides "I opened it". It is no longer the
+        // admission ticket (CompliantSet admits the agent's proposal by default); `rejected` here is a VETO
+        // that nothing can rescue, and `recommended` overrules an agent's refusal. Both carry a reason.
         app.MapPost("/projects/{projectId}/regulatory/determination",
             async (string projectId, DeterminationRequest req, [FromServices] IRecordStore store, CancellationToken ct) =>
         {
@@ -107,76 +111,22 @@ public static class ProjectEndpoints
             return Results.Ok(new { v.Determination });
         });
 
-        app.MapPost("/projects/{projectId}/regulatory/approve",
-            async (string projectId, [FromServices] IRecordStore store,
-                   [FromServices] PipelineRunner? runner, [FromServices] PipelineSupervisor? supervisor,
-                   CancellationToken ct) =>
-        {
-            var verdicts = await store.GetVerdictsAsync(projectId, ct);
-            var candidates = await store.GetCandidatesAsync(projectId, ct);
-            if (candidates is null || !MatrixAssembler.IsComplete(candidates, verdicts))
-                return Results.UnprocessableEntity(new { error = "regulatory analysis incomplete — every candidate needs a verdict before sign-off" });
-            // Arm on the LIVE analysis: a revise can leave an orphan verdict behind for a cell that is no
-            // longer screened, and blocking on an item the operator cannot open would deadlock this gate.
-            var (ok, blockers) = RegulatoryGate.Armable(candidates, verdicts);
-            if (!ok)
-                return Results.UnprocessableEntity(new { error = "gate not armable — open the flagged items first", blockers });
-            var existing = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
-            // A re-POST by the same signer is idempotent; a POST over a machine or unattributed
-            // signature is a NEW human signature and gets its own timestamp. The two fields move
-            // together or the record can describe an event that never happened: an operator
-            // signature stamped with the machine's timestamp, or a machine signature that
-            // survives the human review that was supposed to replace it.
-            var reaffirming = existing is { Status: "approved", ApprovedBy: GateSigners.Operator };
-            var gate = new GateDoc
-            {
-                Id = RecordIds.Gate(projectId, GateTypes.Regulatory), ProjectId = projectId,
-                GateType = GateTypes.Regulatory, Status = "approved",
-                // This endpoint is only reachable by the operator pressing Sign — there is no agent
-                // tool for it and there never will be.
-                ApprovedAt = reaffirming ? existing!.ApprovedAt : DateTimeOffset.UtcNow.ToString("O"),
-                ApprovedBy = GateSigners.Operator,
-            };
-            await store.UpsertGateAsync(gate, ct);
-
-            // The signature is recorded; now make it MEAN something. Two separate acts, deliberately kept
-            // separate:
-            //   OnGateAsync is a stamp — the Regulatory stage leaves `awaiting-RE`. It touches one record and
-            //   runs no agent, so it is safe on the caller's thread.
-            //   TryStart is what actually moves the project: Dosing SKIPS behind an unsigned gate, so before
-            //   this line the signed determination changed nothing and the project sat parked under a gate
-            //   the operator had already signed — waiting for a change feed that no longer exists.
-            // The runner itself never re-enters the pipeline from a gate; re-entry is the supervisor's job,
-            // and it happens here rather than inside OnGateAsync so that stamping a signature can never turn
-            // into an endpoint that spends minutes in Foundry.
-            if (runner is not null) await runner.OnGateAsync(gate, ct);
-            supervisor?.TryStart(projectId);
-            return Results.Ok(new { status = "approved" });
-        });
-
-        app.MapGet("/projects/{projectId}/gate/regulatory",
-            async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
-        {
-            var verdicts = await store.GetVerdictsAsync(projectId, ct);
-            var candidates = await store.GetCandidatesAsync(projectId, ct);
-            var complete = candidates is not null && MatrixAssembler.IsComplete(candidates, verdicts);
-            // No candidates ⇒ no live cells ⇒ nothing to have reviewed. `complete` already fails below, and
-            // the "incomplete" blocker is the honest reason; inventing verdict blockers here would not be.
-            var (armed, blockers) = candidates is null
-                ? (Ok: false, Blockers: (IReadOnlyList<string>)[])
-                : RegulatoryGate.Armable(candidates, verdicts);
-            var armable = complete && armed;
-            var allBlockers = complete ? blockers : blockers.Prepend("incomplete: not every candidate has a verdict yet").ToList();
-            var gate = await store.GetGateAsync(projectId, GateTypes.Regulatory, ct);
-            return Results.Json(new RegulatoryGateResponse
-            {
-                Status = gate?.Status ?? "locked",
-                Armable = armable,
-                Blockers = allBlockers,
-                ApprovedAt = gate?.ApprovedAt,
-                ApprovedBy = gate?.ApprovedBy,
-            }, Json.Options);
-        });
+        // POST /projects/{id}/regulatory/approve AND GET /projects/{id}/gate/regulatory LIVED HERE.
+        //
+        // Both are DELETED by the 2026-08-06 redesign §16.4 — the regulatory gate is dropped entirely, not
+        // demoted: no GateDoc, no approve endpoint, no signature. The matrix carries confidence and sources
+        // and is the review surface. Do not restore them without reading §16.4 and CompliantSet: the gate
+        // was the writer of every operator determination, and its deletion is what forced the compliant set
+        // to admit the agent's proposal by default.
+        //
+        // WHAT DID NOT GO WITH IT, so it is findable from here:
+        //   - POST /regulatory/review and /determination, just above — the operator still opens items and
+        //     still overrides the agent's proposal, and both still record a reason.
+        //   - the arming predicate, now EvidenceReview.Outstanding — a precondition on POST /orders/{cas}
+        //     and the VP signature rather than on a gate, because "no live flagged verdict is unopened"
+        //     never needed a signature to mean something.
+        //   - GET /projects/{id}/regulatory/compliance-package (ExportEndpoints), still ungated: it is the
+        //     artifact that goes TO the R.E., so gating it on the R.E.'s answer was always backwards.
 
         // The operator's signature that the dossier is right. There is NO agent tool for this and there
         // never will be: creating a project is safe to delegate because it runs nothing, but starting
@@ -250,7 +200,7 @@ public static class ProjectEndpoints
                 ? Results.Json(candidates, Json.Options)
                 : Results.NotFound());
 
-        // The need-driven pool (the agent-proposed candidate chemistries), or a 404 before the pool agent has
+        // The need-driven pool (the agent-proposed candidate chemistries), or a 404 before the pool pass has
         // run. Read-only, like /candidates — the pool is derived data the operator inspects, not edits.
         app.MapGet("/projects/{projectId}/pool",
             async (string projectId, [FromServices] IRecordStore store, CancellationToken ct) =>
@@ -274,15 +224,6 @@ internal sealed class StartPreconditions
     public List<ComponentSpec> Components { get; set; } = [];
 }
 
-/// GET /gate/regulatory's shape. A named record, not an anonymous object, because ApprovedAt and
-/// ApprovedBy must reach the client as `null` — present-and-null distinguishes "not yet approved"
-/// from "approved, signer unknown" — and <see cref="Json.Options"/> sets `DefaultIgnoreCondition =
-/// WhenWritingNull` globally, which would otherwise drop the key entirely and read as `undefined`.
-internal sealed record RegulatoryGateResponse
-{
-    public required string Status { get; init; }
-    public required bool Armable { get; init; }
-    public required IReadOnlyList<string> Blockers { get; init; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public string? ApprovedAt { get; init; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public string? ApprovedBy { get; init; }
-}
+// RegulatoryGateResponse lived here, and went with GET /gate/regulatory. VpGateResponse in
+// DecisionEndpoints.cs is now the only gate shape on the wire; its comment carries the present-and-null
+// reasoning both records shared.

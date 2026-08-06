@@ -97,11 +97,6 @@ public class OperatorEntryPointWiringTests : IClassFixture<WebApplicationFactory
             Determination = Determinations.Recommended, DeterminationReason = "cleared",
             Dimensions = [new("ElementGate", VerdictStatus.Pass, [Cited], 0.9, "ok")],
         });
-        await _store.UpsertGateAsync(new GateDoc
-        {
-            Id = RecordIds.Gate(P, GateTypes.Regulatory), ProjectId = P, GateType = GateTypes.Regulatory,
-            Status = "approved", ApprovedAt = "2026-07-27T09:00:00.0000000+00:00",
-        });
     }
 
     // -------------------------------------------------------------------------------------------------
@@ -254,8 +249,6 @@ public class OperatorEntryPointWiringTests : IClassFixture<WebApplicationFactory
         // The system got smarter: the reason reached the knowledge layer VERBATIM.
         var conclusion = Assert.Single(await _knowledge.QueryLearnedConclusionsAsync(null));
         Assert.Contains("the neodecanoate bleeds in HDPE", string.Join(" ", conclusion.Provenance.Decisions));
-        // And the signature the revision invalidated no longer stands over analysis nobody reviewed.
-        Assert.Equal("locked", (await _store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
     }
 
     // -------------------------------------------------------------------------------------------------
@@ -359,9 +352,6 @@ public class OperatorEntryPointWiringTests : IClassFixture<WebApplicationFactory
         var revision = Assert.Single(await _store.GetRevisionsAsync(P));
         Assert.Equal(RevisionStatus.Applied, revision.Status);
         Assert.Equal("octoate", Assert.Single((await _store.GetCandidatesAsync(P))!.Substances).Form);
-        // And the signature over the analysis it replaced is void — the chat door must not be a way around
-        // the gate the revise door voids.
-        Assert.Equal("locked", (await _store.GetGateAsync(P, GateTypes.Regulatory))!.Status);
     }
 
     /// The busy case, which is the one that used to strand a revision permanently. The turn cannot take the

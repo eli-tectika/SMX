@@ -50,9 +50,11 @@ const summary = (over: Partial<MatrixSummary> = {}): MatrixSummary => ({
   ...over,
 });
 
-const gates = (regulatory: string, vp: string): ProjectGates => ({ regulatory, vp });
-const SIGNED = gates('approved', 'approved');
-const UNSIGNED = gates('locked', 'locked');
+// ONE GATE. The regulatory gate is removed rather than demoted (spec §16.4), so the VP
+// determination is the only signature a project can be waiting on.
+const gates = (vp: string): ProjectGates => ({ vp });
+const SIGNED = gates('approved');
+const UNSIGNED = gates('locked');
 
 const done = () => project('done', 'done', 'done', 'done');
 
@@ -126,23 +128,20 @@ describe('every stage done is not the same as finished', () => {
 
     expect(b).not.toBeNull();
     expect(b?.tone).toBe('warning');
-    expect(b?.text).toContain('the regulatory sign-off');
     expect(b?.text).toContain('the VP determination');
   });
 
-  it('names only the signature that is actually missing', () => {
-    const b = whatsBlocking(done(), summary(), 0, gates('approved', 'locked'));
-
-    expect(b?.text).toContain('the VP determination');
-    expect(b?.text).not.toContain('the regulatory sign-off');
-  });
-
+  /**
+   * The safe asymmetry, and it matters MORE now than it did with two gates: the VP determination is
+   * the only human checkpoint before procurement (spec 16.4), so there is no second signature to
+   * catch what this reading gets wrong. A status this build has never heard of -- a future value, a
+   * deploy skew -- must not be read as approval. Over-reporting costs a glance; under-reporting
+   * releases procurement.
+   */
   it('treats an unrecognised gate status as UNSIGNED, never as a signature', () => {
-    // The safe asymmetry. A status this build has never heard of -- a future value, a deploy skew -- must
-    // not be read as approval. Over-reporting costs a glance; under-reporting releases procurement.
-    const b = whatsBlocking(done(), summary(), 0, gates('some-new-status', 'approved'));
+    const b = whatsBlocking(done(), summary(), 0, gates('some-new-status'));
 
-    expect(b?.text).toContain('the regulatory sign-off');
+    expect(b?.text).toContain('the VP determination');
   });
 
   it('returns null ONLY when every stage ran and both signatures are on file', () => {
@@ -224,7 +223,7 @@ describe('bucket', () => {
     // The bucket half of the same trap. Filed as settled, the project drops out of the operator's
     // attention entirely -- while procurement is still refused.
     expect(bucket(done(), summary(), 0, UNSIGNED)).toBe('needs-you');
-    expect(bucket(done(), summary(), 0, gates('approved', 'locked'))).toBe('needs-you');
+    expect(bucket(done(), summary(), 0, gates('some-new-status'))).toBe('needs-you');
   });
 
   it('does NOT settle when the gates are unknown', () => {

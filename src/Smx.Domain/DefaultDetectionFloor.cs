@@ -10,10 +10,13 @@ namespace Smx.Domain;
 /// component — and the flag blocks the ORDER, not the run.
 ///
 /// This is a SEPARATE, SEPARATELY-NAMED function rather than a default hidden inside
-/// <see cref="DetectionFloor.Compute"/>, for the same reason <see cref="ProvisionalSet"/> is separate from
-/// <see cref="CompliantSet"/>: the caller must choose the weaker number deliberately and in the open. A
-/// silent default inside Compute would make a guess indistinguishable from a measurement at every call
-/// site, which is precisely the confusion the Bound.Kind machinery exists to prevent.
+/// <see cref="DetectionFloor.Compute"/>: the caller must choose the weaker number deliberately and in the
+/// open. A silent default inside Compute would make a guess indistinguishable from a measurement at every
+/// call site, which is precisely the confusion the Bound.Kind machinery exists to prevent.
+///
+/// Since the 2026-08-06 redesign §16.4 this is the ONLY thing that still stamps a DosingDoc provisional —
+/// "rests on the agent's proposal" stopped being an exception when it became the normal basis. So the flag
+/// now means exactly one thing: a ppm derived from a number nobody measured.
 ///
 /// It is a floor over the device's generic limit of detection ALONE. There is no substrate background in
 /// it, and a real background can only push the true floor UP — so this number is knowingly OPTIMISTIC.

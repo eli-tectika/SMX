@@ -69,12 +69,14 @@ public class InMemoryRecordStoreTests
     public async Task Gate_And_SingleVerdict_RoundTrip()
     {
         var store = new Smx.Domain.Tests.Fakes.InMemoryRecordStore();
-        await store.UpsertGateAsync(new GateDoc { Id = RecordIds.Gate("p1", GateTypes.Regulatory), ProjectId = "p1",
-            GateType = GateTypes.Regulatory, Status = "approved" });
-        var g = await store.GetGateAsync("p1", GateTypes.Regulatory);
+        await store.UpsertGateAsync(new GateDoc { Id = RecordIds.Gate("p1", GateTypes.Vp), ProjectId = "p1",
+            GateType = GateTypes.Vp, Status = "approved" });
+        var g = await store.GetGateAsync("p1", GateTypes.Vp);
         Assert.NotNull(g);
         Assert.Equal("approved", g!.Status);
-        Assert.Null(await store.GetGateAsync("p1", "vp"));
+        // A gate type this project has no document for reads null, not the one it does have — the lookup
+        // is keyed, not "return whatever gate is in the partition".
+        Assert.Null(await store.GetGateAsync("p1", "some-other-gate"));
 
         await store.UpsertVerdictAsync(new VerdictDoc { Id = RecordIds.Verdict("p1", "cas1", "bottle"),
             ProjectId = "p1", Cas = "cas1", ComponentId = "bottle", Element = "Zr", Form = "f" });
@@ -121,8 +123,8 @@ public class RevisionStoreTests
         await store.UpsertRevisionAsync(Rev("proj-1", "a", "2026-07-13T01:00:00Z"));
         await store.UpsertVerdictAsync(new VerdictDoc { Id = RecordIds.Verdict("proj-1", "c1", "bottle"),
             ProjectId = "proj-1", Cas = "c1", ComponentId = "bottle", Element = "Zr", Form = "f" });
-        await store.UpsertGateAsync(new GateDoc { Id = RecordIds.Gate("proj-1", GateTypes.Regulatory),
-            ProjectId = "proj-1", GateType = GateTypes.Regulatory, Status = "approved" });
+        await store.UpsertGateAsync(new GateDoc { Id = RecordIds.Gate("proj-1", GateTypes.Vp),
+            ProjectId = "proj-1", GateType = GateTypes.Vp, Status = "approved" });
         await store.UpsertCandidatesAsync(new CandidatesDoc { Id = RecordIds.Candidates("proj-1"),
             ProjectId = "proj-1", Substances = [] });
 
